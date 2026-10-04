@@ -1,0 +1,12 @@
+# Line endings are not a local preference here. Builds, the public audit and packaged
+# verification compare these trees byte for byte, and the release manifest pins their
+# digests, so every checkout must produce the same bytes on every platform. Nothing in
+# the tree is a Windows script, so LF everywhere costs nothing.
+* text=auto eol=lf
+
+# Redistributed upstream license text and generated supply-chain notices are artifacts,
+# not source: their exact bytes are the identity being asserted. Never convert them.
+LICENSE -text
+NOTICE.txt -text
+*.NOTICE.txt -text
+OFL.txt -text

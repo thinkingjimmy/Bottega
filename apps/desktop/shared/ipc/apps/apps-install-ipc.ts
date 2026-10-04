@@ -1,0 +1,183 @@
+/**
+ * [INPUT]: Depends on stable App compatibility failures, type-only Agent/App/authorization primitives and existing Extension disclosure vocabulary.
+ * [OUTPUT]: Provides APP_PROBE_FAILURE_CODES (the typed Add App check failures) and App acquisition IPC including explicit author-manifest/Agent-analysis selection, source preflight, configuration and existing import/share contracts
+ * [POS]: apps/desktop/shared/ipc/apps; Shared Apps wire leaf for the acquisition half (install, preset, share, removal); apps-ipc re-exports it while durable lifecycle and grant records stay in that file
+ */
+
+import type { AppCompatibilityBlocked } from "../../app-host/contract";
+import type { AgentBackendId } from "../agent/agent-ipc";
+import type {
+  AppInstallAuthorization,
+  AppRecord,
+  AppRequirement,
+  BaseAppManifest,
+} from "./apps-ipc";
+import type { ProductResourceScope } from "../../product/product-resource-scope";
+import type { ExtensionDisclosureView, Sha256Digest } from "../settings/extensions-ipc";
+
+/**
+ * Why an Add App repository check failed, as a stable code the dialog localizes (`CODE: detail`, read by failureCode). Main
+ * keeps git's own output for diagnostics only; no displayed sentence comes from it.
+ */
+export const APP_PROBE_FAILURE_CODES = [
+  "APP_REPOSITORY_UNREACHABLE",
+  "APP_REPOSITORY_AUTH_REQUIRED",
+  "APP_REPOSITORY_NOT_FOUND",
+  "APP_REF_UNAVAILABLE",
+  "APP_PROBE_INTERRUPTED",
+  "APP_PACKAGE_INVALID",
+  "APP_REPOSITORY_PROBE_FAILED",
+] as const;
+export type AppProbeFailureCode = (typeof APP_PROBE_FAILURE_CODES)[number];
+
+export type GhStatus =
+  | { state: "missing"; message: string }
+  | { state: "unauthenticated"; message: string }
+  | { state: "ready"; message: string };
+
+export type AppRepoProbeResult =
+  | AppCompatibilityBlocked
+  | { kind: "web"; repoUrl: string; commitSha: string; declarationDigest: string | null }
+  | {
+      kind: "base";
+      repoUrl: string;
+      preflightId: string;
+      digest: string;
+      commitSha: string;
+      manifest: BaseAppManifest;
+      requirements: AppRequirement[];
+      cliStatuses: Array<{
+        id: string;
+        detectable: boolean;
+        installed: boolean;
+      }>;
+      disclosures: Array<{ path: string; content: string }>;
+      files: Array<{ path: string; bytes: number }>;
+      ignored: string[];
+      rowCount: number;
+      hasGui: boolean;
+      extensionPreflights: readonly AppExtensionInstallPreflight[];
+    };
+
+export type AppExtensionInstallPreflight = Readonly<{
+  declaredComponentIdentity: string;
+  scope: ProductResourceScope;
+  projectLifecycleRevision: number | null;
+  scopeRevision: number;
+  repoUrl: string;
+  requestedRef: string;
+  resolvedCommit: string;
+  contentDigest: Sha256Digest;
+  capabilityDigest: Sha256Digest;
+  capabilities: ExtensionDisclosureView;
+  preflightId: string | null;
+  state: "ready" | "installed";
+}>;
+
+/** 线上身份只穿过稳定 ID；产品文案由 renderer 的五语目录投影。 */
+export const PRESET_APP_IDS = [
+  "design-canvas",
+  "expense-tracker",
+  "fitness-log",
+] as const;
+export type PresetAppId = (typeof PRESET_APP_IDS)[number];
+
+export type PresetAppSummary = {
+  id: PresetAppId;
+  icon: string;
+  requirements: AppRequirement[];
+};
+
+type PresetInstallRequest = {
+  presetId: string;
+  requestId: string;
+  config?: AppConfigValue;
+};
+
+export type ReadyPresetProbeResult = Extract<
+  AppRepoProbeResult,
+  { kind: "base" }
+> & {
+  presetId: string;
+  resolvedPin: string;
+  channel: "release" | "dev";
+};
+
+export type PresetProbeResult = ReadyPresetProbeResult | AppCompatibilityBlocked;
+
+export type InstallPresetInput = PresetInstallRequest & {
+  preflightId: string;
+  digest: string;
+  authorization: AppInstallAuthorization;
+};
+
+export type AppConfigValue = {
+  values: Record<string, string>;
+  agentReadableKeys: string[];
+};
+
+export type ShareDataMode = "full" | "sample" | "schema";
+export type SharePreviewInput = {
+  appId: string;
+  dataMode: ShareDataMode;
+  repoName: string;
+  visibility: "public" | "private";
+};
+export type SharePreview = {
+  previewId: string;
+  digest: string;
+  files: Array<{ path: string; bytes: number }>;
+  rowCount: number;
+  sampleRows: Array<{ id: string; values: Record<string, unknown> }>;
+  ignored: string[];
+  readmePlaceholder: boolean;
+  diffSummary: string;
+};
+export type SharePublishInput = {
+  appId: string;
+  previewId: string;
+  confirmedDigest: string;
+  requestId: string;
+};
+
+export type AddAppInput = {
+  repoUrl: string;
+  maintenanceAgent: AgentBackendId | "auto";
+  candidateCommitSha?: string;
+  installStrategy?: import("../../apps/model/apps-execution").AppInstallStrategy;
+  preflightId?: string;
+  confirmedDigest?: string;
+  config?: AppConfigValue;
+  authorization?: AppInstallAuthorization;
+};
+
+export type AddAppResult =
+  | { status: "done"; record: AppRecord }
+  | {
+      status: "rejected";
+      error: {
+        code: "DUPLICATE_REPOSITORY";
+        appId: string;
+      };
+    };
+
+export type SaveAsAppInput = {
+  chatId: string;
+  name: string;
+  icon: string;
+  requestId: string;
+};
+
+export type SaveAsAppResult =
+  | { status: "done"; record: AppRecord }
+  | {
+      status: "rejected";
+      error: { code: string; message: string };
+    };
+
+export type RemoveAppMode = "cascade" | "retain-data";
+export type RemoveAppInput = {
+  appId: string;
+  mode: RemoveAppMode;
+  requestId: string;
+};

@@ -1,0 +1,59 @@
+diff --git a/dist/index.js b/dist/index.js
+index eb58d3e3f2dbe774e1ed5f158cc3c9a4b46f4c5d..061eb8afddc5af3464c27f999b86310435fd92eb 100755
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1,4 +1,28 @@
+ #!/usr/bin/env node
++/* bottega-host-sandbox:start */
++/* Bottega: inside Bottega's host Seatbelt fence Codex's own Seatbelt cannot nest (sandbox_apply fails), and the host fence already
++   enforces the workspace mode and write roots. Only when Bottega's launcher wrapped this process (BOTTEGA_HOST_SANDBOX names the
++   fence) Codex's sandbox is off, and the fence is the boundary: "on-request" asks only what Codex asks beyond that sandbox (a
++   write outside the writable roots, an MCP tool approval), not every command. It becomes "untrusted" only where the fence cannot
++   keep the mode's promise or the reviewer is unknown: a read-only mode in a workspace-write fence, or no approvals_reviewer in
++   the CODEX_CONFIG Bottega launched with. Other policies pass through. */
++function bottegaReviewer() {
++  try { return JSON.parse(process.env.CODEX_CONFIG ?? "{}").approvals_reviewer ?? null; } catch { return null; }
++}
++function bottegaHostSandbox(params) {
++  const fence = process.env.BOTTEGA_HOST_SANDBOX;
++  if ((fence !== "seatbelt" && fence !== "seatbelt-read-only" && fence !== "seatbelt-read-only-full-access") || !params || typeof params !== "object") return params;
++  const next = { ...params };
++  const readOnlyMode = next.sandboxPolicy?.type === "readOnly";
++  if (next.sandboxPolicy) next.sandboxPolicy = { type: "dangerFullAccess" };
++  if (next.sandbox) next.sandbox = "danger-full-access";
++  if (next.approvalPolicy === "on-request") {
++    const unasked = readOnlyMode ? fence !== "seatbelt" : ["user", "auto_review"].includes(bottegaReviewer());
++    if (!unasked) next.approvalPolicy = "untrusted";
++  }
++  return next;
++}
++/* bottega-host-sandbox:end */
+ import { createRequire as __createRequire } from 'module'; const require = __createRequire(import.meta.url);
+ var __create = Object.create;
+ var __defProp = Object.defineProperty;
+@@ -28204,7 +28228,7 @@ var CodexAppServerClient = class {
+     return await this.sendRequest({ method: "initialize", params });
+   }
+   async turnStart(params) {
+-    return await this.sendRequest({ method: "turn/start", params });
++    return await this.sendRequest({ method: "turn/start", params: bottegaHostSandbox(params) });
+   }
+   async runTurn(params, onTurnStarted) {
+     const capturedCompletions = [];
+@@ -28431,13 +28455,13 @@ var CodexAppServerClient = class {
+     this.staleTurnIds.set(threadId, threadStaleTurns);
+   }
+   async threadStart(params) {
+-    return await this.sendRequest({ method: "thread/start", params });
++    return await this.sendRequest({ method: "thread/start", params: bottegaHostSandbox(params) });
+   }
+   async threadResume(params) {
+-    return await this.sendRequest({ method: "thread/resume", params });
++    return await this.sendRequest({ method: "thread/resume", params: bottegaHostSandbox(params) });
+   }
+   async threadFork(params) {
+-    return await this.sendRequest({ method: "thread/fork", params });
++    return await this.sendRequest({ method: "thread/fork", params: bottegaHostSandbox(params) });
+   }
+   getThreadSettings(threadId) {
+     return this.threadSettings.get(threadId);

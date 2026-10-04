@@ -1,0 +1,11 @@
+{
+  "version": "2026.9.3",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "url": "https://github.com/cloudflare/cloudflared/releases/download/2026.9.3/cloudflared-darwin-arm64.tgz",
+  "archiveSha256": "587c2cfb1c230fe36c7fa7727da78be459dae028cabe8c001291999350f07095",
+  "executableSha256": "5472c1a01c84bc31b3021056a73b4e5774ddddefc572124ea8fdf6c340639f32",
+  "teamId": "68WVV388M8",
+  "maximumArchiveBytes": 67108864,
+  "maximumExecutableBytes": 100663296
+}

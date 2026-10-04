@@ -1,0 +1,165 @@
+/**
+ * [INPUT]: Depends on zod, ATTACHMENT_LIMIT from agent-ipc, chatAgentIdSchema (any Chat Agent, a package Provider's included), Gallery sourceRef/logical-key schemas from gallery-media-ipc, and the RichInput/submission-file schemas
+ * [OUTPUT]: Provides preparedSubmissionV1Schema/PreparedSubmissionV1 (strict RichValue cross-consistency schema with a unified 8KiB logicalKey budget) plus formatGalleryCommentBlock/appendGalleryCommentBlocks for the stable pinned-comment prompt template
+ * [POS]: Shared schema and comment-template authority for Gallery-image submissions; the renderer's freezeGalleryDraft (src/lib/gallery/submission.ts) builds the frozen draft against this schema before it becomes a durable submission
+ */
+
+import { z } from "zod";
+import { ATTACHMENT_LIMIT } from "./ipc/agent/agent-ipc";
+import { chatAgentIdSchema } from "./chat-agent/options";
+import {
+  GALLERY_LOGICAL_KEY_LIMIT,
+  galleryMediaSourceRefSchema,
+  gallerySourceLogicalKey,
+} from "./ipc/content/gallery-media-ipc";
+import { richInputValueSchema } from "./content/rich/rich-input-projection";
+import { submissionFileSchema } from "./content/submission/submission";
+
+export const preparedSubmissionV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    message: z
+      .object({
+        richValue: richInputValueSchema,
+        displayText: z.string(),
+        files: z.array(submissionFileSchema).max(ATTACHMENT_LIMIT),
+      })
+      .strict(),
+    galleryAttachments: z
+      .array(
+        z
+          .object({
+            fileIndex: z.number().int().nonnegative(),
+            attachmentId: z.string().min(1),
+            logicalKey: z.string().min(1).max(GALLERY_LOGICAL_KEY_LIMIT),
+            sourceRevision: z.string().min(1),
+            selectionToken: z.string().min(1),
+            materializationToken: z.string().min(1),
+            sourceRef: galleryMediaSourceRefSchema,
+          })
+          .strict()
+      )
+      .max(ATTACHMENT_LIMIT),
+    origin: z.object({ kind: z.literal("composer") }).strict(),
+    /* Any Chat Agent (a package Provider's included, d5); its Gallery stays closed without image input (freezeGalleryDraft). */
+    backend: chatAgentIdSchema,
+    capabilityEpoch: z.number().int().nonnegative(),
+    backendEpoch: z.number().int().nonnegative(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const fileCount = value.message.files.length;
+    const fileIds = new Set<string>();
+    for (const [index, file] of value.message.files.entries()) {
+      if (fileIds.has(file.id)) {
+        context.addIssue({
+          code: "custom",
+          path: ["message", "files", index, "id"],
+          message: "Submission file id 不得重复",
+        });
+      }
+      fileIds.add(file.id);
+    }
+    const attachmentIds = new Set<string>();
+    const fileIndices = new Set<number>();
+    const logicalKeys = new Set<string>();
+    for (const [index, attachment] of value.galleryAttachments.entries()) {
+      if (attachment.fileIndex >= fileCount) {
+        context.addIssue({
+          code: "custom",
+          path: ["galleryAttachments", index, "fileIndex"],
+          message: "fileIndex 必须指向最终 files",
+        });
+      }
+      if (
+        value.message.files[attachment.fileIndex]?.id !==
+        attachment.attachmentId
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["galleryAttachments", index, "attachmentId"],
+          message: "attachmentId 必须匹配 fileIndex 指向的文件",
+        });
+      }
+      if (
+        attachment.logicalKey !== gallerySourceLogicalKey(attachment.sourceRef)
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["galleryAttachments", index, "logicalKey"],
+          message: "logicalKey 必须匹配 sourceRef",
+        });
+      }
+      if (
+        attachment.sourceRef.kind === "attachment" &&
+        attachment.sourceRevision !== attachment.sourceRef.sourceRevision
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["galleryAttachments", index, "sourceRevision"],
+          message: "attachment sourceRevision 必须匹配 sourceRef",
+        });
+      }
+      if (attachmentIds.has(attachment.attachmentId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["galleryAttachments", index, "attachmentId"],
+          message: "Gallery attachmentId 不得重复",
+        });
+      }
+      if (logicalKeys.has(attachment.logicalKey)) {
+        context.addIssue({
+          code: "custom",
+          path: ["galleryAttachments", index, "logicalKey"],
+          message: "Gallery logicalKey 不得重复",
+        });
+      }
+      if (fileIndices.has(attachment.fileIndex)) {
+        context.addIssue({
+          code: "custom",
+          path: ["galleryAttachments", index, "fileIndex"],
+          message: "Gallery fileIndex 不得重复",
+        });
+      }
+      attachmentIds.add(attachment.attachmentId);
+      fileIndices.add(attachment.fileIndex);
+      logicalKeys.add(attachment.logicalKey);
+    }
+  });
+
+export type PreparedSubmissionV1 = z.infer<
+  typeof preparedSubmissionV1Schema
+>;
+
+type GalleryCommentForPrompt = {
+  x: number;
+  y: number;
+  text: string;
+};
+
+export function formatGalleryCommentBlock(
+  imageNumber: number,
+  comments: readonly GalleryCommentForPrompt[]
+) {
+  if (!comments.length) return "";
+  const lines = comments.map(
+    (comment, index) =>
+      `${index + 1}. (x: ${percent(comment.x)}, y: ${percent(comment.y)}) ${comment.text}`
+  );
+  return `Image ${imageNumber}:\n${lines.join("\n")}`;
+}
+
+export function appendGalleryCommentBlocks(
+  input: string,
+  blocks: readonly string[]
+) {
+  const meaningful = blocks.filter(Boolean);
+  if (!meaningful.length) return input;
+  // 原文为空时不产生前导空行，模板始终以首个 Image N: 开头
+  if (!input.trim()) return meaningful.join("\n\n");
+  return `${input}\n\n${meaningful.join("\n\n")}`;
+}
+
+function percent(value: number) {
+  return `${(Math.min(1, Math.max(0, value)) * 100).toFixed(1)}%`;
+}

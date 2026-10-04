@@ -1,0 +1,85 @@
+/**
+ * [INPUT]: Depends on AgentTurn StartOutcome and Promise settlement synonyms
+ * [OUTPUT]: Provides AcpTurnSettlement, the exclusive start deferred with active→requested→terminal|Stop status migration
+ * [POS]: Sole owner of ACP startup settlement state; AcpTurn only performs protocol actions and no longer tracks its own stopped/terminal/startRequested flags
+ */
+
+import type { StartOutcome } from "../../../backends/types";
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((next, fail) => {
+    resolve = next;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+type SettlementPhase =
+  | "active"
+  | "terminal-requested"
+  | "terminal"
+  | "stopped";
+
+export class AcpTurnSettlement {
+  private readonly started = deferred<StartOutcome>();
+  private phase: SettlementPhase = "active";
+  private startRequested = false;
+
+  constructor() {
+    /* child 可在 start() 前失败；安全观察者只阻止 unhandled，绝不改变
+       原 promise 的 rejected 状态，之后的 start() 仍拿到同一原因。 */
+    void this.started.promise.catch(() => undefined);
+  }
+
+  get active() {
+    return this.phase === "active";
+  }
+
+  get stopped() {
+    return this.phase === "stopped";
+  }
+
+  beginStart() {
+    if (this.stopped) throw new Error("ACP turn 已停止");
+    if (this.startRequested) throw new Error("ACP turn 已启动");
+    this.startRequested = true;
+    /* constructor 期间 child 已失败时，终态管线正在/已经拒绝 started。
+       调用方只需等待那份原 promise，绝不能重搭第二条 ACP transport。 */
+    return this.active;
+  }
+
+  waitForStart() {
+    return this.started.promise;
+  }
+
+  resolveStart(outcome: StartOutcome) {
+    this.started.resolve(outcome);
+  }
+
+  rejectStart(cause: unknown) {
+    this.started.reject(cause);
+  }
+
+  requestTerminal() {
+    if (!this.active) return false;
+    this.phase = "terminal-requested";
+    return true;
+  }
+
+  claimTerminal() {
+    if (this.phase !== "terminal-requested") return false;
+    this.phase = "terminal";
+    return true;
+  }
+
+  stop() {
+    if (this.stopped) return false;
+    this.phase = "stopped";
+    if (this.startRequested) {
+      this.started.reject(new Error("ACP turn 已停止"));
+    }
+    return true;
+  }
+}

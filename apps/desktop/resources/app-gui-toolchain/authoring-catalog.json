@@ -1,0 +1,115 @@
+{
+  "schema": "bottega.app-gui-authoring-catalog/v1",
+  "preset": "bottega-react-v1",
+  "componentSystem": "shadcn-base-ui-v1",
+  "componentSnapshotDigest": "sha256:31b3a76251a65a64328db5a484463315ede20a24950f77c78fe5d70cff526ca1",
+  "iconLibraries": [
+    "lucide",
+    "phosphor"
+  ],
+  "blocks": "bottega-ui-blocks-v1",
+  "starters": [
+    "crud",
+    "dashboard",
+    "kanban",
+    "gallery",
+    "editor"
+  ],
+  "files": [
+    {
+      "path": "electron/main/apps/gui-build/product-modules/blocks.ts",
+      "bytes": 12824,
+      "sha256": "sha256:ecb6223eacf7048e07619575dcfa4e488210405a6e21df0bd64c15fca23a5a0a"
+    },
+    {
+      "path": "resources/app-gui-components/catalog.json",
+      "bytes": 2120,
+      "sha256": "sha256:1c81a1e6d540bd15a35192b742523809f14a5d2bed3aa6fed893ca8d88a97a65"
+    },
+    {
+      "path": "resources/app-gui-components/feedback.tsx",
+      "bytes": 1738,
+      "sha256": "sha256:d9d8cc3879f7868b9b1a2d802f6c13a6d0395012da0a80690771e224d4682c5e"
+    },
+    {
+      "path": "resources/app-gui-components/forms.tsx",
+      "bytes": 4165,
+      "sha256": "sha256:1b57d057bd9635ce33cec221a0da0afc79cb1d21137163f8ce10936e02168c98"
+    },
+    {
+      "path": "resources/app-gui-components/navigation.tsx",
+      "bytes": 2168,
+      "sha256": "sha256:e2af093922aac93e4bf9fbb937dae57a957bfd9bb38b7f6ec84bd4fcc72f6c2b"
+    },
+    {
+      "path": "resources/app-gui-components/overlays.tsx",
+      "bytes": 3742,
+      "sha256": "sha256:025869efcfd4595b884c1e4a03cf8eea21c24c95bf2ce8a9a4a0bb9bb5b59879"
+    },
+    {
+      "path": "resources/app-gui-components/surfaces.tsx",
+      "bytes": 2749,
+      "sha256": "sha256:86649eaad5d1214cac3569c630231ddc7516afb9fe666e341cc4b7e88e890e71"
+    },
+    {
+      "path": "resources/app-gui-starters/catalog.json",
+      "bytes": 422,
+      "sha256": "sha256:a2afa2cb45e3d192921bff07d4cf6b44925626fabd5ed50eb32563f0d51feff9"
+    },
+    {
+      "path": "resources/app-gui-starters/scaffold/component-origins.json",
+      "bytes": 131,
+      "sha256": "sha256:d43b92618c7c146a0d82dc9fd1699100516e9770cf6df8c2d22df305def10966"
+    },
+    {
+      "path": "resources/app-gui-starters/scaffold/components.json",
+      "bytes": 159,
+      "sha256": "sha256:3aaf5ab8adfbc033d2b087f77398cd97ded49a641392714b24f7eea6f56a0a8c"
+    },
+    {
+      "path": "resources/app-gui-starters/scaffold/scaffold.json",
+      "bytes": 466,
+      "sha256": "sha256:781a834b15fb987eece0b216f4ed0d387cfdb9000c75f57e056e184f73b03391"
+    },
+    {
+      "path": "resources/app-gui-starters/scaffold/styles.css",
+      "bytes": 473,
+      "sha256": "sha256:13f8a688b51a2eff4317e3a360eb171faa9d6dac5e6a4255fba68e96ec79b414"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/crud.tsx",
+      "bytes": 2872,
+      "sha256": "sha256:a6c4be56fa86ac3c13908c1ac2d2c1ef77301da8cbade8b2712d735329daa510"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/dashboard.tsx",
+      "bytes": 1802,
+      "sha256": "sha256:3a4f981013b839d1685f7e47648dbfd7bcbbba117c6a103a5b5ade106289da7e"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/editor.tsx",
+      "bytes": 3599,
+      "sha256": "sha256:d776413e574f130928019a94adc5b30096560015e0f3e169e3dfe99b2fbae52a"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/fixture-matrix.json",
+      "bytes": 501,
+      "sha256": "sha256:e5e02b577d9196ea4001837e26e70a560baf01ebf1a5ded68cf894db57d3bc7c"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/gallery.tsx",
+      "bytes": 3454,
+      "sha256": "sha256:1db7024cbcd53226a031816109af1874859b6e2e1e49ab3a5ca5478df951df04"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/kanban.tsx",
+      "bytes": 2273,
+      "sha256": "sha256:33782244a52a8595bab160086fe1820e2a5e2a7f4844a7229c6751a76b1853c7"
+    },
+    {
+      "path": "resources/gui-sdk/base-api.js",
+      "bytes": 14440,
+      "sha256": "sha256:ba727bfee4b94bf361893e67068f7fdffa51f95ac0d110d685b45759e591c609"
+    }
+  ]
+}

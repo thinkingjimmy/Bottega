@@ -1,0 +1,627 @@
+/**
+ * [INPUT]: Depends on Canonical manual/workflow submissions, input staging, resource receipts and main-owned Skill selection callbacks.
+ * [OUTPUT]: Provides prepareManualTurn and prepared-turn contracts with immutable inputs and pinned Skill generations; workflow receipts are narrowed before custody.
+ * [POS]: Coordinator admission boundary; package Providers still freeze no Skill catalog.
+ */
+
+import { createHash, randomUUID } from "node:crypto";
+import {
+  mkdir,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
+import { basename, join } from "node:path";
+import type {
+  AgentSendPayload,
+  AgentUserInput,
+  AgentWorkspaceScope,
+  PreparedSkillSelectionReceipt,
+} from "../../../../../shared/ipc/agent/agent-ipc";
+import type {
+  ChatAttachmentPayload,
+  ChatRecord,
+} from "../../../../../shared/ipc/content/chats-ipc";
+import type {
+  TrustedManualTurnPersistence as ManualTurnPersistence,
+  TrustedManualTurnSubmission as ManualTurnSubmission,
+} from "../../../../../shared/ipc/content/sections-ipc";
+import type {
+  IncarnationPrecondition,
+  SubmissionContentV1,
+  WorkspacePrecondition,
+} from "../../../../../shared/content/submission/submission";
+import type {
+  FileAuthorizationStore,
+  FileReservation,
+} from "../../../workspace/files/file-authorizations";
+import type { SkillsCatalog } from "../../../skills/catalog/skills-catalog";
+import {
+  removeReadonlySnapshot,
+  stageFileSnapshot,
+  stageSkillPackageSnapshot,
+} from "../../../agent/bridge/agent-input";
+import { exportSectionSnapshotDraft } from "../../export-transcript";
+import {
+  assertCopyFidelity,
+  planSectionSnapshots,
+  type SectionSnapshotPlan,
+} from "../../../../../shared/content/section/section-attachments";
+import { canonicalHash } from "../coordinator-values";
+import type { TurnProjectContext } from "../../../../../shared/product/product-resource-scope";
+import { skillsTurnOwnerId } from "../../../skills-management/custody/turn-custody";
+import { builtinAgent } from "../../../../../shared/chat-agent/options";
+import { acquirePreparedSkillReferences } from "./prepared-skill-reference-custody";
+import {
+  binaryFreeSubmissionContent,
+  emptyPreparedSkillSelection,
+  normalizeManualSubmission,
+} from "./prepared-manual-text";
+import {
+  emptyProjectToolsSnapshot,
+  stageProjectToolsReceipt,
+  type ExplicitSkillRequirementReceipt,
+  type FrozenProjectToolsReceipt,
+  type ProjectToolsPreparationSnapshot,
+} from "./prepared-project-tools";
+
+import {
+  discardPreparedStaging,
+  releasePreparedStaging,
+  releasePreparedStagingBytes,
+  reservePreparedStagingBytes,
+} from "./prepared/staging";
+
+export {
+  assertPreparedContentHash,
+  preparedStagingUsageBytes,
+  reconcilePreparedStaging,
+  releasePreparedStaging,
+} from "./prepared/staging";
+
+type StagedBlobRef = {
+  remote?: import("@ai-chat/cloud-protocol/remote/input/model").RemoteAttachment;
+  blobId: string;
+  kind: "image" | "file" | "skill";
+  path: string;
+  filename: string;
+  mediaType: string;
+  byteSize: number;
+  sha256: string;
+};
+
+export type PreparedInputItem =
+  | {
+      type: "text";
+      text: string;
+      resolvedOnly?: true;
+      originalSection?: Extract<AgentUserInput, { type: "section" }>;
+    }
+  | { type: "image"; blob: StagedBlobRef; resolvedOnly?: true }
+  | { type: "mention"; name: string; blob: StagedBlobRef; resolvedOnly?: true }
+  | { type: "skill"; name: string; blob: StagedBlobRef; resolvedOnly?: true };
+
+type PreparedCreate = Omit<
+  Extract<ManualTurnPersistence, { kind: "create" }>["input"],
+  "attachmentPayloads"
+> & { attachmentPayloads?: StagedBlobRef[] };
+type PreparedCreateApp = Omit<
+  Extract<ManualTurnPersistence, { kind: "create-app" }>["input"],
+  "attachmentPayloads"
+> & { attachmentPayloads?: StagedBlobRef[] };
+type PreparedAppend = Omit<
+  Extract<ManualTurnPersistence, { kind: "append" }>["input"],
+  "attachmentPayloads"
+> & { attachmentPayloads?: StagedBlobRef[] };
+type PreparedAdopt = Omit<
+  Extract<ManualTurnPersistence, { kind: "adopt" }>["input"],
+  "attachmentPayloads"
+> & { attachmentPayloads?: StagedBlobRef[] };
+
+export type PreparedPersistence =
+  | { kind: "create"; input: PreparedCreate }
+  | { kind: "create-app"; input: PreparedCreateApp }
+  | { kind: "adopt"; input: PreparedAdopt }
+  | { kind: "append"; input: PreparedAppend };
+
+export type PreparedManualTurn = {
+  remoteContext?: import("../remote/model").RemoteContext;
+  sequences?: import("../../../../../shared/chat-agent/sequences").TurnSequences;
+  ownerCommit?: import("../../../chats/sqlite/cloud/execution/commit").OwnerCommit;
+  agentSwitch?: ManualTurnSubmission["agentSwitch"];
+  expectedAgentRevision?: number;
+  switchCommand?: import("../../../chats/sqlite/agent-switch/command").SwitchAgentCommand;
+  intentId: string;
+  persistence: PreparedPersistence;
+  turn: Omit<AgentSendPayload, "input">;
+  content: SubmissionContentV1;
+  precondition: IncarnationPrecondition;
+  workspacePrecondition: WorkspacePrecondition;
+  lifecycleProjectId: string | null;
+  projectContext: TurnProjectContext;
+  projectTools: FrozenProjectToolsReceipt;
+  skillSelection: PreparedSkillSelectionReceipt;
+  input: PreparedInputItem[];
+  stagingDir: string;
+  contentHash: string;
+};
+
+export type PreparedManualLease = {
+  prepared: PreparedManualTurn;
+  commit(): void;
+  rollback(): Promise<void>;
+};
+
+type PreparationDependencies = {
+  workspace: string;
+  workspaceScope: AgentWorkspaceScope;
+  backend: AgentSendPayload["turnOptions"]["backend"];
+  planMode: boolean;
+  stagingRoot: string;
+  skills: SkillsCatalog;
+  files: FileAuthorizationStore;
+  lifecycleProjectId: string | null;
+  projectContext?: TurnProjectContext;
+  projectTools?: ProjectToolsPreparationSnapshot;
+  freezeSkillSelection?: (input: Readonly<{
+    refOwnerId: string;
+    workspace: string;
+    /** Built-ins only: a package Provider's turn freezes no Skills catalog. */
+    backend: import("../../../../../shared/ipc/agent/agent-ipc").AgentBackendId;
+    planMode: boolean;
+    projectContext: TurnProjectContext;
+  }>) => Promise<PreparedSkillSelectionReceipt>;
+  sections: {
+    conversationId: string;
+    get(chatId: string): Promise<ChatRecord | null>;
+    readAttachment?(sectionId: string, attachmentId: string): Promise<string>;
+    imageInput?: boolean;
+  };
+  histories?: {
+    export(opaqueId: string): Promise<{ title: string; transcript: string } | null>;
+  };
+  attachments?: {
+    readRevision(
+      chatId: string,
+      messageId: string
+    ): Promise<ChatAttachmentPayload[]>;
+  };
+};
+
+const digest = (content: Uint8Array) =>
+  createHash("sha256").update(content).digest("hex");
+
+const safeFilename = (value: string) =>
+  basename(value).replaceAll(/[^A-Za-z0-9._-]/g, "_").slice(0, 180) || "blob";
+
+async function writeBlob(
+  directory: string,
+  kind: StagedBlobRef["kind"],
+  filename: string,
+  mediaType: string,
+  content: Uint8Array
+) {
+  await reservePreparedStagingBytes(content.byteLength);
+  const blobId = randomUUID();
+  const path = join(directory, `${blobId}-${safeFilename(filename)}`);
+  try {
+    await writeFile(path, content, { flag: "wx", mode: 0o400 });
+    return {
+      blobId,
+      kind,
+      path,
+      filename,
+      mediaType,
+      byteSize: content.byteLength,
+      sha256: digest(content),
+    } satisfies StagedBlobRef;
+  } catch (cause) {
+    await releasePreparedStagingBytes(content.byteLength);
+    throw cause;
+  }
+}
+
+const parseDataUrl = (value: string) => {
+  const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/s.exec(value);
+  if (!match) throw new Error("附件不是合法 base64 data URL");
+  return { mediaType: match[1], content: Buffer.from(match[2], "base64") };
+};
+
+async function stagePayload(
+  directory: string,
+  payload: ChatAttachmentPayload
+) {
+  const decoded = parseDataUrl(payload.dataUrl);
+  return writeBlob(
+    directory,
+    "image",
+    payload.filename,
+    payload.mediaType || decoded.mediaType,
+    decoded.content
+  );
+}
+
+async function stagePersistence(
+  persistence: ManualTurnPersistence,
+  directory: string,
+  dependencies: PreparationDependencies
+): Promise<PreparedPersistence> {
+  const payloads =
+    persistence.kind === "append" && persistence.input.revise
+      ? await dependencies.attachments?.readRevision(
+          persistence.input.chatId,
+          persistence.input.revise.supersedesUserMessageId
+        ) ?? []
+      : persistence.input.attachmentPayloads ?? [];
+  const refs = await Promise.all(
+    payloads.map((payload) =>
+      stagePayload(directory, payload)
+    )
+  );
+  const input = {
+    ...persistence.input,
+    attachmentPayloads: refs.length ? refs : undefined,
+  };
+  return { kind: persistence.kind, input } as PreparedPersistence;
+}
+
+async function stageAuthorizedFile(
+  item: Extract<AgentUserInput, { type: "mention" }>,
+  directory: string,
+  dependencies: PreparationDependencies,
+  reservations: FileReservation[]
+) {
+  const reservation = dependencies.files.reserve(
+    item.fileRef,
+    dependencies.workspace,
+    item.name
+  );
+  reservations.push(reservation);
+  await reservePreparedStagingBytes(reservation.byteSize);
+  const blobId = randomUUID();
+  const path = join(directory, `${blobId}-${safeFilename(reservation.name)}`);
+  try {
+    await stageFileSnapshot(
+      reservation.path,
+      path,
+      reservation.byteSize,
+      reservation
+    );
+    return {
+      blobId,
+      kind: "file",
+      path,
+      filename: reservation.name,
+      mediaType: reservation.mediaType,
+      byteSize: reservation.byteSize,
+      sha256: await fileHash(path),
+    } satisfies StagedBlobRef;
+  } catch (cause) {
+    await releasePreparedStagingBytes(reservation.byteSize);
+    throw cause;
+  }
+}
+
+async function stageSkill(
+  directory: string,
+  skill: Awaited<ReturnType<SkillsCatalog["resolveSkill"]>>
+) {
+  const blobId = randomUUID();
+  const packageRoot = join(directory, `${blobId}-skill`);
+  let byteSize = 0;
+  let reserved = false;
+  try {
+    const staged = await stageSkillPackageSnapshot(skill, packageRoot);
+    const path = staged.path;
+    byteSize = staged.totalBytes;
+    await reservePreparedStagingBytes(byteSize);
+    reserved = true;
+    return {
+      blobId,
+      kind: "skill",
+      path,
+      filename: "SKILL.md",
+      mediaType: "text/markdown",
+      byteSize,
+      sha256: digest(await readFile(path)),
+    } satisfies StagedBlobRef;
+  } catch (cause) {
+    await removeReadonlySnapshot(packageRoot);
+    if (reserved) await releasePreparedStagingBytes(byteSize);
+    throw cause;
+  }
+}
+
+async function stageInput(
+  source: AgentUserInput[],
+  directory: string,
+  dependencies: PreparationDependencies,
+  reservations: FileReservation[],
+  reusableBlobs: readonly StagedBlobRef[],
+  explicitSkills: ExplicitSkillRequirementReceipt[]
+) {
+  const result: PreparedInputItem[] = [];
+  const sectionPlans = new Map<number, SectionSnapshotPlan>();
+  const drafts: Array<{
+    index: number;
+    draft: ReturnType<typeof exportSectionSnapshotDraft>;
+  }> = [];
+  for (const [index, item] of source.entries()) {
+    if (item.type !== "section") continue;
+    if (item.chatId === dependencies.sections.conversationId) {
+      throw new Error("Section 不能引用当前聊天");
+    }
+    const record = await dependencies.sections.get(item.chatId);
+    if (!record) throw new Error(`Section ${item.name} 已删除或不存在`);
+    drafts.push({ index, draft: exportSectionSnapshotDraft(record) });
+  }
+  const planned = planSectionSnapshots(
+    drafts.map((item) => item.draft),
+    { imageInput: dependencies.sections.imageInput ?? false }
+  );
+  drafts.forEach((item, index) => sectionPlans.set(item.index, planned[index]!));
+
+  for (const [sourceIndex, item] of source.entries()) {
+    if (item.type === "text") {
+      result.push(item);
+    } else if (item.type === "image") {
+      const value = parseDataUrl(item.dataUrl);
+      const sha256 = digest(value.content);
+      const existing = reusableBlobs.find(
+        (blob) =>
+          blob.kind === "image" &&
+          blob.filename === item.filename &&
+          blob.mediaType === value.mediaType &&
+          blob.sha256 === sha256
+      );
+      result.push({
+        type: "image",
+        blob:
+          existing ??
+          await writeBlob(
+            directory,
+            "image",
+            item.filename,
+            value.mediaType,
+            value.content
+          ),
+      });
+    } else if (item.type === "mention") {
+      result.push({
+        type: "mention",
+        name: item.name,
+        blob: await stageAuthorizedFile(item, directory, dependencies, reservations),
+      });
+    } else if (item.type === "skill") {
+      /* A package Provider declares no Skills (d4b follow-up slice 2); the client reads the code as its own unavailable line. */
+      const backend = builtinAgent(dependencies.backend);
+      if (!backend) throw new Error("PROVIDER_UNAVAILABLE");
+      const skill = await dependencies.skills.resolveSkill(
+        item.skillRef,
+        dependencies.workspace,
+        {
+          backend,
+          planMode: dependencies.planMode,
+          ...(dependencies.projectTools
+            ? {
+                toolPolicy: {
+                  allowedTools: dependencies.projectTools.allowedTools,
+                  policyDigest: canonicalHash({
+                    projectContext: dependencies.projectTools.projectContext,
+                    resourceVersion: dependencies.projectTools.resourceVersion,
+                    policyRevisions: dependencies.projectTools.policyRevisions,
+                    builtinIntent: dependencies.projectTools.builtinIntent,
+                    allowedTools: dependencies.projectTools.allowedTools,
+                  }),
+                },
+              }
+            : {}),
+        },
+        dependencies.projectContext ?? fallbackProjectContext(dependencies)
+      );
+      explicitSkills.push({
+        ref: item.skillRef,
+        name: skill.name,
+        requirement: skill.requirementReceipt?.requirement ?? null,
+        allowedToolsDigest:
+          skill.requirementReceipt?.policyDigest ?? "legacy-live",
+      });
+      result.push({
+        type: "skill",
+        name: skill.name,
+        blob: await stageSkill(directory, skill),
+      });
+    } else if (item.type === "history") {
+      const exported = await dependencies.histories?.export(item.opaqueId);
+      if (!exported) throw new Error(`外源历史 ${item.name} 已不可见或不存在`);
+      const blob = await writeBlob(
+        directory,
+        "file",
+        `history-${item.opaqueId.slice(0, 12)}.md`,
+        "text/markdown",
+        Buffer.from(exported.transcript)
+      );
+      result.push({ type: "text", text: `@${item.name} 的导入转录快照见附件` });
+      result.push({ type: "mention", name: `@${item.name}`, blob });
+    } else {
+      const plan = sectionPlans.get(sourceIndex);
+      if (!plan) throw new Error(`Section ${item.name} 计划缺失`);
+      const content = Buffer.from(plan.transcript);
+      const blob = await writeBlob(
+        directory,
+        "file",
+        `section-${plan.sectionId}.md`,
+        "text/markdown",
+        content
+      );
+      result.push({
+        type: "text",
+        text: `@${item.name} 的幸存 tail 快照见附件`,
+        originalSection: item,
+      });
+      result.push({
+        type: "mention",
+        name: `@${item.name}`,
+        blob,
+        resolvedOnly: true,
+      });
+      for (const attachment of plan.attachments.included) {
+        if (!dependencies.sections.readAttachment) {
+          throw new Error("Section 附件读取器未配置");
+        }
+        const dataUrl = await dependencies.sections.readAttachment(
+          plan.sectionId,
+          attachment.id
+        );
+        assertCopyFidelity(attachment, dataUrl);
+        const decoded = parseDataUrl(dataUrl);
+        result.push({
+          type: "text",
+          text: `@${item.name} 的附件 ${attachment.filename}（来自 Section ${plan.sectionId}，${attachment.mediaType}，${attachment.byteSize} 字节；该 Section 由 ${plan.sourceAgent} 处理）`,
+          resolvedOnly: true,
+        });
+        result.push({
+          type: "image",
+          blob: await writeBlob(
+            directory,
+            "image",
+            attachment.filename,
+            attachment.mediaType,
+            decoded.content
+          ),
+          resolvedOnly: true,
+        });
+      }
+    }
+  }
+  return result;
+}
+
+export async function prepareManualTurn(
+  input: ManualTurnSubmission,
+  dependencies: PreparationDependencies
+): Promise<PreparedManualLease> {
+  const submission = normalizeManualSubmission(input);
+  const stagingDir = join(dependencies.stagingRoot, submission.intentId);
+  const reservations: FileReservation[] = [];
+  const explicitSkills: ExplicitSkillRequirementReceipt[] = [];
+  try { await mkdir(stagingDir, { recursive: false, mode: 0o700 }); }
+  catch (error) {
+    if (!submission.remoteInput?.length || (error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    // Remote admission and steer replay hold the conversation gate and reuse published custody.
+    // Reaching preparation again means a crash left only unpublished, reproducible staging.
+    await discardPreparedStaging(stagingDir);
+    await mkdir(stagingDir, { recursive: false, mode: 0o700 });
+  }
+  try {
+    const persistence = await stagePersistence(
+      submission.persistence,
+      stagingDir,
+      dependencies
+    );
+    const stagedInput = await stageInput(
+      submission.turn.input,
+      stagingDir,
+      dependencies,
+      reservations,
+      persistence.input.attachmentPayloads ?? [],
+      explicitSkills
+    );
+    for (const item of submission.remoteInput ?? []) {
+      const bytes = await readFile(item.path), attachment = item.attachment;
+      if (attachment.blob.encryption.owner.kind !== "chat" || attachment.blob.encryption.owner.id !== submission.turn.scope.conversationId ||
+        bytes.length !== attachment.blob.bytes || digest(bytes) !== attachment.blob.sha256) throw new Error("attachment-invalid");
+      const blob = { ...await writeBlob(stagingDir, attachment.kind, attachment.filename, attachment.blob.mime, bytes), remote: attachment };
+      persistence.input.attachmentPayloads = [...(persistence.input.attachmentPayloads ?? []), blob];
+      stagedInput.push(attachment.kind === "image" ? { type: "image", blob } : { type: "mention", name: attachment.filename, blob });
+    }
+    const input =
+      persistence.kind === "append" && persistence.input.revise
+        ? [
+            ...stagedInput,
+            ...(persistence.input.attachmentPayloads ?? []).map((blob) => ({
+              type: "image" as const,
+              blob,
+            })),
+          ]
+        : stagedInput;
+    const { input: _input, ...turn } = submission.turn;
+    const projectContext =
+      dependencies.projectContext ??
+      dependencies.projectTools?.projectContext ??
+      fallbackProjectContext(dependencies);
+    const projectTools = await stageProjectToolsReceipt({
+      stagingDir,
+      snapshot:
+        dependencies.projectTools ??
+        emptyProjectToolsSnapshot(projectContext),
+      explicitSkills,
+      quota: { reserve: reservePreparedStagingBytes, release: releasePreparedStagingBytes },
+    });
+    /* Main narrows workflow receipts to the frozen configuration before pinning any library generation. */
+    const skillBackend = builtinAgent(dependencies.backend); // a package Provider's turn freezes no Skills catalog
+    const skillSelection = dependencies.freezeSkillSelection && skillBackend
+      ? await dependencies.freezeSkillSelection({
+          refOwnerId: skillsTurnOwnerId(submission.turn.requestId),
+          workspace: dependencies.workspace,
+          backend: skillBackend,
+          planMode: dependencies.planMode,
+          projectContext,
+        })
+      : emptyPreparedSkillSelection(
+          submission.turn.requestId,
+          dependencies.backend,
+          dependencies.planMode,
+          projectContext
+        );
+    await acquirePreparedSkillReferences(skillSelection);
+    const body = {
+      agentSwitch: submission.agentSwitch,
+      expectedAgentRevision: submission.expectedAgentRevision,
+      intentId: submission.intentId,
+      persistence,
+      turn,
+      input,
+      content: binaryFreeSubmissionContent(submission.content),
+      precondition: submission.precondition,
+      workspacePrecondition: submission.workspacePrecondition,
+      lifecycleProjectId: dependencies.lifecycleProjectId,
+      projectContext,
+      projectTools,
+      skillSelection,
+      stagingDir,
+    };
+    const prepared = { ...body, contentHash: canonicalHash(body) };
+    let completed = false;
+    return {
+      prepared,
+      commit() {
+        if (completed) return;
+        completed = true;
+        reservations.forEach((reservation) => reservation.commit());
+      },
+      async rollback() {
+        if (completed) return;
+        completed = true;
+        reservations.forEach((reservation) => reservation.rollback());
+        await releasePreparedStaging(prepared);
+      },
+    };
+  } catch (cause) {
+    reservations.forEach((reservation) => reservation.rollback());
+    await discardPreparedStaging(stagingDir);
+    throw cause;
+  }
+}
+
+function fallbackProjectContext(
+  dependencies: Pick<PreparationDependencies, "lifecycleProjectId">
+): TurnProjectContext {
+  return dependencies.lifecycleProjectId
+    ? {
+        projectId: dependencies.lifecycleProjectId,
+        projectLifecycleRevision: 1,
+      }
+    : { projectId: null, projectLifecycleRevision: null };
+}
+
+const fileHash = async (path: string) => digest(await readFile(path));

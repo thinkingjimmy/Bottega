@@ -1,0 +1,79 @@
+{
+  "schema": "bottega.app-gui-component-snapshot/v1",
+  "snapshotDigest": "sha256:31b3a76251a65a64328db5a484463315ede20a24950f77c78fe5d70cff526ca1",
+  "compatibleOriginSnapshots": [
+    "sha256:0e68acebc21195b2f897daebe6bf5be06722f10b7bba5b3b5765f20e7d880ae8"
+  ],
+  "components": [
+    {
+      "id": "feedback",
+      "sourcePath": "feedback.tsx",
+      "targetPath": "gui/src/components/ui/feedback.tsx",
+      "sha256": "sha256:d9d8cc3879f7868b9b1a2d802f6c13a6d0395012da0a80690771e224d4682c5e",
+      "license": "MIT",
+      "exports": [
+        "Progress",
+        "Toast"
+      ]
+    },
+    {
+      "id": "forms",
+      "sourcePath": "forms.tsx",
+      "targetPath": "gui/src/components/ui/forms.tsx",
+      "sha256": "sha256:1b57d057bd9635ce33cec221a0da0afc79cb1d21137163f8ce10936e02168c98",
+      "license": "MIT",
+      "exports": [
+        "Button",
+        "Input",
+        "Textarea",
+        "Label",
+        "Field",
+        "Checkbox",
+        "Switch",
+        "RadioGroup",
+        "Radio",
+        "Select"
+      ]
+    },
+    {
+      "id": "navigation",
+      "sourcePath": "navigation.tsx",
+      "targetPath": "gui/src/components/ui/navigation.tsx",
+      "sha256": "sha256:e2af093922aac93e4bf9fbb937dae57a957bfd9bb38b7f6ec84bd4fcc72f6c2b",
+      "license": "MIT",
+      "exports": [
+        "Tabs",
+        "Accordion"
+      ]
+    },
+    {
+      "id": "overlays",
+      "sourcePath": "overlays.tsx",
+      "targetPath": "gui/src/components/ui/overlays.tsx",
+      "sha256": "sha256:025869efcfd4595b884c1e4a03cf8eea21c24c95bf2ce8a9a4a0bb9bb5b59879",
+      "license": "MIT",
+      "exports": [
+        "Dialog",
+        "AlertDialog",
+        "Popover",
+        "Tooltip",
+        "DropdownMenu"
+      ]
+    },
+    {
+      "id": "surfaces",
+      "sourcePath": "surfaces.tsx",
+      "targetPath": "gui/src/components/ui/surfaces.tsx",
+      "sha256": "sha256:86649eaad5d1214cac3569c630231ddc7516afb9fe666e341cc4b7e88e890e71",
+      "license": "MIT",
+      "exports": [
+        "Card",
+        "Badge",
+        "Separator",
+        "Skeleton",
+        "Table",
+        "ScrollArea"
+      ]
+    }
+  ]
+}

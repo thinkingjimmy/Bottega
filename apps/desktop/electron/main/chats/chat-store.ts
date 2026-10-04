@@ -1,0 +1,781 @@
+/**
+ * [INPUT]: Depends on Node crypto, ProductFailure, chat lifecycle/projection collaborators, device identity, the typed SQLite worker client, and the shared ChatStoreState cell with read, history, fork, transition, and persistence collaborators; the provider catalog's default provider
+ * [OUTPUT]: Provides receipt-gated Chat APIs with frozen execution admission, readonly-safe Project detachment and App transcript retention, opened through the two-phase open()/adopt() startup split that initialize() composes.
+ * [POS]: Main-process Chat domain queue and metadata owner; durable writes, fork construction, pure transitions, read projections, and import/continuation sagas live in focused composed siblings
+ */
+import { type ChatStoreDependencies, type ChatSqliteRuntimeFacts, sessionKey, requestHash } from "./store-contracts";
+export { type ChatStoreDependencies } from "./store-contracts";
+
+import type { ChatAgentId } from "../../../shared/chat-agent/options";
+import { patchChatOptions, prepareSwitchCommand, switchChatAgent } from "./store/agent-switch/store";
+import { readSwitchReservation, reserveAgentSwitchSequences, reserveTurnSequences } from "./store/agent-switch/reservation";
+import type { ChatOptionsPatch } from "../../../shared/chat-agent/contracts";
+import { randomUUID } from "node:crypto";
+import type { SessionRef } from "../../../shared/ipc/agent/agent-ipc";
+import {
+  type AppChatRole,
+  type ChatAttachmentMeta,
+  type ChatFindInput,
+  type ChatMessage,
+  type ChatOutlineInput,
+  type ChatRecord,
+  type ChatTimelineAroundInput,
+  type ChatTimelinePageInput,
+  type TurnCommitInput,
+  type UnsequencedChatMessage,
+  type UnsequencedUserMessage,
+} from "../../../shared/ipc/content/chats-ipc";
+import type {
+  AppGrantRecord,
+} from "../../../shared/ipc/apps/apps-ipc";
+import { metadataOf, type ChatFacts } from "./projection/chat-summary";
+import { chatFactsSchema } from "./schema/chat-schema";
+import {
+  ChatNotFoundError,
+  applyTurnCommit,
+} from "./chat-commit";
+import { assertChatId } from "./chat-guards";
+import type { ChatTitleJob } from "../../../shared/placement/facts";
+import {
+  createChatRecord,
+  withCommitRevisions,
+  withFactRevision,
+  type ChatCreateIdentity,
+} from "./lifecycle/chat-record-lifecycle";
+import { DeviceIdentityStore } from "./device-identity/device-identity";
+import { ChatDatabaseClient } from "./sqlite/database-client";
+import type { SearchDocumentCursor } from "./sqlite/database-protocol";
+import { LibraryChatStore } from "../library/mirrors/store";
+import { ChatStoreState } from "./store/state";
+import { ChatReadModel } from "./store/read-api";
+import { ChatHistorySagaApi } from "./store/sqlite-api";
+import { ChatForkStoreApi, type ChatForkCreateInput } from "./store/fork-api";
+import {
+  ChatMutationOutcomeUnknownError,
+  type ChatMessageMutation,
+} from "./store/mutation-outcome";
+import {
+  bindSessionRecord,
+  assertReadonlyPresentationMutation,
+  clearProjectRecord,
+  moveProjectRecord,
+  replaceSessionRecord,
+  reviseTailRecord,
+  revokeGrantRecord,
+  setGeneratedTitleRecord,
+  setGrantRecord,
+  setProjectRecord,
+  setSortKeyRecord,
+  setUserTitleRecord,
+} from "./store/transitions";
+import { ChatSyncApi, metadataEdited, persistLocalClassification } from "./store/sync/api";
+import { chatDatabasePath } from "./sqlite/paths";
+import {
+  persistAppendedMessageToStorage,
+  persistFactsToStorage,
+  persistRecordToStorage,
+  persistTurnCommitToStorage,
+} from "./store/persistence";
+import type { ChatStorageFailure } from "../../../shared/product/product-failure";
+export {
+  ChatMutationOutcomeUnknownError,
+  isChatMutationOutcomeUnknown,
+  type ChatMessageMutation,
+} from "./store/mutation-outcome";
+import { DEFAULT_PROVIDER_ID } from "../../../shared/providers/catalog";
+export class ChatStore {
+  readonly library: LibraryChatStore;
+  readonly sync: ChatSyncApi;
+  /* 组合而非继承：一个可变格子 + 两个只拿到它的协作者。ChatStore 仍是
+     唯一的公开门面，读投影与 import/continuation saga 只是它显式转交的两半。 */
+  private readonly state: ChatStoreState;
+  private readonly reads: ChatReadModel;
+  private readonly history: ChatHistorySagaApi;
+  private readonly forks: ChatForkStoreApi;
+  private readonly databasePath: string;
+  private sqliteRuntimeFacts: ChatSqliteRuntimeFacts | null = null;
+  constructor(
+    userData: string,
+    private readonly dependencies: ChatStoreDependencies = {}
+  ) {
+    this.state = new ChatStoreState(userData, dependencies.now ?? Date.now);
+    this.sync = new ChatSyncApi(this.state);
+    this.library = new LibraryChatStore(this.state);
+    this.reads = new ChatReadModel(this.state);
+    this.history = new ChatHistorySagaApi(this.state, this.reads, this.sync);
+    this.forks = new ChatForkStoreApi(this.state);
+    this.databasePath = chatDatabasePath(userData);
+  }
+  /** The one-shot form every caller outside startup keeps using. */
+  async initialize(defaults: import("../../../shared/ipc/settings/settings-ipc").DefaultChatOptionsByBackend = {}) {
+    await this.open(defaults);
+    await this.adopt();
+  }
+  /**
+   * Phase 1: reset the generation, load the device identity and spawn the SQLite
+   * worker — the longest pre-window step, which startup therefore starts before
+   * its other I/O. The metadata projection stays empty until adopt(), so has()
+   * and every read still answer exactly as they do for an unopened store.
+   */
+  async open(defaults: import("../../../shared/ipc/settings/settings-ipc").DefaultChatOptionsByBackend = {}) {
+    const opened = this.state.queue.enqueue(async () => {
+      const state = this.state;
+      state.metadata.clear();
+      state.messageRevisions.clear();
+      state.activeRecord = undefined;
+      state.warnings.length = 0;
+      state.storageFailures.length = 0;
+      this.sqliteRuntimeFacts = null;
+      state.deviceId = await new DeviceIdentityStore(state.userData).loadOrCreate();
+      const initialization = await this.openDatabase(defaults);
+      this.sqliteRuntimeFacts = Object.freeze({
+        sqliteVersion: initialization.sqliteVersion,
+        compileOptions: Object.freeze([...initialization.compileOptions]),
+        startupMs: initialization.startupMs,
+      });
+      if (process.versions.electron) {
+        /* The compile-options array is ~40 strings printed at every start; it is
+           diagnostic detail, not a startup fact. The version alone answers the
+           question this line exists for. */
+        console.info(
+          process.env.BOTTEGA_SQLITE_DEBUG
+            ? `[chats] SQLite runtime ${JSON.stringify(this.sqliteRuntimeFacts)}`
+            : `[chats] SQLite ${this.sqliteRuntimeFacts.sqliteVersion}`
+        );
+      }
+    });
+    /* Closing in the same tick as the enqueue seals the gap between the phases:
+       the database is open there while the projection is still empty, so a
+       mutation slipping in would read a store with no chats — create() would
+       accept an id that already exists on disk. Such a call failed loudly on the
+       missing database before the split; a refusing queue keeps it loud. */
+    this.state.queue.close();
+    await opened;
+  }
+
+  /** Phase 2: publish the durable metadata into the in-memory projection. */
+  async adopt() {
+    if (!this.state.database)
+      throw new Error("ChatStore.adopt() requires a completed open()");
+    this.state.queue.reopen();
+    await this.state.queue.enqueue(async () => {
+      const state = this.state;
+      const metadata = await state.requireDatabase().execute({
+        kind: "list-metadata",
+        deviceId: state.requireDeviceId(),
+      });
+      for (const record of metadata) {
+        state.metadata.set(record.id, record);
+        state.messageRevisions.set(record.id, record.chatMessageRevision);
+      }
+    });
+  }
+
+  create(
+    chatId: string,
+    firstMessage: UnsequencedUserMessage | ChatMessage,
+    projectId: string | null = null,
+    agent: ChatAgentId = DEFAULT_PROVIDER_ID,
+    identity?: ChatCreateIdentity
+  ) {
+    return this.state.queue.enqueue(async () => {
+      assertChatId(chatId);
+      if (this.state.metadata.has(chatId)) throw new Error("聊天 id 已存在");
+      if (identity?.session) {
+        const owner = [...this.state.metadata.values()].find((record) => record.session && sessionKey(record.session) === sessionKey(identity.session!));
+        if (owner) throw new Error(`SessionRef 已由聊天 ${owner.id} 持有`);
+      }
+      const { record, message } = createChatRecord({
+        chatId,
+        firstMessage,
+        projectId,
+        agent,
+        identity: identity ?? {},
+        projects: this.dependencies,
+      });
+      await this.persistRecord(record, undefined, identity?.workflowRole);
+      this.state.metadata.set(chatId, metadataOf(record));
+      this.state.touch();
+      this.state.messageRevisions.set(chatId, record.chatMessageRevision);
+      const revision = record.chatMessageRevision;
+      this.state.remember(record, revision);
+      return {
+        record: structuredClone(record),
+        revision,
+        appended: structuredClone(record.messages),
+        storedMessage: structuredClone(message),
+      } satisfies ChatMessageMutation;
+    });
+  }
+
+  /** Receipt-first fork replay delegates to the focused store collaborator. */
+  forkReplay(input: Parameters<ChatForkStoreApi["replay"]>[0]) {
+    return this.forks.replay(input);
+  }
+
+  /** Fork admission reads native and imported prefixes through one timeline fence. */
+  forkSource(input: Parameters<ChatForkStoreApi["source"]>[0]) {
+    return this.forks.source(input);
+  }
+
+  /** Durable fork creation delegates to the focused store collaborator. */
+  forkFromRecord(input: ChatForkCreateInput) {
+    return this.forks.create(input);
+  }
+
+  appendMessage(
+    chatId: string,
+    input: ChatMessage | UnsequencedChatMessage,
+    reservedSeq?: number,
+    ownerCommit?: import("./sqlite/cloud/execution/commit").OwnerCommit
+  ) {
+    return this.state.queue.enqueue(async () => {
+      assertChatId(chatId);
+      const current = await this.requireRecord(chatId);
+      const existing = current.messages.find(
+        (message) => message.id === input.id
+      );
+      const seq =
+        "seq" in input
+          ? input.seq
+          : (reservedSeq ?? existing?.seq ?? current.nextSeq);
+      const message = { ...input, seq } as ChatMessage;
+      const result = applyTurnCommit(
+        {
+          ...current,
+          nextSeq: Math.max(current.nextSeq, seq + 1),
+        },
+        { message }
+      );
+      const record = result.appended
+        ? withCommitRevisions(current, result.record, true)
+        : result.record;
+      if (result.appended) {
+        await this.persistAppendedMessage(
+          current,
+          record,
+          result.storedMessage!,
+          ownerCommit
+        );
+        this.state.metadata.set(chatId, metadataOf(record));
+      }
+      const appended = result.appended && result.storedMessage ? [result.storedMessage] : [];
+      const revision = appended.length
+        ? record.chatMessageRevision
+        : this.state.revisionOf(chatId);
+      if (result.appended) {
+        this.state.messageRevisions.set(chatId, revision);
+        this.state.remember(record, revision);
+      }
+      return {
+        record: structuredClone(record),
+        revision,
+        appended: structuredClone(appended),
+        ...(result.storedMessage
+          ? { storedMessage: structuredClone(result.storedMessage) }
+          : {}),
+      } satisfies ChatMessageMutation;
+    });
+  }
+
+  reviseTail(input: {
+    chatId: string;
+    supersedes: {
+      supersedesUserMessageId: string;
+      throughSeqEnd: number;
+    };
+    message: UnsequencedUserMessage;
+    reservedSeq?: number;
+    ownerCommit?: import("./sqlite/cloud/execution/commit").OwnerCommit;
+    intentId?: string;
+  }) {
+    return this.state.queue.enqueue(async () => {
+      assertChatId(input.chatId);
+      const current = await this.requireRecord(input.chatId);
+      const transition = reviseTailRecord(current, input, this.state.now());
+      if (transition.kind === "replay") {
+        return {
+          record: structuredClone(current),
+          revision: this.state.revisionOf(input.chatId),
+          appended: [],
+          storedMessage: structuredClone(transition.message),
+        } satisfies ChatMessageMutation;
+      }
+      const { record, message } = transition;
+      await this.persistRecord(record, input.ownerCommit);
+      this.state.metadata.set(input.chatId, metadataOf(record));
+      const revision = record.chatMessageRevision;
+      this.state.messageRevisions.set(input.chatId, revision);
+      this.state.remember(record, revision);
+      return {
+        record: structuredClone(record),
+        revision,
+        appended: [structuredClone(message)],
+        storedMessage: structuredClone(message),
+        mode: "replace",
+      } satisfies ChatMessageMutation;
+    });
+  }
+
+  prepareHistory(chatId: string, nativeBeforeSeq: number) {
+    return this.state.requireDatabase().execute({ kind: "prepare-chat-history", chatId, nativeBeforeSeq,
+      deviceId: this.state.requireDeviceId() });
+  }
+  readHistory(input: import("../../../shared/chat-agent/history").HistoryReadCommand) {
+    return this.state.requireDatabase().execute({ kind: "read-chat-history", input,
+      deviceId: this.state.requireDeviceId() });
+  }
+
+  async patchOptions(input: ChatOptionsPatch) {
+    const result = await this.updateFacts(input.chatId, current => patchChatOptions(current, input));
+    this.sync.notifyAppended("chat", input.chatId);
+    return result;
+  }
+  prepareAgentSwitch(input: Parameters<typeof prepareSwitchCommand>[1]) { return prepareSwitchCommand(this.state, input); }
+  async switchAgent(command: Parameters<typeof switchChatAgent>[1]) {
+    const result = await switchChatAgent(this.state, command);
+    this.sync.notifyAppended("chat", command.chatId);
+    return result;
+  }
+  reserveAgentSwitchSequences(input: Parameters<typeof reserveAgentSwitchSequences>[1]) { return reserveAgentSwitchSequences(this.state, input); }
+  agentSwitchReservation(input: Parameters<typeof readSwitchReservation>[1]) { return readSwitchReservation(this.state, input); }
+
+  reserveTurnSequences(input: Parameters<typeof reserveTurnSequences>[1]) { return reserveTurnSequences(this.state, input); }
+
+  async reserveSequences(chatId: string, count: number) {
+    if (!Number.isInteger(count) || count < 1) {
+      throw new Error("消息序号预留数量无效");
+    }
+    const facts = await this.updateFacts(chatId, (current) => ({
+      ...current,
+      nextSeq: current.nextSeq + count,
+    }));
+    const first = facts.nextSeq - count;
+    return Array.from({ length: count }, (_, index) => first + index);
+  }
+
+  async ensureNextSequence(chatId: string, minimum: number) {
+    const facts = await this.updateFacts(chatId, (current) =>
+      current.nextSeq >= minimum ? current : { ...current, nextSeq: minimum }
+    );
+    return facts.nextSeq;
+  }
+
+  appendTurnResult(chatId: string, input: TurnCommitInput) {
+    return this.state.queue.enqueue(async () => {
+      assertChatId(chatId);
+      const current = await this.requireRecord(chatId);
+      const result = applyTurnCommit(current, input);
+      const changed = result.appended || result.subagentsChanged;
+      const record = changed
+        ? withCommitRevisions(current, result.record, result.appended)
+        : result.record;
+      if (changed) {
+        if (result.subagentsChanged) {
+          await this.persistTurnCommit(current, record, result.storedMessage ?? null);
+        } else if (result.appended) {
+          await this.persistAppendedMessage(
+            current,
+            record,
+            result.storedMessage!
+          );
+        }
+        this.state.metadata.set(chatId, metadataOf(record));
+      }
+      const appended =
+        result.appended && result.storedMessage
+          ? [result.storedMessage]
+          : [];
+      const revision = appended.length
+        ? record.chatMessageRevision
+        : this.state.revisionOf(chatId);
+      if (changed) {
+        if (result.appended) this.state.messageRevisions.set(chatId, revision);
+        this.state.remember(record, revision);
+      }
+      return {
+        record: structuredClone(record),
+        revision,
+        appended: structuredClone(appended),
+        ...(result.storedMessage
+          ? { storedMessage: structuredClone(result.storedMessage) }
+          : {}),
+      } satisfies ChatMessageMutation;
+    });
+  }
+
+  bindSession(chatId: string, session: SessionRef) {
+    return this.updateFacts(chatId, (current) =>
+      bindSessionRecord(current, chatId, session, this.state.metadata.values())
+    );
+  }
+
+  replaceSession(
+    chatId: string,
+    expected: SessionRef,
+    next: SessionRef | null
+  ) {
+    return this.updateFacts(chatId, (current) =>
+      replaceSessionRecord(current, chatId, expected, next, this.state.metadata.values())
+    );
+  }
+
+  async assertBackend(chatId: string, backend: ChatAgentId) {
+    const record = this.getMetadata(chatId);
+    if (!record) throw new Error("聊天不存在");
+    if (record.agent !== backend) throw new Error("Agent backend 与聊天绑定不一致");
+  }
+
+  setTitle(chatId: string, title: string) {
+    if (this.state.metadata.get(chatId)?.readOnlyReason === "external-readonly") {
+      return this.history.updateReadonlyPresentation(chatId, {
+        kind: "title",
+        title: title.trim(),
+      });
+    }
+    return this.updateFacts(chatId, (current) =>
+      setUserTitleRecord(current, title, this.state.now())
+    );
+  }
+
+  /* Sidebar drag: one row's virtual createdAt. Never touches updatedAt (updateFacts bumps only chatRecordRevision). */
+  setSortKey(chatId: string, sortKey: number | null) {
+    if (this.state.metadata.get(chatId)?.readOnlyReason === "external-readonly") {
+      return this.history.updateReadonlyPresentation(chatId, { kind: "sort", sortKey });
+    }
+    return this.updateFacts(chatId, (current) => setSortKeyRecord(current, sortKey));
+  }
+
+  setAppGrantRecord(chatId: string, grant: AppGrantRecord) {
+    return this.updateFacts(chatId, (current) =>
+      setGrantRecord(current, grant, this.dependencies.isAppProject)
+    );
+  }
+
+  revokeAppGrant(chatId: string, appId: string) {
+    return this.updateFacts(chatId, (current) => revokeGrantRecord(current, appId));
+  }
+
+  /** 只允许根级 chat 单向升级为一个 Project；不改变消息 revision。 */
+  setProjectId(chatId: string, projectId: string) {
+    return this.updateFacts(chatId, (current) =>
+      setProjectRecord(current, projectId, this.dependencies.isAppProject), "classification"
+    );
+  }
+
+  /** lifecycle saga 专用：允许根级/普通分组迁入 App Project。 */
+  moveChatProject(
+    chatId: string,
+    input: {
+      expectedSource: string | null;
+      target: string | null;
+      appRole?: AppChatRole | null;
+    }
+  ) {
+    return this.updateFacts(chatId, (current) =>
+      moveProjectRecord(current, input, this.dependencies), "classification"
+    );
+  }
+
+  /** Local removal and missing-Project rescue preserve transcript ownership and revisions. */
+  clearProjectId(chatId: string) {
+    return this.updateFacts(chatId, clearProjectRecord, "project-detach");
+  }
+
+  /** 仅在标题仍为 null 时写入生成标题：用户改名永远不会被后到的生成结果覆盖 */
+  setGeneratedTitle(
+    chatId: string,
+    title: string,
+    receipt: Extract<ChatTitleJob, { state: "pending" }>
+  ) {
+    return this.updateFacts(chatId, (current) =>
+      setGeneratedTitleRecord(current, title, receipt, this.state.now())
+    );
+  }
+
+  has(chatId: string) {
+    return this.state.metadata.has(chatId);
+  }
+
+  setArchivedAt(chatId: string, archivedAt: number | undefined) {
+    if (this.state.metadata.get(chatId)?.readOnlyReason === "external-readonly") {
+      return this.history.updateReadonlyPresentation(chatId, {
+        kind: "archive",
+        archivedAt: archivedAt ?? null,
+      });
+    }
+    return this.updateFacts(chatId, (current) => ({
+      ...current,
+      archivedAt,
+    }));
+  }
+
+  /** 删除聊天并返回其附件元数据；附件文件清理由持有 AttachmentStore 的调用方负责 */
+  remove(
+    chatId: string,
+    expectedIncarnationId?: string,
+    retainedAppId?: string
+  ): Promise<ChatAttachmentMeta[]> {
+    return this.state.queue.enqueue(async () => {
+      assertChatId(chatId);
+      if (!this.state.metadata.has(chatId)) throw new Error("聊天不存在");
+      const actualIncarnationId = this.state.metadata.get(chatId)?.incarnationId;
+      if (
+        expectedIncarnationId &&
+        actualIncarnationId !== expectedIncarnationId
+      ) {
+        throw new Error("INCARNATION_MISMATCH");
+      }
+      const database = this.state.requireDatabase();
+      const deviceId = this.state.requireDeviceId();
+      const operationId = randomUUID();
+      const command = {
+        kind: "remove-record" as const,
+        operationId,
+        requestHash: requestHash({ operationId, chatId, deviceId, expectedIncarnationId, retainedAppId }),
+        chatId,
+        deviceId,
+        ...(expectedIncarnationId ? { expectedIncarnationId } : {}),
+        ...(retainedAppId ? { retainedAppId } : {}),
+      };
+      const outcome = await database.execute(command);
+      if (outcome.status !== "committed") {
+        if (outcome.status === "outcome_unknown") {
+          throw new ChatMutationOutcomeUnknownError(
+            outcome.operationId,
+            outcome.reason
+          );
+        }
+        throw new Error(outcome.failure.message);
+      }
+      this.state.metadata.delete(chatId);
+      this.state.touch();
+      this.state.messageRevisions.delete(chatId);
+      if (this.state.activeRecord?.record.id === chatId) {
+        this.state.activeRecord = undefined;
+      }
+      return structuredClone(outcome.receipt.result.attachments);
+    });
+  }
+
+  /* 不变量检查也是一次写：integrity_check、FTS 合并与 TRUNCATE 都要独占
+     这条连接。排进同一条串行队列，它就永远不会与一次提交同场竞技。 */
+  runMaintenance() {
+    return this.state.queue.enqueue(() =>
+      this.state.requireDatabase().execute({ kind: "maintenance-gate" })
+    );
+  }
+
+  async closeAndFlush() {
+    this.state.queue.close();
+    await this.state.queue.flush();
+    const database = this.state.database;
+    this.state.database = null;
+    await database?.close();
+  }
+
+  async reopen() {
+    this.state.queue.reopen();
+    if (!this.state.database) await this.openDatabase();
+  }
+
+  /* ---------------------------------------------------------------- *
+   *  读模型：全部转交 ChatReadModel，ChatStore 不再自持任何读实现。
+   * ---------------------------------------------------------------- */
+  list() { return this.reads.list(); }
+  getMetadata(chatId: string) { return this.reads.getMetadata(chatId); }
+  getNativeMessage(
+    chatId: string,
+    selector: Parameters<ChatReadModel["getNativeMessage"]>[1]
+  ) { return this.reads.getNativeMessage(chatId, selector); }
+  getNativeMessages(chatId: string) { return this.reads.getNativeMessages(chatId); }
+  getNativeSubagents(chatId: string) { return this.reads.getNativeSubagents(chatId); }
+  getConversation(chatId: string) { return this.reads.getConversation(chatId); }
+  getRuntimeContext(chatId: string) { return this.reads.getRuntimeContext(chatId); }
+  get(chatId: string) { return this.reads.get(chatId); }
+  timelinePage(input: ChatTimelinePageInput) { return this.reads.timelinePage(input); }
+  timelineAround(input: ChatTimelineAroundInput) { return this.reads.timelineAround(input); }
+  outlinePage(input: ChatOutlineInput) { return this.reads.outlinePage(input); }
+  findMessages(input: ChatFindInput) { return this.reads.findMessages(input); }
+  getWarning() { return this.reads.getWarning(); }
+  getStorageFailures() { return this.reads.getStorageFailures(); }
+  pushWarning(message: string) { this.reads.pushWarning(message); }
+  pushStorageFailure(failure: ChatStorageFailure) { this.reads.pushStorageFailure(failure); }
+  getProjectId(chatId: string) { return this.reads.getProjectId(chatId); }
+  getChatRef(chatId: string) { return this.reads.getChatRef(chatId); }
+  getIncarnationId(chatId: string) { return this.reads.getIncarnationId(chatId); }
+  getHomeDir(chatId: string) { return this.reads.getHomeDir(chatId); }
+  getImportOrigin(chatId: string) { return this.reads.getImportOrigin(chatId); }
+  getExecutionDir(chatId: string) { return this.reads.getExecutionDir(chatId); }
+  adoptionReferenceProjection() { return this.reads.adoptionReferenceProjection(); }
+  listChatSummaries() { return this.reads.listChatSummaries(); }
+  memoryNativeSegment(chatId: string, afterSeq?: number, limit?: number) {
+    return this.reads.memoryNativeSegment(chatId, afterSeq, limit);
+  }
+  listBaseIdentities() { return this.reads.listBaseIdentities(); }
+  listBindings() { return this.reads.listBindings(); }
+  listHistoryBindings() { return this.reads.listHistoryBindings(); }
+  listByProject(projectId: string) { return this.reads.listByProject(projectId); }
+  getAppRole(chatId: string) { return this.reads.getAppRole(chatId); }
+  listProjectRefs() { return this.reads.listProjectRefs(); }
+  getStoreRevision() { return this.reads.getStoreRevision(); }
+  listReferencedAttachmentIds() { return this.reads.listReferencedAttachmentIds(); }
+  hasAttachmentReference(chatId: string, attachmentId: string) {
+    return this.reads.hasAttachmentReference(chatId, attachmentId);
+  }
+  getAttachmentReference(chatId: string, attachmentId: string) {
+    return this.reads.getAttachmentReference(chatId, attachmentId);
+  }
+  searchTimelineDocuments(
+    tokens: readonly string[],
+    cursor: SearchDocumentCursor | null,
+    limit: number, includeMirrors = false
+  ) { return this.reads.searchTimelineDocuments(tokens, cursor, limit, includeMirrors); }
+
+  /* ---------------------------------------------------------------- *
+   *  外部历史与收养 saga：全部转交 ChatHistorySagaApi（同一条串行队列）。
+   * ---------------------------------------------------------------- */
+  markImportSourceStatus(chatId: string, sourceStatus: "match" | "missing") {
+    return this.history.markImportSourceStatus(chatId, sourceStatus);
+  }
+  syncExternalHistory(
+    ...input: Parameters<ChatHistorySagaApi["syncExternalHistory"]>
+  ) { return this.history.syncExternalHistory(...input); }
+  beginExternalContinuation(
+    input: Parameters<ChatHistorySagaApi["beginExternalContinuation"]>[0]
+  ) { return this.history.beginExternalContinuation(input); }
+  markContinuationHomePreparing(
+    ...input: Parameters<ChatHistorySagaApi["markContinuationHomePreparing"]>
+  ) { return this.history.markContinuationHomePreparing(...input); }
+  recordContinuationHomeCommitted(
+    ...input: Parameters<ChatHistorySagaApi["recordContinuationHomeCommitted"]>
+  ) { return this.history.recordContinuationHomeCommitted(...input); }
+  finalizeExternalContinuation(
+    input: Parameters<ChatHistorySagaApi["finalizeExternalContinuation"]>[0]
+  ) { return this.history.finalizeExternalContinuation(input); }
+  listReconcilableContinuations() { return this.history.listReconcilableContinuations(); }
+  failContinuationPrecommit(
+    ...input: Parameters<ChatHistorySagaApi["failContinuationPrecommit"]>
+  ) { return this.history.failContinuationPrecommit(...input); }
+  isolateContinuationOrphan(
+    ...input: Parameters<ChatHistorySagaApi["isolateContinuationOrphan"]>
+  ) { return this.history.isolateContinuationOrphan(...input); }
+
+  private async requireRecord(chatId: string) {
+    if (!this.state.metadata.has(chatId)) throw new ChatNotFoundError("聊天不存在");
+    return this.loadRecord(chatId);
+  }
+
+  private async loadRecord(chatId: string) {
+    if (this.state.activeRecord?.record.id === chatId) {
+      return structuredClone(this.state.activeRecord.record);
+    }
+    const record = await this.state.readRecord(chatId);
+    this.state.remember(record, this.state.revisionOf(chatId));
+    return structuredClone(record);
+  }
+
+  /* 事实变更不再借道整聚合：手里的 metadata 就是 current，写入只碰事实行，
+     缓存的整聚合随即作废——绝不留下一份 revision 已过期的 record。 */
+  private updateFacts(
+    chatId: string,
+    update: (current: ChatFacts) => unknown,
+    mutation: "facts" | "classification" | "project-detach" = "facts"
+  ) {
+    return this.state.queue.enqueue(async () => {
+      assertChatId(chatId);
+      const metadata = this.state.metadata.get(chatId);
+      if (!metadata) throw new ChatNotFoundError("聊天不存在");
+      const { preview, ...current } = metadata;
+      const candidate = update(current);
+      if (candidate === current) return structuredClone(metadata);
+      const facts = chatFactsSchema.parse(
+        withFactRevision(current, candidate as ChatFacts)
+      ) as ChatFacts;
+      // Only the explicit detach path may clear a readonly Chat's Project placement.
+      assertReadonlyPresentationMutation(mutation === "project-detach" ? clearProjectRecord(current) : current, facts);
+      if (mutation !== "facts") {
+        await persistLocalClassification({ database: this.state.requireDatabase(), deviceId: this.state.requireDeviceId(), current, facts });
+        this.state.touch();
+      } else await persistFactsToStorage({
+        facts,
+        database: this.state.database,
+        deviceId: this.state.deviceId,
+        expectedAggregateRevision: current.chatRecordRevision,
+        onCommit: () => this.state.touch(),
+      });
+      const next = { ...facts, preview };
+      this.state.metadata.set(chatId, next);
+      if (this.state.activeRecord?.record.id === chatId) {
+        this.state.activeRecord = undefined;
+      }
+      // Only changes that append publication work wake the scheduler; local sequence reservations do not.
+      if (mutation !== "facts" || metadataEdited(current, facts)) this.sync.notifyAppended("chat", chatId);
+      return structuredClone(next);
+    });
+  }
+
+  private async persistRecord(record: ChatRecord, ownerCommit?: import("./sqlite/cloud/execution/commit").OwnerCommit,
+    workflowRole?: import("@ai-chat/cloud-protocol/chats/model").ChatWorkflowRole) {
+    return persistRecordToStorage({
+      ownerCommit, workflowRole,
+      record,
+      database: this.state.database,
+      deviceId: this.state.deviceId,
+      expectedAggregateRevision:
+        this.state.metadata.get(record.id)?.chatRecordRevision ?? null,
+      onCommit: () => { this.state.touch(); this.sync.notifyAppended("chat", record.id); },
+    });
+  }
+
+  private async persistAppendedMessage(
+    current: ChatRecord,
+    record: ChatRecord,
+    message: ChatMessage,
+    ownerCommit?: import("./sqlite/cloud/execution/commit").OwnerCommit
+  ) {
+    return persistAppendedMessageToStorage({
+      ownerCommit,
+      current,
+      record,
+      message,
+      database: this.state.database,
+      deviceId: this.state.deviceId,
+      onCommit: () => { this.state.touch(); this.sync.notifyAppended("chat", record.id); },
+    });
+  }
+
+  private async persistTurnCommit(
+    current: ChatRecord,
+    record: ChatRecord,
+    message: ChatMessage | null
+  ) {
+    return persistTurnCommitToStorage({
+      current,
+      record,
+      message,
+      database: this.state.database,
+      deviceId: this.state.deviceId,
+      onCommit: () => { this.state.touch(); this.sync.notifyAppended("chat", record.id); },
+    });
+  }
+
+  getSqliteRuntimeFacts() {
+    return this.sqliteRuntimeFacts ? structuredClone(this.sqliteRuntimeFacts) : null;
+  }
+
+  private async openDatabase(defaults: import("../../../shared/ipc/settings/settings-ipc").DefaultChatOptionsByBackend = {}) {
+    if (!this.state.deviceId) throw new Error("Chat device identity is unavailable");
+    const database = this.dependencies.databaseClient?.() ?? new ChatDatabaseClient();
+    const initialization = await database.initialize({
+      kind: "initialize",
+      databasePath: this.databasePath,
+      deviceId: this.state.deviceId,
+      mode: "canonical",
+      storageMode: this.dependencies.storageMode ?? { kind: "local-only" },
+      backendDefaults: defaults,
+    });
+    this.state.database = database;
+    return initialization;
+  }
+}

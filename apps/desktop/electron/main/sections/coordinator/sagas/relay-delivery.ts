@@ -1,0 +1,179 @@
+/**
+ * [INPUT]: Depends on RelayLedger, ChatService, SettingsStore, notice outbox and the Agent turn to start playback with support for TurnOrigin
+ * [OUTPUT]: Provides deliverRelaySaga, queued→appended→claimed→started
+ * [POS]: coordinator/sagas relay side effects organizer; The chain mutex is held by the caller, and the file only shows the durable head
+ */
+
+import { builtinOptions } from "../../../../../shared/chat-agent/options";
+import { taskStartFence, StartDeferredError } from "../../../presence/lifecycle/start-fence";
+import { historyLookupAvailability } from "../../../agent/history/availability";
+import { buildHandoff, handoffInput } from "../../../agent/history/builder";
+import type {
+  AgentSendPayload,
+  AgentUserInput,
+} from "../../../../../shared/ipc/agent/agent-ipc";
+import type { UnsequencedUserMessage } from "../../../../../shared/ipc/content/chats-ipc";
+import type { ChatsService } from "../../../chats/service/chats-service";
+import type { SettingsStore } from "../../../settings/settings-store";
+import {
+  relayExpectation,
+  relayInputText,
+} from "../coordinator-values";
+import type { SectionNoticeOutbox } from "../recovery/notice-outbox";
+import type { RelayLedger } from "../relay-ledger";
+import type { TurnOrigin } from "../../../agent/bridge/bridge-types";
+
+type RelayDeliveryDependencies = {
+  ledger: RelayLedger;
+  chats: ChatsService;
+  settings: SettingsStore;
+  notices: SectionNoticeOutbox;
+  startTurn(
+    payload: AgentSendPayload,
+    assistantMessageId: string,
+    origin: TurnOrigin,
+    assistantSeq: number
+  ): Promise<void>;
+};
+
+export async function deliverRelaySaga(
+  relayId: string,
+  dependencies: RelayDeliveryDependencies
+) {
+  let relay = dependencies.ledger.snapshot().relays[relayId];
+  if (!relay || !["queued", "appended"].includes(relay.deliveryPhase)) return;
+  const [source, target] = await Promise.all([
+    Promise.resolve(dependencies.chats.store.getMetadata(relay.source.chatId)),
+    Promise.resolve(dependencies.chats.store.getMetadata(relay.target.chatId)),
+  ]);
+  if (
+    !source ||
+    !target ||
+    source.incarnationId !== relay.source.incarnationId ||
+    target.incarnationId !== relay.target.incarnationId
+  ) {
+    await dependencies.ledger.releaseRelay(
+      relay.id,
+      relayExpectation(relay),
+      "cancelled"
+    );
+    return;
+  }
+  if (relay.userSeq === undefined || relay.assistantSeq === undefined) {
+    const [userSeq, assistantSeq] =
+      await dependencies.chats.store.reserveSequences(target.id, 2);
+    const sequenced = await dependencies.ledger.bindRelaySequences(
+      relay.id,
+      userSeq!,
+      assistantSeq!
+    );
+    if (!sequenced) return;
+    relay = sequenced;
+  }
+  if (!relay.handoff) {
+    const history = await dependencies.chats.store.prepareHistory(target.id, relay.userSeq!);
+    if (!history) throw new Error("CHAT_HISTORY_UNAVAILABLE");
+    const frozen = await dependencies.ledger.freezeRelayHandoff(relay.id, buildHandoff(history,
+      [{ type: "text", text: relayInputText(relay, source.title ?? "Untitled") }], historyLookupAvailability(target.agent, dependencies.settings.get().disabledBuiltinTools)));
+    if (!frozen) return;
+    relay = frozen;
+  }
+  if (relay.deliveryPhase === "queued") {
+    if (!await dependencies.chats.store.getNativeMessage(target.id, {
+      kind: "id",
+      messageId: relay.userMessageId,
+    })) {
+      const message: UnsequencedUserMessage = {
+        id: relay.userMessageId,
+        role: "user",
+        content: relayInputText(relay, source.title ?? "未命名"),
+        createdAt: Date.now(),
+        relay: {
+          sourceSectionId: source.id,
+          chainId: relay.rootChainId,
+        },
+      };
+      await dependencies.chats.appendCanonical(
+        target.id,
+        message,
+        relay.userSeq
+      );
+    }
+    const appended = await dependencies.ledger.transition(
+      relay.id,
+      relayExpectation(relay, "queued"),
+      { deliveryPhase: "appended" }
+    );
+    if (!appended) return;
+    relay = appended;
+  }
+  taskStartFence.assertOpen();
+  const attempts = structuredClone(relay.attempts);
+  attempts.at(-1)!.reservationState = "charged";
+  const claimed = await dependencies.ledger.transition(
+    relay.id,
+    relayExpectation(relay, "appended"),
+    {
+      deliveryPhase: "claimed",
+      reservationState: "charged",
+      attempts,
+    }
+  );
+  if (!claimed) return;
+  try {
+    const latestTarget = dependencies.chats.store.getMetadata(target.id);
+    if (!latestTarget) throw new Error("目标 Section 在 claim 后被删除");
+    /* A relay starts a built-in's turn only until the role lane's slice 2 (TASK-11 S3-b). */
+    const turnOptions = builtinOptions(target.options);
+    if (!turnOptions) throw new Error("PROVIDER_UNAVAILABLE");
+    const currentInput: AgentUserInput[] = [{
+      type: "text",
+      text: relayInputText(claimed, source.title ?? "未命名"),
+    }];
+    const intent = Object.values(
+      dependencies.ledger.snapshot().createIntents
+    ).find(
+      (candidate) => candidate.mode === "run" && candidate.relayId === claimed.id
+    );
+    for (const context of intent?.contextSections ?? []) {
+      const record = dependencies.chats.store.getMetadata(context.chatId);
+      if (record?.incarnationId === context.incarnationId) {
+        currentInput.push({
+          type: "section",
+          chatId: record.id,
+          name: record.title ?? "未命名",
+        });
+      }
+    }
+    const handoff = claimed.handoff ? { ...claimed.handoff, binding: { ...claimed.handoff.binding,
+      view: { ...claimed.handoff.binding.view, nativeMessageRevision: latestTarget.chatMessageRevision } } } : undefined;
+    const payload: AgentSendPayload = {
+      requestId: claimed.requestId, agentRevision: latestTarget.agentRevision, handoff,
+      ...(latestTarget.session ? { session: latestTarget.session } : {}),
+      scope: { conversationId: target.id }, turnOptions,
+      input: latestTarget.session ? currentInput : handoffInput(currentInput, handoff),
+    };
+    await dependencies.startTurn(
+      payload,
+      claimed.assistantMessageId,
+      { kind: "relay" },
+      claimed.assistantSeq!
+    );
+  } catch (cause) {
+    if (cause instanceof StartDeferredError) {
+      await dependencies.ledger.deferRelayDispatch(claimed.id);
+      throw cause;
+    }
+    const settled = await dependencies.ledger.transition(
+      claimed.id,
+      relayExpectation(claimed, "claimed"),
+      {
+        deliveryPhase: "settled",
+        terminalOutcome: "failed",
+        replyDisposition: "suppressed",
+      }
+    );
+    if (settled) await dependencies.notices.failure(settled);
+    throw cause;
+  }
+}

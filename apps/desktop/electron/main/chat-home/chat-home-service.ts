@@ -1,0 +1,558 @@
+/**
+ * [INPUT]: Depends on Node crypto/fs/path, shared ChatHome status, SettingsStore/ChatStore port, ChatHomeLedger, the required LibraryService folder lifetime, the verified folder trash directory, and the persistence errno predicate
+ * [OUTPUT]: Provides ChatHomeService root selection, fork-worktree-aware ownership, canonical-record recovery, rollback compensation, deletion admission/release, and containment-correct read-only roots
+ * [POS]: Chat Home ownership coordinator; cross-store SQLite continuation state remains in the Chat saga
+ */
+
+import type { ChatHomeLiveness } from "./recovery-live-intents";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  rmdir,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import {
+  CHAT_HOME_NOT_READY,
+  type ChatHomeStatus,
+} from "../../../shared/ipc/settings/settings-ipc";
+import type { AgentWorkspaceScope } from "../../../shared/ipc/agent/agent-ipc";
+import type { ChatStore } from "../chats/chat-store";
+import type { SettingsStore } from "../settings/settings-store";
+import { errorMessage } from "../ipc/errors";
+import { ChatHomeLedger } from "./chat-home-ledger";
+import type { ChatHomeRecord, RootIdentity } from "./ledger-values";
+import { isErrnoCode } from "../persistence/durable-json";
+import { durableReplaceFile } from "../persistence/durable-json";
+import { libraryChatPath, libraryDirectory, libraryHomePath } from "../library/paths";
+import type { LibraryService } from "../library/service";
+import { libraryTrashDirectory } from "../library/safety/trash";
+
+const SENTINEL = ".ai-chat-home.json";
+const hash = (value: unknown) =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const identity = (value: Awaited<ReturnType<typeof stat>>): RootIdentity => ({
+  dev: String(value.dev),
+  ino: String(value.ino),
+});
+const sameIdentity = (left: RootIdentity, right: RootIdentity) =>
+  left.dev === right.dev && left.ino === right.ino;
+
+class ChatHomeCollisionError extends Error {}
+
+type CreationInput = {
+  intentId: string;
+  chatId: string;
+  incarnationId?: string;
+  submission: unknown;
+  workspaceScope: AgentWorkspaceScope;
+  stagingOwner?: string;
+  worktree?: ChatHomeRecord["worktree"];
+};
+
+export class ChatHomeService {
+  private readonly listeners = new Set<(status: ChatHomeStatus) => void>();
+  private progress: ChatHomeStatus["progress"] = null;
+  private worktreeCleanup?: (record: ChatHomeRecord) => Promise<"absent" | "removed" | "recovery">;
+  private worktreeAdmission?: (record: ChatHomeRecord) => Promise<"absent" | "clean" | "recovery">;
+
+  constructor(
+    private readonly settings: SettingsStore,
+    private readonly chats: ChatStore,
+    readonly ledger: ChatHomeLedger,
+    private readonly now: () => number = Date.now,
+    private readonly library: LibraryService,
+  ) {}
+
+  async initialize() {
+    const warning = await this.ledger.initialize();
+    if (warning) this.chats.pushWarning(warning);
+  }
+
+  status(): ChatHomeStatus {
+    const settings = this.settings.get();
+    return {
+      root: settings.chatHomesRoot,
+      state: settings.chatHomeState,
+      ...(this.progress ? { progress: this.progress } : {}),
+    };
+  }
+
+  get libraryRoot() { return this.library.root; }
+  /* Every emit republishes the settings snapshot to every renderer subscriber,
+     so an unchanged projection — most of them, while a folder opens — stays silent. */
+  reportProgress(value: { phase: "opening" | "saving"; completed: number; total: number; issues: string[] }) {
+    const next = value.completed < value.total
+      ? { phase: value.phase, completed: value.completed, total: value.total, failed: value.issues.length }
+      : null;
+    const current = this.progress;
+    if (!next && !current) return;
+    if (next && current && current.phase === next.phase && current.completed === next.completed &&
+      current.total === next.total && current.failed === next.failed) return;
+    this.progress = next;
+    this.emit();
+  }
+
+  onStatus(listener: (status: ChatHomeStatus) => void) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  canCreateChat() {
+    const settings = this.settings.get();
+    return (
+      settings.chatHomesRoot !== null && settings.chatHomeState === "ready"
+    );
+  }
+
+  assertCanCreateChat() {
+    if (!this.canCreateChat()) {
+      // 冒号前是给日志的坐标，冒号后是给用户的出路——两半各自完整，
+      // renderer 剥掉前半段后剩下的仍是一句能照着做的话。
+      throw new Error(
+        `${CHAT_HOME_NOT_READY}: 请先在 Settings 中选定 Chat Home 存放位置`
+      );
+    }
+  }
+
+  /* ready 与目录存在性同时成立：先确保根在盘上，再提交状态。
+     断代升级后没有迁移期，选定即就绪。 */
+  async openLibrary(canonicalRoot: string) {
+    await this.library.openLibrary(canonicalRoot);
+    this.emit();
+    return this.status();
+  }
+
+  async beginCreation(input: CreationInput) {
+    this.assertCanCreateChat();
+    const root = await this.verifiedRoot();
+    await libraryDirectory(root.canonical, "chats", input.chatId);
+    const homeDir = libraryHomePath(root.canonical, input.chatId);
+    const submissionHash = hash(input.submission);
+    const existing = this.ledger.get(input.chatId);
+    if (
+      existing &&
+      input.incarnationId &&
+      existing.incarnationId !== input.incarnationId
+    ) {
+      throw new Error("CreationIntent incarnationId 与已有 ownership 冲突");
+    }
+    const incarnationId =
+      existing?.intentId === input.intentId
+        ? existing.incarnationId
+        : input.incarnationId ?? randomUUID().replaceAll("-", "");
+    let planned = await this.ledger.plan({
+      intentId: input.intentId,
+      chatId: input.chatId,
+      incarnationId,
+      homeDir,
+      canonicalRoot: root.canonical,
+      rootIdentity: root.identity,
+      ownership: "planned",
+      phase: "planned",
+      submissionHash,
+      workspaceScope: input.workspaceScope,
+      ...(input.stagingOwner ? { stagingOwner: input.stagingOwner } : {}),
+      ...(input.worktree ? { worktree: input.worktree } : {}),
+    });
+    if (planned.phase === "planned") {
+      try {
+        await this.materialize(planned);
+      } catch (cause) {
+        if (cause instanceof ChatHomeCollisionError) {
+          await this.ledger.transition(input.chatId, "planned", "rolledBack", {
+            ownership: "invalid",
+            terminalAt: this.now(),
+          });
+        }
+        throw cause;
+      }
+      planned = await this.ledger.transition(
+        input.chatId,
+        "planned",
+        "materialized",
+        { ownership: "valid" }
+      );
+    }
+    return planned;
+  }
+
+  markPrepared(chatId: string) {
+    return this.ledger.transition(
+      chatId,
+      ["materialized", "prepared"],
+      "prepared"
+    );
+  }
+
+  commitCreation(chatId: string) {
+    return this.ledger.transition(
+      chatId,
+      ["prepared", "committed"],
+      "committed",
+      { ownership: "valid", terminalAt: this.now() }
+    );
+  }
+
+  async committedCreationEvidence(chatId: string, intentId: string) {
+    const record = this.ledger.get(chatId);
+    if (
+      !record ||
+      record.phase !== "committed" ||
+      record.ownership !== "valid" ||
+      record.intentId !== intentId
+    ) {
+      throw new Error("Committed Chat Home evidence is unavailable");
+    }
+    const verified = await this.verifyRecordOwnership(record, false);
+    if (!verified) throw new Error("Committed Chat Home ownership cannot be verified");
+    const homeIdentity = identity(await stat(verified.homeDir));
+    return {
+      receipt: {
+        phase: "committed" as const,
+        chatId: verified.chatId,
+        intentId: verified.intentId,
+        incarnationId: verified.incarnationId,
+        homeDir: verified.homeDir,
+      },
+      homeDirIdentity: {
+        root: verified.rootIdentity,
+        home: homeIdentity,
+      },
+    };
+  }
+
+  async isolateCommittedCreation(chatId: string, intentId: string, reason: string) {
+    const evidence = await this.committedCreationEvidence(chatId, intentId);
+    this.chats.pushWarning(
+      `Committed Chat Home ${chatId} was isolated without deletion: ${reason}`
+    );
+    return evidence;
+  }
+
+  identityForCreation(chatId: string) {
+    const record = this.ledger.get(chatId);
+    if (!record || record.ownership === "invalid") return undefined;
+    return {
+      incarnationId: record.incarnationId,
+      homeDir: record.homeDir,
+      intentId: record.intentId,
+      phase: record.phase,
+      worktree: record.worktree,
+    };
+  }
+
+  /** R01: liveness is decided per record after its refresh, on the journals as they are then, never from a set taken before an await. */
+  async recoverCreations(liveness: ChatHomeLiveness) {
+    for (const record of this.ledger.list()) {
+      if (["committed", "rolledBack"].includes(record.phase)) continue;
+      await liveness.refresh();
+      if (liveness.live(record.intentId)) continue;
+      const canonical = this.chats.getMetadata(record.chatId);
+      if (
+        canonical?.incarnationId === record.incarnationId &&
+        canonical.homeDir === record.homeDir &&
+        (!record.worktree ||
+          (canonical.executionKind === "managed-worktree" &&
+            canonical.executionDir === join(record.homeDir, record.worktree.relativePath)))
+      ) {
+        await this.markPrepared(record.chatId);
+        await this.commitCreation(record.chatId);
+        continue;
+      }
+      await this.rollbackCreation(record.chatId).catch((cause) => {
+        this.chats.pushWarning(
+          `Chat Home ${record.chatId} 补偿待重试：${errorMessage(cause)}`
+        );
+      });
+    }
+  }
+
+  async rollbackCreation(chatId: string) {
+    const current = this.ledger.get(chatId);
+    if (
+      !current ||
+      current.phase === "rolledBack" ||
+      current.phase === "committed"
+    ) {
+      return;
+    }
+    const canonical = this.chats.getMetadata(current.chatId);
+    if (
+      canonical?.incarnationId === current.incarnationId &&
+      canonical.homeDir === current.homeDir &&
+      (!current.worktree ||
+        (canonical.executionKind === "managed-worktree" &&
+          canonical.executionDir === join(current.homeDir, current.worktree.relativePath)))
+    ) {
+      await this.markPrepared(current.chatId);
+      await this.commitCreation(current.chatId);
+      return;
+    }
+    await this.ledger.transition(
+      chatId,
+      ["planned", "materialized", "prepared", "rollingBack"],
+      "rollingBack"
+    );
+    if (current.worktree) {
+      const cleanup = await this.worktreeCleanup?.(current);
+      if (!cleanup || cleanup === "recovery") {
+        throw new Error("Managed worktree requires recovery before Chat Home rollback");
+      }
+    }
+    const moved = await this.moveOwnedHomeToTrash(current, true);
+    if (!moved && await this.pathExists(current.homeDir)) {
+      throw new Error("Chat Home 所有权无法验证，补偿将在稍后重试");
+    }
+    await this.ledger.transition(chatId, "rollingBack", "rolledBack", {
+      ownership: "invalid",
+      terminalAt: this.now(),
+    });
+  }
+
+  readOnlyRoots(excludeWorkspace?: string) {
+    const workspace = excludeWorkspace ? resolve(excludeWorkspace) : undefined;
+    return this.ledger
+      .validHomes()
+      .filter((path) => {
+        if (!workspace) return true;
+        /* 自身 Home 与它的祖先都不是"另一个 Chat Home"：worktree Chat 的
+           workspace 是 <home>/worktree，字符串相等判不出这层包含关系。 */
+        const child = relative(resolve(path), workspace);
+        return child !== "" && (child.startsWith("..") || isAbsolute(child));
+      })
+      .sort();
+  }
+
+  configureWorktreeCleanup(
+    cleanup: (record: ChatHomeRecord) => Promise<"absent" | "removed" | "recovery">
+  ) {
+    this.worktreeCleanup = cleanup;
+  }
+
+  configureWorktreeAdmission(
+    inspect: (record: ChatHomeRecord) => Promise<"absent" | "clean" | "recovery">
+  ) {
+    this.worktreeAdmission = inspect;
+  }
+
+  async assertDeletionAdmissible(
+    records: readonly Readonly<{ id: string; incarnationId: string }>[]
+  ) {
+    for (const candidate of records) {
+      const record = this.ledger.get(candidate.id);
+      if (!record || record.incarnationId !== candidate.incarnationId || !record.worktree) continue;
+      const result = await this.worktreeAdmission?.(record);
+      if (!result || result === "recovery") {
+        throw Object.assign(
+          new Error(`Chat ${candidate.id} 的 managed worktree 有未提交内容或身份异常；请先 commit 或恢复后再删除`),
+          { status: 409 }
+        );
+      }
+    }
+  }
+
+  async releaseWorktreeForDeletion(candidate: Readonly<{ id: string; incarnationId: string }>) {
+    const record = this.ledger.get(candidate.id);
+    if (!record || record.incarnationId !== candidate.incarnationId || !record.worktree) return;
+    const result = await this.worktreeCleanup?.(record);
+    if (!result || result === "recovery") {
+      throw new Error("Managed worktree cleanup requires recovery");
+    }
+  }
+
+  async releaseHomeForDeletion(
+    candidate: Readonly<{ id: string; incarnationId: string }>,
+    operationId: string
+  ) {
+    const record = this.ledger.get(candidate.id);
+    if (!record || record.incarnationId !== candidate.incarnationId) return;
+    const trashRoot = join(record.canonicalRoot, ".trash");
+    const suffix = createHash("sha256").update(operationId).digest("hex").slice(0, 20);
+    const target = join(trashRoot, `${record.chatId}-${suffix}`);
+    const source = libraryChatPath(record.canonicalRoot, record.chatId);
+    const [homePresent, targetPresent] = await Promise.all([
+      this.pathExists(source),
+      this.pathExists(target),
+    ]);
+    if (homePresent && targetPresent) {
+      throw new Error("Chat Home deletion found both live and trash paths");
+    }
+    if (homePresent) {
+      const verified = await this.verifyRecordOwnership(record, false);
+      if (!verified) {
+        // 未获证明的目录不是产品资产；只撤销账本声明，绝不猜测删除。
+        await this.ledger.removeOwnership(candidate.id);
+        return;
+      }
+      await libraryTrashDirectory(record.canonicalRoot);
+      await rename(source, target);
+    }
+    await this.ledger.removeOwnership(candidate.id);
+  }
+
+  async verifyOwnership(chatId: string) {
+    const record = this.ledger.get(chatId);
+    return record ? this.verifyRecordOwnership(record, false) : undefined;
+  }
+
+  private async verifyRecordOwnership(
+    record: ChatHomeRecord,
+    allowPlanned: boolean
+  ) {
+    const durable = this.ledger.get(record.chatId);
+    if (
+      !durable ||
+      durable.intentId !== record.intentId ||
+      durable.incarnationId !== record.incarnationId ||
+      durable.homeDir !== record.homeDir ||
+      (durable.ownership !== "valid" &&
+        !(allowPlanned && durable.ownership === "planned"))
+    ) {
+      return undefined;
+    }
+    try {
+      const rootStat = await stat(record.canonicalRoot);
+      if (!sameIdentity(identity(rootStat), record.rootIdentity)) return undefined;
+      const expected = libraryHomePath(record.canonicalRoot, record.chatId);
+      if ((await realpath(record.homeDir)) !== expected) return undefined;
+      if ((await lstat(record.homeDir)).isSymbolicLink()) return undefined;
+      if (!(await this.hasMatchingMarker(record))) return undefined;
+      return record;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async moveOwnedHomeToTrash(
+    record: ChatHomeRecord,
+    allowPlanned = false
+  ) {
+    const verified = await this.verifyRecordOwnership(record, allowPlanned);
+    if (!verified) return undefined;
+    const trashRoot = (await libraryTrashDirectory(verified.canonicalRoot))!;
+    const target = join(trashRoot, `${verified.chatId}-${this.now()}`);
+    await rename(libraryChatPath(verified.canonicalRoot, verified.chatId), target);
+    return target;
+  }
+
+  private async verifiedRoot() {
+    const canonical = this.library.requireRoot();
+    return { canonical, identity: identity(await stat(canonical)) };
+  }
+
+  private async materialize(record: ChatHomeRecord) {
+    try {
+      await mkdir(record.homeDir, { recursive: false, mode: 0o700 });
+    } catch (cause) {
+      if (
+        isErrnoCode(cause, "EEXIST") &&
+        await this.isMatchingMaterializedHome(record)
+      ) {
+        return;
+      }
+      if (isErrnoCode(cause, "EEXIST")) {
+        throw new ChatHomeCollisionError(
+          `Chat Home 目录已存在且不属于 intent ${record.intentId}`
+        );
+      }
+      throw cause;
+    }
+    if ((await realpath(record.homeDir)) !== record.homeDir) {
+      throw new Error("Chat Home 路径不是预期 canonical 子目录");
+    }
+    const marker = join(record.homeDir, SENTINEL);
+    try {
+      await writeFile(
+        marker,
+        `${JSON.stringify({
+          intentId: record.intentId,
+          chatId: record.chatId,
+          incarnationId: record.incarnationId,
+        })}\n`,
+        { mode: 0o600, flag: "wx" }
+      );
+    } catch (cause) {
+      await rmdir(record.homeDir).catch(() => {});
+      throw cause;
+    }
+  }
+
+  /** Opening a folder proves content identity, never a previous process's custody. */
+  async restoreLibraryHome(chatId: string, incarnationId: string) {
+    const existing = this.ledger.get(chatId);
+    const intentId = `library_${hash([chatId, incarnationId]).slice(0, 40)}`;
+    if (existing && !(existing.phase === "planned" && existing.intentId === intentId)) {
+      if (existing.incarnationId !== incarnationId || !await this.verifyRecordOwnership(existing, true)) throw new Error("LIBRARY_HOME_IDENTITY_CHANGED");
+      if (existing.phase !== "committed") { await this.markPrepared(chatId); await this.commitCreation(chatId); }
+      return existing.homeDir;
+    }
+    const root = await this.verifiedRoot();
+    const homeDir = await libraryDirectory(root.canonical, "chats", chatId, "home");
+    await this.ledger.plan({ intentId, chatId, incarnationId, homeDir, canonicalRoot: root.canonical,
+      rootIdentity: root.identity, ownership: "planned", phase: "planned", submissionHash: hash([chatId, incarnationId]),
+      workspaceScope: { kind: "conversation", conversationId: chatId } });
+    await durableReplaceFile(join(homeDir, SENTINEL), JSON.stringify({ intentId, chatId, incarnationId }) + "\n");
+    await this.ledger.transition(chatId, "planned", "materialized", { ownership: "valid" });
+    await this.markPrepared(chatId); await this.commitCreation(chatId);
+    return homeDir;
+  }
+
+  private async isMatchingMaterializedHome(record: ChatHomeRecord) {
+    try {
+      const homeStat = await lstat(record.homeDir);
+      if (homeStat.isSymbolicLink() || !homeStat.isDirectory()) return false;
+      if ((await realpath(record.homeDir)) !== record.homeDir) return false;
+      const entries = await readdir(record.homeDir);
+      return (
+        entries.length === 1 &&
+        entries[0] === SENTINEL &&
+        await this.hasMatchingMarker(record)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private async hasMatchingMarker(record: ChatHomeRecord) {
+    try {
+      const marker = join(record.homeDir, SENTINEL);
+      const markerStat = await lstat(marker);
+      if (markerStat.isSymbolicLink() || !markerStat.isFile()) return false;
+      const value = JSON.parse(await readFile(marker, "utf8")) as {
+        intentId?: unknown;
+        chatId?: unknown;
+        incarnationId?: unknown;
+      };
+      return (
+        Object.keys(value).length === 3 &&
+        value.intentId === record.intentId &&
+        value.chatId === record.chatId &&
+        value.incarnationId === record.incarnationId
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private async pathExists(path: string) {
+    try {
+      await lstat(path);
+      return true;
+    } catch (cause) {
+      if (isErrnoCode(cause, "ENOENT")) return false;
+      throw cause;
+    }
+  }
+
+  private emit() {
+    const status = this.status();
+    for (const listener of this.listeners) listener(status);
+  }
+}

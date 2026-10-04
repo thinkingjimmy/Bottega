@@ -1,0 +1,18 @@
+{
+  "schema": "bottega.host-package/v1",
+  "packageId": "bottega.record-review",
+  "packageVersion": "0.1.0",
+  "family": "host-package",
+  "presentation": "plugin",
+  "displayName": "Record review",
+  "entries": {"ui": "dist/index.html"},
+  "uiDelivery": "isolated-surface",
+  "recordUi": {
+    "actions": [{"id": "review", "title": "Review record"}],
+    "operations": ["plugin.open", "plugin.heartbeat", "plugin.close", "plugin.settings.read", "base.record.read", "base.results.list", "base.results.read", "base.results.report"]
+  },
+  "provides": [],
+  "requires": [],
+  "permissions": {"executionTrust": "explicitly-trusted-code", "requestedCapabilities": []},
+  "settings": [{"id": "label", "type": "text", "maxLength": 80, "default": "Review", "label": {"text": "Result label"}, "appliesAt": "immediate", "owner": "store", "scope": "device"}]
+}

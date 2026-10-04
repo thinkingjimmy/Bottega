@@ -1,0 +1,8 @@
+# Until @bottega/* is on a registry, the example installs them from local tarballs in ./vendor (see README.md, "The lockfile").
+overrides:
+  "@bottega/contracts": "file:./vendor/bottega-contracts-0.1.0.tgz"
+  "@bottega/sdk": "file:./vendor/bottega-sdk-0.1.0.tgz"
+  "@bottega/testing": "file:./vendor/bottega-testing-0.1.0.tgz"
+# esbuild's install step fetches its native binary; pnpm runs only the builds a project approves.
+allowBuilds:
+  esbuild: true

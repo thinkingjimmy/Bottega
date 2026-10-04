@@ -1,0 +1,6 @@
+/**
+ * [INPUT]: Shared workspace row styles.
+ * [OUTPUT]: Desktop row style entry.
+ * [POS]: Desktop stylesheet adapter.
+ */
+@import "@ai-chat/ui/workspace-row.css";

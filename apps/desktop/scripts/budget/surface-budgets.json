@@ -1,0 +1,368 @@
+{
+  "schema": "bottega.surface-budgets/v1",
+  "policy": {
+    "headroom": 0.02,
+    "rule": "Ceiling = measured + 2 % per surface and metric. A ceiling moves up only through `--resample --reason`, which appends to history; after a reclaim, resample so the ceiling moves down. Two-byte (non-Latin-1) chunk counts get no headroom. Renderer surfaces gate raw, gzip-9 and brotli-11; Preload and Node surfaces gate raw (resident source); their gzip and brotli are recorded under `measured` for information only and have no ceiling. Preload and Node surfaces gate the production build only (the bytes that ship); any other flavour prints its deltas against the same ceilings without failing. Ceilings are sampled only from a production build, and `pnpm budget:production` builds with production inputs whatever the shell or CI says.",
+    "exceptions": []
+  },
+  "history": [
+    {
+      "date": "2026-09-24",
+      "reason": "Before OPT-30: one renderer ceiling of 637,264 gzip over unminified code, raised 13 times since 2026-09-17 (607,422 -> 637,264); its per-raise notes live in git history of scripts/check-renderer-bundle.mjs."
+    },
+    {
+      "date": "2026-09-25",
+      "reason": "OPT-30 first per-surface sample (staging assembly; stable fits the same ceilings). Renderer minified with esbuild (keepNames, no legal comments) and every surface emitted as ASCII; three regex literals and the adoption-reader worker source escaped so the first-paint renderer chunk and the main eager closure load as one-byte strings. Renderer index eager JS 2,890,125 -> 1,520,592 raw, 637,431 -> 487,376 gzip. Main eager closure 3,909,029 -> 4,057,102 raw: escaped CJK costs 6 bytes instead of 3, but the chunks are held as one byte per character instead of two."
+    },
+    {
+      "date": "2026-09-25",
+      "reason": "Chat-store schema comments translated to English (checksum changes; old databases fail closed as before): main and every worker load as one-byte strings, the two-byte exception is gone"
+    },
+    {
+      "date": "2026-09-25",
+      "reason": "TASK-11: new main entry provider-bridge-entry (the Codex Provider bridge, loaded only when the build switch is on); main/index grows by the bridged-turn class and the provider runtime"
+    },
+    {
+      "date": "2026-09-26",
+      "reason": "B-04 watchdog (506d9bd1a, compacted in 8affe496b): main/provider-bridge-entry is back under its raw ceiling (330,848 of 330,973) with no raise. Its gzip and brotli figures are recorded at the measured 106,829 / 94,857; main-process entries are gated on raw only, gzip and brotli are kept as a record (approved by the plan review, within +512 B gzip)."
+    },
+    {
+      "date": "2026-09-26",
+      "reason": "F-01: the E2E drivers and fault points moved to a private build input (e2e-entry) reached through startup/composition-hooks. The new entry shares modules with the main bundle, so rollup re-partitions the shared chunks and main/provider-bridge-entry's closure grows by 169 raw bytes (330,973 -> 331,142, one more chunk) with no code of its own added; source trimming cannot undo a chunking effect. Raw ceiling raised by 400 B to 331,373 (plan review approved up to +1 KiB on this entry); gzip / brotli recorded at the measured 107,004 / 95,029."
+    },
+    {
+      "date": "2026-09-26",
+      "reason": "TASK-27 / OPT-30 ledger gap (doc review): gzip and brotli never gated preload and Node surfaces (never transferred; compare() gates raw and two-byte only), yet ceilings were recorded for them, and provider-bridge-entry's gzip had quietly passed its recorded 107,004. Those compressed ceilings are removed; the values stay under measured as information, and resample no longer writes them."
+    },
+    {
+      "date": "2026-09-26",
+      "reason": "Doc ruling (b): preload and Node surfaces gate the production flavour only. Reason: e2e-entry is a build input of non-production flavours alone, and its shared chunks re-partition staging's worker closures (be84acf9f: chat workers +7.6 KB with no code of their own), so staging Node bytes are not the bytes that ship. Staging now reports its deltas; `--production` and `--resample` refuse a non-production build (read from out*/main/build-flavor.json); `pnpm budget:production` forces BOTTEGA_CLOUD_BUILD=production. No ceiling changed. Production measured at HEAD c11d98d2f: sync-crypto 153,135 / 153,360, provider-bridge 328,566 / 331,373, chat-database 838,857 / 847,568, history-import 523,527 / 529,793 raw, all under."
+    },
+    {
+      "date": "2026-09-26",
+      "reason": "Accepted growth (encrypted chat domain, legitimate code, no raise): e49e3a539 sync-crypto +769 and each chat worker +769; 1fe345941 +692 on each of three workers; b57f06491 sync-crypto +279, chat-database +1,784, history-import +1,153; fc1359ff6 chat-database +1,821, history-import +953. The remaining staging leftovers from 60a80e5f2..4d00f0e80 (provider-bridge +893, chat workers about +510) belong to the security line and are not accepted here."
+    },
+    {
+      "date": "2026-09-27",
+      "reason": "TASK-11 launch-contract freeze (0e6027b7b): the utility entry refuses a mismatched contract before importing anything and names its own; approved by the doc session 2026-09-27. main/utility-host-entry 2,319 -> 2,672 raw (the shared contract chunk, the refusal branch, the contract field in hello); ceiling 2,366 -> 2,726. Only this surface is resampled."
+    },
+    {
+      "date": "2026-09-29",
+      "reason": "renderer/index/js only: Organic growth across lanes since the 09-25 sample (487,734 gzip): raw-error lines (ec721b1d8, 65a16c06a), U06-c part 1 (65b4ba513), T21-b (91542e682), O3 and U03 rows (26423a48b, 655dd9f0c), the presence marker (3003416c7, f88fe0c0d), applyIssue (a03c3f855). Approved by the plan review 2026-09-29; a lazy-surface renderer reclaim is scheduled for next period. Measured on production build of 99ac62935."
+    },
+    {
+      "date": "2026-09-29",
+      "reason": "main/index measured only, ceiling unchanged: c8d39a62c loads the Artifact viewer shell and the App manifest JSON Schema on first use, 4,188,779 -> 4,124,792 raw on a production build at 0f38c9c67. The ceiling stays at 4,181,898 because the resample formula (measured + 2 %) would raise it to 4,207,288; the policy lowers ceilings after a reclaim and never raises one without a reason (plan review 2026-09-29, option a)."
+    },
+    {
+      "date": "2026-09-29",
+      "reason": "preload/index only, down: OPT-34 step 1 takes zod out of the product preload. Main parses every reply and pushed value with the schema preload used (a named [cloud-outbound-drift] diagnostic when it drops one), and the channel constants preload needs move into zod-free shared/ipc-channels modules. Measured 287,567 -> 59,739 raw on a production build at 194651f90; ceiling = measured + 2 %."
+    },
+    {
+      "date": "2026-09-29",
+      "reason": "renderer/index/js only, down: OPT-36 replaces the Phosphor package with regular-weight copies of its two glyphs (packages/ui components/icons). Production A/B at 1e01340f7: 1,551,772 -> 1,547,410 raw, 498,631 -> 496,991 gzip, 416,480 -> 415,672 brotli; ceiling = measured + 2 %."
+    },
+    {
+      "date": "2026-09-29",
+      "reason": "renderer/system-dock-panel/js only, down: OPT-34 step 2a moves the pure quota readers (sortQuotaPools and the rest) into zod-free cloud-protocol remote/quota-view.ts, so the resident Dock panel first paint carries no zod. Production A/B at 187aaa829: 610,042 -> 503,108 raw, 195,323 -> 164,342 gzip, 168,845 -> 141,650 brotli; ceiling = measured + 2 %."
+    },
+    {
+      "date": "2026-09-29",
+      "reason": "main/index measured only, ceiling unchanged: TASK-11 (a) S2c moves each Provider's session-absence matcher into its turn values, which main loads (+~430 across the four turn-config chunks, the old probe strings -180), and passes it at the probe call sites beside the descriptor readiness hooks (+~350): 4,124,792 -> 4,125,398 raw on a production build of 37047a9f3 with and without the slice. Accepted by the foundation review 2026-09-29 (option a): one home for the matcher is worth more than the bytes."
+    },
+    {
+      "date": "2026-09-29",
+      "reason": "New Node surfaces main/provider-module-{codex,claude,kimi,opencode} (TASK-11 d2, doc-session approved): each built-in Provider's bridge module built self-contained and pinned in runtime-entries.json, ceilings at measured + 2 % per the policy. The modules import the zod-free failure leaf, so none carries zod (a first build measured ~100 KB each with zod inlined). main/provider-bridge-entry's eager closure grows only by the pinned-module loader (~+1.1 KB, 328,835 raw, ceiling unchanged); the Provider code had only ever been in dynamic chunks the eager measure never counted. main/index 4,138,424 raw, ceiling unchanged.",
+      "surfaces": {
+        "main/provider-module-codex": {
+          "raw": 6007
+        },
+        "main/provider-module-claude": {
+          "raw": 6409
+        },
+        "main/provider-module-kimi": {
+          "raw": 4625
+        },
+        "main/provider-module-opencode": {
+          "raw": 4962
+        }
+      }
+    },
+    {
+      "date": "2026-09-29",
+      "reason": "Rename only (TASK-11 d3): the four built-in Provider bridge modules now sit inside their bundled packages, so main/provider-module-{codex,claude,kimi,opencode} are measured as main/providers/{codex,claude,kimi,opencode}/bridge. Bytes and ceilings unchanged (build of the d3 tree: codex/claude/kimi/opencode 5,889 / 6,283 / 4,534 / 4,864 raw)."
+    },
+    {
+      "date": "2026-09-29",
+      "reason": "TASK-13 B2: each of main/providers/{codex,claude}/bridge now inlines its pure quota exchange (the JSON-RPC and Claude control clients, its normalizer and the wire leaf), because a pinned Provider module may require nothing; zod-free and require-free, pinned by bridge-values.test. Measured 9,077 and 10,753 raw (was 5,889 and 6,283); ceilings at measured + 5 % (9,531 and 11,291). Resample approved by the doc session under Jimmy's 09-29 ruling; only these two surfaces change.",
+      "surfaces": {
+        "main/providers/codex/bridge": {
+          "raw": 9531
+        },
+        "main/providers/claude/bridge": {
+          "raw": 11291
+        }
+      }
+    },
+    {
+      "date": "2026-09-29",
+      "reason": "no bundle work this period (Jimmy 09-29), resample before the final run: every gated ceiling at or above 97 % on 53cc173f4 (desktop budget:production and the Cloud Web bundle gate, workbench-on production) moved to measured + 5 %; no other ceiling changed. desktop renderer/index/js raw 1,581,843 (ceiling 1,578,359 -> 1,660,936), gzip 508,082 (ceiling 506,931 -> 533,487), brotli 422,856 (ceiling 423,986 -> 443,999); desktop renderer/index/css raw 369,915 (ceiling 375,224 -> 388,411), gzip 84,923 (ceiling 86,322 -> 89,170), brotli 57,006 (ceiling 58,055 -> 59,857); desktop renderer/task-panel/css raw 5,230 (ceiling 5,335 -> 5,492), gzip 1,664 (ceiling 1,698 -> 1,748), brotli 1,401 (ceiling 1,430 -> 1,472); desktop renderer/system-dock-bar/css raw 8,103 (ceiling 8,266 -> 8,509), gzip 2,715 (ceiling 2,770 -> 2,851), brotli 2,282 (ceiling 2,328 -> 2,397); desktop renderer/system-dock-panel/js raw 506,413 (ceiling 513,171 -> 531,734), gzip 165,314 (ceiling 167,629 -> 173,580), brotli 142,353 (ceiling 144,483 -> 149,471); desktop renderer/system-dock-panel/css raw 10,236 (ceiling 10,441 -> 10,748), gzip 3,100 (ceiling 3,162 -> 3,255), brotli 2,603 (ceiling 2,656 -> 2,734); desktop preload/index raw 60,165 (ceiling 60,934 -> 63,174); desktop preload/task-panel raw 541 (ceiling 552 -> 569); desktop preload/system-dock raw 730 (ceiling 745 -> 767); desktop main/index raw 4,196,581 (ceiling 4,181,898 -> 4,406,411); desktop main/sync-crypto-worker-entry raw 152,636 (ceiling 153,360 -> 160,268); desktop main/utility-host-entry raw 2,722 (ceiling 2,726 -> 2,859); desktop main/provider-bridge-entry raw 336,851 (ceiling 331,373 -> 353,694); desktop main/chat-database-worker-entry raw 853,003 (ceiling 847,568 -> 895,654); desktop main/history-import-worker-entry raw 534,135 (ceiling 529,793 -> 560,842); desktop main/providers/kimi/bridge raw 4,534 (ceiling 4,625 -> 4,761); desktop main/providers/opencode/bridge raw 4,864 (ceiling 4,962 -> 5,108); web workbench-on firstLoadJs raw 1,449,418 (ceiling 1,475,053 -> 1,521,889), br 376,629 (ceiling 382,802 -> 395,461); web workbench-on firstLoadCss br 58,374 (ceiling 58,934 -> 61,293); web workbench-on chatDetail raw 2,872,865 (ceiling 2,889,270 -> 3,016,509), br 776,683 (ceiling 777,524 -> 815,518); web workbench-on cryptoWorker raw 283,162 (ceiling 288,689 -> 297,321), br 52,612 (ceiling 53,621 -> 55,243); web workbench-on searchWorker raw 190,865 (ceiling 193,934 -> 200,409), br 49,987 (ceiling 50,757 -> 52,487)."
+    },
+    {
+      "date": "2026-10-03",
+      "reason": "M4: deferred search, attention, message plugins and panels; Provider identity leaves; retain CJK as nonblocking CSS and remove unused PUA-only faces. Each existing ceiling only tightens. Evidence: DEV/platform/m4-optimization."
+    }
+  ],
+  "surfaces": {
+    "renderer/index/js": {
+      "raw": 1660936,
+      "gzip": 533487,
+      "brotli": 443999,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 1636843,
+        "gzip": 526289,
+        "brotli": 437384
+      }
+    },
+    "renderer/index/css": {
+      "raw": 228579,
+      "gzip": 34268,
+      "brotli": 27060,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 224097,
+        "gzip": 33596,
+        "brotli": 26529
+      }
+    },
+    "renderer/task-panel/js": {
+      "raw": 469859,
+      "gzip": 153647,
+      "brotli": 131549,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 460646,
+        "gzip": 150634,
+        "brotli": 128969
+      }
+    },
+    "renderer/task-panel/css": {
+      "raw": 5335,
+      "gzip": 1698,
+      "brotli": 1430,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 5230,
+        "gzip": 1664,
+        "brotli": 1401
+      }
+    },
+    "renderer/system-dock-bar/js": {
+      "raw": 490350,
+      "gzip": 161938,
+      "brotli": 139039,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 480735,
+        "gzip": 158762,
+        "brotli": 136312
+      }
+    },
+    "renderer/system-dock-bar/css": {
+      "raw": 8297,
+      "gzip": 2774,
+      "brotli": 2336,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 8134,
+        "gzip": 2719,
+        "brotli": 2290
+      }
+    },
+    "renderer/system-dock-panel/js": {
+      "raw": 519550,
+      "gzip": 169888,
+      "brotli": 146132,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 509362,
+        "gzip": 166556,
+        "brotli": 143266
+      }
+    },
+    "renderer/system-dock-panel/css": {
+      "raw": 10599,
+      "gzip": 3197,
+      "brotli": 2696,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 10391,
+        "gzip": 3134,
+        "brotli": 2643
+      }
+    },
+    "preload/index": {
+      "raw": 63174,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 62743,
+        "gzip": 15054,
+        "brotli": 12740
+      }
+    },
+    "preload/task-panel": {
+      "raw": 552,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 541,
+        "gzip": 320,
+        "brotli": 274
+      }
+    },
+    "preload/system-dock": {
+      "raw": 745,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 730,
+        "gzip": 415,
+        "brotli": 351
+      }
+    },
+    "main/index": {
+      "raw": 4406411,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 4404510,
+        "gzip": 1280902,
+        "brotli": 999742
+      }
+    },
+    "main/sync-crypto-worker-entry": {
+      "raw": 156639,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 153567,
+        "gzip": 47049,
+        "brotli": 41651
+      }
+    },
+    "main/builtin-tools-server": {
+      "raw": 459041,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 450040,
+        "gzip": 129341,
+        "brotli": 110699
+      }
+    },
+    "main/codec-host-entry": {
+      "raw": 110265,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 108102,
+        "gzip": 31928,
+        "brotli": 28114
+      }
+    },
+    "main/custody-guardian-entry": {
+      "raw": 105101,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 103040,
+        "gzip": 30523,
+        "brotli": 26979
+      }
+    },
+    "main/utility-host-entry": {
+      "raw": 2777,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 2722,
+        "gzip": 1398,
+        "brotli": 1256
+      }
+    },
+    "main/provider-bridge-entry": {
+      "raw": 342804,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 336082,
+        "gzip": 107329,
+        "brotli": 94797
+      }
+    },
+    "main/app-gui-compiler-entry": {
+      "raw": 253804,
+      "twoByteChunks": 1,
+      "measured": {
+        "raw": 249479,
+        "gzip": 75815,
+        "brotli": 64999
+      }
+    },
+    "main/app-gui-query-worker-entry": {
+      "raw": 35829,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 35126,
+        "gzip": 14480,
+        "brotli": 12904
+      }
+    },
+    "main/chat-database-worker-entry": {
+      "raw": 869617,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 852565,
+        "gzip": 227138,
+        "brotli": 195324
+      }
+    },
+    "main/history-import-worker-entry": {
+      "raw": 543296,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 532643,
+        "gzip": 152454,
+        "brotli": 131689
+      }
+    },
+    "main/providers/codex/bridge": {
+      "raw": 9474,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 9288,
+        "gzip": 4030,
+        "brotli": 3586
+      }
+    },
+    "main/providers/claude/bridge": {
+      "raw": 11139,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 10920,
+        "gzip": 4578,
+        "brotli": 4070
+      }
+    },
+    "main/providers/kimi/bridge": {
+      "raw": 4761,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 4701,
+        "gzip": 2029,
+        "brotli": 1790
+      }
+    },
+    "main/providers/opencode/bridge": {
+      "raw": 5108,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 5031,
+        "gzip": 2093,
+        "brotli": 1857
+      }
+    }
+  }
+}

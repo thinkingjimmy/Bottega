@@ -1,0 +1,33 @@
+/* [INPUT]: Shared Dock tokens, edge-aware slot metrics and the sidebar data attributes.
+ * [OUTPUT]: Side handle/strip geometry, inward hover motion, outward running dots and compact Widget readings.
+ * [POS]: On-demand bar stylesheet; DockBar waits for this CSS before exposing any side snapshot or acknowledging its layout.
+ */
+/* Sidebars use the same 68 DIP cross axis; the window owns only this strip. */
+.dock[data-edge="left"], .dock[data-edge="right"] { align-items: center; }
+.dock[data-edge="left"] { justify-content: flex-start; }
+.dock[data-edge="right"] { justify-content: flex-end; }
+.dock:not([data-edge="bottom"]) .handle { margin-bottom: 0; transform: scaleX(0.6); }
+.dock[data-edge="left"] .handle { margin-left: 2px; }
+.dock[data-edge="right"] .handle { margin-right: 2px; }
+.dock:not([data-edge="bottom"]) .strip { flex-direction: column; padding: var(--pad); }
+.dock:not([data-edge="bottom"]) .item { transform: translate(0, var(--offset, 0px)); }
+.dock:not([data-edge="bottom"]) .separator { margin: 0 4px; width: auto; }
+.dock:not([data-edge="bottom"]) .separator::after { top: 50%; right: 0; bottom: auto; left: 0; width: auto; height: 1px; }
+.dock[data-edge="left"] .running-dot { top: calc(50% - 2px); bottom: auto; left: -7px; margin-left: 0; }
+.dock[data-edge="right"] .running-dot { top: calc(50% - 2px); bottom: auto; left: auto; right: -7px; margin-left: 0; }
+.dock:not([data-edge="bottom"]) .face { flex-direction: column; justify-content: center; align-items: center; padding: 4px 0; gap: 6px; }
+.dock:not([data-edge="bottom"]) .face-activity { padding: 5px 0; gap: 2px; }
+.dock:not([data-edge="bottom"]) .face-more { align-self: center; margin-top: 0; }
+.dock:not([data-edge="bottom"]) .face-row { flex-direction: column; max-width: 100%; gap: 1px; }
+.dock:not([data-edge="bottom"]) .face-caption { max-width: 100%; overflow: visible; display: block; text-align: center; line-height: 1.3; }
+.dock:not([data-edge="bottom"]) .face-setup, .dock:not([data-edge="bottom"]) .empty-cta { flex-direction: column; font-size: 11px; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+.dock:not([data-edge="bottom"]) .face-glyph, .dock:not([data-edge="bottom"]) .empty-cta svg { flex: none; }
+.compact-reading { position: relative; display: block; max-width: 48px; }
+.reading-measure { position: absolute; visibility: hidden; width: max-content; white-space: nowrap; pointer-events: none; }
+.reading-details { display: block; max-width: 48px; font-size: 10px; line-height: 1.3; font-weight: 500; color: var(--accent); white-space: normal; overflow-wrap: anywhere; }
+@media (hover: hover) and (pointer: fine) {
+  .dock[data-edge="left"] .strip:not([data-dragging]) .item:hover { transform: translate(2px, 0); }
+  .dock[data-edge="right"] .strip:not([data-dragging]) .item:hover { transform: translate(-2px, 0); }
+  :root[data-reduced-motion] .dock .strip:not([data-dragging]) .item:hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) and (hover: hover) and (pointer: fine) { .dock .strip:not([data-dragging]) .item:hover { transform: none; } }

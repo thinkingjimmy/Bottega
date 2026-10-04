@@ -1,0 +1,606 @@
+/**
+ * [INPUT]: Depends on shared agent/MCP DTOs, model-catalog probe admission, the apps/runtime/agent-tools AgentToolInventory type, AbortSignal, and the Node subprocess environment type
+ * [OUTPUT]: Defines backend contracts, optional model-probe admission, the credential-safe authentication-check claim and main-only turn authority with optional exact-conversation Full Access validation, ProviderReadinessPlan (a descriptor's Provider bridge readiness launch) and ProviderBackend (a backend for any Provider id, what the runtime registry and the Provider resolver work with). TurnProcessOwner (B2-01: the other layer that owns a turn's process, e.g. host custody for a bridged turn).
+ * BackendTurnOptions carries main-owned skillIsolation for workflow launch translation.
+ * ResolvedRuntime binds a registry version answer to its executable with versionIdentity for host measurements.
+ * Carries the main-owned disableProviderMemory policy into native Provider launch configuration.
+ * [POS]: The backends contract module; runtime registry, transports, and product callers recognise each other only through the types declared here
+ */
+
+import type { QuotaHook } from "../usage-limits/readers/common";
+import type { AgentTurnCustodyDependency } from "../../../shared/apps/model/app-lifecycle";
+import type {
+  AgentApprovalDecision,
+  AgentBackendId,
+  AgentSendPayload,
+  AgentSubagentMeta,
+  AgentTurnItem,
+  AgentUserInputAnswers,
+  AgentUserInputQuestion,
+  AgentUserInputRequest,
+  BackendAuthStatus,
+  BackendCapabilities,
+  BackendModelInfo,
+  FailureKind,
+  HeadlessPurpose,
+  PromptHandoff,
+  SensitiveContributionValidation,
+  SessionRef,
+  UsageLimitInfo,
+  TurnFilesystemAccess,
+} from "../../../shared/ipc/agent/agent-ipc";
+import type { ServerFactBinding } from "../providers/bridge/acp/session/server-facts";
+import type { ModelCatalogProbeRunner } from "./models/model-catalog";
+import type { ContentBlock } from "@agentclientprotocol/sdk";
+import type { CleanupResult } from "../agent/process/process-group";
+import type {
+  AgentToolInventory,
+} from "../apps/runtime/agent-tools";
+import type {
+  BuiltinMcpLease,
+  BuiltinMcpServerSpec,
+} from "../tools/lease";
+import type { SubagentRegistry } from "../../../shared/tools/subagent-registry";
+import type { McpComponentHealthSubject } from "../../../shared/ipc/settings/extensions-ipc";
+import type { SessionCapabilityPolicy } from "./acp/startup/client-capabilities";
+import type { ProductFailure } from "../../../shared/product/product-failure";
+
+export type ThirdPartyMcpProtocolObservation = Readonly<{
+  outcome: "success" | "failure";
+  subject: McpComponentHealthSubject;
+  /** 仅传脱敏后的协议事实；authoritative main owner 负责 canonical digest。 */
+  evidence: string;
+}>;
+
+export type AgentRuntime = {
+  executable: string;
+  path: string;
+};
+
+export type ResolvedRuntime = AgentRuntime & {
+  version: string;
+  /** Exact executable identity observed before and after the registry's version probe. Required for host measurements. */
+  versionIdentity?: string;
+};
+
+export type RuntimeValidation =
+  | { status: "installed" }
+  | { status: "unsupported"; reason: string };
+
+/** 缓存快照复用前的二次确认；rejected 只表示"外部真相变了"，新路径的裁决交回发现。 */
+export type RuntimeConfirmation =
+  | { status: "confirmed" }
+  | { status: "rejected"; reason: string };
+
+// 判别联合而非可选字段：usage-limit 必然带窗口信息，
+// 类型上就不存在"声称限流却说不出是哪个窗口"的中间态。
+export type BackendFailure = { target?: Partial<import("../../../shared/agent-availability/types").ExecutionTarget> } & (
+  | {
+      kind: "auth-required" | "unknown";
+      message: string;
+      failure: ProductFailure;
+    }
+  | {
+      kind: "usage-limit";
+      message: string;
+      limit: UsageLimitInfo;
+      failure: ProductFailure;
+    });
+
+/**
+ * 轮级事实：由 turn 观察得来，与失败分类正交，所以不进 BackendFailure 的判别
+ * 联合而是与它并列。**三个终态出口（done/error/policy-violation）必须一律携带**
+ * ——只挂在成功那条上，等于让「中途死掉的那一轮」把已经发生的事实吞掉。
+ */
+export type AgentTurnFacts = { skillDescriptionsTruncated?: true };
+
+/**
+ * 分类线索：限流窗口在 ACP 上是带外到达的（Claude 走 usage_update notification，
+ * 不在 error 里），所以判据只能由 turn 把最近快照喂回分类器。
+ */
+export type FailureHints = {
+  rateLimit?: unknown;
+};
+
+export type ResolvedAgentInputItem =
+  | { type: "text"; text: string }
+  /** `resolvedOnly` 标记系统展开产物（当前只有 `@Section` 附件）：它不在用户
+   *  `input` 里，出错时报因也不该说成"你贴的图"。 */
+  | { type: "image"; dataUrl: string; filename: string; resolvedOnly?: true }
+  | { type: "skill"; name: string; path: string }
+  | { type: "mention"; name: string; path: string };
+
+export type ResolvedAgentInput = {
+  input: ResolvedAgentInputItem[];
+  commit(): void;
+  rollback(): void;
+  release(): Promise<void>;
+};
+
+export type AgentTurnCallbacks = {
+  onThread: (session: SessionRef) => Promise<void>;
+  onItemDelta: (itemId: string, text: string) => void;
+  /** `exitCode`: a command's exact exit code when the Provider reports one (Codex); main-only, never on the wire. */
+  onItem: (item: AgentTurnItem, metadata?: { locations?: string[]; title?: string; exitCode?: number }) => void;
+  onItemRemoved: (itemId: string) => void;
+  onConfigOptionUpdate?: (
+    options: readonly import("@agentclientprotocol/sdk").SessionConfigOption[]
+  ) => void;
+  onApproval: (approval: import("../../../shared/ipc/agent/agent-ipc").AgentApprovalRequest) => void;
+  onApprovalClosed: (approvalId: string) => void;
+  onTerminal: (event: {
+    type: "done" | "cancelled" | "error";
+    message?: string;
+    failureKind?: FailureKind;
+    usageLimit?: UsageLimitInfo;
+    failure?: ProductFailure;
+    facts?: AgentTurnFacts;
+  }) => void;
+  onProcessError: (failure: BackendFailure & { facts?: AgentTurnFacts }) => void;
+  onPolicyViolation?: (violation: {
+    budget: string;
+    detail: string;
+    facts?: AgentTurnFacts;
+  }) => void;
+  onUserInput?: (request: AgentUserInputRequest) => void;
+  onUserInputClosed?: (userInputId: string) => void;
+  onSubagentUpdate?: (agent: AgentSubagentMeta) => void;
+  onSubagentItem?: (agentThreadId: string, item: AgentTurnItem) => void;
+  onSubagentItemDelta?: (
+    agentThreadId: string,
+    itemId: string,
+    text: string
+  ) => void;
+  onThirdPartyMcpProtocol?: (
+    observation: ThirdPartyMcpProtocolObservation
+  ) => void;
+};
+
+export type AgentTurnTrace = {
+  recordWire(dir: "in" | "out", line: string): void;
+  recordMapped(
+    event:
+      | { type: "delta"; itemId: string; text: string }
+      | { type: "item"; item: AgentTurnItem }
+      | { type: "item-removed"; itemId: string }
+  ): void;
+};
+
+export type StartOutcome = "started" | "resume-failed";
+
+export type AdapterSteerOutcome =
+  | { outcome: "injected" }
+  | {
+      outcome: "unconsumed";
+      /** `staged-resource`：附件快照晚于围栏冻结，只能由下一轮带读面重发。 */
+      reason:
+        | "promptRequired"
+        | "not-in-flight"
+        | "unsupported"
+        | "staged-resource";
+    }
+  | { outcome: "ambiguous"; reason: string };
+
+/**
+ * The real owner of a turn's process when another layer launched it (a Provider-bridged turn: host custody, B2-01): its launch
+ * identity, and the settlement that ends the whole group — `released` only on proof, anything else `unconfirmed`.
+ */
+export type TurnProcessOwner = Readonly<{ identity: { pid: number; birthIdentity: string }; settle(): Promise<"released" | "unconfirmed"> }>;
+
+export type AgentTurn = {
+  readonly pid: number | undefined;
+  /** Present only when the process belongs to an owner other than this turn's Agent custody (B2-01); null until it is launched. */
+  processOwner?(): TurnProcessOwner | null;
+  readonly steeringSupported?: boolean;
+  /** 通用 prompt writer 终态；response Promise 不得代替它。必选：可选会让
+      「backend 未实现」与「prompt 从未创建」共用 not-created，已发送的
+      contribution 会被 receipt 谎报成 prompt-not-issued。 */
+  promptHandoff(): Promise<PromptHandoff>;
+  start(startupSignal?: AbortSignal): Promise<StartOutcome>;
+  steer?(prompt: ContentBlock[]): Promise<AdapterSteerOutcome>;
+  respondApproval(
+    approvalId: string,
+    decision: AgentApprovalDecision
+  ): Promise<void>;
+  interrupt(): void;
+  markStopped(): void;
+  pendingUserInput?(
+    userInputId: string
+  ): { questions: AgentUserInputQuestion[] } | undefined;
+  respondUserInput?(userInputId: string, answers: AgentUserInputAnswers): void;
+};
+
+/* ============================================================
+ * 进程宿主：一个 turn 只能有一条取得进程的路。
+ *
+ * `launch` 交出的是**完整 capability**——命令（可能已被围栏包装）、参数、
+ * workspace cwd 与 backend env。custody 宿主只会在 durable
+ * `activation-authorized` 落账之后才经 authenticated channel 把它交出去，
+ * 所以 transport 侧构造 launch 与 backend 真的拿到 launch 是两个时刻。
+ * `delivered` 就是后一个时刻：直连宿主立即兑现，custody 宿主等 ack。
+ * ============================================================ */
+export type AgentProcessLaunch = {
+  command: string;
+  args: readonly string[];
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+};
+
+/** How the Provider bridge proves a CLI ready: the process to launch and what to release once the proof is done. */
+export type ProviderReadinessPlan = { launch: AgentProcessLaunch; release?(): void | Promise<void> };
+
+export type AgentProcessLauncher = (
+  request: AgentProcessLaunch
+) => import("node:child_process").ChildProcessWithoutNullStreams;
+
+export type AgentProcessHost = {
+  /** 同步返回宿主进程；它的 0/1/2 就是 backend 的 0/1/2 */
+  launch: AgentProcessLauncher;
+  readonly delivered: Promise<void>;
+};
+
+/** Main-only authority; never serialized or accepted from renderer payloads. */
+export type TrustedTurnAuthority = {
+  validate(): Promise<void>;
+  current(): void;
+  fullAccessFor?(conversationId: string, incarnationId: string): boolean;
+};
+
+export type BackendTurnOptions = {
+  onSessionPrompt?(sessionId: string, texts: string[]): Promise<void>;
+  sessionRecovery?: { candidate: import("../library/sessions/boundary").NativeSessionHint | null; complete(outcome: "resumed" | "replayed"): Promise<void> };
+  trustedAuthority?: TrustedTurnAuthority;
+  payload: AgentSendPayload;
+  input: ResolvedAgentInput;
+  callbacks: AgentTurnCallbacks;
+  runtime: ResolvedRuntime;
+  workspace: string;
+  /** 缺省是直连 spawn；产品路径恒由组合根注入 custody guardian 宿主 */
+  processHost?: AgentProcessHost;
+  /** What the turn's work depends on (App references, extension plans): journaled with its process in host custody (TASK-11 flip, ruling (a)). */
+  custodyDependencies?: readonly AgentTurnCustodyDependency[];
+  processEnv?: NodeJS.ProcessEnv;
+  /** Main-owned workflow scope: native Skill discovery is disabled; selected Skills arrive through use_skill. */
+  skillIsolation?: { deniedRoots: readonly string[] };
+  /** 第一次 createTurn 前冻结；同一 request 的 resume/retry 复用，不回读 live Settings。 */
+  backendSessionConfig?: Readonly<{
+    /** Concrete immutable roots resolved once at turn creation; never `current`. */
+    claudePluginPaths?: readonly string[];
+    /** Product-owned flag-layer overlay; user ~/.claude/settings.json stays untouched. */
+    claudeDisabledPluginIds?: readonly string[];
+    /** Main-only turn lease; released only after process custody is safely closed. */
+    releaseClaudePluginProjection?: () => Promise<void>;
+    /** The Provider plugin's settings a person changed (T-P5); a default is absent, so nothing is sent for it. */
+    providerSettings?: Readonly<Record<string, boolean | string | number>>;
+  }>;
+  filesystemAccess?: TurnFilesystemAccess & { controlRoot: string };
+  subagents: SubagentRegistry;
+  trace?: AgentTurnTrace;
+  builtinMcp?: {
+    server: BuiltinMcpServerSpec;
+    lease: BuiltinMcpLease;
+    waitReady(signal: AbortSignal): Promise<void>;
+  };
+  /** main/bridge 冻结的整 server inclusion 计划；backend 只负责协议翻译。 */
+  thirdPartyMcpPlan?: import("../../../shared/ipc/settings/mcp-servers-ipc").ThirdPartyMcpPlan;
+  /** runtime CAS 后冻结；ACP oracle 将它与服务端返回的 session facts 同章。 */
+  serverFactBinding?: ServerFactBinding;
+  /** main 在 runtime CAS 后冻结的产品上下文；逐 spawn 作为 prompt 首块下发。 */
+  artifactDirectory?: string;
+  productContext?: string;
+  /** Main-owned workflow isolation; ordinary Chats inherit the Provider setting. */
+  disableProviderMemory?: boolean;
+  /** 通用敏感 prompt contribution；backend 只消费 lease，不理解其业务来源。 */
+  sensitiveContribution?: {
+    kind: string;
+    text: string;
+    count: number;
+    bytes: number;
+    /** A bridged turn's contribution is consumed in main, so its answer may arrive later (TASK-11 slice 0). */
+    consume(): SensitiveContributionValidation | Promise<SensitiveContributionValidation>;
+    /** prompt 未创建/attempt 结束时释放 fresh lease；已 consume 时幂等 no-op。 */
+    release?(): void;
+  };
+  onPromptContributionValidation?(value: SensitiveContributionValidation): void;
+};
+
+export type SetupTerminalAction = "install" | "update" | "login";
+
+export type SetupCommand = {
+  command: string;
+  dangerous: boolean;
+};
+
+export type SetupExtension = {
+  commands: Partial<Record<SetupTerminalAction, SetupCommand>>;
+  latestVersion?(): Promise<string>;
+  /** Arguments to the resolved CLI that update it in place without a prompt; Settings › Updates runs them headless. */
+  selfUpdate?: readonly string[];
+};
+
+/**
+ * `unknown` 是一等结论，不是缺省值：没有 auth 扩展、或握手只能证明进程健康
+ * 而证不了登录态的后端（OpenCode），必须能诚实地说「没结论」。把它折成
+ * `authenticated` 就是伪造登录态。
+ */
+export type AuthCheckStatus = Extract<
+  BackendAuthStatus,
+  "authenticated" | "unauthenticated" | "unknown" | "error"
+>;
+
+export type AuthCheckResult = {
+  status: AuthCheckStatus;
+  startup?: "ready" | "cannot-start";
+  checkIssue?: import("../../../shared/agent-availability/types").CheckIssue;
+  unknownReason?: "provider-scoped" | "not-supported" | "custom-route";
+  /** 探针给出的原始可操作诊断；Registry 必须原样投影给 UI 与 runner。 */
+  reason?: string;
+  /** Opaque sha256 of a provider-scoped account id when authenticated; null when the CLI exposes none. Never an email or token. */
+  accountFingerprint?: string | null;
+};
+
+export type AuthExtension = {
+  check(runtime: ResolvedRuntime, signal?: AbortSignal, onAuthenticationStarted?: () => void): Promise<AuthCheckResult>;
+  /** Whether this CLI is set to send requests to an endpoint the person configured; there the official check proves nothing. */
+  route?(runtime: ResolvedRuntime): Promise<"official" | "custom">;
+  /** provider 表示单次模型 turn 不能代表整个 backend 的认证态。 */
+  turnEvidence?: "backend" | "provider";
+  /** 该检查跑在一次性 state 根 + 无网络 Seatbelt 里，既刷新不了也改写不了凭据：
+      因此不需要独占凭据，可与额度读取并行。只有具备准备好的只读环境的探针有资格声明。 */
+  credentialSafe?: boolean;
+};
+
+/* ============================================================
+ * ACP 进程启动三元组。
+ *
+ * 抽出来只为一件事：让「怎么起这个后端」在 createTurn 与 readiness 探测
+ * 之间只有一份。两份必然漂移，而漂移的那一份往往正是安全基线
+ * （OpenCode 的锁定监听参数、每 turn 随机凭据、ask 档）。
+ * ============================================================ */
+export type AcpLaunch = {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+};
+
+export type AcpLaunchOverlay = {
+  /** 持久授权派生的 App 环境；readiness 探测恒缺席。 */
+  processEnv?: NodeJS.ProcessEnv;
+  /**
+   * 审批档（Codex 经 CODEX_CONFIG、OpenCode 经 OPENCODE_PERMISSION）、Plan 档
+   * （仅 OpenCode：它的 plan 由 agent 切换**加**权限收紧两半构成，后一半在
+   * env 里，赶不上 `session/set_config_option`）与内置 MCP。
+   * readiness 恒缺席——握手不跑 turn、不带内置工具。这不是分支，是这一格
+   * 数据本来就没有；缺席即按最严档位落地。
+   */
+  session?: {
+    disableProviderMemory?: boolean;
+    artifactDirectory?: string;    approveForMe?: boolean;
+    planMode?: boolean;
+    builtinMcp?: BuiltinMcpServerSpec;
+    thirdPartyMcpPlan?: import("../../../shared/ipc/settings/mcp-servers-ipc").ThirdPartyMcpPlan;
+    /** Codex's plugin settings and workflow-role flag, frozen with the turn (backendSessionConfig). */
+    providerSettings?: Readonly<Record<string, boolean | string | number>>;
+  };
+};
+
+export type AcpLauncher = (
+  runtime: ResolvedRuntime,
+  overlay?: AcpLaunchOverlay
+) => AcpLaunch;
+
+export type ModelsExtension = {
+  list(
+    runtime: ResolvedRuntime,
+    workspace: string,
+    signal?: AbortSignal,
+    runProbe?: ModelCatalogProbeRunner
+  ): Promise<BackendModelInfo[]>;
+  /** The list this desktop already knows, or null; never starts a probe (remote publication, OPT-20). */
+  cached?(runtime: ResolvedRuntime, workspace: string): Promise<BackendModelInfo[] | null>;
+  /** 用户显式 Recheck 时丢弃本后端的目录缓存；TTL 是省事的默认，不是真相。 */
+  invalidate?(): void;
+};
+
+export type SkillsExtension = {
+  sources(workspace: string): Array<{
+    path: string;
+    scope: "user" | "repo" | "system";
+  }>;
+};
+
+export type HeadlessJob = {
+  sourceConversationId?: string;
+  purpose: HeadlessPurpose;
+  cwd: string;
+  sandboxRoot: string;
+  readRoots: string[];
+  toolPolicy: "none" | "workspace";
+  ephemeral: boolean;
+  prompt: string;
+  untrustedContent?: string;
+  model?: string;
+  sandbox: "read-only" | "workspace-write";
+  network: boolean;
+  approvalPolicy: "never";
+  env: "isolated-home" | "user-default";
+  /** 仅产品侧持久授权派生的 App 配置；不得接受 manifest 直通变量名。 */
+  processEnv?: NodeJS.ProcessEnv;
+  homeDir?: string;
+  ignoreUserConfig: boolean;
+  /** Frozen product flag-layer policy for Claude ambient user plugins. */
+  claudeDisabledPluginIds?: readonly string[];
+  /** Path to the JSON Schema file (every Provider's schema flag takes a path). */
+  outputSchema?: string;
+  timeoutMs: number;
+  onProcessGroup?: (pid: number) => Promise<void> | void;
+  onProcessExit?: (pid: number) => Promise<void> | void;
+};
+
+export type HeadlessParserState = {
+  text: string;
+  json?: unknown;
+  error?: string;
+  events: AgentTurnItem[];
+};
+
+export type HeadlessExecutionSpec = {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+  /** 未提供时由 executor 投递 job prompt；空字符串表示 prompt 已安全进入 argv。 */
+  stdin?: string;
+  /** backend 仅用于已完成独立 enforcement matrix 的原生 OS 沙箱。 */
+  osSandbox?: "executor" | "backend";
+  /** 本后端自己的凭据/状态根；executor 据此在围栏中放行，其余后端的凭据仍拒读。 */
+  credentialRoots?: string[];
+  /**
+   * 声明源只读面（如一次性状态根里凭据 symlink 的真实来源）：围栏读放行、
+   * 写在 allow 后重新 deny。foreign 敏感面的双 deny 排在最后，声明不了别家凭据。
+   */
+  readOnlyRoots?: string[];
+  /**
+   * spec 预备的一次性产物（如 disposable 状态根）的回收钩子。executor 保证
+   * 恰好调用一次：spawn 后在进程组清理落定之后，preflight 失败则在拒绝之前。
+   */
+  release?(): Promise<void>;
+  parseLine(line: string, state: HeadlessParserState): void;
+};
+
+export type HeadlessRun = {
+  events: AsyncIterable<AgentTurnItem>;
+  result: Promise<{ text: string; json?: unknown }>;
+  cancel(): Promise<void>;
+  settled: Promise<CleanupResult>;
+};
+
+export type MaintenanceJobInput = {
+  purpose: Extract<HeadlessPurpose, "install-analysis" | "repair" | "serve">;
+  cwd: string;
+  prompt: string;
+  outputSchema?: string;
+  sandbox: "read-only" | "workspace-write";
+  network: boolean;
+  processEnv?: NodeJS.ProcessEnv;
+  timeoutMs: number;
+  onProcessGroup?: HeadlessJob["onProcessGroup"];
+  onProcessExit?: HeadlessJob["onProcessExit"];
+};
+
+export type MaintenanceSession = {
+  createJob(input: MaintenanceJobInput): HeadlessJob;
+  applyExtension(input: {
+    userData: string;
+    record: { id: string; displayName: string; dir: string };
+    appDir: string;
+    value: unknown;
+    execute: (
+      executable: string,
+      args: string[],
+      options: {
+        cwd: string;
+        env: NodeJS.ProcessEnv;
+        allowFailure?: boolean;
+      }
+    ) => Promise<{ stdout: string }>;
+    appendLog: (line: string) => Promise<void>;
+  }): Promise<void>;
+  inspectToolInventory(workspace: string): Promise<AgentToolInventory>;
+};
+
+export type MaintenanceAdapter = {
+  open(input: {
+    /** The Agent whose CLI the session runs: its process admission and supervision domain. */
+    backend: AgentBackendId;
+    userData: string;
+    appId: string;
+    workspace: string;
+    runtime: ResolvedRuntime;
+  }): Promise<MaintenanceSession>;
+  cleanup(input: { userData: string; appId: string }): Promise<void>;
+};
+
+export type ConnectionDescriptor = {
+  id: AgentBackendId;
+  displayName: string;
+  minimumVersion?: string;
+  workspaceDirName: string;
+  /**
+   * 按发现优先级返回全部可执行候选；Registry 负责逐个验证版本与文件身份。
+   * 发现层不得提前裁成一个，否则 PATH 里的旧 shim 会遮住后面的有效安装。
+   */
+  detectRuntime(signal?: AbortSignal):
+    | readonly AgentRuntime[]
+    | Promise<readonly AgentRuntime[]>;
+  /**
+   * `--version` 探针的子进程环境；缺省是七变量最小用户环境。
+   * CLI 的状态根随 env 漂移（XDG 等）时必须声明，否则探针会在错位的目录里
+   * 建目录、落缓存，与真实 turn 各说各话。
+   */
+  versionEnvironment?(runtime: AgentRuntime): NodeJS.ProcessEnv;
+  /** The version run's arguments (argv, never a shell); absent or empty means `--version` (a bare run could start the CLI's session). A package declares its own. */
+  versionArgs?: readonly string[];
+  /** Package discovery must enter the same fenced launch authority as every other CLI operation. */
+  probeVersion?(runtime: AgentRuntime, signal: AbortSignal): Promise<string | undefined>;
+  /**
+   * Registry 每次复用缓存的 installed 快照前调用。发现之后外部真相可能已变
+   * （Claude 的企业 managed policy 会改写 adapter 将 spawn 的路径），被拒即
+   * 作废快照并重新发现，让新路径走完整的 identity/版本校验，而不是在这里裁决。
+   */
+  confirmRuntime?(
+    runtime: ResolvedRuntime,
+    signal?: AbortSignal
+  ): RuntimeConfirmation | Promise<RuntimeConfirmation>;
+  validateTurnOptions(value: unknown): void;
+  validateSessionId(sessionId: string): boolean;
+  createTurn(options: BackendTurnOptions): AgentTurn;
+};
+
+export type CapabilityProvider = {
+  capabilitiesFor(runtime: ResolvedRuntime): BackendCapabilities;
+  validateRuntime(runtime: ResolvedRuntime): RuntimeValidation;
+};
+
+export type FailureClassifier = {
+  classifyFailure(cause: unknown, hints?: FailureHints): BackendFailure;
+};
+
+export type HeadlessExtension = {
+  purposes: HeadlessPurpose[];
+  /** 允许异步：spec 可以先预备一次性状态根（symlink 凭据）再交出执行面。 */
+  spec(
+    job: HeadlessJob,
+    runtime: ResolvedRuntime
+  ): HeadlessExecutionSpec | Promise<HeadlessExecutionSpec>;
+};
+
+export type BackendDescriptor =
+  & ConnectionDescriptor
+  & CapabilityProvider
+  & FailureClassifier
+  & {
+  /**
+   * ACP initialize policy. 唯一政策格是 `SESSION_CAPABILITY_POLICY`：本字段只
+   * 按后端 id 取出那一格转发给 registry 与深握手，生产 turn 与 readiness 探针
+   * 各自直接索引同一张表——四条读法一个来源，改一格四处同时变色。
+   */
+  sessionCapabilityPolicy: SessionCapabilityPolicy;
+  /** Descriptor-owned tier policy; the option id is a lookup key, not wire configId. */
+  serviceTier?: Readonly<{
+    configOptionId: string;
+    values: Readonly<Record<string, string>>;
+  }>;
+  setup?: SetupExtension;
+  auth?: AuthExtension;
+  models?: ModelsExtension;
+  skills?: SkillsExtension;
+  headless?: HeadlessExtension;
+  maintenance?: MaintenanceAdapter;
+  /** The Provider bridge's readiness plan for this CLI; a descriptor without one cannot be proven ready on the bridge. */
+  readiness?(runtime: ResolvedRuntime): Promise<ProviderReadinessPlan>;
+  /** Quota support (TASK-13 B): how this Provider's limits are read. A descriptor without one has no quota. */
+  quota?: QuotaHook;
+};
+
+/** A backend for any Provider: a built-in's host code, or a package's DescriptorBackend. Only a built-in's id is an AgentBackendId. */
+export type ProviderBackend = Omit<BackendDescriptor, "id"> & Readonly<{ id: string }>;

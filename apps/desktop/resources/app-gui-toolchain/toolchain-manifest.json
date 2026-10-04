@@ -1,0 +1,98 @@
+{
+  "schema": "bottega.app-gui-toolchain/v1",
+  "preset": "bottega-react-v1",
+  "target": "chromium-140",
+  "entryAbi": "default-zero-argument-react-component-v1",
+  "dependencies": {
+    "@base-ui/react": "1.7.0",
+    "@dnd-kit/core": "6.3.1",
+    "@dnd-kit/sortable": "10.0.0",
+    "@phosphor-icons/react": "2.1.10",
+    "@tailwindcss/node": "4.3.2",
+    "@tailwindcss/oxide": "4.3.2",
+    "@tanstack/react-table": "8.21.3",
+    "@tanstack/react-virtual": "3.14.8",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "axe-core": "4.10.3",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "date-fns": "4.4.0",
+    "echarts": "6.1.0",
+    "esbuild": "0.28.1",
+    "lucide-react": "1.24.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-hook-form": "7.87.0",
+    "tailwind-merge": "3.6.0",
+    "tailwindcss": "4.3.2",
+    "typescript": "5.9.3",
+    "zod": "4.6.4"
+  },
+  "lockfileDigest": "sha256:c22f5163e15c1215983d2d26e235f1b9c94ea2088855641edac893013ce2384d",
+  "formalReleaseTrust": {
+    "schema": "bottega.formal-release-trust/v1",
+    "status": "unprovisioned",
+    "releasePublicKey": {
+      "path": "release-public-key.pem",
+      "digest": null
+    },
+    "platformAttestationKeys": [
+      {
+        "platform": "darwin-arm64",
+        "path": "release-attestation-keys/darwin-arm64.pem",
+        "digest": null
+      },
+      {
+        "platform": "win32-x64",
+        "path": "release-attestation-keys/win32-x64.pem",
+        "digest": null
+      },
+      {
+        "platform": "linux-x64",
+        "path": "release-attestation-keys/linux-x64.pem",
+        "digest": null
+      }
+    ]
+  },
+  "productModules": {
+    "sketch": {
+      "path": "modules/sketch.json",
+      "sha256": "sha256:f4fc6404e1b01460f7663b233de4b2e071fdda68d9a84465bff023a4bc819be6",
+      "sourceDigest": "sha256:bcb1928b9efec605658dee3b7a24bdec57e0d96baa29921d28cb4ea6763b9669"
+    },
+    "plugin": {
+      "path": "modules/plugin.json",
+      "sha256": "sha256:1fe36dd30d0ba09759bd1732eeeafe21ded488c3e3bcfd61988f0ad0c6af45b4",
+      "sourceDigest": "sha256:3b294e6dd6a8aceffd62bfa24e1e131ddc65d23980b058c45412660e71878642"
+    }
+  },
+  "platforms": [
+    "darwin-arm64",
+    "linux-x64",
+    "win32-x64"
+  ],
+  "independentAdmissionGates": [
+    "gate-1",
+    "gate-2",
+    "gate-3"
+  ],
+  "sliceDigests": {
+    "gate-1": "sha256:96c6c972fb841362bae155164621d1e95898da3eb01775d4dbd940c80aea6faa",
+    "gate-2": "sha256:5e00f9eaf81e5a8708088c5c1b180c19c4f3a797f69793c7383df01d66dbaa2d",
+    "gate-3": "sha256:5f5c72c1ef921d53b38004a836a7b00d4636fa199b0f1a78d16654bbc489f61b"
+  },
+  "authoringCatalogDigest": "sha256:6eaa63773e3b1983e970ad2ce1b56c2cbeeb1de54f9e1ace4635cdfc1e0aef0c",
+  "compatibilitySupportDigest": "sha256:5a876d99d1fef6e30040d49ea6283feabaecd97a871ee4955b98610a9cbbdba7",
+  "performanceBaselineDigest": "sha256:73285c2d1c9ae2efd75ec1e2cfff400348361a2e6499a5db54479450e8818460",
+  "runtimeSbomDigest": "sha256:d293fe2e4a9937091e6e6cb29fb0182976f7cfa06d6b1223ac0869577e36ae8f",
+  "noticesDigest": "sha256:6df76f9d823ebe833f5a30bf73a99b41d6dd18815983e3b892796dfbc2b55923",
+  "artifactPaths": {
+    "slices": "slices/",
+    "authoringCatalog": "authoring-catalog.json",
+    "compatibilitySupport": "compatibility-support.json",
+    "performanceBaseline": "app-gui-performance-baseline.json",
+    "runtimeSbom": "runtime-sbom.cdx.json",
+    "notices": "NOTICE.txt"
+  }
+}

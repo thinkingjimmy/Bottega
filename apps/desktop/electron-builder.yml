@@ -1,0 +1,169 @@
+# [INPUT]: Depends on electron-vite output, the electronFuses flip (RunAsNode, NODE_OPTIONS and inspect off, ad-hoc re-sign; TASK-35 slice 6), the afterPack bundled-Node step (scripts/node-runtime/after-pack.mjs), the out/system-dock native helpers and recovery LaunchAgent plist, test-receipt exclusion, the keep-node-module-types hook, root LICENSE, original sumo ISC notice, system skills, immutable Design factory payload, Base GUI SDK/toolchain/component/Starter resources, compiler native payloads, icons, entitlements, and pinned react-grab assets
+# [OUTPUT]: Produces, without npm sourcemaps (OPT-33 A) and with only the UI languages' Chromium locale packs (OPT-33 B), Bottega macOS arm64 DMG (UDBZ) / ZIP (deflate -9), Windows x64 NSIS, and Linux x64 AppImage (gzip squashfs) artifacts whose packaged app.name is Bottega (own userData, never the dev directory), with the pinned Node at Resources/runtime/node/<platform>-<arch> signed with its own entitlements and the runtime manifest beside it (TASK-34), an offline fail-closed App GUI compiler, the seven self-contained runtime entries and their runtime-entries.json unpacked beside the ASAR so a plain Node can run them (TASK-35; non-production builds also unpack the private connectivity smoke), no test-only receipt, TypeScript declaration files kept and the whole node_modules tree unpacked next to the ASAR for the packaged compiler, and no vendored Codex/Claude CLI platform packages (the product only spawns the user's own CLI), and on macOS the signed Bottega Dock helpers under Resources/system-dock/bin, the recovery agent plist under Contents/Library/LaunchAgents, and Apple Events/Downloads usage descriptions
+# [POS]: The only desktop packaging configuration; release signing is fail-closed in release scripts while ordinary CI packaging remains unsigned
+
+appId: com.jimmywong.bottega
+productName: Bottega
+# 打包件的 Electron app.name 取自 asar 里的 package.json，而 package.json 的 name
+# 是 npm 包名 @ai-chat/desktop。不注入 productName，打包件与 pnpm dev 就共用同一个
+# userData 目录，两个 schema 世代会互相隔离对方的账本。只注入打包件：写进
+# package.json 会连 dev 一起改名，又撞回同一个目录。
+extraMetadata:
+  productName: Bottega
+# maximum 只改三处：DMG UDZO→UDBZ（bzip2）、mac zip -7→-9；NSIS 因差分打包强制 normal，
+# 零影响。AppImage 在默认 FUSE2 toolset 下会被 maximum 自动切成 xz（冷启动每次多解压），
+# 所以下面 appImage.compression 显式钉住 gzip，等 Linux 真机实测后再决定是否改 xz。
+compression: maximum
+# OPT-33 B: only the Chromium locale packs of the UI languages (APP_LOCALES) and their region variants, so native chrome (Open/Save
+# panels, menus) stays in the UI's language; each name in both styles, because mac keeps .lproj (underscore) and win/linux keep .pak (dash).
+# Derived and checked by config/electron-locale.test.mjs.
+electronLanguages:
+  - en-US
+  - en_US
+  - en-GB
+  - en_GB
+  - zh-CN
+  - zh_CN
+  - zh-TW
+  - zh_TW
+  - ja
+  - fr
+  - es
+  - es-419
+  - es_419
+directories:
+  output: release
+files:
+  - out/**
+  - "!out/.e2e-build-receipt.json"
+  - "!out/renderer/.chart-module-report.json"
+  # 两个 ACP adapter 的依赖链各带一份平台 CLI 原生二进制（codex 271 MB、claude 257 MB）。
+  # 产品只 spawn 用户本机 CLI（CODEX_PATH / CLAUDE_CODE_EXECUTABLE），它们从未被执行。
+  # 负模式作用于 electron-builder 收集后的 node_modules 相对路径；`**/` 同时覆盖嵌套放置。
+  - "!**/node_modules/@openai/codex-*/**"
+  - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+  # OPT-33 A: npm sourcemaps (about 2,600 files, 70 MB raw) are never read at run time; our own bundles emit none, and the npm ones are
+  # reproducible from the lockfile, so no private copy is kept.
+  - "!**/node_modules/**/*.map"
+# electron-builder 默认把 node_modules 里的 *.d.ts 全部剔除。打包态 App GUI 编译器要在 asar 内
+# 对作者源码做 typecheck（typescript/lib 与各包声明），没有它们每次打包态编译都死在
+# "Cannot find global type 'Array'"——首个打包态编译 smoke（2026-09-04）暴露的第三个死点。
+onNodeModuleFile: ./scripts/keep-node-module-types.cjs
+# TASK-34: the pinned, signature-verified Node goes to Resources/runtime with its own signature and the runtime manifest.
+# A hook, not an extraResources entry, so every packaging path (including the public workflow) runs it and fails closed.
+afterPack: ./scripts/node-runtime/after-pack.mjs
+# TASK-35 slice 6: flipped by electron-builder after afterPack and before signing. Every Node program runs on the bundled Node, so the
+# app itself never runs as Node, reads NODE_OPTIONS or takes --inspect. resetAdHocDarwinSignature: a package built without an identity
+# (dist:verify, staging) would not launch on arm64 after the flip; a Developer ID build signs over it afterwards.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  resetAdHocDarwinSignature: true
+# 整个 node_modules 以 unpacked 形式落盘：打包态 App GUI 编译器把 require.resolve 得到的
+# 依赖路径交给原生 esbuild 子进程，而 esbuild 读不到 app.asar 里的虚拟路径——首个打包态
+# 编译 smoke（2026-09-04）暴露的第四个死点。unpack 不改变字节数：asar 头仍列出全部条目、
+# Node 侧读取透明，只是文件真身放在 app.asar.unpacked 下，esbuild/Oxide 原生载荷随之覆盖。
+asarUnpack:
+  - node_modules/**
+  # TASK-35: the entries a plain Node runs cannot live inside the asar; each is self-contained and digest-checked (runtime-entries.json).
+  - "out/main/{package-host-entry,package-provider-entry,custody-guardian-entry,builtin-tools-server,codec-host-entry,app-gui-compiler-entry,process-watchdog-entry,seatbelt-measurement-entry,repair-supervisor-entry}.js"
+  # TASK-35 slice 6: the digests beside them, so a plain Node can compose the packaged port; and the private connectivity smoke, which
+  # exists only in non-production builds (the pattern then matches nothing), run by the dist smoke on the bundled Node.
+  - "out/main/runtime-entries.json"
+extraResources:
+  - from: resources/presence
+    to: presence
+    filter: ["*.png"]
+  - from: out/presence
+    to: presence
+    filter: ["bin/screen-bridge"]
+  - from: ../../LICENSE
+    to: LICENSE
+  - from: ../../packages/cloud-crypto/NOTICE.txt
+    to: licenses/libsodium-0.8.4.txt
+  - from: resources/icon.png
+    to: icon.png
+  - from: resources/skills
+    to: skills
+  - from: resources/apps/Bottega-app-design-canvas
+    to: factory-apps/design-canvas
+    filter: ["**/*", "!.git", "!.git/**"]
+  - from: resources/gui-sdk
+    to: gui-sdk
+  - from: resources/app-gui-toolchain
+    to: app-gui-toolchain
+  - from: resources/app-gui-starters
+    to: app-gui-starters
+  - from: resources/app-gui-components
+    to: app-gui-components
+  # The extension signing anchor (TASK-14 S7): unprovisioned until the key ceremony; a packaged build never takes a test anchor.
+  - from: resources/extension-trust
+    to: extension-trust
+  - from: node_modules/react-grab/dist/index.global.js
+    to: react-grab/index.global.js
+  - from: node_modules/react-grab/dist/styles.css
+    to: react-grab/styles.css
+mac:
+  binaries:
+    - Contents/Resources/presence/bin/screen-bridge
+    - Contents/Resources/tunnel/bin/preview-capture
+    - Contents/Resources/system-dock/bin/system-dock-bridge
+    - Contents/Resources/system-dock/bin/bottega-dock-recovery
+    - Contents/Resources/system-dock/bin/dock-glass.node
+  # Bottega Dock (macOS 15+, arm64) ships only in mac packages; mac extraFiles are rooted at Contents/.
+  # SMAppService.agent(plistName:) only looks in Contents/Library/LaunchAgents.
+  extraFiles:
+    - from: out/tunnel/bin
+      to: Resources/tunnel/bin
+      filter: ["preview-capture"]
+    - from: out/system-dock/bin
+      to: Resources/system-dock/bin
+      filter: ["system-dock-bridge", "bottega-dock-recovery", "dock-glass.node"]
+    - from: out/system-dock/LaunchAgents
+      to: Library/LaunchAgents
+      filter: ["*.dock-recovery.plist"]
+  # TCC prompts and attribution belong to the outer app: Finder Automation (empty Trash) and Downloads reads.
+  extendInfo:
+    NSAppleEventsUsageDescription: Bottega asks Finder to empty the Trash only when you confirm it from the Bottega Dock.
+    NSDownloadsFolderUsageDescription: Bottega shows your most recent downloads in the Bottega Dock so you can open them quickly.
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  hardenedRuntime: true
+  notarize: true
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+  # The bundled Node is signed in afterPack with resources/entitlements.node.plist; the app-wide pass must not re-sign it.
+  signIgnore:
+    - "/Contents/Resources/runtime/node/[^/]+/bin/node$"
+  icon: resources/icon.png
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: resources/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-windows-${arch}.${ext}
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  icon: resources/icon.png
+  category: Utility
+  executableName: bottega
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
+appImage:
+  compression: gzip
+publish:
+  provider: github
+  owner: thinkingjimmy
+  repo: Bottega
+protocols:
+  - name: Bottega
+    schemes:
+      - bottega

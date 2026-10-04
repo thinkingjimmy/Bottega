@@ -1,0 +1,81 @@
+/* [INPUT]: Native menu-bar/notch bounds and semantic compact/list markup.
+ * [OUTPUT]: Black connected notch wings with separate native-menu/list controls, a compact task list, persistent selection, neutral container focus, and visible keyboard/contrast states.
+ * [POS]: Independent auxiliary renderer stylesheet; list dimensions match the controller's bounded row layout.
+ */
+:root { color-scheme: dark; font: 13px -apple-system, BlinkMacSystemFont, sans-serif; color: #eeeeef;
+  --surface: #000; --muted: #a3a3aa; --line: #29292d; --attention: #f4aa48; --selected: #082550; --focus: #bdbdc3; }
+* { box-sizing: border-box; }
+body { margin: 0; background: transparent; overflow: hidden; user-select: none; }
+button { font: inherit; color: inherit; border: 0; cursor: pointer; background: transparent; touch-action: manipulation; }
+button:focus-visible { outline: 2px solid var(--focus); outline-offset: -3px; }
+svg { display: block; width: 16px; height: 16px; flex: none; }
+.summary { display: flex; align-items: center; justify-content: space-between; width: 100vw; height: 100vh;
+  gap: 6px; padding: 0 8px; background: var(--surface); border-radius: 0 0 12px 12px; white-space: nowrap; }
+.summary-menu-button { display: grid; place-items: center; flex: none; width: 24px; height: 100%; padding: 0; }
+.summary-toggle { display: flex; justify-content: space-between; align-items: center; flex: 1; min-width: 0; height: 100%; padding: 0; }
+.summary-left { border-bottom-right-radius: 0; padding-right: 8px; }
+.summary-right { border-bottom-left-radius: 0; padding-left: 8px; }
+.counts, .count, .summary-end, .result { display: flex; align-items: center; }
+.counts { gap: 10px; min-width: 0; }
+.summary-menu { width: 13px; height: 13px; color: var(--muted); }
+.count { gap: 4px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
+.count svg { width: 14px; height: 14px; }
+.count.running svg { fill: currentColor; stroke-width: 1.6; }
+.count.nonzero { color: var(--attention); }
+.result { gap: 6px; min-width: 0; font-size: 11px; }
+.result > span { overflow: hidden; text-overflow: ellipsis; }
+.summary-end { gap: 7px; }
+.summary-right .summary-end { width: 100%; justify-content: flex-end; }
+.agents { display: flex; align-items: center; gap: 3px; }
+.avatar { display: grid; place-items: center; flex: none; width: 22px; height: min(22px, calc(100vh - 4px)); border: 1px solid #535358; border-radius: 50%; }
+.avatar.approval, .avatar.answer, .avatar.recovery { border-color: var(--attention); }
+.avatar .backend-icon { width: 14px; height: 14px; }
+.overflow-count { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.summary-chevron { width: 13px; height: 13px; color: var(--muted); }
+.backend-icon { display: inline-block; width: 22px; height: 22px; }
+.backend-icon svg { width: 100%; height: 100%; }
+.panel { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; }
+/* The programmatically focused region has no action highlight; Tab still outlines buttons. */
+.panel:focus { outline: none; }
+.panel-header { display: flex; flex: 0 0 51px; justify-content: space-between; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--line); }
+h1 { font-size: 15px; font-weight: 600; margin: 0; }
+.open-main { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 6px; border-radius: 8px; color: #bdbdc3; }
+.rows { flex: 1; min-height: 0; padding: 6px 5px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #45454a transparent; }
+.task { display: flex; width: 100%; height: 56px; text-align: left; align-items: center; gap: 12px; padding: 0 11px; border-radius: 9px; }
+.agent { display: grid; place-items: center; flex: none; width: 24px; color: #d3d3d8; }
+.identity { flex: 1; min-width: 0; }
+.identity strong { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.identity small { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phase { display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex: none; max-width: 38%; font-size: 11px; color: var(--muted); }
+.phase > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.state-icon { width: 14px; height: 14px; }
+.approval, .answer, .recovery { color: var(--attention); }
+.failed { color: #ffa5a5; }
+.completed { color: #a7dcb1; }
+.task:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
+.task[data-selected="true"] { background: var(--selected); }
+.task[data-selected="true"] .identity small { color: #b3c5e3; }
+.empty { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; text-align: center; }
+.empty strong { font-size: 14px; font-weight: 500; }
+.empty p { color: var(--muted); margin: 8px 0 0; font-size: 12px; line-height: 1.6; }
+.error { color: #ffa5a5; margin: 0; padding: 8px 16px; font-size: 12px; }
+.overflow-note { flex: 0 0 24px; margin: 0; padding: 0 16px; font-size: 11px; color: var(--muted); }
+.panel-footer { display: flex; flex: 0 0 45px; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding: 0 6px 0 16px; }
+.keyboard-hints { display: flex; flex-wrap: wrap; column-gap: 16px; row-gap: 3px; color: var(--muted); font-size: 11px; }
+.keyboard-hints > span { display: inline-flex; gap: 5px; align-items: center; }
+kbd { font: inherit; font-weight: 500; }
+.keyboard-hints svg { width: 13px; height: 13px; }
+.settings { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 9px; color: var(--muted); }
+.settings svg { width: 19px; height: 19px; }
+@media (hover: hover) and (pointer: fine) {
+  .task:hover { background: #1a1a1d; }
+  .task[data-selected="true"]:hover { background: var(--selected); }
+  .open-main:hover, .settings:hover { background: #1a1a1d; color: #fff; }
+  .summary-toggle:hover .summary-chevron, .summary-menu-button:hover .summary-menu { color: #fff; }
+}
+@media (prefers-contrast: more) {
+  :root { --muted: #d6d6da; --line: #b5b5bc; --selected: #143e73; }
+  .summary { box-shadow: inset 0 -1px var(--line); }
+  .task[data-selected="true"] { box-shadow: inset 0 0 0 1px #c1d7fc; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none; transition: none; } }

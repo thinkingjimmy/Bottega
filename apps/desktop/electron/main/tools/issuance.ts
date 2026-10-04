@@ -1,0 +1,105 @@
+/**
+ * [INPUT]: Depends on shared builtin-tool access/backend allowlists, ProviderId, Agent TurnOrigin, and frozen Skills capability facts
+ * [OUTPUT]: Provides ambient access projection, exact `use_skill` issuance for capable turns, turn-kind mapping (a workflow turn: Base and its Chat's history, plus its exact step tools only), and fail-closed MCP issuance
+ * Capable workflow turns exact-issue use_skill from their frozen catalog.
+ * [POS]: Pure authorization composition; backend exclusions, missing origins, and missing Skills capability fail closed before a lease exists
+ */
+
+import type { ProviderId } from "@bottega/contracts/model/provider";
+import {
+  allowedToolsFor,
+  builtinToolSpec,
+  type BuiltinToolName,
+  type BuiltinTurnKind,
+} from "../../../shared/builtin-tools";
+import type { TurnOrigin } from "../agent/bridge/bridge-types";
+
+/* 本轮到底能不能写，只由这一个函数回答。App instructions 与 tool lease 各自
+   再推一次，就会出现「工具是只读、文案却说可写」这种自相矛盾的授权叙述。 */
+export function builtinToolAccess(input: {
+  builtinTools: "none" | "read" | "mutate";
+  planMode: boolean;
+}) {
+  if (input.builtinTools === "none") return "none" as const;
+  return input.planMode || input.builtinTools === "read"
+    ? ("read" as const)
+    : ("mutate" as const);
+}
+
+/**
+ * origin 的每个分支各自成桶；缺 origin 按 relay 收窄。
+ */
+export function turnKindForOrigin(
+  origin: TurnOrigin | undefined
+): BuiltinTurnKind {
+  if (origin?.kind === "manual") return "manual";
+  if (origin?.kind === "workflow") return "workflow";
+  return "relay";
+}
+
+export type BuiltinIssuanceInput = {
+  builtinTools: "none" | "read" | "mutate";
+  backend: ProviderId;
+  planMode: boolean;
+  origin: TurnOrigin | undefined;
+  /** 本轮 resolveContext 时冻结的用户偏好；只过滤 ambient 工具。 */
+  disabledTools?: readonly string[];
+  /** Proven capable Skills custody exists for this exact turn. */
+  useSkill?: boolean;
+  /** 只属于当前 managed-worktree Chat 的精确 main-owned commit authority。 */
+  managedWorktreeCommit?: boolean;
+  /** A workflow step's turn owes one report: exact-issue submit_step_result (read or mutate access alike). */
+  workflowStepResult?: boolean;
+  /** A review turn with a linked development Chat: exact-issue read_step_history (TASK-18). */
+  workflowStepHistory?: boolean;
+};
+
+export function issueBuiltinMcpWhenAllowed<T>(
+  input: BuiltinIssuanceInput,
+  issue: (allowedTools: BuiltinToolName[]) => T
+) {
+  const allowedTools = projectBuiltinTools(input);
+  if (allowedTools.length === 0) return undefined;
+  return issue(allowedTools);
+}
+
+/** runtime CAS 后冻结的最终工具集合；lease 与产品上下文只读这一份结果。 */
+export function projectBuiltinTools(
+  input: BuiltinIssuanceInput
+): BuiltinToolName[] {
+  const access = builtinToolAccess(input);
+  if (access === "none") return [];
+  /* A role turn carries no Skills and commits nothing itself: only its step tools are exact-issued (AGT-06 (a)). */
+  const person = turnKindForOrigin(input.origin) !== "workflow";
+  const exact = [
+    ...(input.useSkill ? (["use_skill"] as BuiltinToolName[]) : []),
+    ...(person && input.managedWorktreeCommit && access === "mutate" && !input.planMode
+      ? (["commit_managed_worktree"] as BuiltinToolName[])
+      : []),
+    ...(input.workflowStepResult ? (["submit_step_result"] as BuiltinToolName[]) : []),
+    ...(input.workflowStepHistory ? (["read_step_history"] as BuiltinToolName[]) : []),
+  ];
+  return [...admittedTools(input), ...exact].filter((name) => {
+    const allowlist = builtinToolSpec(name)?.backendAllowlist;
+    return !allowlist || allowlist.some(id => id === input.backend);
+  });
+}
+
+/** App instructions 与 lease 共同消费的 ambient 真相；精确签发工具不在其中。 */
+export function admittedAmbientTools(
+  input: BuiltinIssuanceInput
+): BuiltinToolName[] {
+  const access = builtinToolAccess(input);
+  const turnKind = turnKindForOrigin(input.origin);
+  if (access === "none") return [];
+  const disabled = new Set(input.disabledTools ?? []);
+  return allowedToolsFor(access, turnKind, input.planMode).filter((name) => {
+    if (disabled.has(name)) return false;
+    const allowlist = builtinToolSpec(name)?.backendAllowlist;
+    return !allowlist || allowlist.some(id => id === input.backend);
+  });
+}
+
+function admittedTools(input: BuiltinIssuanceInput): BuiltinToolName[] {
+  return admittedAmbientTools(input);
+}

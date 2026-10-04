@@ -1,0 +1,606 @@
+/**
+ * [INPUT]: Depends on hash-verified prepared Project/Tools/Skill receipts, durable ManualTurnIntent, ChatsService, SettingsStore, session-plan rebuild, and Agent start ports
+ * [OUTPUT]: Pins queued preparation before sequence reservation, freezes current history and boundaries, then persists trusted users before exact dispatch and session recovery; the turn's origin comes from the intent's recorded origin (a workflow step's stays workflow and carries no Skills selection); an append runs on the Chat's own options, a package Provider's included.
+ * Workflow turns carry their frozen Skill receipt and always create a fresh native session.
+ * [POS]: apps/desktop/electron/main/sections/coordinator/turns; The durable manual-intent executor of sections/coordinator
+ */
+
+import { allocateTurnSequences, turnSequencesSchema } from "../../../../../shared/chat-agent/sequences";
+import { canonicalHash } from "../coordinator-values";
+import { freezeManualContext } from "../agent-switch/context";
+import { freezeSwitch } from "../agent-switch/prepare";
+import { taskStartFence, StartDeferredError, StartNotDispatchedError } from "../../../presence/lifecycle/start-fence";
+import { buildHandoff, handoffInput } from "../../../agent/history/builder";
+import { switchEligibility, switchReservationInput } from "../agent-switch/eligibility";
+import {
+  dataUrlByteSize,
+  type AgentSendPayload,
+  type AgentUserInput,
+} from "../../../../../shared/ipc/agent/agent-ipc";
+import type {
+  ChatAttachmentMeta,
+  ChatRecord,
+  UserChatMessage,
+} from "../../../../../shared/ipc/content/chats-ipc";
+import type { ResolvedAgentInput } from "../../../backends/types";
+import type {
+  TrustedManualTurnPersistence as ManualTurnPersistence,
+  TrustedManualTurnSubmission as ManualTurnSubmission,
+} from "../../../../../shared/ipc/content/sections-ipc";
+import type { ChatsService } from "../../../chats/service/chats-service";
+import type {
+  DeepReadonly,
+  ManualTurnIntent,
+  RelayLedger,
+} from "../relay-ledger";
+import {
+  stableId,
+} from "../coordinator-values";
+import type { TurnOrigin } from "../../../agent/bridge/bridge-types";
+import {
+  type PreparedManualTurn,
+} from "../admission/prepared-manual-turn";
+import { hydratePreparedTurn } from "../admission/prepared/hydration";
+import type { CoordinatorDependencies } from "../coordinator-runtime";
+import { ATTACHMENT_ID_PATTERN } from "../../../chats/schema/chat-schema";
+import {
+  assertManualWorkspacePrecondition,
+  manualLifecycleProjectId,
+} from "../admission/workspace-precondition";
+
+type ManualTurnDependencies = Pick<
+  CoordinatorDependencies,
+  | "ledger"
+  | "chats"
+  | "settings"
+  | "onManualPersisted"
+  | "startTurn"
+  | "getProjectWorkspaceSnapshot"
+  | "rebuildSessionForTools"
+  | "resolveProjectToolsRuntimeIdentity"
+  | "assertProjectToolsContext"
+  | "hasActivity"
+  | "onAgentSwitchCommitted"
+  | "getConversationAvailability"
+>;
+
+export function preparedSkillSelections(ledger: RelayLedger) {
+  return Object.values(ledger.snapshot().manualIntents).flatMap(intent => {
+    if (["settled", "failed"].includes(intent.phase) || !intent.payload) return [];
+    const prepared = intent.payload as PreparedManualTurn;
+    return [{ requestId: intent.requestId, receipt: prepared.skillSelection }];
+  });
+}
+
+export function manualConversationId(persistence: ManualTurnPersistence) {
+  return persistence.kind === "append"
+    ? persistence.input.chatId
+    : persistence.input.id;
+}
+
+export function manualUserMessage(persistence: ManualTurnPersistence) {
+  return persistence.kind === "append"
+    ? persistence.input.message
+    : persistence.input.firstMessage;
+}
+
+export function bindAdoptedSessionPlan(
+  submission: ManualTurnSubmission,
+  toolPlan: Readonly<{ planDigest: string; projectId: string | null }>
+): ManualTurnSubmission {
+  if (
+    submission.persistence.kind !== "adopt" ||
+    !submission.persistence.input.session ||
+    submission.persistence.input.session.toolPlan
+  ) {
+    return submission;
+  }
+  const session = {
+    ...submission.persistence.input.session,
+    toolPlan: { ...toolPlan },
+  };
+  return {
+    ...submission,
+    persistence: {
+      kind: "adopt",
+      input: { ...submission.persistence.input, session },
+    },
+    turn: { ...submission.turn, session },
+  };
+}
+
+export async function manualSubmission(
+  intent: DeepReadonly<ManualTurnIntent>,
+  resolveRuntimeIdentity: CoordinatorDependencies["resolveProjectToolsRuntimeIdentity"]
+) {
+  if (intent.payload === undefined) {
+    throw new Error("ManualTurnIntent 已压缩，不再包含可执行 payload");
+  }
+  return hydratePreparedTurn(intent.payload as PreparedManualTurn, resolveRuntimeIdentity);
+}
+
+export async function userMessagePersisted(
+  chats: ChatsService,
+  conversationId: string,
+  messageId: string
+) {
+  return Boolean(await chats.store.getNativeMessage(conversationId, {
+    kind: "id",
+    messageId,
+  }));
+}
+
+export async function assertManualPrecondition(
+  submission: ManualTurnSubmission,
+  ledger: RelayLedger,
+  chats: ChatsService
+) {
+  const precondition = submission.precondition;
+  const conversationId = manualConversationId(submission.persistence);
+  const current = chats.store.getMetadata(conversationId);
+  const tombstone = ledger.read((state) => state.tombstones[conversationId]);
+  if (precondition.kind === "existing") {
+    if (
+      !current ||
+      current.incarnationId !== precondition.incarnationId ||
+      tombstone?.incarnationId === precondition.incarnationId
+    ) {
+      throw new Error("INCARNATION_MISMATCH");
+    }
+    return;
+  }
+  const proposed =
+    submission.persistence.kind === "append"
+      ? undefined
+      : submission.persistence.input.incarnationId;
+  // absent→create 的崩溃恢复幂等：createUserChat 落盘后、ledger
+  // transition 前崩溃，重放看到的是自己创建的 incarnation——按
+  // existing(P) 放行，交给 persistManual 的 canonical-user 短路续走。
+  //
+  // 收养一条已存在的只读 Chat 也只走这一条：代际是收养沿用的那一个，
+  // 于是「已存在且同代」就是它的全部合法形态。曾经另设一条只比对
+  // id/projectId/agent 的旁路——那条旁路恰恰只在代际不符时才会被走到，
+  // 也就是只在该拒绝的时候放行。
+  if (current?.incarnationId === precondition.proposedIncarnationId) {
+    if (tombstone?.incarnationId === precondition.proposedIncarnationId) {
+      throw new Error("INCARNATION_MISMATCH");
+    }
+    return;
+  }
+  if (
+    current ||
+    tombstone ||
+    (proposed && proposed !== precondition.proposedIncarnationId)
+  ) {
+    throw new Error("INCARNATION_MISMATCH");
+  }
+}
+
+export async function allocateManualSequences(
+  chats: ChatsService,
+  submission: ManualTurnSubmission
+) {
+  const conversationId = manualConversationId(submission.persistence);
+  const record = chats.store.getMetadata(conversationId);
+  if (
+    submission.persistence.kind === "adopt" &&
+    record?.readOnlyReason === "external-readonly"
+  ) {
+    return allocateTurnSequences(1, { agent: Boolean(submission.persistence.input.replay) });
+  }
+  if (!record) {
+    if (submission.persistence.kind === "append") {
+      throw new Error("人工 turn 的目标聊天不存在");
+    }
+    return allocateTurnSequences(1);
+  }
+  if (submission.agentSwitch) {
+    return chats.store.reserveAgentSwitchSequences(switchReservationInput(submission));
+  }
+  return chats.store.reserveTurnSequences({ chatId: conversationId, incarnationId: record.incarnationId,
+    intentId: submission.intentId, submissionHash: canonicalHash(submission.content),
+    ...(!record.session && await chats.store.library.sessions.pending(conversationId, record.incarnationId) ? { contextNotice: true } : {}) });
+}
+
+export async function ensureManualSequences(
+  chats: ChatsService,
+  ledger: RelayLedger,
+  intent: DeepReadonly<ManualTurnIntent>,
+  resolveRuntimeIdentity: CoordinatorDependencies["resolveProjectToolsRuntimeIdentity"]
+) {
+  if (intent.userSeq !== undefined && intent.assistantSeq !== undefined) {
+    return turnSequencesSchema.parse({ noticeSeq: intent.noticeSeq, userSeq: intent.userSeq, assistantSeq: intent.assistantSeq });
+  }
+  const hydrated = await manualSubmission(intent, resolveRuntimeIdentity);
+  const sequence = await allocateManualSequences(chats, hydrated.submission);
+  await ledger.bindManualSequences(
+    intent.id,
+    sequence.userSeq,
+    sequence.assistantSeq, sequence
+  );
+  return sequence;
+}
+
+async function persistManual(
+  chats: ChatsService,
+  persistence: ManualTurnPersistence,
+  userSeq: number,
+  assistantSeq: number,
+  projectLifecycleHeld: boolean,
+  turn: Omit<AgentSendPayload, "input">,
+  ownerCommit?: import("../../../chats/sqlite/cloud/execution/commit").OwnerCommit,
+  remote?: import("../remote/model").RemoteContext
+) {
+  const chatId = manualConversationId(persistence);
+  const expected = manualUserMessage(persistence);
+  const stored = await chats.store.getNativeMessage(chatId, {
+    kind: "id",
+    messageId: expected.id,
+  });
+  if (stored?.role === "user") {
+    if (!sameManualUser(expected, stored, persistence)) {
+      throw new Error("ManualTurnIntent 与 canonical user 冲突");
+    }
+    if (persistence.kind !== "append") {
+      await chats.commitCreationById(chatId);
+    }
+    return stored;
+  }
+  if (persistence.kind === "create") {
+    const record = await chats.createUserChat(
+      persistence.input,
+      { userSeq, assistantSeq },
+      projectLifecycleHeld ? "held" : undefined
+    );
+    await chats.commitCreationById(persistence.input.id);
+    return record.messages[0] as UserChatMessage;
+  }
+  if (persistence.kind === "create-app") {
+    const record = await chats.createAppChat(
+      persistence.input,
+      { userSeq, assistantSeq },
+      projectLifecycleHeld ? "held" : undefined,
+      remote?.origin
+    );
+    await chats.commitCreationById(persistence.input.id);
+    return record.messages[0] as UserChatMessage;
+  }
+  if (persistence.kind === "adopt") {
+    const record = await chats.createAdoptedChat(
+      persistence.input,
+      { userSeq, assistantSeq },
+      projectLifecycleHeld ? "held" : undefined,
+      turn
+    );
+    await chats.commitCreationById(persistence.input.id);
+    return record.messages.find(message => message.id === persistence.input.firstMessage.id) as UserChatMessage;
+  }
+  return chats.appendUserMessage(persistence.input, userSeq, ownerCommit, remote?.origin);
+}
+
+function sameManualUser(
+  expected: UserChatMessage | Omit<UserChatMessage, "seq">,
+  stored: UserChatMessage,
+  persistence: ManualTurnPersistence
+) {
+  return (
+    stored.content === expected.content &&
+    stored.createdAt === expected.createdAt &&
+    stored.remoteCommandId === expected.remoteCommandId && JSON.stringify(stored.remoteSource) === JSON.stringify(expected.remoteSource) &&
+    manualAttachmentsMatch(expected, stored, persistence)
+  );
+}
+
+function sameAttachmentMetas(
+  expected: readonly ChatAttachmentMeta[],
+  stored: readonly ChatAttachmentMeta[]
+) {
+  return (
+    expected.length === stored.length &&
+    expected.every((attachment, index) => {
+      const candidate = stored[index];
+      return (
+        candidate?.id === attachment.id &&
+        candidate.filename === attachment.filename &&
+        candidate.mediaType === attachment.mediaType &&
+        candidate.byteSize === attachment.byteSize
+      );
+    })
+  );
+}
+
+function manualAttachmentsMatch(
+  expected: UserChatMessage | Omit<UserChatMessage, "seq">,
+  stored: UserChatMessage,
+  persistence: ManualTurnPersistence
+) {
+  const storedAttachments = stored.attachments ?? [];
+  if (persistence.kind === "append" && persistence.input.revise) {
+    return true;
+  }
+  if (expected.attachments !== undefined) {
+    return sameAttachmentMetas(expected.attachments, storedAttachments);
+  }
+  const payloads = persistence.input.attachmentPayloads ?? [];
+  const ids = new Set<string>();
+  return (
+    payloads.length === storedAttachments.length &&
+    payloads.every((payload, index) => {
+      const candidate = storedAttachments[index];
+      if (
+        !candidate ||
+        !ATTACHMENT_ID_PATTERN.test(candidate.id) ||
+        ids.has(candidate.id)
+      ) {
+        return false;
+      }
+      ids.add(candidate.id);
+      return (
+        candidate.filename === payload.filename &&
+        candidate.mediaType === payload.mediaType &&
+        candidate.byteSize === dataUrlByteSize(payload.dataUrl)
+      );
+    })
+  );
+}
+
+/** The ledger's origin, never the message, decides whose turn it is: a workflow step's prompt is not a person's query. */
+function durableTurnOrigin(
+  userMessage: { id: string; content: string },
+  origin: DeepReadonly<ManualTurnIntent["origin"]>
+): TurnOrigin {
+  if (origin.kind === "workflow") return { ...origin, userMessageId: userMessage.id };
+  return {
+    kind: "manual",
+    queryText: userMessage.content,
+    userText: userMessage.content,
+    userMessageId: userMessage.id,
+  };
+}
+
+/** recoveryInput 只在现有输入前加文本；resolved 资源尾段保持原 custody。 */
+export function resolvedInputForFinalPayload(
+  finalInput: AgentUserInput[],
+  originalInput: AgentUserInput[],
+  resolved: ResolvedAgentInput
+): ResolvedAgentInput {
+  const prefixLength = finalInput.length - originalInput.length;
+  if (
+    prefixLength < 0 ||
+    JSON.stringify(finalInput.slice(prefixLength)) !==
+      JSON.stringify(originalInput)
+  ) {
+    throw new Error("最终 Agent input 与 prepared input 无法对齐");
+  }
+  const prefix: ResolvedAgentInput["input"] = finalInput
+    .slice(0, prefixLength)
+    .map((item) => {
+      if (item.type === "text" || item.type === "image") return item;
+      throw new Error("恢复上下文前缀只能包含文本或图片");
+    });
+  return {
+    ...resolved,
+    input: [
+      ...prefix,
+      ...resolved.input,
+    ],
+  };
+}
+
+function notifyManualPersisted(
+  dependencies: ManualTurnDependencies,
+  submission: ManualTurnSubmission,
+  record: Pick<ChatRecord, "id" | "incarnationId">,
+  message: UserChatMessage
+) {
+  const notify = dependencies.onManualPersisted;
+  if (!notify) return;
+  try {
+    notify({
+      chatId: record.id,
+      incarnationId: record.incarnationId,
+      messageId: message.id,
+      content: submission.content,
+    });
+  } catch (cause) {
+    console.warn(
+      `[section-coordinator] manual=${submission.intentId} 落盘派生通知失败`,
+      cause
+    );
+  }
+}
+
+export async function runManualTurn(
+  intent: DeepReadonly<ManualTurnIntent>,
+  dependencies: ManualTurnDependencies,
+  projectLifecycleHeld = false
+) {
+  const original = intent.payload as PreparedManualTurn;
+  const remoteContext = intent.remoteSubmission?.context ?? original.remoteContext;
+  // A transferred Steer's next turn was authorized at transfer (its finished command cannot be authorized again) and keeps the steered turn's Full Access.
+  const trustedAuthority = remoteContext
+    ? dependencies.ledger.remote.transferredAuthority(remoteContext, intent.id) ?? dependencies.ledger.remote.authority(remoteContext) : undefined;
+  await trustedAuthority?.validate(); trustedAuthority?.current();
+  const hydrated = await manualSubmission(intent, dependencies.resolveProjectToolsRuntimeIdentity);
+  let submission = bindAdoptedSessionPlan(hydrated.submission, {
+    planDigest: hydrated.projectTools.sessionPlanDigest,
+    projectId: hydrated.projectTools.receipt.projectContext.projectId,
+  });
+  const expected = manualUserMessage(submission.persistence);
+  let prepared = intent.payload as PreparedManualTurn;
+  const currentProjectId = await manualLifecycleProjectId(
+    submission,
+    dependencies.chats
+  );
+  if (
+    currentProjectId !== prepared.lifecycleProjectId ||
+    (currentProjectId !== null && !projectLifecycleHeld)
+  ) {
+    throw new Error("WORKSPACE_PRECONDITION_MISMATCH");
+  }
+  await assertManualWorkspacePrecondition(submission, {
+    chats: dependencies.chats,
+    getProjectWorkspaceSnapshot: dependencies.getProjectWorkspaceSnapshot,
+  });
+  dependencies.assertProjectToolsContext?.(
+    hydrated.projectTools.receipt.projectContext
+  );
+  if (intent.userSeq === undefined && intent.phase === "queued") {
+    await assertManualPrecondition(submission, dependencies.ledger, dependencies.chats);
+    // Pin before SQLite reservation: a crash cannot make this partly committed row reorderable.
+    await dependencies.ledger.pinManualPreparation(intent.id);
+    const sequence = await allocateManualSequences(dependencies.chats, submission);
+    prepared = freezeSwitch(await freezeManualContext(original, dependencies, sequence), dependencies, intent.submissionHash!, sequence);
+    const bound = await dependencies.ledger.bindManualSequences(intent.id, sequence.userSeq, sequence.assistantSeq, sequence, prepared);
+    if (!bound) return;
+    intent = bound;
+    submission = { ...submission, turn: { ...submission.turn, handoff: prepared.turn.handoff } };
+  }
+  if (intent.userSeq === undefined || intent.assistantSeq === undefined) {
+    throw new Error("ManualTurnIntent 缺少持久消息序号");
+  }
+  if (intent.phase === "queued") {
+    await assertManualPrecondition(
+      submission,
+      dependencies.ledger,
+      dependencies.chats
+    );
+    await trustedAuthority?.validate(); trustedAuthority?.current();
+    if (prepared.switchCommand) {
+      const own = switchEligibility(dependencies as CoordinatorDependencies, intent.conversationId, { ownIntentId: intent.id });
+      // Receipt replay must precede current-state policy after a successful commit.
+      const current = dependencies.chats.store.getMetadata(intent.conversationId);
+      if (!own.eligible && current?.agentRevision === prepared.switchCommand.intent.expectedAgentRevision) {
+        throw new Error(`AGENT_SWITCH_BLOCKED:${own.reason}`);
+      }
+      await dependencies.chats.commitAgentSwitch(prepared.switchCommand, submission.persistence.input.attachmentPayloads ?? []);
+    } else {
+    await persistManual(
+      dependencies.chats,
+      submission.persistence.kind === "append" ? submission.persistence : {
+        ...submission.persistence,
+        input: { ...submission.persistence.input, options: submission.turn.turnOptions },
+      } as ManualTurnPersistence,
+      intent.userSeq,
+      intent.assistantSeq,
+      projectLifecycleHeld,
+      submission.turn,
+      prepared.ownerCommit, intent.remoteSubmission?.context ?? prepared.remoteContext
+    );
+    }
+    const appended = await dependencies.ledger.transitionManual(
+      intent.id,
+      "queued",
+      "appended"
+    );
+    if (!appended) return;
+  }
+  if (prepared.switchCommand) {
+    const committed = dependencies.chats.store.getMetadata(intent.conversationId);
+    if (committed?.agentRevision === prepared.switchCommand.intent.expectedAgentRevision + 1 && !committed.session) {
+      await dependencies.onAgentSwitchCommitted?.(intent.conversationId);
+    }
+  }
+  const record = dependencies.chats.store.getMetadata(intent.conversationId);
+  if (!record) throw new Error("人工 turn 的目标聊天不存在");
+  const expectedIncarnationId =
+    submission.precondition.kind === "existing"
+      ? submission.precondition.incarnationId
+      : submission.precondition.proposedIncarnationId;
+  if (
+    record.id !== intent.conversationId ||
+    record.id !== manualConversationId(submission.persistence) ||
+    record.incarnationId !== expectedIncarnationId
+  ) {
+    throw new Error("ManualTurnIntent 与 canonical chat identity 冲突");
+  }
+  const stored = await dependencies.chats.store.getNativeMessage(record.id, {
+    kind: "id",
+    messageId: expected.id,
+  });
+  if (!stored || stored.role !== "user") {
+    throw new Error("ManualTurnIntent 已标记 appended，但 canonical user 缺失");
+  }
+  if (!sameManualUser(expected, stored, submission.persistence)) {
+    throw new Error("ManualTurnIntent 与 canonical user 冲突");
+  }
+  notifyManualPersisted(dependencies, submission, record, stored);
+  /* The Chat's own options, a package Provider's included (d4b follow-up slice 2); whether a backend still runs it is the turn's
+     named runtime-unavailable, decided at start. */
+  const turnOptions = submission.agentSwitch || submission.persistence.kind !== "append"
+    ? submission.turn.turnOptions : record.options;
+  const history = submission.turn.handoff ? null : await dependencies.chats.store.prepareHistory(record.id, intent.userSeq);
+  const frozen = submission.turn.handoff ?? (history ? buildHandoff(history, submission.turn.input,
+    hydrated.projectTools.receipt.allowedTools.includes("read_chat_history") ? "available" : "unavailable") : undefined);
+  let session = record.session;
+  if (
+    session &&
+    (intent.origin.kind === "workflow" || !session.toolPlan ||
+      session.toolPlan.planDigest !== hydrated.projectTools.sessionPlanDigest ||
+      session.toolPlan.projectId !==
+        hydrated.projectTools.receipt.projectContext.projectId)
+  ) {
+    if (!frozen) throw new Error("CHAT_HISTORY_UNAVAILABLE");
+    if (dependencies.rebuildSessionForTools) {
+      await dependencies.rebuildSessionForTools(record.id, session);
+    } else {
+      await dependencies.chats.replaceSession(
+        submission.turn.scope,
+        session,
+        null
+      );
+    }
+    session = null;
+  }
+  const handoff = frozen ? { ...frozen, binding: { ...frozen.binding, view: {
+    ...frozen.binding.view, nativeMessageRevision: record.chatMessageRevision,
+  } } } : undefined;
+  const payload: AgentSendPayload = {
+    ...submission.turn, agentRevision: record.agentRevision, handoff,
+    /* Workflow preparation already narrowed this receipt to the frozen selection. */
+    preparedSkillSelection: prepared.skillSelection,
+    ...(session ? { session } : { session: undefined }),
+    input: session ? submission.turn.input : handoffInput(submission.turn.input, handoff),
+    turnOptions,
+  };
+  const resolvedInput = resolvedInputForFinalPayload(
+    payload.input,
+    submission.turn.input,
+    hydrated.resolvedInput
+  );
+  taskStartFence.assertOpen();
+  const claimed = await dependencies.ledger.transitionManual(
+    intent.id,
+    "appended",
+    "claimed"
+  );
+  if (!claimed) return;
+  await dependencies.ledger.markManualDispatching(intent.id);
+  try {
+    /* projectLifecycleHeld 同时喂给 persistManual 与 startTurn：
+       同一把 projects 锁,创建侧靠它跳过 withProject 重入,启动侧靠它跳过
+       withConversationAdmission 重入。漏掉后者 = admission 持锁等 startTurn、
+       startTurn 等同一把锁,IPC 悬死,renderer 三症并发(不跳转/草稿残留/无响应)。 */
+    await dependencies.startTurn(
+      payload,
+      stableId("assistant", intent.id),
+      durableTurnOrigin(expected, intent.origin),
+      resolvedInput,
+      intent.assistantSeq,
+      projectLifecycleHeld,
+      hydrated.projectTools,
+      trustedAuthority
+    );
+    await dependencies.ledger.markManualDispatched(intent.id);
+  } catch (cause) {
+    /* Nothing ran for a start that failed before its process existed: the attempt is rolled back and the
+       dispatcher fails the message visibly, so the Chat's next message runs instead of waiting behind an
+       "unknown" head forever (F-04). Only a start that may have run stays unknown. */
+    if (cause instanceof StartDeferredError || cause instanceof StartNotDispatchedError) {
+      await dependencies.ledger.deferManualDispatch(intent.id);
+      throw cause;
+    }
+    await dependencies.ledger.markManualDispatchUnknown(intent.id);
+    throw cause;
+  }
+}

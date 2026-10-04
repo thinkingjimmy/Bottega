@@ -1,0 +1,221 @@
+"use client";
+
+/**
+ * [INPUT]: Depends on localized surface migration failure projection; Depends on shared appDisplayName, AppsProvider pinned records and list state, the exclusive App target, shared Sidebar App activation, SidebarLoadingRows, root-aligned Sidebar primitives, window intents, dropdown menu, and sonner
+ * [OUTPUT]: Provides PinnedApps: exclusively active root App rows with generation-fenced activation, AppWindow, and direct Unpin, preceded while listApps is in flight by exactly as many loading rows as the list last had
+ * [POS]: components/sidebar/apps projection aligned with the parent Apps row; durable pin truth remains in the main-owned AppStore and App windows never own this management surface
+ */
+
+import { appDisplayName } from "../../../../shared/ipc/apps/apps-ipc";
+import { useEffect, useState } from "react";
+import { AppWindowIcon, MoreHorizontal, PinOff } from "lucide-react";
+import { useNavigate } from "react-router";
+import { usePointerOpenedMenu } from "@ai-chat/ui/hooks/use-pointer-opened-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@ai-chat/ui/components/ui/dropdown-menu";
+import {
+  SidebarMenuAction,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+} from "@ai-chat/ui/components/ui/sidebar";
+import { toast } from "@ai-chat/ui/components/ui/sonner";
+import { useApps } from "@/components/providers/content/apps-provider";
+import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
+import { surfaceErrorMessage } from "@/lib/chat-composer/errors";
+import { openSurfaceInWindow } from "@/lib/platform/window-surfaces-client";
+import type { AppRecord } from "../../../../shared/ipc/apps/apps-ipc";
+import {
+  appStudioSurface,
+  canonicalAppSurfaceRoute,
+} from "../../../../shared/ipc/settings/window-surfaces-ipc";
+import { useSidebarAppTarget } from "../active/app-target";
+import { activateSidebarApp } from "./activate-app-surface";
+import {
+  SidebarRowMark,
+  SidebarRowTitle,
+  sidebarRootMenuActionClass,
+} from "@ai-chat/ui/components/workspace/row";
+import { SidebarLoadingRows } from "../sidebar-loading-rows";
+
+/* This is the one sidebar group whose empty state is "render nothing", so a
+   fixed row count would flash three placeholders at every user who pins none.
+   The last known length is remembered instead: the placeholder is the size of
+   the list that is about to arrive, and stays absent when there is none. */
+const PINNED_COUNT_KEY = "ai-chat.sidebar-pinned-apps.count.v1";
+const MAX_HINT_ROWS = 8;
+
+function readPinnedCountHint() {
+  try {
+    const stored = Number(window.localStorage.getItem(PINNED_COUNT_KEY));
+    return Number.isInteger(stored) && stored > 0
+      ? Math.min(stored, MAX_HINT_ROWS)
+      : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writePinnedCountHint(count: number) {
+  try {
+    window.localStorage.setItem(PINNED_COUNT_KEY, String(count));
+  } catch {
+    // Storage refused: the hint is a nicety, never a precondition.
+  }
+}
+
+const pinnedRowClass =
+  "cursor-pointer pr-14 font-normal! group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-accent-foreground group-has-[:focus-visible]/menu-item:bg-sidebar-accent group-has-[:focus-visible]/menu-item:text-sidebar-accent-foreground";
+
+export function PinnedApps() {
+  const { t } = useAppTranslation();
+  const navigate = useNavigate();
+  const activeTarget = useSidebarAppTarget();
+  const { loading, pinnedRecords, setPinned } = useApps();
+  const [busyId, setBusyId] = useState("");
+  const [countHint] = useState(readPinnedCountHint);
+  useEffect(() => {
+    if (!loading) writePinnedCountHint(pinnedRecords.length);
+  }, [loading, pinnedRecords.length]);
+
+  if (loading && !pinnedRecords.length) {
+    return <SidebarLoadingRows rows={countHint} />;
+  }
+  if (!pinnedRecords.length) return null;
+
+  const showApp = (record: AppRecord) =>
+    activateSidebarApp(record, {
+      navigate,
+      onError: (cause) => toast.error(errorMessage(cause)),
+    });
+
+  const openWindow = async (record: AppRecord) => {
+    try {
+      const result = await openSurfaceInWindow(
+        appStudioSurface(record.id),
+        record.id,
+        canonicalAppSurfaceRoute(record.id)
+      );
+      if (!result) throw new Error(t("windowSurface.openInWindowUnavailable"));
+    } catch (cause) {
+      toast.error(t("windowSurface.openInWindowFailed"), {
+        description: surfaceErrorMessage(cause, t("windowSurface.openInWindowFailed")),
+      });
+    }
+  };
+
+  const unpin = async (record: AppRecord) => {
+    setBusyId(record.id);
+    try {
+      await setPinned(record.id, false);
+    } catch (cause) {
+      toast.error(t("apps.pinFailed"), { description: errorMessage(cause) });
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  return (
+    <SidebarMenuSub className="mx-0 w-full translate-x-0 gap-px border-l-0 px-0">
+      {pinnedRecords.map((record) => (
+        <PinnedAppRow
+          active={
+            activeTarget.kind === "global-app" &&
+            activeTarget.appId === record.id
+          }
+          busy={busyId === record.id}
+          key={record.id}
+          onOpen={() => void showApp(record)}
+          onOpenWindow={() => void openWindow(record)}
+          onUnpin={() => void unpin(record)}
+          record={record}
+        />
+      ))}
+    </SidebarMenuSub>
+  );
+}
+
+function PinnedAppRow({
+  active,
+  busy,
+  onOpen,
+  onOpenWindow,
+  onUnpin,
+  record,
+}: {
+  active: boolean;
+  busy: boolean;
+  onOpen(): void;
+  onOpenWindow(): void;
+  onUnpin(): void;
+  record: AppRecord;
+}) {
+  const { t } = useAppTranslation();
+  const menu = usePointerOpenedMenu();
+  const name = appDisplayName(record);
+  const icon = record.manifest?.icon ?? "📦";
+
+  return (
+    <SidebarMenuItem className="w-full">
+      <SidebarMenuButton
+        asChild
+        className={pinnedRowClass}
+        isActive={active}
+      >
+        <button
+          aria-label={name}
+          data-pinned-app-id={record.id}
+          onClick={onOpen}
+          type="button"
+        >
+          <SidebarRowMark>
+            <span aria-hidden className="text-[13px] leading-none">
+              {icon}
+            </span>
+          </SidebarRowMark>
+          <SidebarRowTitle actionStrip="3.25rem">{name}</SidebarRowTitle>
+        </button>
+      </SidebarMenuButton>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <SidebarMenuAction
+            {...menu.triggerProps}
+            aria-label={`${name} · ${t("apps.menu")}`}
+            className={`${sidebarRootMenuActionClass} right-7`}
+            disabled={busy}
+            showOnHover
+          >
+            <MoreHorizontal />
+          </SidebarMenuAction>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-max min-w-0"
+          onCloseAutoFocus={menu.onCloseAutoFocus}
+        >
+          <DropdownMenuItem disabled={busy} onSelect={onUnpin}>
+            <PinOff />
+            {t("apps.unpin")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <SidebarMenuAction
+        aria-label={`${t("windowSurface.openInWindow")} · ${name}`}
+        className={sidebarRootMenuActionClass}
+        disabled={busy}
+        onClick={onOpenWindow}
+        showOnHover
+        title={t("windowSurface.openInWindow")}
+      >
+        <AppWindowIcon />
+      </SidebarMenuAction>
+    </SidebarMenuItem>
+  );
+}

@@ -1,0 +1,163 @@
+/**
+ * [INPUT]: Depends on nanoid, shared Agent/App IPC and the preload-exposed window.agent/window.app bridges
+ * [OUTPUT]: Provides attach/event subscriptions, steer/decision commands, same-session and fresh-session retry, abandon/cancel/cleanup confirmation, and the read-only system file-manager fact; throws when window.agent is absent
+ * [POS]: apps/desktop/src/lib/agent; The renderer's narrow Agent IPC facade; manual turns enter through sections-client, local disposal never cancels a main-owned turn
+ */
+
+import { nanoid } from "nanoid";
+import type { AppBridgeApi } from "../../../shared/ipc/apps/app-ipc";
+import type {
+  AgentBridgeApi,
+  AgentEvent,
+  AgentApprovalDecision,
+  AgentUserInputResponse,
+  ChatActivityEvent,
+  SteerAdmission,
+  SteerDecision,
+  SteerIpcReceipt,
+  TurnAttachResult,
+} from "../../../shared/ipc/agent/agent-ipc";
+
+declare global {
+  interface Window {
+    agent?: AgentBridgeApi;
+    app?: AppBridgeApi;
+  }
+}
+
+const bridge = (): AgentBridgeApi => {
+  const api = window.agent;
+  if (!api) throw new Error("agent bridge unavailable");
+  return api;
+};
+
+export type AgentRequest = {
+  requestId: string;
+  cancel: () => void;
+  dispose: () => void;
+  respondApproval: (
+    approvalId: string,
+    decision: AgentApprovalDecision
+  ) => Promise<import("../../../shared/ipc/agent/agent-ipc").ControlResult>;
+  respondUserInput: (
+    userInputId: string,
+    answers: AgentUserInputResponse["answers"]
+  ) => Promise<import("../../../shared/ipc/agent/agent-ipc").ControlResult>;
+};
+
+export const systemFileManager = () =>
+  window.app?.systemFileManager ?? "file-manager";
+
+export type CodexAttachment = {
+  ready: Promise<void>;
+  dispose: () => void;
+};
+
+export function attachToAgent(
+  conversationId: string,
+  handlers: {
+    onSnapshot: (snapshot: TurnAttachResult) => void;
+    onEvent: (event: AgentEvent) => void;
+  }
+): CodexAttachment {
+  const api = bridge();
+  const attachmentId = nanoid();
+  let active = true;
+  let live = false;
+  const buffered: AgentEvent[] = [];
+  const unsubscribe = api.onEvent((event) => {
+    if (!active || event.conversationId !== conversationId) return;
+    if (!live) buffered.push(event);
+    else handlers.onEvent(event);
+  });
+  const ready = api.attachTurn(conversationId, attachmentId).then((snapshot) => {
+    if (!active) return;
+    handlers.onSnapshot(snapshot);
+    for (const event of buffered
+      .filter((event) => event.seq > snapshot.lastSeq)
+      .sort((left, right) => left.seq - right.seq)) {
+      if (!active) return;
+      handlers.onEvent(event);
+    }
+    buffered.length = 0;
+    live = true;
+  });
+  return {
+    ready,
+    dispose() {
+      if (!active) return;
+      active = false;
+      buffered.length = 0;
+      unsubscribe();
+      api.detachTurn(conversationId, attachmentId);
+    },
+  };
+}
+
+// 会话活动：与 attach 无关的窗口级广播，后台会话也收得到。
+export const onAgentActivity = (
+  callback: (event: ChatActivityEvent) => void
+) => bridge().onActivity(callback);
+
+export const listAgentActivity = () => bridge().listActivity();
+
+export const abandonFatalTurn = (conversationId: string) =>
+  bridge().abandonFatalTurn(conversationId);
+
+export const acknowledgeCleanupFailure = (conversationId: string) =>
+  bridge().acknowledgeCleanupFailure(conversationId);
+
+export const retryAgentWithoutSession = (
+  conversationId: string,
+  retryToken: string
+) => bridge().retryWithoutSession(conversationId, retryToken);
+export const retryAgentSameSession = (
+  requestId: string,
+  retryToken: string
+) => bridge().retrySameSession(requestId, retryToken);
+
+export const abandonResumeFailure = (requestId: string, retryToken: string) => bridge().abandonResumeFailure(requestId, retryToken);
+export const cancelAgentRequest = (requestId: string) =>
+  bridge().cancel(requestId);
+
+export const steerAgent = (
+  input: SteerAdmission
+): Promise<SteerIpcReceipt> => bridge().steer(input);
+
+export const decideAgentSteer = (
+  input: SteerDecision
+): Promise<SteerIpcReceipt> => bridge().decideSteer(input);
+
+export const ackAgentSteerIntents = (outboxRefs: string[]) =>
+  bridge().ackSteerIntents(outboxRefs);
+
+export const respondAgentApproval = (
+  requestId: string,
+  approvalId: string,
+  decision: AgentApprovalDecision
+) => bridge().respondApproval({ requestId, approvalId, decision });
+
+export const respondAgentUserInput = (
+  requestId: string,
+  userInputId: string,
+  answers: AgentUserInputResponse["answers"]
+) => bridge().respondUserInput({ requestId, userInputId, answers });
+
+export async function openExternal(url: string) {
+  if (window.app) {
+    await window.app.openExternal(url);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+export async function writeClipboardText(text: string) {
+  if (window.app) {
+    await window.app.writeClipboard(text);
+    return;
+  }
+  if (!navigator.clipboard?.writeText) {
+    throw new Error("当前环境不支持剪贴板写入");
+  }
+  await navigator.clipboard.writeText(text);
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@ai-chat/base-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./model/*": "./src/model/*.ts",
+    "./compute/*": "./src/compute/*.ts",
+    "./attachments/*": "./src/attachments/*.ts",
+    "./metadata/*": "./src/metadata/*.ts",
+    "./sync/*": "./src/sync/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bottega/contracts": "workspace:*",
+    "zod": "4.6.4"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

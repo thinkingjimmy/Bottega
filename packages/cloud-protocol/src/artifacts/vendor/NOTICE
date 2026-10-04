@@ -1,0 +1,9 @@
+Visualization styles, tooltip, tabs and icon runtime: OpenAI Codex, Apache-2.0.
+Source: openai/codex codex-rs/tui/assets/inline_visualization; local visualize 1.0.32 distribution, 2026-09-12.
+Floating UI core/dom 1.8.0: Copyright (c) Floating UI contributors, MIT.
+These assets execute only inside the untrusted artifact frame.
+
+Pinned source checksums (SHA-256):
+visualize.css: c9828fecb6ebdd9c4c81b089ed5b024f1b63415159e8d0cc37db4cd01ff31953
+visualize.html: 8b1e972a4a6d5d09c49d614abb5200068734804725bd5bc4426d18ab9cada882
+Local modifications: assets embedded as module strings; remote Floating UI dependency replaced with the bundled runtime. Tweak controls are not included.

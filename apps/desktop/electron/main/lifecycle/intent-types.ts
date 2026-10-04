@@ -1,0 +1,364 @@
+/**
+ * [INPUT]: Depends on zod, the product's one canonical JSON digest (@bottega/contracts), and the shared five-locale enum
+ * [OUTPUT]: Defines closed lifecycle inputs, phases and claims for App installation/removal, Home materialization, Project rescue and scope cleanup.
+ * [POS]: The type truth source of the lifecycle domain, covenant v3, second paragraph of the machine image; consumed by intent-store/admission-gate in a single direction
+ */
+
+import { hashCanonical } from "@bottega/contracts/core/canonical-json";
+import { z } from "zod";
+import { portableChatSchema, syncScopeSchema } from "../../../shared/local-storage/contracts";
+import { scopeCleanupPlanSchema } from "./scope-cleanup/model";
+import { cloudAppInstallSchema } from "../apps/install/cloud/contract";
+import { APP_REMOVAL_PHASES, localAppRemovalSchema, cloudAppRetirementSchema } from "../apps/conversion/removal/contract";
+import { extensionFulfillmentSchema, installAuthorizationSchema } from "../apps/install/delivery/contract";
+import { APP_LOCALES } from "@ai-chat/ui/lib/locale";
+
+/* ── phase 单调枚举:首档恒为 "proposed"(身份已定、尚未准入——R7/P0-1:
+ * 落盘与取 gate 之间存在崩溃窗口,重启后必须能区分「已准入」与「仅提案」,
+ * 否则两个提案态互相看作 rival 而永久互锁),第二档起为准入后的推进序。 ── */
+export const INTENT_PHASES = {
+  "app-local-remove": APP_REMOVAL_PHASES,
+  "app-cloud-retire": APP_REMOVAL_PHASES,
+  "app-cloud-install": ["proposed", "admitted", "source-ready", "extensions-ready", "generation-ready", "activated", "workspace-ready", "installed"],
+  "chat-materialize": ["proposed", "admitted", "home-committed", "chat-committed"],
+  "project-chat-rescue": ["proposed", "admitted", "classification-committed"],
+  "scope-cleanup": ["proposed", "admitted", "homes", "blobs", "bases", "projects", "apps", "chats", "account-config"],
+  "save-as-app": [
+    "proposed",
+    "admitted",
+    "record-created",
+    "project-ensured",
+    "chat-migrated",
+    "promotion-created",
+    "promoted",
+    "skill-turn-enqueued",
+    "rollback-started",
+    "rollback-chat-restored",
+    "rollback-project-removed",
+    "rollback-shell-removed",
+  ],
+  "base-promotion": ["proposed", "pending", "project-written"],
+  "app-delete": [
+    "proposed",
+    "admitted",
+    "admission-closed",
+    "turns-drained",
+    "chats-settled",
+    "base-settled",
+    "project-settled",
+    "builds-settled",
+    "generations-retired",
+    "grants-settled",
+    "data-settled",
+  ],
+  "chat-slot": ["proposed", "allocated"],
+  "base-import": ["proposed", "delivered", "project-ensured", "base-seeded"],
+  "preset-install": ["proposed", "delivered", "project-ensured", "base-seeded"],
+  "share-publish": [
+    "proposed",
+    "prepared",
+    "remote-created",
+    "pushed",
+    "recorded",
+  ],
+} as const satisfies Record<string, readonly [string, ...string[]]>;
+
+export type LifecycleKind = keyof typeof INTENT_PHASES;
+export const PROPOSED_PHASE = "proposed";
+
+/* ── phase 单调序只有一个裁判:各 saga 问「跑到哪了」,不各自抄一份序表。 ── */
+export function phaseReached(
+  kind: LifecycleKind,
+  phase: string,
+  target: string
+) {
+  const phases = INTENT_PHASES[kind] as readonly string[];
+  return phases.indexOf(phase) >= phases.indexOf(target);
+}
+
+export function reached(
+  kind: LifecycleKind,
+  intent: { phase: string },
+  target: string
+) {
+  return phaseReached(kind, intent.phase, target);
+}
+
+const kindSchema = z.enum(
+  Object.keys(INTENT_PHASES) as [LifecycleKind, ...LifecycleKind[]]
+);
+
+/* ── input:按 kind 的判别 schema(strict)。spike 钉死三个 kind 的结构;
+ * import/preset 至少要求可推导 claims 的字段面在各案实施时收紧。 ── */
+const saveAsAppInput = z
+  .object({
+    chatId: z.string().min(1),
+    name: z.string().min(1).max(120),
+    icon: z.string().min(1).max(16),
+    locale: z.enum(APP_LOCALES).optional(),
+  })
+  .strict();
+const basePromotionInput = z
+  .object({ chatId: z.string().min(1), projectId: z.string().min(1) })
+  .strict();
+const chatSlotInput = z
+  .object({
+    appId: z.string().min(1),
+    role: z.enum(["edit", "use"]),
+    mode: z.enum(["reuse", "new"]),
+  })
+  .strict();
+const appDeleteInput = z
+  .object({
+    appId: z.string().min(1),
+    mode: z.enum(["cascade", "retain-data"]),
+  })
+  .strict();
+const openInput = z.record(z.string(), z.unknown());
+const importInputFields = {
+  sourceRef: z.string().min(1),
+  confirmedDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  packageRoot: z.string().min(1),
+  agent: z.enum(["codex", "claude", "kimi", "opencode"]),
+  extensionFulfillment: extensionFulfillmentSchema,
+  authorization: installAuthorizationSchema,
+};
+const baseImportInput = z
+  .object({ origin: z.literal("github"), ...importInputFields })
+  .strict();
+const presetInstallInput = z
+  .object({
+    origin: z.literal("preset"),
+    ...importInputFields,
+    presetId: z.string().regex(/^[a-z][a-z0-9-]{1,38}$/),
+    resolvedPin: z.string().regex(/^[0-9a-f]{40}$/),
+    channel: z.enum(["release", "dev"]),
+  })
+  .strict();
+
+export const INTENT_INPUT_SCHEMAS: Record<LifecycleKind, z.ZodType> = {
+  "app-local-remove": localAppRemovalSchema,
+  "app-cloud-retire": cloudAppRetirementSchema,
+  "app-cloud-install": cloudAppInstallSchema,
+  "scope-cleanup": scopeCleanupPlanSchema,
+  "chat-materialize": z.object({ scope: syncScopeSchema, chat: portableChatSchema }).strict(),
+  "project-chat-rescue": z.object({ chatId: z.string().min(1), incarnationId: z.string().min(1), projectId: z.string().min(1) }).strict(),
+  "save-as-app": saveAsAppInput,
+  "base-promotion": basePromotionInput,
+  "chat-slot": chatSlotInput,
+  "app-delete": appDeleteInput,
+  "base-import": baseImportInput,
+  "preset-install": presetInstallInput,
+  "share-publish": openInput,
+};
+
+const errorSchema = z
+  .object({ code: z.string().min(1), message: z.string() })
+  .strict();
+
+const terminalSchema = z
+  .object({
+    status: z.enum(["done", "rolled-back"]),
+    receipt: z.record(z.string(), z.unknown()).optional(),
+    error: errorSchema.optional(),
+    settledAt: z.number().int().nonnegative(),
+  })
+  .strict()
+  .refine((t) => t.status !== "rolled-back" || t.error !== undefined, {
+    message: "rolled-back 终态必须携带结构化 error",
+  });
+
+const lifecycleIntentEnvelopeSchema = z
+  .object({
+    intentId: z.string().min(1),
+    parentIntentId: z.string().min(1).optional(),
+    requestId: z.string().min(1),
+    kind: kindSchema,
+    input: z.record(z.string(), z.unknown()),
+    inputHash: z.string().length(64),
+    /** 资源占用集,创建时冻结、此后不可变(R7/P0-2/P0-3);admission 互斥按交集判定。 */
+    claims: z.array(z.string().min(1)).min(1).readonly(),
+    /** 身份分配产物(如 appId),创建时冻结不可变;claims 由它推导(R8/P0-3:与可变 recoveryState 分离)。 */
+    allocated: z.record(z.string(), z.unknown()),
+    recoveryState: z.record(z.string(), z.unknown()),
+    phase: z.string().min(1),
+    createdAt: z.number().int().nonnegative(),
+    updatedAt: z.number().int().nonnegative(),
+    terminal: terminalSchema.optional(),
+  })
+  .strict()
+  .superRefine((intent, ctx) => {
+    const phases: readonly string[] = INTENT_PHASES[intent.kind];
+    if (!phases.includes(intent.phase)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `kind ${intent.kind} 不存在 phase ${intent.phase}`,
+      });
+    }
+  });
+
+/* ── 退役阶段归一(只对终态):阶段名册允许演进——app-delete 的 placements-*
+ * 已随编排收束而退役——但已完成的意图不该有能力阻断启动,终态语义不变,
+ * 归一到该 kind 的末档即可。非终态的未知 phase 仍是真损坏(待跑的工作停在
+ * 无人认识的状态,续跑必然越权),照旧 fail-closed。 ── */
+function retireUnknownPhase(value: unknown): unknown {
+  if (typeof value !== "object" || value === null) return value;
+  const row = value as Record<string, unknown>;
+  const phases: readonly string[] | undefined =
+    INTENT_PHASES[row.kind as LifecycleKind];
+  if (!phases || !row.terminal || phases.includes(row.phase as string)) {
+    return value;
+  }
+  return { ...row, phase: phases[phases.length - 1] };
+}
+
+const decodedIntentEnvelopeSchema = z.preprocess(
+  retireUnknownPhase,
+  lifecycleIntentEnvelopeSchema
+);
+
+export const lifecycleIntentSchema = decodedIntentEnvelopeSchema.superRefine(
+  (intent, ctx) => {
+    const parsed = INTENT_INPUT_SCHEMAS[intent.kind].safeParse(intent.input);
+    if (!parsed.success) {
+      ctx.addIssue({
+        code: "custom",
+        message: `kind ${intent.kind} 的 input 不合判别 schema`,
+      });
+    }
+  }
+);
+
+export type LifecycleIntent = z.infer<typeof lifecycleIntentSchema>;
+
+/* ── 终态压缩后的轻量墓碑:幂等查询永远可答;error 一并保留(R7/P1-9)。 ── */
+export const intentTombstoneSchema = z
+  .object({
+    kind: kindSchema,
+    requestId: z.string().min(1),
+    intentId: z.string().min(1),
+    inputHash: z.string().length(64),
+    status: z.enum(["done", "rolled-back"]),
+    receipt: z.record(z.string(), z.unknown()).optional(),
+    error: errorSchema.optional(),
+  })
+  .strict();
+export type IntentTombstone = z.infer<typeof intentTombstoneSchema>;
+
+/* ── 文件级不变量(R7/P1-11):intentId 全局唯一、(kind, requestId) 全局唯一。 ── */
+export function assertFileInvariants(
+  intents: readonly LifecycleIntent[],
+  tombstones: readonly IntentTombstone[]
+): void {
+  const ids = new Set<string>();
+  const requests = new Set<string>();
+  for (const row of [...intents, ...tombstones]) {
+    if (ids.has(row.intentId)) {
+      throw new Error(`intentId 重复:${row.intentId}`);
+    }
+    ids.add(row.intentId);
+    const key = `${row.kind}\u0000${row.requestId}`;
+    if (requests.has(key)) {
+      throw new Error(`(kind, requestId) 重复:${row.kind}/${row.requestId}`);
+    }
+    requests.add(key);
+  }
+}
+
+/* ── 幂等哈希:只对不可变 input,键序规范化(契约 R5/P0-8)。 ── */
+/* The product's one canonical JSON (@bottega/contracts) decides whether a reused request id carries the same input. An
+   undefined field is the same input as an absent one; null is a value and stays distinct. A non-finite number is never a
+   valid lifecycle input, so it is refused rather than hashed like null (JSON has no NaN). */
+function assertFinite(value: unknown): void {
+  if (typeof value === "number" && !Number.isFinite(value)) throw new Error("Lifecycle input carries a non-finite number");
+  if (Array.isArray(value)) for (const item of value) assertFinite(item);
+  else if (value && typeof value === "object") for (const item of Object.values(value)) assertFinite(item);
+}
+
+export function stableInputHash(input: Record<string, unknown>): string {
+  assertFinite(input);
+  return hashCanonical(input);
+}
+
+/* ── 资源占用集推导(R7/P0-2 冲突矩阵):创建时一次计算并冻结。
+ * chat/app/project 三维;allocate 产物(如 import 的 appId)必须在创建前就绪。 ── */
+export function claimsOf(
+  kind: LifecycleKind,
+  input: Record<string, unknown>,
+  allocated: Record<string, unknown>
+): string[] {
+  const chat = str(input.chatId);
+  const app = str(allocated.appId) ?? str(input.appId);
+  const project = str(allocated.projectId) ?? str(input.projectId);
+  const need = (
+    label: string,
+    value: string | undefined,
+    dim: string
+  ): string => {
+    if (!value) {
+      throw new Error(
+        `kind ${kind} 的 claim 闭包缺 ${dim} 维度(${label})——身份必须在创建前分配(R8 闭包完整性)`
+      );
+    }
+    return `${dim}:${value}`;
+  };
+  switch (kind) {
+    case "app-local-remove": {
+      const removal = localAppRemovalSchema.parse(input);
+      return ["sync-scope", `app:${removal.appId}`, need("allocated.projectId", project, "project")];
+    }
+    case "app-cloud-retire": {
+      const removal = cloudAppRetirementSchema.parse(input);
+      if (project !== removal.deletion.projectId) throw new Error("APP_RETIREMENT_PROJECT_CHANGED");
+      return ["sync-scope", `app:${removal.appId}`, need("allocated.projectId", project, "project")];
+    }
+    case "app-cloud-install": {
+      const install = cloudAppInstallSchema.parse(input);
+      return ["sync-scope", `app:${install.descriptor.appId}`, `project:${install.descriptor.projectId}`];
+    }
+    case "chat-materialize": {
+      const portable = portableChatSchema.parse(input.chat);
+      return ["sync-scope", `chat:${portable.id}`, ...(portable.classification.projectId ? [`project:${portable.classification.projectId}`] : [])];
+    }
+    case "scope-cleanup": {
+      const plan = scopeCleanupPlanSchema.parse(input);
+      return [...new Set(["sync-scope", ...plan.chats.map(item => `chat:${item.chatId}`),
+        ...[...plan.projectIds, ...(plan.discardedProjectIds ?? [])].map(id => `project:${id}`),
+        ...[...plan.appIds, ...(plan.discardedAppIds ?? [])].map(id => `app:${id}`), ...plan.bases.map(item => item.ownerKey)])];
+    }
+    case "save-as-app":
+      /* 闭包含未来子 promotion 的 project(R8:否则同 project 的另一 promotion 可穿透)。 */
+      return [
+        need("input.chatId", chat, "chat"),
+        need("allocated.appId", app, "app"),
+        need("allocated.projectId", project, "project"),
+      ];
+    case "project-chat-rescue":
+    case "base-promotion":
+      return [
+        need("input.chatId", chat, "chat"),
+        need("input.projectId", project, "project"),
+      ];
+    case "app-delete": {
+      /* 删除触及既有 Project（cascade 连库删）：占上 project 维才挡得住并发
+       * base-promotion 交错；壳已无 Project 时只占 app 维（allocate 回填空串）。 */
+      const claims = [need("input.appId", app, "app")];
+      if (project) claims.push(`project:${project}`);
+      return claims;
+    }
+    case "chat-slot":
+    case "share-publish":
+      return [need("input.appId", app, "app")];
+    case "base-import":
+    case "preset-install":
+      /* R8 闭包完整性：交付会创建并写入预分配的 Project。 */
+      return [
+        need("allocated.appId", app, "app"),
+        need("allocated.projectId", project, "project"),
+      ];
+  }
+}
+
+function str(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}

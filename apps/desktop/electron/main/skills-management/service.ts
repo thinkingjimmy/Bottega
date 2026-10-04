@@ -1,0 +1,767 @@
+/**
+ * [INPUT]: Depends on library-v3/jobs-v2 ledgers, Extension Registry gates, runtime discovery facts (known snapshots or an executable search; only an explicit reload asks for `--version`, and a located Agent's first snapshot rescans), read-only Agent-home candidate scanning backed by a persisted digest cache, package verification, and catalog invalidation, and statusError from main/errors
+ * [OUTPUT]: Provides UnifiedSkillsService for list/discovery/import, enabled toggles, tombstone deletion, deletion-only consent, enablement-only undo, catalog candidates, progress, and restart recovery
+ * [POS]: Library-first Skills coordination boundary; it cannot express or perform projection, native-target, Codex config, or Agent-home writes
+ */
+
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import type {
+  ManagedSkillAgent,
+  ManagedSkillCandidateError,
+  ManagedSkillJobProgress,
+  ManagedSkillIntentInput,
+  ManagedSkillPlanPreview,
+  UnifiedSkillsSnapshot,
+} from "../../../shared/ipc/agent/unified-skills-ipc";
+import type { BackendRuntimeRegistry } from "../backends/runtime/runtime-registry";
+import { statusError } from "../ipc/errors";
+import type { ExtensionRegistryStore } from "../extensions/registry/registry-store";
+import type { TurnProjectContext } from "../../../shared/product/product-resource-scope";
+import {
+  buildOwnerFacts,
+  candidateView,
+  classifyCandidates,
+  dedupeErrors,
+  safeReason,
+  type CandidateAuthority,
+} from "./candidate-status";
+import type { EffectiveSkillCandidate } from "./custody/effective-snapshot";
+import { SkillsJobLedger, type SkillsJobStep } from "./jobs/ledger";
+import {
+  estimateLibraryPromptBytes,
+  planExistingIntent,
+  planImportIntent,
+  reportFor,
+} from "./job-planning";
+import {
+  ManagedSkillsLibraryStore,
+  type LibraryCustodyProbe,
+} from "./library-store";
+import {
+  inspectPackageFolder,
+  inspectSkillFolder,
+  scanAgentSkillsRoot,
+  verifyInspectedSkill,
+  type SkillFolderInspection,
+} from "./package";
+import {
+  resolveManagedSkillTargets,
+  type ManagedSkillTarget,
+} from "./metadata/targets";
+import {
+  candidateAuthority,
+  digestJson,
+  discoveryRoots,
+  emptyCandidateState,
+  emptyCounts,
+  privateIdentity,
+  publicPreview,
+  sourceViews,
+  type CandidateState,
+  type HeldImport,
+} from "./orchestration/discovery-state";
+import { SkillDigestCacheStore } from "./orchestration/digest-cache";
+import { createRootScanner, installedSkillAgents } from "./orchestration/discovery-scan";
+import { resolveLibrarySources } from "./orchestration/library-sources";
+import { runtimeSkillCandidates } from "./orchestration/runtime-candidates";
+import {
+  SKILLS_AUTHORITY_TTL_MS,
+  type HeldSkillsPlan,
+} from "./service-authority";
+import { resolveLaunchHome } from "../../../shared/providers/home-path";
+
+export type UnifiedSkillsServiceDependencies = Readonly<{
+  userData: string;
+  userHome: string;
+  env: NodeJS.ProcessEnv;
+  registry: ExtensionRegistryStore;
+  runtimeRegistry?: Pick<BackendRuntimeRegistry, "current" | "resolve" | "subscribe">;
+  /** Executable search only; lets a launch count an Agent without asking it for `--version`. */
+  locateRuntime?: (agent: ManagedSkillAgent) => Promise<boolean>;
+  chooseLocalFolder(): Promise<string | null>;
+  library?: ManagedSkillsLibraryStore;
+  libraryRoot: () => string | null;
+  jobs?: SkillsJobLedger;
+  scanSkillsRoot?: typeof scanAgentSkillsRoot;
+  invalidateCatalog?: () => void;
+  custodyReferenced?: LibraryCustodyProbe;
+}>;
+
+export class UnifiedSkillsService {
+  readonly library: ManagedSkillsLibraryStore;
+  readonly jobs: SkillsJobLedger;
+  private get targets(): readonly ManagedSkillTarget[] {
+    return resolveManagedSkillTargets(this.userHome, this.dependencies.env);
+  }
+
+  private get agents(): readonly ManagedSkillAgent[] {
+    return this.targets.map(target => target.agent);
+  }
+  private readonly digestCache: SkillDigestCacheStore;
+  private readonly userHome: string;
+  private readonly imports = new Map<string, HeldImport>();
+  private readonly plans = new Map<string, HeldSkillsPlan>();
+  private readonly watchers = new Set<(snapshot: UnifiedSkillsSnapshot) => void>();
+  private readonly progressWatchers = new Set<
+    (progress: ManagedSkillJobProgress) => void
+  >();
+  private revision = 0;
+  private lastCandidates: CandidateState = emptyCandidateState();
+  private availability: UnifiedSkillsSnapshot["availability"] = {
+    kind: "initializing",
+  };
+  private refreshEpoch = 0;
+  private discoveryTask: Promise<void> | null = null;
+  private queue: Promise<void> = Promise.resolve();
+  private readonly unsubscribeInventory: () => void;
+  private readonly unsubscribeRuntime: () => void;
+  /* Agents the last scan counted by executable search alone; their first real snapshot rescans. */
+  private unverifiedAgents = new Set<ManagedSkillAgent>();
+
+  constructor(private readonly dependencies: UnifiedSkillsServiceDependencies) {
+    this.library =
+      dependencies.library ?? new ManagedSkillsLibraryStore(dependencies.userData, {}, dependencies.libraryRoot);
+    this.jobs = dependencies.jobs ?? new SkillsJobLedger(dependencies.userData);
+    this.digestCache = new SkillDigestCacheStore(
+      join(dependencies.userData, "skills-digest-cache.json")
+    );
+    this.userHome = resolveLaunchHome(dependencies.env, dependencies.userHome);
+    this.unsubscribeInventory = dependencies.registry.onInventoryChanged(() => {
+      dependencies.invalidateCatalog?.();
+      void this.serialize(async () => {
+        this.revision += 1;
+        await this.publish();
+      }).catch(() => undefined);
+    });
+    this.unsubscribeRuntime = dependencies.runtimeRegistry?.subscribe((backend) => {
+      if (this.unverifiedAgents.has(backend as ManagedSkillAgent)) this.startBackgroundDiscovery();
+    }) ?? (() => undefined);
+  }
+
+  async initialize() {
+    if (await this.initializeStores()) {
+      await this.resumeJobs();
+    }
+    this.startBackgroundDiscovery();
+  }
+
+  /**
+   * Reloads the folder ledger and republishes. Candidate counts are recomputed
+   * from the last discovery scan rather than rescanning four Agent homes: this
+   * runs after every synchronization pass, and the Agent homes did not change.
+   */
+  remountFolder() {
+    return this.serialize(async () => {
+      await this.library.initialize(this.dependencies.custodyReferenced);
+      this.dependencies.invalidateCatalog?.();
+      this.reclassifyCandidates();
+      await this.publish();
+    });
+  }
+
+  onChanged(listener: (snapshot: UnifiedSkillsSnapshot) => void) {
+    this.watchers.add(listener);
+    return () => this.watchers.delete(listener);
+  }
+
+  onProgress(listener: (progress: ManagedSkillJobProgress) => void) {
+    this.progressWatchers.add(listener);
+    return () => this.progressWatchers.delete(listener);
+  }
+
+  list(forceReload = false) {
+    return this.serialize(async () => {
+      await this.recoverIfReadOnly();
+      if (forceReload || !this.lastCandidates.revision) {
+        await this.refreshCandidates(forceReload);
+      }
+      return this.projectSnapshot();
+    });
+  }
+
+  candidates(agent: ManagedSkillAgent | "all", forceReload = false) {
+    return this.serialize(async () => {
+      if (agent !== "all" && !this.agents.includes(agent)) {
+        throw statusError(400, "unknown Skill source");
+      }
+      if (forceReload || !this.lastCandidates.revision) {
+        await this.refreshCandidates(forceReload);
+      }
+      const candidates =
+        agent === "all"
+          ? this.agents.flatMap(
+              (source) => this.lastCandidates.byAgent.get(source) ?? []
+            )
+          : this.lastCandidates.byAgent.get(agent) ?? [];
+      const authorities = new Map(
+        candidates.map((candidate) => [candidate.ref, candidate])
+      );
+      const errors = this.lastCandidates.errors.filter(
+        (error) => agent === "all" || error.agent === agent
+      );
+      return publicPreview(
+        this.holdImport(
+          agent,
+          "",
+          [...authorities.values()].map((candidate) => candidate.inspection),
+          authorities,
+          errors
+        )
+      );
+    });
+  }
+
+  chooseLocal() {
+    return this.serialize(async () => {
+      const root = await this.dependencies.chooseLocalFolder();
+      if (!root) return null;
+      return publicPreview(
+        this.holdImport(
+          "local-folder",
+          root,
+          await inspectPackageFolder(root),
+          undefined,
+          []
+        )
+      );
+    });
+  }
+
+  previewIntents(intents: readonly ManagedSkillIntentInput[]) {
+    return this.serialize(async () => {
+      this.assertWritable();
+      if (!Array.isArray(intents) || !intents.length || intents.length > 2_048) {
+        throw statusError(400, "intent batch must contain 1-2048 items");
+      }
+      for (const [id, plan] of this.plans) {
+        if (plan.view.expiresAt <= Date.now()) this.plans.delete(id);
+      }
+      const sources = await this.librarySources();
+      const steps: SkillsJobStep[] = [];
+      for (const intent of intents) {
+        steps.push(
+          ...(intent.type === "import-and-enable"
+            ? await planImportIntent(intent, this.imports, this.library)
+            : planExistingIntent(intent, sources))
+        );
+      }
+      const planId = randomUUID();
+      const planDigest = digestJson(steps);
+      const view: ManagedSkillPlanPreview = {
+        planId,
+        planDigest,
+        authorityToken: randomUUID(),
+        expiresAt: Date.now() + SKILLS_AUTHORITY_TTL_MS,
+        expectedRevision: this.revision,
+        consent: steps.some((step) => step.action === "delete-library")
+          ? [
+              {
+                kind: "delete",
+                count: steps.filter(
+                  (step) => step.action === "delete-library"
+                ).length,
+              },
+            ]
+          : [],
+        total: steps.length,
+        acquisitionActions: steps.filter((step) => step.action === "import")
+          .length,
+        enablementActions: steps.filter((step) =>
+          step.action.startsWith("set-")
+        ).length,
+        deletionActions: steps.filter(
+          (step) => step.action === "delete-library"
+        ).length,
+      };
+      this.plans.set(planId, { view, steps });
+      return view;
+    });
+  }
+
+  applyPlan(input: Readonly<{
+    planId: string;
+    planDigest: `sha256:${string}`;
+    authorityToken: string;
+  }>) {
+    return this.serialize(async () => {
+      this.assertWritable();
+      const held = this.plans.get(input?.planId);
+      if (
+        !held ||
+        held.view.planDigest !== input.planDigest ||
+        held.view.authorityToken !== input.authorityToken
+      ) {
+        throw statusError(409, "plan authority is invalid");
+      }
+      if (held.view.expiresAt <= Date.now()) {
+        throw statusError(409, "plan authority expired");
+      }
+      if (held.view.expectedRevision !== this.revision) {
+        throw statusError(409, "Skills state changed; preview again");
+      }
+      this.plans.delete(input.planId);
+      const job = await this.jobs.authorizePlan({ ...input, steps: held.steps });
+      this.publishProgress(job.batchId);
+      await this.runJob(job.batchId);
+      this.revision += 1;
+      this.dependencies.invalidateCatalog?.();
+      const snapshot = await this.publish();
+      void this.serialize(async () => {
+        if (await this.refreshCandidates()) await this.publish();
+      }).catch(() => undefined);
+      return snapshot;
+    });
+  }
+
+  undoPlan(undoToken: string) {
+    return this.serialize(async () => {
+      this.assertWritable();
+      const job = this.jobs.jobForUndo(undoToken);
+      if (!job) throw statusError(409, "undo token is invalid or already consumed");
+      await this.jobs.startUndo(job.batchId);
+      for (const step of [...job.steps].reverse()) {
+        if (step.status !== "completed" || step.previousEnabled === null) continue;
+        if (
+          (step.action === "import" ||
+            step.action === "set-library-enabled") &&
+          step.libraryId &&
+          this.library.entry(step.libraryId)
+        ) {
+          await this.library.setEnabled(step.libraryId, step.previousEnabled);
+        }
+        if (
+          step.action === "set-extension-enabled" &&
+          step.componentInstanceIdentity
+        ) {
+          await this.setExtensionEnabled(
+            step.componentInstanceIdentity,
+            step.previousEnabled
+          );
+        }
+      }
+      await this.jobs.markUndone(job.batchId);
+      this.revision += 1;
+      this.dependencies.invalidateCatalog?.();
+      return this.publish();
+    });
+  }
+
+  effectiveCandidates(
+    projectContext: TurnProjectContext = {
+      projectId: null,
+      projectLifecycleRevision: null,
+    }
+  ): Promise<EffectiveSkillCandidate[]> {
+    return this.runtimeLibrarySources(projectContext).then((sources) =>
+      runtimeSkillCandidates({
+        registry: this.dependencies.registry,
+        projectContext,
+        sources,
+      })
+    );
+  }
+
+  async shutdown() {
+    this.unsubscribeInventory();
+    this.unsubscribeRuntime();
+    await this.discoveryTask?.catch(() => undefined);
+    await this.library.closeAndFlush();
+    await this.jobs.closeAndFlush();
+  }
+
+  private async initializeStores() {
+    try {
+      await this.library.initialize(
+        this.dependencies.custodyReferenced ?? (() => false)
+      );
+      await this.jobs.initialize();
+      this.availability = { kind: "ready" };
+      return true;
+    } catch (cause) {
+      this.availability = { kind: "read-only", reason: safeReason(cause) };
+      return false;
+    }
+  }
+
+  private async recoverIfReadOnly() {
+    if (this.availability.kind !== "read-only") return;
+    if (await this.initializeStores()) await this.resumeJobs();
+  }
+
+  private async resumeJobs() {
+    for (const job of this.jobs.resumableJobs()) {
+      await this.runJob(job.batchId);
+    }
+  }
+
+  private async runJob(batchId: string) {
+    await this.jobs.start(batchId);
+    for (const step of this.jobs.job(batchId)?.steps ?? []) {
+      const current = this.jobs
+        .job(batchId)
+        ?.steps.find((candidate) => candidate.stepId === step.stepId);
+      if (!current || current.status === "completed" || current.status === "failed") {
+        continue;
+      }
+      await this.jobs.beginStep(batchId, step.stepId);
+      try {
+        await this.executeStep(batchId, step);
+      } catch (cause) {
+        await this.jobs.failStep(batchId, step.stepId, safeReason(cause));
+      }
+      this.publishProgress(batchId);
+    }
+    const job = this.jobs.job(batchId);
+    if (!job) return;
+    await this.jobs.finish(batchId, reportFor(job));
+    this.publishProgress(batchId);
+  }
+
+  private async executeStep(batchId: string, step: SkillsJobStep) {
+    if (step.action === "import") {
+      if (!step.sourcePath || !step.sourceKind || !step.digest) {
+        throw new Error("import receipt is incomplete");
+      }
+      const inspected = await inspectSkillFolder(step.sourcePath);
+      if (!inspected.importable) throw new Error(`skill-inspection:${inspected.reason.code}`);
+      const verified = await verifyInspectedSkill(inspected.skill);
+      if (verified.digest !== step.digest || verified.name !== step.name) {
+        throw Object.assign(new Error("import source changed"), { reason: "changed" });
+      }
+      const outcomes = await this.library.importCandidates([
+        {
+          skill: verified,
+          source:
+            step.sourceKind === "local-folder"
+              ? { kind: "local-folder", sourcePath: step.sourcePath }
+              : {
+                  kind: "adopted",
+                  agent: step.agent!,
+                  sourcePath: step.sourcePath,
+                },
+        },
+      ]);
+      const outcome = outcomes[0]!;
+      await this.jobs.checkpoint(batchId, step.stepId, {
+        libraryId: outcome.libraryId,
+        importOutcome: outcome.outcome,
+      });
+      return;
+    }
+    if (step.action === "set-library-enabled") {
+      if (!step.libraryId || step.enabled === null) throw new Error("library gate receipt incomplete");
+      await this.library.setEnabled(step.libraryId, step.enabled);
+      await this.jobs.checkpoint(batchId, step.stepId);
+      return;
+    }
+    if (step.action === "set-extension-enabled") {
+      if (!step.componentInstanceIdentity || step.enabled === null) {
+        throw new Error("extension gate receipt incomplete");
+      }
+      await this.setExtensionEnabled(
+        step.componentInstanceIdentity,
+        step.enabled
+      );
+      await this.jobs.checkpoint(batchId, step.stepId);
+      return;
+    }
+    if (!step.libraryId) throw new Error("delete receipt incomplete");
+    if (this.library.entry(step.libraryId)) {
+      await this.library.delete(
+        step.libraryId,
+        this.dependencies.custodyReferenced ?? (() => false)
+      );
+    }
+    await this.jobs.checkpoint(batchId, step.stepId);
+  }
+
+  private setExtensionEnabled(
+    componentInstanceIdentity: string,
+    enabled: boolean
+  ) {
+    return enabled
+      ? this.dependencies.registry.lifecycle.enableComponent(componentInstanceIdentity)
+      : this.dependencies.registry.lifecycle.disableComponent(componentInstanceIdentity);
+  }
+
+  private async projectSnapshot(): Promise<UnifiedSkillsSnapshot> {
+    const { installed } = await this.installedAgents(false);
+    const sources = await this.librarySources();
+    const local = sources.filter((source) => source.local);
+    return {
+      revision: this.revision,
+      availability: this.availability,
+      library: sources.map((source) => ({
+        ref: source.ref,
+        name: source.name,
+        displayName: source.displayName,
+        description: source.description,
+        ...(source.requires ? { requires: source.requires } : {}),
+        digest: source.digest,
+        source: source.source,
+        enabled: source.enabled,
+        contentState: source.contentState,
+        ...(source.local?.notice ? { notice: source.local.notice } : {}),
+        allowedActions: source.local
+          ? ([source.enabled ? "disable" : "enable", "delete"] as const)
+          : ([
+              source.enabled ? "disable" : "enable",
+              "goto-package",
+            ] as const),
+      })),
+      sources: sourceViews(this.lastCandidates, installed),
+      candidates: {
+        revision: this.lastCandidates.revision,
+        unmanagedByAgent: this.lastCandidates.unmanagedByAgent,
+        upToDateByAgent: this.lastCandidates.upToDateByAgent,
+        unmanagedBytes: this.lastCandidates.unmanagedBytes,
+        errors: this.lastCandidates.errors,
+      },
+      latestJob: this.jobs.latest(),
+      personalLibraryEmpty: local.length === 0,
+      enabledLibraryCount: local.filter((source) => source.enabled).length,
+      enabledLibraryPromptBytes: estimateLibraryPromptBytes(local),
+    };
+  }
+
+  private librarySources(
+    projectContext: TurnProjectContext = {
+      projectId: null,
+      projectLifecycleRevision: null,
+    }
+  ) {
+    return resolveLibrarySources({
+      userData: this.dependencies.userData,
+      library: this.library,
+      registry: this.dependencies.registry,
+      projectContext,
+      projection: "management",
+    });
+  }
+
+  private runtimeLibrarySources(projectContext: TurnProjectContext) {
+    return resolveLibrarySources({
+      userData: this.dependencies.userData,
+      library: this.library,
+      registry: this.dependencies.registry,
+      projectContext,
+      projection: "runtime-candidates",
+    });
+  }
+
+  /** Only an explicit reload discovers Agents; every other refresh counts known and located ones. */
+  private async refreshCandidates(discover = false) {
+    const epoch = ++this.refreshEpoch;
+    const { installed, unverified } = await this.installedAgents(discover);
+    const byAgent = new Map<ManagedSkillAgent, CandidateAuthority[]>();
+    const errors: ManagedSkillCandidateError[] = [];
+    await this.digestCache.ready();
+    const scanRoot = createRootScanner(
+      this.dependencies.scanSkillsRoot ?? scanAgentSkillsRoot,
+      this.digestCache
+    );
+    for (const target of this.targets) {
+      if (!installed.has(target.agent)) {
+        byAgent.set(target.agent, []);
+        continue;
+      }
+      const candidates: CandidateAuthority[] = [];
+      const seen = new Set<string>();
+      for (const root of discoveryRoots(target, this.userHome)) {
+        try {
+          for (const inspection of await scanRoot(root)) {
+            const sourcePath = inspection.importable
+              ? inspection.skill.canonicalPath
+              : join(root, inspection.name);
+            if (seen.has(sourcePath)) continue;
+            seen.add(sourcePath);
+            candidates.push(
+              candidateAuthority(target.agent, sourcePath, root, inspection)
+            );
+            if (!inspection.importable) {
+              errors.push({
+                agent: target.agent,
+                label: inspection.name,
+                reason: inspection.reason,
+              });
+            }
+          }
+        } catch (cause) {
+          errors.push({
+            agent: target.agent,
+            label: "Skills discovery",
+            reason: safeReason(cause),
+          });
+        }
+      }
+      byAgent.set(target.agent, candidates);
+    }
+    await this.digestCache.flush();
+    if (epoch !== this.refreshEpoch) return false;
+    this.unverifiedAgents = unverified;
+    this.lastCandidates = this.classifyScan(byAgent, dedupeErrors(errors));
+    return true;
+  }
+
+  /** Recounts the last scan against the current Library owners; no filesystem work. */
+  private reclassifyCandidates() {
+    if (!this.lastCandidates.revision) return;
+    this.lastCandidates = this.classifyScan(
+      this.lastCandidates.byAgent,
+      this.lastCandidates.errors
+    );
+  }
+
+  private classifyScan(
+    byAgent: CandidateState["byAgent"],
+    errors: CandidateState["errors"]
+  ): CandidateState {
+    const owners = buildOwnerFacts(
+      this.library
+        .snapshot()
+        .entries.filter((entry) => entry.tombstoneAt === null)
+    );
+    const unmanagedByAgent = emptyCounts(this.agents);
+    const upToDateByAgent = emptyCounts(this.agents);
+    const bytesByAgent = emptyCounts(this.agents);
+    let unmanagedBytes = 0;
+    for (const agent of this.agents) {
+      const candidates = byAgent.get(agent) ?? [];
+      const classified = classifyCandidates(candidates, owners);
+      for (const candidate of candidates) {
+        const status = classified.get(candidate.ref)?.status;
+        if (status === "current") upToDateByAgent[agent] += 1;
+        if (["new", "update"].includes(status ?? "")) {
+          unmanagedByAgent[agent] += 1;
+          if (candidate.inspection.importable) {
+            bytesByAgent[agent] += candidate.inspection.skill.bytes;
+            unmanagedBytes += candidate.inspection.skill.bytes;
+          }
+        }
+      }
+    }
+    return {
+      revision: privateIdentity(
+        JSON.stringify(
+          [...byAgent].flatMap(([agent, items]) =>
+            items.map((item) => [
+              agent,
+              item.sourceIdentity,
+              item.inspection.importable
+                ? item.inspection.skill.revision
+                : item.inspection.reason.code,
+            ])
+          )
+        )
+      ),
+      byAgent,
+      unmanagedByAgent,
+      upToDateByAgent,
+      bytesByAgent,
+      unmanagedBytes,
+      errors,
+    };
+  }
+
+  private holdImport(
+    source: ManagedSkillAgent | "local-folder" | "all",
+    root: string,
+    inspections: readonly SkillFolderInspection[],
+    supplied?: ReadonlyMap<string, CandidateAuthority>,
+    errors: readonly ManagedSkillCandidateError[] = []
+  ) {
+    for (const [id, prior] of this.imports) {
+      if (prior.source === source) this.imports.delete(id);
+    }
+    if (source === "all" && !supplied) {
+      throw statusError(400, "aggregate imports require discovered authorities");
+    }
+    const authorities =
+      supplied ??
+      new Map(
+        inspections.map((inspection) => {
+          const path = inspection.importable
+            ? inspection.skill.canonicalPath
+            : root;
+          const authority = candidateAuthority(
+            source as Exclude<typeof source, "all">,
+            path,
+            root,
+            inspection
+          );
+          return [authority.ref, authority] as const;
+        })
+      );
+    const classifications = classifyCandidates(
+      authorities.values(),
+      buildOwnerFacts(
+        this.library
+          .snapshot()
+          .entries.filter((entry) => entry.tombstoneAt === null)
+      )
+    );
+    const candidates = [...authorities.values()].map((authority) =>
+      candidateView(authority, classifications.get(authority.ref)!)
+    );
+    const held: HeldImport = {
+      previewId: randomUUID(),
+      revision: privateIdentity(
+        JSON.stringify(
+          candidates.map((candidate) => [
+            candidate.ref,
+            candidate.revision,
+            candidate.digest,
+          ])
+        )
+      ),
+      source,
+      candidates,
+      errors,
+      authorities,
+    };
+    this.imports.set(held.previewId, held);
+    return held;
+  }
+
+  private installedAgents(discover: boolean) {
+    return installedSkillAgents(this.dependencies.runtimeRegistry, { agents: this.agents, discover, locate: this.dependencies.locateRuntime });
+  }
+
+  private startBackgroundDiscovery() {
+    if (this.discoveryTask) return;
+    this.discoveryTask = this.serialize(async () => {
+      if (await this.refreshCandidates()) await this.publish();
+    })
+      .catch(() => undefined)
+      .finally(() => {
+        this.discoveryTask = null;
+      });
+  }
+
+  private serialize<T>(operation: () => Promise<T>) {
+    const result = this.queue.then(operation);
+    this.queue = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
+  }
+  private assertWritable() {
+    if (this.availability.kind !== "ready") {
+      throw statusError(503, "Skills management is read-only");
+    }
+  }
+
+  private publishProgress(batchId: string) {
+    const progress = this.jobs.progress(batchId);
+    if (!progress) return;
+    for (const watcher of this.progressWatchers) watcher(progress);
+  }
+
+  private async publish() {
+    const snapshot = await this.projectSnapshot();
+    for (const watcher of this.watchers) watcher(snapshot);
+    return snapshot;
+  }
+}

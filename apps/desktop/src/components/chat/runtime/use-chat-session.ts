@@ -1,0 +1,782 @@
+/**
+ * [INPUT]: Depends on App enablement projections, React, renderer locale/catalog runtime and data providers, canonical chat/turn snapshots, PanelSessionContext, session subcontrollers, Agent attach, workspace/skills/files, and Gallery projections
+ * [OUTPUT]: Composes stable Chat controllers with Retry / Plan decision / auth retry routed behind queued messages (queueHolds, a queued Retry says where it went; F-46 ③), the Project-switch removal notice (F-46 ④), the composer's lock reason and prepare failure (attach or draft read, with retry), dismissible resume recovery, unresolved-turn send/queue locks, transcript retry, and fixed Agent settings navigation A `background` mode serves hidden queue runners (F-34c): detached side panel, host-gated draining. It restores the Chat's durable draft (F-12) once its incarnation is known.
+ * [POS]: The thin composition root of chat/runtime; durable authority remains in main while renderer owns view generation. Routing stays outside: post-send navigation is the chat route's draft-residence observation, not a session concern
+ */
+import { useSessionIdentity } from "./session/identity";
+import { recentTurns } from "@/lib/native-transcript/window";
+import { useLocalPlatform } from "@/lib/cloud/chat/platform/local";
+import { assertNoPendingAgent } from "@/lib/chat-agent-draft/submission";
+import { readAgentDraft, undoAgentSelection } from "@/lib/chat-agent-draft/state";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ChatStatus } from "ai";
+import { richValueDisplayText, type RichValue } from "@ai-chat/ui/components/ai-elements/prompt-input";
+import { builtinAgent } from "../../../../shared/chat-agent/options";
+import type { AgentBackendId, AgentScope, SessionRef, SteerOutboxProjection } from "../../../../shared/ipc/agent/agent-ipc";
+import type { ChatMessage } from "../../../../shared/ipc/content/chats-ipc";
+import { useOptionalApps } from "@/components/providers/content/apps-provider";
+import { appEnablementCopy } from "@ai-chat/ui/lib/app-enablement/copy";
+import { useChats } from "@/components/providers/chats-provider";
+import { useProjects } from "@/components/providers/projects-provider";
+import {
+  abandonFatalTurn,
+  acknowledgeCleanupFailure,
+  type AgentRequest,
+} from "@/lib/agent/agent-client";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
+import { answerRoute, submissionRoute } from "@/lib/chat/session/message-queue-model";
+import { useEffectiveLocale } from "@/lib/appearance/i18n-locale";
+import { translate } from "../../../../shared/i18n/runtime";
+import { mergeChatMessages, sameProjectionStatus, type ChatProjectionStatus, type ChatTurnProjection, type ProjectedSubagent } from "@/lib/chat/session/chat-turn-attach";
+import { restoreDurableDraft } from "@/lib/chat-composer/durable/durable";
+import { bindComposerWorkspaceIdentity, clearSentComposerDraft, readDraftChatId, reconcileComposerProject, replaceDraftFiles, retainComposerResources, setComposerProject, updateComposer, useComposerState } from "@/lib/chat/state/composer/chat-composer-store";
+import { createChatHydration, hydrationReady } from "@/lib/chat/state/chat-hydration";
+import type { TurnDraft } from "../../../../shared/chats/model/chat-turn-reducer";
+import { type LiveAttachmentPreview } from "./files/chat-attachments";
+import {
+  composerGates,
+  composerLockReason,
+  createPanelSessionContext,
+  messageId,
+  revisionUnavailableReason as resolveRevisionUnavailableReason,
+  type ChatProjectMode,
+  type PanelSessionContext,
+} from "./chat-session-model";
+import { useWorkspaceLifecycle } from "./use-workspace-lifecycle";
+import { useRichFileResources } from "./files/use-rich-file-resources";
+import { useMessageQueue } from "./queue/use-message-queue";
+import { bindChatAttachment } from "./files/bind-chat-attachment";
+import {
+  createSessionSubmit,
+} from "./session/submission/create-session-submit";
+import { createSessionSubmitLifecycle, useRecoveryWaitNotice, useSessionViewFence } from "./session/submission/create-session-submit-lifecycle";
+import { useSessionInteractions, type SessionSubmit } from "./session/use-session-interactions";
+import { useSessionSidePanel } from "./session/panels/use-session-side-panel";
+import { useStableController } from "./use-stable-controller";
+import { useSessionRevision } from "./session/use-session-revision";
+import { useResumeRecovery } from "./session/recovery/use-resume-recovery";
+import {
+  useSessionQueuePorts,
+  useSessionSubmissionPorts,
+} from "./session/submission/use-session-submission-ports";
+import { useSessionMessageProjection, useSessionRuntimeCatalogs } from "./session/use-session-runtime-projections";
+export type { ChatProjectMode, PendingPlanDecisionState, PendingUserInputState, SidePanelState } from "./chat-session-model";
+const EMPTY_INTERACTION_RESULTS: NonNullable<ChatProjectionStatus["interactionResults"]> = [];
+export function useChatSession({
+  scope: inputScope,
+  project: inputProject,
+  draftAgent,
+  panelContext: inputPanelContext,
+  background,
+}: {
+  scope: AgentScope;
+  project: ChatProjectMode;
+  draftAgent?: AgentBackendId;
+  panelContext?: PanelSessionContext;
+  /** A hidden queue runner (F-34c): no side panel, and it claims only while the host allows it. */
+  background?: Readonly<{ drainAllowed: boolean }>;
+}) {
+  const locale = useEffectiveLocale();
+  const { chatId, fixedAppId, scope, project } = useSessionIdentity(inputScope, inputProject);
+  const { chats, loading: chatsLoading, getChat } = useChats();
+  const appContext = chats.find(chat => chat.id === chatId)?.context;
+  const appId = fixedAppId ?? (appContext?.kind === "app-use" || appContext?.kind === "app-edit" ? appContext.appId : null);
+  const appRecords = useOptionalApps()?.records;
+  const appClosed = Boolean(appId && appRecords?.find(record => record.id === appId)?.enabled !== true);
+  const platform = useLocalPlatform(getChat);
+  const { projects, loading: projectsLoading, addProject, ensureForApp, listBranches, checkoutBranch, createBranch } = useProjects();
+  const captureView = useSessionViewFence(chatId);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const [status, setStatus] = useState<ChatStatus>("ready");
+  const [agentSession, setAgentSession] = useState<SessionRef | undefined>();
+  const [loading, setLoading] = useState(true);
+  const [hydratedChatId, setHydratedChatId] = useState<string | null>(null);
+  const [persisted, setPersisted] = useState(false);
+  const [adopted, setAdopted] = useState(false);
+  const composerState = useComposerState(chatId);
+  // 草稿与 Project 选择同寿，统一归 composer store，避免重挂载错配旧 scope grant。
+  const selectedProjectId = composerState.projectId;
+  const richValue = composerState.draft.richValue;
+  const attachmentFiles = composerState.draft.files;
+  const [attachmentNotice, setAttachmentNotice] = useState("");
+  const [queued, setQueued] = useState(false);
+  const [queueNotice, setQueueNotice] = useState("");
+  useRecoveryWaitNotice(chatId, queued, setQueueNotice);
+  const [steerIntents, setSteerIntents] = useState<SteerOutboxProjection[]>([]);
+  const [draft, setDraft] = useState<TurnDraft | null>(null);
+  const [subagents, setSubagents] = useState<Record<string, ProjectedSubagent>>({});
+  const draftRef = useRef<TurnDraft | null>(null);
+  const [livePreviews, setLivePreviews] = useState<ReadonlyMap<string, LiveAttachmentPreview[]>>(new Map());
+  const requestRef = useRef<AgentRequest | null>(null);
+  const submitRef = useRef<SessionSubmit | null>(null);
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  const sessionAbortRef = useRef(new AbortController());
+  const recordExistsRef = useRef(false);
+  const incarnationIdRef = useRef<string | null>(null);
+  const attachGenerationRef = useRef(0);
+  const [hydration, setHydration] = useState(() => createChatHydration(0));
+  const [attachFailure, setAttachFailure] = useState<{ message: string; retry(): void } | null>(null);
+  const projectionRef = useRef<ChatTurnProjection>({
+    messages: [],
+    draft: null,
+    approvals: [],
+    userInputs: [],
+    subagents: {},
+    blocksNewTurn: true,
+    steeringSupported: false,
+  });
+  const [projectionStatus, setProjectionStatus] =
+    useState<ChatProjectionStatus>({});
+  // 投影自推状态；同值早退保住队列依赖链的身份。
+  const applyProjectionStatus = useCallback((next: ChatProjectionStatus) => {
+    setProjectionStatus((current) =>
+      sameProjectionStatus(current, next) ? current : next
+    );
+  }, []);
+  // 本地 append 唯一入口：先并入投影，再由投影驱动 state——
+  // 绕过投影直写 setMessages 会被下一个 seq 事件的全量投影覆盖。
+  const appendProjected = useCallback((message: ChatMessage) => {
+    projectionRef.current = {
+      ...projectionRef.current,
+      messages: recentTurns(mergeChatMessages(projectionRef.current.messages, [message])),
+    };
+    messagesRef.current = projectionRef.current.messages;
+    setMessages(messagesRef.current);
+  }, []);
+  const appendLocalAssistant = useCallback(
+    (content: string, isError = false) =>
+      appendProjected({
+        id: messageId("assistant"),
+        role: "assistant",
+        backend: readAgentDraft(chatId).options.backend,
+        content,
+        isError,
+        createdAt: Date.now(),
+        seq: (projectionRef.current.messages.at(-1)?.seq ?? 0) + 1,
+      }),
+    [appendProjected, chatId]
+  );
+  const messageSnapshot = useSessionMessageProjection({
+    chatId, hydratedChatId, projectionRef, messagesRef, setMessages, platform,
+  });
+  const {
+    workspaceBinding,
+    workspaceIdentityKey,
+    workspacePrecondition,
+    workspaceScope,
+    workspaceScopeKey,
+  } =
+    useWorkspaceLifecycle({
+    chatId,
+    chats,
+    composerIncarnationId: composerState.incarnationId,
+    messageIncarnationId: messageSnapshot?.incarnationId,
+    persisted,
+    project,
+    projects,
+    selectedProjectId,
+  });
+  const workspaceScopeKeyRef = useRef(workspaceScopeKey);
+  useLayoutEffect(() => {
+    workspaceScopeKeyRef.current = workspaceScopeKey;
+    return () => {
+      workspaceScopeKeyRef.current = "";
+    };
+  }, [workspaceScopeKey]);
+  const catalogs = useSessionRuntimeCatalogs({
+    scope, sessionReady: !loading && hydratedChatId === chatId,
+    workspaceScope, workspaceScopeKey, workspaceBinding, draftAgent,
+  });
+  const { setup, settings, selectedBackend, backendState, planSupported, workspaceFileSearch } = catalogs;
+  const { lockBackend } = settings;
+  const { isPlanCapabilityChecking, planAvailable, planCapabilityChecking, planMode,
+    requirePlanCapability, setPlanMode, skills, skillsError, skillsHiddenCount,
+    invalidatedSkillRefs, skillsLoading, togglePlanMode } = catalogs.skills;
+  const {
+    authorize: authorizeRichFile,
+    discard: discardRichNode,
+    fileFor: richFileFor,
+  } = useRichFileResources(chatId, workspaceScope);
+  const reportStopError = useCallback(
+    (cause: unknown) =>
+      setAttachmentNotice(
+        translate(locale, "chat.runtime.relayStopFailed", {
+          message: errorMessage(cause),
+        })
+      ),
+    [locale]
+  );
+  const interactions = useSessionInteractions({
+    chatId,
+    activeRequestId,
+    messages,
+    requestRef,
+    submitRef,
+    setPlanMode,
+    reportStopError,
+  });
+  const panelContext = useMemo<PanelSessionContext>(() => {
+    if (inputPanelContext) return inputPanelContext;
+    return createPanelSessionContext({
+      chatId,
+      incarnationId: messageSnapshot?.incarnationId,
+      adopted,
+      project,
+      selectedProjectId,
+    });
+  }, [adopted, chatId, inputPanelContext, messageSnapshot?.incarnationId, project, selectedProjectId]);
+  const sidePanel = useSessionSidePanel({
+    conversationId: chatId,
+    panelContext,
+    draft,
+    messages,
+    status,
+    subagents,
+    fileFor: richFileFor,
+    workspaceScope,
+    workspaceScopeKey,
+    detached: Boolean(background),
+  });
+  const {
+    approvals,
+    approvalBusy,
+    approvalError,
+    cancelPending,
+    handleStop: stopTurn,
+    pendingPlanDecision,
+    pendingUserInput,
+    respondApproval,
+    respondPlanDecision,
+    respondUserInput,
+    retryTurn,
+    retryAuthentication,
+    setApprovalBusy,
+    setApprovalError,
+    setApprovals,
+    setCancelPending,
+    setPendingPlanDecision,
+    setPendingUserInput,
+  } = interactions;
+  const {
+    close: closeSidePanel,
+    closeFile: closeSidePanelFile,
+    openDraftPlan: openDraftPlanPanel,
+    openFile: openFilePanel,
+    openWorkspaceFile: openWorkspaceFilePanel,
+    openImage,
+    openPlan: openPlanPanel,
+    openSubagent,
+    openTabs,
+    reconcileRichValue: reconcileSidePanelRichValue,
+    state: sidePanelState,
+  } = sidePanel;
+  useEffect(
+    () =>
+      bindChatAttachment({
+        chatId,
+        getChat: platform.chats.head,
+        platform,
+        onRecordAgent: (agent) => {
+          void lockBackend(agent).catch((cause) =>
+            appendLocalAssistant(
+              translate(locale, "chat.runtime.settings.transcriptReadFailed", {
+                message: errorMessage(cause),
+              }),
+              true
+            )
+          );
+        },
+        onRecord: (record) => setAdopted(Boolean(record?.importOrigin)),
+        onSteerSnapshot: setSteerIntents,
+        refs: {
+          generation: attachGenerationRef,
+          projection: projectionRef,
+          messages: messagesRef,
+          draft: draftRef,
+          request: requestRef,
+          recordExists: recordExistsRef,
+          incarnationId: incarnationIdRef,
+        },
+        set: {
+          hydration: setHydration,
+          projectionStatus: applyProjectionStatus,
+          hydratedChatId: setHydratedChatId,
+          loading: setLoading,
+          persisted: setPersisted,
+          messages: setMessages,
+          session: setAgentSession,
+          draft: setDraft,
+          subagents: setSubagents,
+          approvals: setApprovals,
+          activeRequestId: setActiveRequestId,
+          status: setStatus,
+          pendingUserInput: setPendingUserInput,
+          pendingPlanDecision: setPendingPlanDecision,
+          cancelPending: setCancelPending,
+          approvalBusy: setApprovalBusy,
+          approvalError: setApprovalError,
+          queued: setQueued,
+          queueNotice: setQueueNotice,
+          attachFailure: setAttachFailure,
+        },
+      }),
+    [
+      appendLocalAssistant,
+      applyProjectionStatus,
+      chatId,
+      getChat, platform,
+      setApprovalBusy,
+      setApprovalError,
+      setApprovals,
+      setCancelPending,
+      setPendingPlanDecision,
+      setPendingUserInput,
+      lockBackend,
+      locale,
+    ]
+  );
+  // 路由意图归 ChatRoute；此处只把被删/失效 Project 这一外部事实收敛回根级。
+  useEffect(() => {
+    if (projectsLoading) return;
+    reconcileComposerProject(chatId, (projectId) =>
+      projects.some((item) => item.id === projectId && !item.missing)
+    );
+  }, [chatId, projects, projectsLoading]);
+  const editorScopeKey = workspaceScopeKey;
+  const workspaceIdentityReady =
+    !loading &&
+    hydratedChatId === chatId &&
+    !projectsLoading &&
+    (!persisted || !chatsLoading) &&
+    workspacePrecondition !== null;
+  /* identity 与 composer 草稿同寿，而非与本 hook 同寿。Project 在卸载
+     期间原地 rebind，重挂载的首个已知 identity 仍能与旧值比较；旧版
+     entry 没有身份时只对 workspace-bound 节点 fail-closed，text/section 不动。 */
+  useLayoutEffect(() => {
+    if (!workspaceIdentityReady) return;
+    if (!bindComposerWorkspaceIdentity(chatId, workspaceIdentityKey, count =>
+      setAttachmentNotice(translate(locale, "chat.workspaceFiles.removedOnSwitch", { count })))) return;
+    closeSidePanel();
+    setPendingPlanDecision(null);
+    setPlanMode(false);
+  }, [
+    chatId,
+    locale,
+    closeSidePanel,
+    setPendingPlanDecision,
+    setPlanMode,
+    workspaceIdentityKey,
+    workspaceIdentityReady,
+  ]);
+  const updateRichValue = useCallback(
+    (next: RichValue) => {
+      updateComposer(chatId, (current) => ({
+        ...current,
+        draft: { ...current.draft, richValue: next },
+      }));
+      retainComposerResources(chatId);
+      reconcileSidePanelRichValue(next);
+    },
+    [chatId, reconcileSidePanelRichValue]
+  );
+  const clearRichInput = useCallback(() => {
+    undoAgentSelection(chatId);
+    clearSentComposerDraft(chatId);
+    retainComposerResources(chatId);
+    closeSidePanelFile();
+  }, [chatId, closeSidePanelFile]);
+  const buildSubmissionInput = useCallback(() => {
+    const submitGeneration = attachGenerationRef.current;
+    const isViewCurrent = captureView();
+    const lifecycle = createSessionSubmitLifecycle({
+      isCurrent: () =>
+        isViewCurrent() &&
+        attachGenerationRef.current === submitGeneration,
+      appendProjected,
+      appendLocalAssistant,
+      refs: {
+        draft: draftRef,
+        recordExists: recordExistsRef,
+        request: requestRef,
+      },
+      set: {
+        activeRequestId: setActiveRequestId,
+        agentSession: setAgentSession,
+        attachmentNotice: setAttachmentNotice,
+        draft: setDraft,
+        livePreviews: setLivePreviews,
+        cancelPending: setCancelPending,
+        persisted: setPersisted,
+        queued: setQueued,
+        queueNotice: setQueueNotice,
+        status: setStatus,
+      },
+    });
+    return {
+      snapshot: {
+        chatId,
+        scope,
+        project,
+        selectedProjectId,
+        selectedBackend,
+        loading,
+        status,
+        planMode,
+        agentSession,
+        messages,
+        workspaceScopeKey,
+        workspacePrecondition,
+      },
+      services: {
+        chats: { getChat },
+        projects: { ensureForApp },
+        settings,
+        setup,
+        isPlanCapabilityChecking,
+        requirePlanCapability,
+      },
+      refs: {
+        recordExists: recordExistsRef,
+        incarnationId: incarnationIdRef,
+        request: requestRef,
+        workspaceScopeKey: workspaceScopeKeyRef,
+      },
+      lifecycle,
+    };
+  }, [
+    agentSession,
+    appendLocalAssistant,
+    appendProjected,
+    captureView,
+    chatId,
+    ensureForApp,
+    getChat,
+    setCancelPending,
+    isPlanCapabilityChecking,
+    loading,
+    messages,
+    planMode,
+    project,
+    requirePlanCapability,
+    scope,
+    selectedBackend,
+    selectedProjectId,
+    settings,
+    setup,
+    status,
+    workspaceScopeKey,
+    workspacePrecondition,
+  ]);
+  // ports 每次调用取当刻快照；缓存会发陈货。
+  const submissionPorts = useSessionSubmissionPorts(buildSubmissionInput);
+  const submitRevision = useSessionRevision(buildSubmissionInput);
+  const handleSubmit = useCallback<SessionSubmit>(
+    (message, options) =>
+      createSessionSubmit(buildSubmissionInput())(message, options),
+    [buildSubmissionInput]
+  );
+  useEffect(() => {
+    submitRef.current = handleSubmit;
+  }, [handleSubmit]);
+  useEffect(
+    () => {
+      if (sessionAbortRef.current.signal.aborted) {
+        sessionAbortRef.current = new AbortController();
+      }
+      const lifecycle = sessionAbortRef.current;
+      return () => {
+        lifecycle.abort();
+        requestRef.current?.dispose();
+        requestRef.current = null;
+      };
+    },
+    []
+  );
+  const recovery = useResumeRecovery(chatId, projectionStatus);
+  const { resumeFailure } = recovery;
+  const { canDrain: composerCanDrain, inputDisabled: baseInputDisabled, turnControlsDisabled } = composerGates({
+    loading,
+    settingsLoading: settings.settingsLoading,
+    settingsSaving: settings.settingsSaving,
+    planCapabilityChecking,
+    hydrationReady:
+      hydrationReady(hydration) &&
+      workspaceIdentityReady &&
+      composerState.workspaceIdentityKey === workspaceIdentityKey,
+    backendReady: backendState === "ready",
+    turnRunning: status !== "ready",
+    awaitingUser:
+      Boolean(pendingUserInput) ||
+      Boolean(pendingPlanDecision) ||
+      approvals.length > 0,
+  });
+  // F-12: once this Chat's incarnation is known (or on the blank page, per Project), bring back its durable draft into an empty composer.
+  useEffect(() => { if (composerState.incarnationId || chatId === readDraftChatId()) void restoreDurableDraft(chatId, composerState.incarnationId); }, [chatId, composerState.incarnationId, composerState.projectId]);
+  const inputDisabled = baseInputDisabled || appClosed;
+  const canDrain = composerCanDrain && !appClosed && !resumeFailure && (background?.drainAllowed ?? true);
+  const composerLock = composerLockReason({ loading, chatLoaded: hydration.chatLoaded, attachReplayed: hydration.attachReplayed,
+    workspaceReady: workspaceIdentityReady && composerState.workspaceIdentityKey === workspaceIdentityKey,
+    settingsLoading: settings.settingsLoading, settingsSaving: settings.settingsSaving, planCapabilityChecking });
+  const prepareFailure = attachFailure ?? settings.initFailure;
+  const queuePorts = useSessionQueuePorts(submissionPorts, setAttachmentNotice);
+  const pendingQueue = useMessageQueue({
+    chatId,
+    canDrain,
+    isTurnRunning:
+      status !== "ready" && Boolean(projectionStatus.requestId),
+    steeringSupported: projectionStatus.steeringSupported === true,
+    requestId: projectionStatus.requestId,
+    steerIntents,
+    ports: queuePorts,
+  });
+  const canSteerQueueItem = pendingQueue.canSteer;
+  const dismissQueueError = pendingQueue.dismissError;
+  const editQueueItem = pendingQueue.edit;
+  const moveQueueItem = pendingQueue.move;
+  const queueError = pendingQueue.error;
+  const queueItems = pendingQueue.items;
+  const queuePaused = pendingQueue.paused;
+  const removeAmbiguous = pendingQueue.removeAmbiguous;
+  const removeQueueItem = pendingQueue.remove;
+  const resendAmbiguous = pendingQueue.resendAmbiguous;
+  const resumePendingQueue = pendingQueue.resume;
+  const resumeQueue = useCallback(() => { assertNoPendingAgent(chatId); return resumePendingQueue(); }, [chatId, resumePendingQueue]);
+  const setQueueReorderLock = pendingQueue.setReorderLock;
+  const steerQueueItem = pendingQueue.steer;
+  const steerQueueSupported = pendingQueue.steerSupported;
+  const sendDirectly =
+    status === "ready" &&
+    pendingQueue.items.length === 0 &&
+    !pendingQueue.paused;
+  const enqueuePending = pendingQueue.enqueue;
+  const revisionUnavailableReason = resolveRevisionUnavailableReason({
+    persisted,
+    inputDisabled,
+    status,
+    queued: pendingQueue.items.length > 0 || pendingQueue.paused,
+  });
+  const canRevise =
+    persisted &&
+    !inputDisabled &&
+    !revisionUnavailableReason;
+  const handleQueueOrSubmit = useCallback<SessionSubmit>(
+    (message, options) => {
+      if (appClosed) return Promise.reject(new Error(appEnablementCopy(locale).closedBody));
+      // F-06: an empty message is neither sent nor queued (the composer's Enter is already off for it); submissionRoute decides.
+      const route = submissionRoute(message, { resumeFailure: Boolean(resumeFailure), sendDirectly, backendReady: backendState === "ready",
+        authenticationRetry: Boolean(options?.authenticationRetry) });
+      if (route === "ignore") return Promise.resolve();
+      if (route === "reject-resume") return Promise.reject(new Error(translate(locale, "chat.resumeFailure.pendingDetail")));
+      if (route === "send") return handleSubmit(message, options);
+      assertNoPendingAgent(chatId);
+      if (route === "reject-unavailable") return Promise.reject(new Error("Agent is unavailable for queued messages"));
+      enqueuePending(message);
+      return Promise.resolve();
+    },
+    [appClosed, chatId, backendState, enqueuePending, handleSubmit, locale, resumeFailure, sendDirectly]
+  );
+  /* F-46 ③: Retry, a Plan decision and an authentication retry answer the turn that just ended, and never jump ahead of
+     queued messages (answerRoute): Retry joins the tail and says where it went; the other two wait for the queue. */
+  const queueHolds = answerRoute(pendingQueue, "plan") === "hold";
+  const retryTurnRouted = useCallback(() => {
+    if (answerRoute(pendingQueue, "retry") === "send") { retryTurn(); return; }
+    const ahead = pendingQueue.items.length;
+    handleQueueOrSubmit({ input: { kind: "plain", displayText: translate(locale, "common.retry") }, files: [] }).then(
+      () => setQueueNotice(translate(locale, "chat.queue.retryQueued", { count: ahead })),
+      (cause: unknown) => setQueueNotice(errorMessage(cause)));
+  }, [handleQueueOrSubmit, locale, pendingQueue, retryTurn]);
+  const retryAuthenticationRouted = useCallback(() => {
+    if (answerRoute(pendingQueue, "auth-retry") === "send") retryAuthentication();
+  }, [pendingQueue, retryAuthentication]);
+  const respondPlanDecisionRouted = useCallback(async (decision: Parameters<typeof respondPlanDecision>[0]) => {
+    if (decision.kind !== "skip" && answerRoute(pendingQueue, "plan") === "hold") return;
+    return respondPlanDecision(decision);
+  }, [pendingQueue, respondPlanDecision]);
+  const pausePending = pendingQueue.pause;
+  const handleStop = useCallback(async () => {
+    const result = await stopTurn();
+    if (result === "stopped") pausePending();
+    return result;
+  }, [pausePending, stopTurn]);
+  const canAbandonFatal = projectionStatus.persist === "fatal";
+  const canAcknowledgeCleanup = projectionStatus.cleanup === "failed";
+  const reportActionFailure = useCallback(
+    (action: string, cause: unknown) =>
+      appendLocalAssistant(
+        translate(locale, "chat.runtime.actionFailed", {
+          action,
+          message: errorMessage(cause),
+        }),
+        true
+      ),
+    [appendLocalAssistant, locale]
+  );
+  const abandonFatal = useCallback(
+    () =>
+      canAbandonFatal
+        ? abandonFatalTurn(chatId).catch((cause) =>
+            reportActionFailure(translate(locale, "chat.runtime.abandonTurn"), cause)
+          )
+        : Promise.resolve(),
+    [canAbandonFatal, chatId, locale, reportActionFailure]
+  );
+  const acknowledgeCleanup = useCallback(
+    () =>
+      canAcknowledgeCleanup
+        ? acknowledgeCleanupFailure(chatId).catch((cause) =>
+            reportActionFailure(translate(locale, "chat.runtime.acknowledgeCleanup"), cause)
+          )
+        : Promise.resolve(),
+    [canAcknowledgeCleanup, chatId, locale, reportActionFailure]
+  );
+  const createProject = useCallback(async () => {
+    const next = await addProject();
+    if (next) setComposerProject(chatId, next.id);
+  }, [addProject, chatId]);
+  const sections = useMemo(
+    () =>
+      chats
+        .filter((chat) => chat.id !== chatId)
+        .map((chat) => ({
+          chatId: chat.id,
+          name: chat.title ?? translate(locale, "chat.runtime.unnamed"),
+          agent: chat.agent,
+          updatedAt: chat.updatedAt,
+        })),
+    [chatId, chats, locale]
+  );
+  const richDisplayText = useMemo(() => richValueDisplayText(richValue), [richValue]);
+  const selectProject = useCallback(
+    (projectId: string | null) => setComposerProject(chatId, projectId),
+    [chatId]
+  );
+  const replaceAttachmentFiles = useCallback(
+    (files: typeof attachmentFiles) => replaceDraftFiles(chatId, files),
+    [chatId]
+  );
+  const transcriptController = useStableController({
+      chatId, incarnationId: messageSnapshot?.incarnationId ?? null,
+      loading,
+      /* Built-in-only copy (login commands) keys off this; a package Provider's reply gets the neutral form. */
+      backendId: builtinAgent(settings.turnOptions.backend) ?? undefined,
+      backendDisplayName: selectedBackend?.displayName ?? "Agent",
+      messages,
+      draft,
+      assistantSeq: projectionStatus.assistantSeq,
+      livePreviews,
+      hasPendingApproval: approvals.length > 0,
+      queued,
+      retryTurn: retryTurnRouted,
+    retryAuthentication: retryAuthenticationRouted,
+      openPlanPanel,
+      openDraftPlanPanel,
+      subagents,
+      openImage,
+      openSubagent,
+      canAbandonFatal,
+      abandonFatal,
+      canAcknowledgeCleanup,
+      acknowledgeCleanup,
+      canRevise,
+      revisionUnavailableReason,
+      submitRevision,
+    });
+  const sidePanelController = useStableController({
+      openArtifact: sidePanel.openArtifact,
+      state: sidePanelState,
+      context: panelContext,
+      subagents,
+      openTabs,
+      openSubagent,
+      close: closeSidePanel,
+    });
+  const composerController = useStableController({
+      chatId, loading,
+      persisted,
+      project,
+      projects,
+      projectsLoading,
+      selectedProjectId,
+      selectProject,
+      createProject,
+      inputDisabled,
+      composerLock,
+      prepareFailure,
+      turnControlsDisabled,
+      status,
+      cancelPending,
+      attachmentNotice,
+      setAttachmentNotice,
+      queueNotice: appClosed ? appEnablementCopy(locale).closedBody : queueNotice,
+      setQueueNotice,
+      approval: approvals[0],
+      approvalBusy,
+      approvalError,
+      interactionResults: projectionStatus.interactionResults ?? EMPTY_INTERACTION_RESULTS,
+      respondApproval,
+      pendingUserInput,
+      respondUserInput,
+      pendingPlanDecision,
+      respondPlanDecision: respondPlanDecisionRouted,
+      queueHolds,
+      planMode,
+      planSupported,
+      planAvailable,
+      setPlanMode,
+      togglePlanMode,
+      editorScopeKey,
+      workspaceScope,
+      workspaceScopeKey,
+      richValue,
+      attachmentFiles,
+      replaceAttachmentFiles,
+      setRichValue: updateRichValue,
+      clearRichInput,
+      authorizeRichFile,
+      discardRichNode,
+      openFilePanel,
+      openWorkspaceFilePanel,
+      fileNodeCount: richValue.filter((node) => node.type === "file").length,
+      skills,
+      skillsLoading,
+      skillsError,
+      skillsHiddenCount,
+      invalidatedSkillRefs,
+      workspaceFiles: workspaceFileSearch.state,
+      setWorkspaceFileQuery: workspaceFileSearch.setQuery,
+      sections,
+      sectionsLoading: chatsLoading,
+      richDisplayText,
+      handleSubmit: handleQueueOrSubmit,
+      handleStop,
+      queueItems,
+      queuePaused,
+      queueError,
+      steerQueueSupported,
+      canSteerQueueItem,
+      removeQueueItem,
+      moveQueueItem,
+      editQueueItem,
+      steerQueueItem,
+      resumeQueue,
+      dismissQueueError,
+      resendAmbiguous,
+      removeAmbiguous,
+      setQueueReorderLock,
+      listBranches,
+      checkoutBranch,
+      createBranch,
+      ...settings,
+      serviceTierEffective: projectionStatus.serviceTierEffective,
+      selectedBackend,
+      backendState,
+      imageInputAvailable:
+        selectedBackend?.capabilities.imageInput ?? false,
+      openSetup: setup.openAgentSettings,
+      retryAuthentication: retryAuthenticationRouted,
+      ...recovery,
+    });
+  return useStableController({ platform, transcript: transcriptController, sidePanel: sidePanelController, composer: composerController });
+}
+export type ChatSessionController = ReturnType<typeof useChatSession>;

@@ -1,0 +1,71 @@
+/**
+ * [INPUT]: Depends on node:crypto and Electron WebContents positional or object navigation/destruction events
+ * [OUTPUT]: Provides RendererIdentity, bindRendererIdentity, rendererIdentity, and resetRendererIdentities with main-frame-only rotation
+ * [POS]: apps/desktop/electron/main/window/security; Window renderer-incarnation authority; surface and management leases bind here, while subframe and same-document navigation remain inert
+ */
+
+import { randomUUID } from "node:crypto";
+
+export type RendererIdentity = Readonly<{
+  webContentsId: number;
+  /** 每次导航/重载都换一把；main 重启后全新 */
+  rendererSessionId: string;
+}>;
+
+/** 只取本模块需要的那几个事件；注入边界让轮换语义可在纯 Node 中验证。 */
+export type RendererIdentitySource = {
+  id: number;
+  on(
+    event: "did-start-navigation" | "destroyed",
+    listener: (...args: unknown[]) => void
+  ): unknown;
+};
+
+type NavigationDetails = { isMainFrame?: boolean; isSameDocument?: boolean };
+
+const sessions = new Map<number, string>();
+
+/**
+ * 绑定一次即可。轮换的判据是「主帧发生了一次真实导航」——同文档 hash 变化不算，
+ * 否则一次锚点跳转就会把用户手里的 surface lease 全部作废。
+ */
+export function bindRendererIdentity(contents: RendererIdentitySource) {
+  if (sessions.has(contents.id)) return;
+  sessions.set(contents.id, randomUUID());
+  contents.on("did-start-navigation", (...args: unknown[]) => {
+    const details = navigationDetails(args);
+    if (details.isMainFrame === false || details.isSameDocument === true) return;
+    if (sessions.has(contents.id)) sessions.set(contents.id, randomUUID());
+  });
+  contents.on("destroyed", () => {
+    sessions.delete(contents.id);
+  });
+}
+
+function navigationDetails(args: unknown[]): NavigationDetails {
+  const structured = [...args].reverse().find((value): value is NavigationDetails =>
+    value !== null && typeof value === "object" &&
+    ("isMainFrame" in value || "isSameDocument" in value)
+  );
+  if (structured) return structured;
+  return {
+    isSameDocument: typeof args[2] === "boolean" ? args[2] : undefined,
+    isMainFrame: typeof args[3] === "boolean" ? args[3] : undefined,
+  };
+}
+
+/**
+ * 未绑定的 webContents 也必须拿到一个**确定**的 id：返回一个随机值而不是空串，
+ * 让「没绑定」表现为「谁也匹配不上」，而不是「所有人都匹配」。
+ */
+export function rendererIdentity(webContentsId: number): RendererIdentity {
+  const rendererSessionId = sessions.get(webContentsId);
+  return rendererSessionId
+    ? { webContentsId, rendererSessionId }
+    : { webContentsId, rendererSessionId: `unbound-${randomUUID()}` };
+}
+
+/** 测试与主进程重启之间共用的复位点；生产只在窗口销毁时被动收敛。 */
+export function resetRendererIdentities() {
+  sessions.clear();
+}

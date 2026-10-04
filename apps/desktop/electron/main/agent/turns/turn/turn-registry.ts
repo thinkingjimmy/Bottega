@@ -1,0 +1,628 @@
+/**
+ * [INPUT]: Depends on shared turn reducer, Agent/chats agreement with conversation level SubagentRegistry, and the turn model in ./turn-registry-model (TurnOrigin, TurnEntry, RetryClaim and the tombstone predicates)
+ * [OUTPUT]: Provides TurnRegistry lifecycle ownership, ordered event observers, exact terminal identities, Subagent outcomes, steering fences, input leases, retry claims (a Stop during a claim cancels the next generation), tombstones, drain and the quit-only settle drain (a stored tombstone's onTurnSettled tail).
+ * [POS]: apps/desktop/electron/main/agent/turns/turn; Electron main's single source of truth for turn lifecycle; carries no Electron dependency itself, with IO and release owned by agent-bridge.ts
+ */
+
+import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
+import { createTurnSnapshot } from "../../snapshots/turn";
+import { taskStartFence } from "../../../presence/lifecycle/start-fence";
+import { randomUUID } from "node:crypto";
+import {
+  applyDelta, applyItem, applyItemRemoved,
+  createDraft,
+} from "../../../../../shared/chats/model/chat-turn-reducer";
+import type { AgentEvent, AgentEventBody, TurnSnapshot } from "../../../../../shared/ipc/agent/agent-ipc";
+import type { PersistedSubagent, TurnCommitInput } from "../../../../../shared/ipc/content/chats-ipc";
+import { SubagentRegistry } from "../../../../../shared/tools/subagent-registry";
+import { completeInteraction } from "../../controls/completion";
+import {
+  blocksNewTurn, isTombstone,
+  type DraftObservation, type RegistryTurn, type RetryClaim, type SourceTerminal, type SteerOperation, type SteerOperationState,
+  type TurnChildTask, type TurnEntry, type TurnOrigin, type TurnPersist,
+} from "./turn-registry-model";
+
+export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
+  private readonly entries = new Map<string, TurnEntry<TTurn>>();
+  private readonly requests = new Map<string, TurnEntry<TTurn>>();
+  private readonly seededSubagents = new Map<string, Record<string, PersistedSubagent>>();
+  private readonly tombstoneTimers = new Map<string, NodeJS.Timeout>();
+  private sequence = 0;
+  private readonly eventListeners = new Set<(event: AgentEvent) => void>();
+  subscribeEvents(listener: (event: AgentEvent) => void) {
+    this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); };
+  }
+  private draftObserver?: (
+    entry: TurnEntry<TTurn>,
+    observation: DraftObservation
+  ) => void;
+
+  constructor(private readonly tombstoneTtlMs = 5 * 60_000) {}
+
+  setDraftObserver(
+    observer?: (
+      entry: TurnEntry<TTurn>,
+      observation: DraftObservation
+    ) => void
+  ) {
+    this.draftObserver = observer;
+  }
+
+  liveEntries(): readonly TurnEntry<TTurn>[] { return [...this.entries.values()]; }
+
+  seedSubagents(conversationId: string, subagents: Record<string, PersistedSubagent> = {}) {
+    const current = this.entries.get(conversationId);
+    if (current && !isTombstone(current)) return;
+    this.seededSubagents.set(conversationId, structuredClone(subagents));
+  }
+
+  claim(input: {
+    backend: ProviderId;
+    conversationId: string;
+    requestId: string;
+    messageId?: string;
+    assistantSeq?: number;
+    planRequested?: boolean;
+    origin?: TurnOrigin;
+    appId?: string;
+    now?: number;
+  }) {
+    const current = this.entries.get(input.conversationId);
+    if (blocksNewTurn(current)) throw new Error("当前聊天已有请求正在执行");
+    if (this.requests.has(input.requestId)) throw new Error("requestId 正在执行");
+    if (current) {
+      this.requests.delete(current.requestId);
+      this.clearTombstoneTimer(current.conversationId);
+    }
+    const startedAt = input.now ?? Date.now();
+    const entry: TurnEntry<TTurn> = {
+      backend: input.backend,
+      conversationId: input.conversationId,
+      requestId: input.requestId,
+      messageId:
+        input.messageId ?? `assistant_${randomUUID().replaceAll("-", "")}`,
+      assistantSeq: input.assistantSeq ?? 1,
+      planRequested: input.planRequested ?? false,
+      origin: input.origin,
+      recallAttempted: false,
+      appId: input.appId,
+      startedAt,
+      phase: "starting",
+      generation: 1,
+      cleanup: "pending",
+      persist: "unprepared",
+      draft: createDraft(startedAt),
+      approvals: new Map(),
+      userInputs: new Map(),
+      subagents: new SubagentRegistry(this.seededSubagents.get(input.conversationId)),
+      subagentOutcomes: new Map(),
+      childController: new AbortController(),
+      children: new Set(),
+      projectionTail: Promise.resolve(),
+      retry: { attempt: 0 },
+      steerOpEpoch: 0,
+      fenceClosed: false,
+      steerOperations: new Map(),
+    };
+    this.entries.set(input.conversationId, entry);
+    this.requests.set(input.requestId, entry);
+    return entry;
+  }
+
+  rollbackClaim(entry: TurnEntry<TTurn>) {
+    if (this.entries.get(entry.conversationId) !== entry || entry.phase !== "starting") return;
+    entry.resolvedInput?.rollback();
+    this.entries.delete(entry.conversationId);
+    this.requests.delete(entry.requestId);
+  }
+
+  setStartup(entry: TurnEntry<TTurn>, task: Promise<void>) {
+    entry.startup = { task, cancelRequested: entry.cancelAcrossRetry === true };
+  }
+
+  requestCancel(entry: TurnEntry<TTurn>) {
+    if (entry.startup) entry.startup.cancelRequested = true;
+    if (entry.phase === "retry-claiming") entry.cancelAcrossRetry = true;
+    entry.childController.abort(new Error("父 turn 已取消"));
+    for (const child of entry.children) {
+      void Promise.resolve(child.abort()).catch(() => {});
+    }
+    entry.turn?.interrupt();
+  }
+
+  registerChild(entry: TurnEntry<TTurn>, child: TurnChildTask) {
+    if (entry.fenceClosed || entry.sourceTerminal) {
+      throw new Error("父 turn 已进入终态，拒绝注册子任务");
+    }
+    entry.children.add(child);
+    void child.settled.finally(() => entry.children.delete(child)).catch(() => {});
+    return () => entry.children.delete(child);
+  }
+
+  async drainChildren(entry: TurnEntry<TTurn>, timeoutMs = 15_000) {
+    entry.childController.abort(new Error("父 turn 正在终态收敛"));
+    const children = [...entry.children];
+    for (const child of children) {
+      void Promise.resolve(child.abort()).catch(() => {});
+    }
+    if (!children.length) return;
+    let timeout: NodeJS.Timeout | undefined;
+    const results = await Promise.race([
+      Promise.allSettled(children.map((child) => child.settled)),
+      new Promise<"timeout">((resolve) => {
+        timeout = setTimeout(() => resolve("timeout"), timeoutMs);
+        timeout.unref?.();
+      }),
+    ]);
+    if (timeout) clearTimeout(timeout);
+    if (results === "timeout") {
+      throw new Error("Subagent 子任务在强制清理后仍未收敛");
+    }
+    // child 的业务失败/取消已经由 spawn tool 映射为 errored/interrupted；
+    // 屏障只证明所有 owner 已结束，不能把子任务结果反向升级为父 turn fatal。
+  }
+
+  registerSteerOp(entry: TurnEntry<TTurn>): SteerOperation {
+    if (entry.fenceClosed || entry.sourceTerminal || !entry.turn) {
+      throw new Error("目标 turn 已进入终态，不能再注册 steering");
+    }
+    const epoch = ++entry.steerOpEpoch;
+    const controller = new AbortController();
+    let resolve!: () => void;
+    const settled = new Promise<void>((done) => {
+      resolve = done;
+    });
+    entry.steerOperations.set(epoch, { controller, settled, resolve });
+    let finished = false;
+    return {
+      epoch,
+      signal: controller.signal,
+      finish: () => {
+        if (finished) return;
+        finished = true;
+        entry.steerOperations.delete(epoch);
+        resolve();
+      },
+    };
+  }
+
+  assertSteerEpoch(entry: TurnEntry<TTurn>, epoch: number, signal: AbortSignal) {
+    signal.throwIfAborted();
+    if (
+      entry.steerOpEpoch < epoch ||
+      !entry.steerOperations.has(epoch)
+    ) {
+      throw new Error("steering operation 已被终态 fence 拒绝");
+    }
+  }
+
+  async closeSteerFence(
+    entry: TurnEntry<TTurn>,
+    timeoutMs = 10_000,
+    abortGraceMs = 250
+  ) {
+    entry.fenceClosed = true;
+    const operations = [...entry.steerOperations.values()];
+    if (!operations.length) return { timedOutEpochs: [] };
+    const drained = await this.waitForSteerOperations(
+      operations,
+      timeoutMs
+    );
+    if (drained) return { timedOutEpochs: [] };
+    for (const operation of entry.steerOperations.values()) {
+      operation.controller.abort(
+        new Error("turn finalize steering barrier timed out")
+      );
+    }
+    await this.waitForSteerOperations(
+      [...entry.steerOperations.values()],
+      abortGraceMs
+    );
+    const timedOutEpochs = [...entry.steerOperations.keys()];
+    for (const epoch of timedOutEpochs) {
+      const operation = entry.steerOperations.get(epoch);
+      entry.steerOperations.delete(epoch);
+      operation?.resolve();
+    }
+    return { timedOutEpochs };
+  }
+
+  private async waitForSteerOperations(
+    operations: SteerOperationState[],
+    timeoutMs: number
+  ) {
+    if (!operations.length) return true;
+    let timeout: NodeJS.Timeout | undefined;
+    const drained = await Promise.race([
+      Promise.allSettled(operations.map((operation) => operation.settled)),
+      new Promise<false>((resolve) => {
+        timeout = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+    if (timeout) clearTimeout(timeout);
+    return drained !== false;
+  }
+
+  bindTurn(
+    entry: TurnEntry<TTurn>,
+    turn: TTurn,
+    resolvedInput?: {
+      commit(): void;
+      rollback(): void;
+      release(): Promise<void>;
+    }
+  ) {
+    entry.turn = turn;
+    entry.resolvedInput = resolvedInput;
+    if (entry.startup?.cancelRequested) turn.interrupt();
+  }
+
+  activate(entry: TurnEntry<TTurn>) {
+    if (entry.startup?.cancelRequested || entry.sourceTerminal) return false;
+    entry.resolvedInput?.commit();
+    entry.phase = "active";
+    return true;
+  }
+
+  markResumeFailed(entry: TurnEntry<TTurn>, retryToken: string) {
+    entry.phase = "resume-failed";
+    entry.resumeRetryToken = retryToken;
+  }
+
+  claimRetry(entry: TurnEntry<TTurn>, retryToken: string): RetryClaim<TTurn> {
+    taskStartFence.assertOpen();
+    if (
+      entry.phase !== "resume-failed" ||
+      !entry.resumeRetryToken ||
+      entry.resumeRetryToken !== retryToken ||
+      entry.sourceTerminal !== undefined ||
+      entry.finalizeInFlight !== undefined
+    ) {
+      throw new Error("resume retry token 已失效");
+    }
+    let resolve!: () => void;
+    const settled = new Promise<void>((done) => {
+      resolve = done;
+    });
+    entry.phase = "retry-claiming";
+    entry.resumeRetryToken = undefined;
+    entry.retryClaim = {
+      generation: entry.generation,
+      settled,
+      resolve,
+    };
+    return { entry, generation: entry.generation, token: retryToken };
+  }
+
+  /** `retryToken` re-arms the recovery with a fresh durable identity when the claimed one is already settled. */
+  restoreRetry(claim: RetryClaim<TTurn>, retryToken = claim.token) {
+    const { entry } = claim;
+    if (
+      entry.phase === "retry-claiming" &&
+      entry.generation === claim.generation &&
+      entry.resumeRetryToken === undefined &&
+      entry.retryClaim?.generation === claim.generation
+    ) {
+      const retryClaim = entry.retryClaim;
+      entry.phase = "resume-failed";
+      entry.resumeRetryToken = retryToken;
+      entry.retryClaim = undefined;
+      retryClaim.resolve();
+    }
+  }
+
+  beginRetry(claim: RetryClaim<TTurn>) {
+    const { entry } = claim;
+    if (
+      entry.phase !== "retry-claiming" ||
+      entry.generation !== claim.generation ||
+      entry.resumeRetryToken !== undefined ||
+      entry.retryClaim?.generation !== claim.generation
+    ) {
+      throw new Error("resume retry claim 已失效");
+    }
+    if (
+      entry.sourceTerminal ||
+      entry.effectiveTerminal ||
+      entry.postProcess ||
+      entry.finalizeInFlight ||
+      entry.cleanupInFlight
+    ) {
+      throw new Error("resume retry 与终态处理发生冲突");
+    }
+    const retryClaim = entry.retryClaim;
+    entry.phase = "starting";
+    entry.cleanup = "pending";
+    entry.persist = "unprepared";
+    entry.turn = undefined;
+    entry.startup = undefined;
+    entry.retryClaim = undefined;
+    entry.generation += 1;
+    entry.terminalSeq = undefined;
+    entry.currentSubagents = new Set();
+    entry.fenceClosed = false;
+    entry.childController = new AbortController();
+    if (entry.cancelAcrossRetry) entry.childController.abort(new Error("父 turn 已取消"));
+    entry.children.clear();
+    entry.subagentOutcomes.clear();
+    retryClaim.resolve();
+    return entry.generation;
+  }
+
+  waitForRetryClaim(entry: TurnEntry<TTurn>) {
+    return entry.retryClaim?.settled ?? Promise.resolve();
+  }
+
+  lockSourceTerminal(entry: TurnEntry<TTurn>, terminal: SourceTerminal) {
+    if (entry.sourceTerminal) return entry.sourceTerminal;
+    entry.sourceTerminal = terminal;
+    return terminal;
+  }
+
+  runPostProcess(
+    entry: TurnEntry<TTurn>,
+    task: (source: SourceTerminal) => Promise<void>
+  ) {
+    if (entry.postProcess) return entry.postProcess;
+    const source = entry.sourceTerminal ?? {
+      type: "error" as const,
+      message: "Agent 未返回完成事件",
+    };
+    entry.postProcess = (async () => {
+      try {
+        await task(source);
+        entry.effectiveTerminal = source;
+      } catch (cause) {
+        entry.effectiveTerminal = {
+          type: "error",
+          message: cause instanceof Error ? cause.message : String(cause),
+        };
+      }
+      return entry.effectiveTerminal;
+    })();
+    return entry.postProcess;
+  }
+
+  runFinalize(entry: TurnEntry<TTurn>, task: () => Promise<void>) {
+    if (entry.phase === "retry-claiming") {
+      throw new Error("resume retry claim 完成前不能进入终态");
+    }
+    if (!entry.finalizeInFlight) entry.finalizeInFlight = task();
+    return entry.finalizeInFlight;
+  }
+
+  runCleanup(entry: TurnEntry<TTurn>, task: () => Promise<void>) {
+    if (!entry.cleanupInFlight) {
+      entry.cleanupInFlight = Promise.resolve().then(task).then(
+        () => {
+          entry.cleanup = "complete";
+          this.scheduleTombstone(entry);
+        },
+        (cause) => {
+          entry.cleanup = "failed";
+          throw cause;
+        }
+      );
+    }
+    return entry.cleanupInFlight;
+  }
+
+  prepare(entry: TurnEntry<TTurn>, input: TurnCommitInput) {
+    entry.prepared ??= structuredClone(input);
+    entry.persist = "pending";
+    return entry.prepared;
+  }
+
+  markPersist(entry: TurnEntry<TTurn>, persist: TurnPersist) {
+    entry.persist = persist;
+    if (["stored", "empty", "missing"].includes(persist)) {
+      if (entry.retry.timer) clearTimeout(entry.retry.timer);
+      entry.retry.timer = undefined;
+      entry.retry.inFlight = undefined;
+      this.seededSubagents.set(entry.conversationId, entry.subagents.persisted());
+    }
+    this.scheduleTombstone(entry);
+  }
+
+  abandonFatalTurn(conversationId: string) {
+    const entry = this.entries.get(conversationId);
+    if (!entry || entry.persist !== "fatal") throw new Error("没有可放弃的 fatal turn");
+    this.seededSubagents.set(entry.conversationId, entry.subagents.persisted());
+    entry.persist = "empty";
+    this.scheduleTombstone(entry);
+    return entry;
+  }
+
+  acknowledgeCleanupFailure(conversationId: string) {
+    const entry = this.entries.get(conversationId);
+    if (!entry || entry.cleanup !== "failed") {
+      throw new Error("没有可确认的 cleanup failure");
+    }
+    entry.cleanup = "complete";
+    entry.cleanupInFlight = undefined;
+    this.scheduleTombstone(entry);
+    return entry;
+  }
+
+  release(conversationId: string) {
+    const entry = this.entries.get(conversationId);
+    if (entry && blocksNewTurn(entry)) {
+      throw new Error("活动 turn 尚未 drain，拒绝释放 owner");
+    }
+    if (entry) this.requests.delete(entry.requestId);
+    this.entries.delete(conversationId);
+    this.seededSubagents.delete(conversationId);
+    this.clearTombstoneTimer(conversationId);
+  }
+
+  hasCleanupFailure(backend?: ProviderId) {
+    return [...this.entries.values()].some(
+      (entry) =>
+        entry.cleanup === "failed" &&
+        (backend === undefined || entry.backend === backend)
+    );
+  }
+
+  byConversation(conversationId: string) {
+    return this.entries.get(conversationId);
+  }
+
+  byRequest(requestId: string) {
+    return this.requests.get(requestId);
+  }
+
+  hasActivity(conversationIds: Iterable<string>) {
+    for (const id of conversationIds) if (blocksNewTurn(this.entries.get(id))) return true;
+    return false;
+  }
+
+  snapshot(conversationId: string): TurnSnapshot | null {
+    const entry = this.entries.get(conversationId);
+    return createTurnSnapshot(entry, blocksNewTurn(entry));
+  }
+
+  attachSnapshot(conversationId: string) {
+    return {
+      lastSeq: this.sequence,
+      turn: this.snapshot(conversationId),
+    };
+  }
+
+  stamp(conversationId: string, body: AgentEventBody): AgentEvent {
+    const entry = this.entries.get(conversationId);
+    const seq = ++this.sequence;
+    if (entry && entry.requestId === body.requestId) {
+      body = completeInteraction(entry, body);
+      this.applyBody(entry, body);
+      if (entry.effectiveTerminal && entry.terminalSeq === undefined &&
+          ["done", "cancelled", "error"].includes(body.type)) entry.terminalSeq = seq;
+      if (body.type === "subagent-update") {
+        entry.currentSubagents ??= new Set();
+        if (["pendingInit", "running"].includes(body.agent.status)) entry.currentSubagents.add(body.agent.agentThreadId);
+        else entry.currentSubagents.delete(body.agent.agentThreadId);
+      }
+    }
+    const event = { ...body, conversationId, seq } as AgentEvent;
+    for (const listener of this.eventListeners) {
+      try { listener(event); } catch (error) { console.warn("[turn-registry] event observer failed", error); }
+    }
+    return event;
+  }
+
+  enqueueProjection(
+    entry: TurnEntry<TTurn>,
+    generation: number,
+    task: () => Promise<void> | void
+  ) {
+    const projection = entry.projectionTail.then(async () => {
+      if (entry.generation !== generation) return;
+      await task();
+    });
+    entry.projectionTail = projection.then(
+      () => undefined,
+      () => undefined
+    );
+    return projection;
+  }
+
+  drainProjections(entry: TurnEntry<TTurn>) {
+    return entry.projectionTail;
+  }
+
+  async drain(
+    filter: (entry: TurnEntry<TTurn>) => boolean,
+    settle: (entry: TurnEntry<TTurn>) => Promise<void>
+  ) {
+    // tombstone 绝不进入 gate 内 drain/settle，是 gate → conversation
+    // 与 coordinator conversation → gate 双向持锁不成环的第二守卫。
+    const entries = [...this.entries.values()].filter(filter).filter(blocksNewTurn);
+    for (const entry of entries) {
+      if (entry.startup) entry.startup.cancelRequested = true;
+      this.requestCancel(entry);
+    }
+    const startup = await Promise.allSettled(
+      entries.flatMap((entry) => (entry.startup ? [entry.startup.task] : []))
+    );
+    const settled = await Promise.allSettled(
+      entries.map((entry) => Promise.resolve().then(() => settle(entry)))
+    );
+    const pending = new Set<Promise<unknown>>();
+    for (const entry of entries) {
+      if (entry.finalizeInFlight) pending.add(entry.finalizeInFlight);
+      if (entry.cleanupInFlight) pending.add(entry.cleanupInFlight);
+      if (entry.postProcess) pending.add(entry.postProcess);
+      if (entry.retry.inFlight) pending.add(entry.retry.inFlight);
+    }
+    const results = [...startup, ...settled, ...(await Promise.allSettled([...pending]))];
+    const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []));
+    if (failures.length) throw new AggregateError(failures, "Agent turn drain 失败");
+  }
+
+  /** Quit only (no conversation lock held): a stored turn is a tombstone `drain` skips while onTurnSettled may still write. */
+  async drainSettlements() {
+    await Promise.allSettled([...this.entries.values()].flatMap((entry) => [entry.finalizeInFlight, entry.retry.inFlight]));
+  }
+  private scheduleTombstone(entry: TurnEntry<TTurn>) {
+    if (!isTombstone(entry)) return;
+    entry.draft = createDraft(entry.startedAt);
+    entry.approvals.clear();
+    entry.userInputs.clear();
+    entry.subagents = new SubagentRegistry();
+    entry.subagentOutcomes.clear();
+    entry.children.clear();
+    entry.turn = undefined;
+    entry.resolvedInput = undefined;
+    entry.prepared = undefined;
+    const expiresAt = Date.now() + this.tombstoneTtlMs;
+    entry.tombstoneExpiresAt = expiresAt;
+    this.clearTombstoneTimer(entry.conversationId);
+    const timer = setTimeout(() => {
+      const current = this.entries.get(entry.conversationId);
+      if (
+        current === entry &&
+        isTombstone(current) &&
+        current.tombstoneExpiresAt === expiresAt
+      ) {
+        this.release(entry.conversationId);
+      }
+    }, this.tombstoneTtlMs);
+    timer.unref?.();
+    this.tombstoneTimers.set(entry.conversationId, timer);
+  }
+
+  private clearTombstoneTimer(conversationId: string) {
+    const timer = this.tombstoneTimers.get(conversationId);
+    if (timer) clearTimeout(timer);
+    this.tombstoneTimers.delete(conversationId);
+  }
+
+  private applyBody(entry: TurnEntry<TTurn>, body: AgentEventBody) {
+    if (body.type === "session") entry.session = body.session;
+    if (body.type === "service-tier-effective") entry.serviceTierEffective = body.effective;
+    if (body.type === "item-delta") {
+      entry.draft = applyDelta(entry.draft, body.itemId, body.text);
+      this.draftObserver?.(entry, {
+        type: "delta",
+        itemId: body.itemId,
+      });
+    }
+    if (body.type === "item") {
+      entry.draft = applyItem(entry.draft, body.item);
+      this.draftObserver?.(entry, { type: "item", item: body.item });
+    }
+    if (body.type === "item-removed") {
+      entry.draft = applyItemRemoved(entry.draft, body.itemId);
+      this.draftObserver?.(entry, { type: "item-removed", itemId: body.itemId });
+    }
+    if (body.type === "approval-requested") {
+      entry.approvals.set(body.approval.approvalId, body.approval);
+    }
+    if (body.type === "approval-closed") entry.approvals.delete(body.approvalId);
+    if (body.type === "user-input-requested") {
+      entry.userInputs.set(body.request.userInputId, body.request);
+    }
+    if (body.type === "user-input-closed") entry.userInputs.delete(body.userInputId);
+    // subagent 事件由 SubagentTracker 在发布前写入同一 conversation registry；
+    // stamp 只编号，避免 delta 被同一 owner 重放两次。
+  }
+}

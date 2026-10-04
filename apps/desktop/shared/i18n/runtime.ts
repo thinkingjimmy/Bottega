@@ -1,0 +1,82 @@
+/**
+ * [INPUT]: Depends on i18next; keeps English resident as the static baseline catalog, every other locale is registered by the caller
+ * [OUTPUT]: Provides registerCatalog/registerCatalogExtension (by id, reaching instances already created)/hasCatalogExtension/catalogOf, the synchronous createAppI18n instance factory, and translate
+ * [POS]: The sole catalog registry and instance factory for desktop i18n; English is always resident so any catalog miss falls back to it, and both processes register the locales they actually need on demand via catalogs.ts
+ */
+
+import i18next, { type i18n, type TOptions } from "i18next";
+import { APP_LOCALES, type AppLocale } from "@ai-chat/ui/lib/locale";
+import { en, type Catalog } from "./locales/en";
+
+/* 英文在此静态常驻，不只是因为它是 fallbackLng——它让「目录尚未注册」
+   这个特殊情况彻底消失：未注册的语言不会退化成裸 key，而是沿用与
+   fallbackLng 完全相同的那一条规则落到英文。于是注册时序不再是任何人
+   需要记住的契约，只是「何时从英文升级为母语」的问题。 */
+const catalogs = new Map<AppLocale, Catalog>([["en", en]]);
+const instances = new Map<AppLocale, i18n>();
+/* Subtrees merged in by id rather than living in the catalog: main-only copy (`native`) and the lazy halves of sections no
+   first-screen surface reads (`memory`, `systemDock`), so the renderer's first chunk carries neither. */
+const extensions = new Map<AppLocale, Map<string, Record<string, unknown>>>();
+/* Every instance handed out, so an extension registered after it was created — a section a page loads — still reaches the
+   provider's long-lived instance. Weak, so replaced translate() instances can go. */
+const live = new Set<WeakRef<i18n>>();
+
+export function registerCatalog(locale: AppLocale, catalog: Catalog) {
+  if (catalogs.get(locale) === catalog) return;
+  catalogs.set(locale, catalog);
+  /* 目录换代，缓存实例即刻作废——否则先用后注册的语言会被钉死在英文。 */
+  instances.delete(locale);
+}
+
+export function registerCatalogExtension(locale: AppLocale, extension: Record<string, unknown>, id = "native") {
+  const byId = extensions.get(locale) ?? new Map<string, Record<string, unknown>>();
+  if (byId.get(id) === extension) return;
+  byId.set(id, extension);
+  extensions.set(locale, byId);
+  for (const ref of live) {
+    const instance = ref.deref();
+    if (instance) instance.addResourceBundle(locale, "translation", extension, true, true);
+    else live.delete(ref);
+  }
+}
+
+export const hasCatalogExtension = (locale: AppLocale, id: string) => extensions.get(locale)?.has(id) ?? false;
+
+export function catalogOf(locale: AppLocale) {
+  return catalogs.get(locale);
+}
+
+export function createAppI18n(locale: AppLocale): i18n {
+  const instance = i18next.createInstance();
+  const catalog = catalogs.get(locale);
+  void instance.init({
+    lng: locale,
+    fallbackLng: "en",
+    supportedLngs: APP_LOCALES,
+    resources: {
+      en: { translation: en },
+      ...(catalog ? { [locale]: { translation: catalog } } : {}),
+    },
+    initAsync: false,
+    interpolation: { escapeValue: false },
+    returnNull: false,
+  });
+  for (const [lng, byId] of extensions) {
+    for (const extension of byId.values()) instance.addResourceBundle(lng, "translation", extension, true, true);
+  }
+  live.add(new WeakRef(instance));
+  return instance;
+}
+
+export function translate(
+  locale: AppLocale,
+  key: string,
+  options?: TOptions
+): string {
+  let instance = instances.get(locale);
+  if (!instance) {
+    instance = createAppI18n(locale);
+    instances.set(locale, instance);
+  }
+  return instance.t(key, options);
+}

@@ -1,0 +1,102 @@
+/**
+ * [INPUT]: Depends on shared BackendInfo installation facts, the durable Install later mark and ChatHomeState.
+ * [OUTPUT]: Owns installation-or-deferred onboarding admission (an unknown Agent holds the gate only until it has been asked for once) and held/forced routing; conversation eligibility remains separate.
+ * [POS]: apps/desktop/src/lib/settings/onboarding; Sole determiner of the renderer's startup routing; SetupProvider's entry gate and OnboardingView's step list both read the same verdict, and the Agent step's only exemption is the recorded Install later mark, which is read as a fact like any other
+ */
+
+import type { BackendInfo } from "../../../../shared/ipc/agent/agent-ipc";
+import type { ChatHomeState } from "../../../../shared/ipc/settings/settings-ipc";
+
+/* ============================================================
+ * 完成条件是一份清单，不是散落两处的两个布尔。
+ *
+ * 判据此前有两个副本：进入门只看 Agent，页面里的缺口清单看双门槛。
+ * 于是「Agent 已就绪但没选数据位置」根本不会被引导拦下——两个副本
+ * 各自都对，拼起来漏了一整类状态。
+ *
+ * 数组顺序即步骤顺序即缺口顺序。新增一条门槛只改这里，进入门、
+ * 步骤徽章与兜底横幅自动跟上，没有第二处判据可以走偏。
+ * ============================================================ */
+export const ONBOARDING_REQUIREMENTS = ["chat-home", "agent"] as const;
+
+export type OnboardingRequirementId = (typeof ONBOARDING_REQUIREMENTS)[number];
+
+/** 三态而非布尔：「还没查明白」不是「没配好」，混成一个值首帧必闪引导。 */
+export type RequirementStatus = "satisfied" | "missing" | "unknown";
+
+export type OnboardingFacts = Record<OnboardingRequirementId, RequirementStatus>;
+
+export type OnboardingPhase = "loading" | "onboarding" | "app";
+
+export type OnboardingVerdict = {
+  phase: OnboardingPhase;
+  facts: OnboardingFacts;
+  /** 确凿缺失项，按 ONBOARDING_REQUIREMENTS 顺序。 */
+  missing: OnboardingRequirementId[];
+  /** 事实已落定：判决可以写回缓存，兜底横幅也才有资格开口。 */
+  settled: boolean;
+};
+
+/* 读不出设置与读出「未选目录」在产品上是同一件事：都开不了工。
+   区别只在引导页内——错误由 ChatHomeCard 自陈并给重试入口。 */
+export const chatHomeRequirement = (
+  state: ChatHomeState | null,
+  error: string
+): RequirementStatus => {
+  if (state) return state === "ready" ? "satisfied" : "missing";
+  return error ? "missing" : "unknown";
+};
+
+/** Installation is enough for onboarding, including versions that need updating before use. */
+export const isAgentInstalled = (backend: Pick<BackendInfo, "runtimeStatus">) =>
+  backend.runtimeStatus === "installed" || backend.runtimeStatus === "unsupported";
+
+/** Positive installation evidence permits continuing before the remaining scan finishes;
+    Install later is the deliberate exemption, so a computer with no CLI is asked once and can still operate other computers. */
+export const agentRequirement = (
+  backends: readonly BackendInfo[] | null,
+  checking: boolean,
+  deferred = false,
+  /** The Agents left unknown by the launch check have been asked for and answered (or failed): nothing else will resolve
+      them, so an unknown that remains is no reason to keep waiting. */
+  unknownAnswered = false
+): RequirementStatus => {
+  if (deferred || backends?.some(isAgentInstalled)) return "satisfied";
+  const pending =
+    checking ||
+    (!unknownAnswered && Boolean(backends?.some((entry) => entry.runtimeStatus === "unknown")));
+  return pending ? "unknown" : "missing";
+};
+
+export function onboardingGate({
+  facts,
+  forced,
+  held = "loading",
+}: {
+  facts: OnboardingFacts;
+  /** 从聊天/App 入口显式召唤引导，压过一切。 */
+  forced: boolean;
+  /** 上一次已呈现的档位。事实未落定时守住它：复检把唯一后端打回
+      auth 瞬态时，正在显示的 app/onboarding 不得闪回 loading。
+      启动期没有上一档，缺省即 loading。 */
+  held?: OnboardingPhase;
+}): OnboardingVerdict {
+  const missing = ONBOARDING_REQUIREMENTS.filter(
+    (id) => facts[id] === "missing"
+  );
+  /* 已有确凿缺口就不必等其余：无论它们如何，引导都得出场。
+     这一步换来的是首次启动零闪——缺口最先到达的那一刻就判决。 */
+  const settled =
+    missing.length > 0 ||
+    ONBOARDING_REQUIREMENTS.every((id) => facts[id] === "satisfied");
+  const decide = (): OnboardingPhase => {
+    if (forced) return "onboarding";
+    if (held === "app" && facts["chat-home"] === "satisfied") return "app";
+    if (!settled) return held;
+    /* 这里没有第二套判据：豁免只存在于事实里。Agent 步骤的「稍后再装」
+       写进设置后，agentRequirement 直接判 satisfied——门照常关严，
+       放行的是一条被记录下来的事实，不是一个绕过门的旁路。 */
+    return missing.length > 0 ? "onboarding" : "app";
+  };
+  return { phase: decide(), facts, missing, settled };
+}

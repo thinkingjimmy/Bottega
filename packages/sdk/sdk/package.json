@@ -1,0 +1,53 @@
+{
+  "name": "@bottega/sdk",
+  "version": "0.1.0",
+  "description": "Write a Bottega host package: typed activate(), the host API and the launch contract it runs under. 0.x is a host protocol preview.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./host": "./src/host.ts",
+    "./record-ui": "./src/record-ui.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./host": {
+        "types": "./dist/host.d.ts",
+        "import": "./dist/host.js"
+      },
+      "./record-ui": {
+        "types": "./dist/record-ui.d.ts",
+        "import": "./dist/record-ui.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node ../build.mjs"
+  },
+  "peerDependencies": {
+    "zod": "~4.6.4"
+  },
+  "dependencies": {
+    "@bottega/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.6",
+    "esbuild": "0.28.1",
+    "typescript": "5.9.3",
+    "zod": "4.6.4"
+  }
+}

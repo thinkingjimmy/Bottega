@@ -1,0 +1,20 @@
+{
+  "staging": {
+    "projectName": "bottega-artifacts-staging",
+    "projectId": "prj_toklmQz5Vvs1yTM8lX7Tw4DnvCxy",
+    "teamId": "team_mgTOLGbZAVMGtQ5lIeVq5e8u",
+    "rootDirectory": "apps/artifact-shell",
+    "parentOrigin": "https://staging.getbottega.app",
+    "domain": "*.artifacts.staging.getbottega.app",
+    "surfaceDomain": "*.surfaces.staging.getbottega.app"
+  },
+  "production": {
+    "projectName": "bottega-artifacts-production",
+    "projectId": "prj_4KpRJhUmNbcudwzi11jYMPY9j269",
+    "teamId": "team_mgTOLGbZAVMGtQ5lIeVq5e8u",
+    "rootDirectory": "apps/artifact-shell",
+    "parentOrigin": "https://app.getbottega.app",
+    "domain": "*.artifacts.app.getbottega.app",
+    "surfaceDomain": "*.surfaces.app.getbottega.app"
+  }
+}

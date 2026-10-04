@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+:root { font-family: ui-sans-serif, system-ui, sans-serif; color-scheme: light dark; }
+html { background: var(--background, Canvas); color: var(--foreground, CanvasText); }
+button, input, select, textarea { font: inherit; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}

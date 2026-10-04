@@ -1,0 +1,467 @@
+"use client";
+
+/**
+ * [INPUT]: Depends on React Context, the locale catalog, the shared AppRecordProjection/PresetAppSummary read models, the shared GitHub repo URL normalizer, apps-client, startup marks, and an optional fixed App-window identity
+ * [OUTPUT]: Provides AppsProvider/useApps/useOptionalApps carrying main's AppRecordProjection end to end, with epoch-fenced snapshot adoption, buffered App events, explicit list state, the apps-loaded startup mark, retryable refresh, durable global pins, deletion-aware cleanup, an unsent Edit draft handed to the remote Edit Chat that displaced it (U06 Q7-c3), full main-window operations, or a fixed-App projection that never requests presets
+ * [POS]: apps/desktop/src/components/providers/content; Renderer Apps state owner; fixed App windows retain one exact record while the main product owns global catalogs, management projections, and stale-operation eviction
+ */
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type {
+  AddAppInput,
+  AppAgentVisibility,
+  AppRecord,
+  AppRecordProjection,
+  AppOperation,
+  AppRuntimeState,
+  EnsureAppChatSlotInput,
+  EnsureAppChatSlotResult,
+  InstallPresetInput,
+  PresetAppSummary,
+  ReadyPresetProbeResult,
+  RemoveAppMode,
+  RenameAppInput,
+  SaveAsAppInput,
+  SetAppAgentInput,
+} from "../../../../shared/ipc/apps/apps-ipc";
+import type { AppsRendererEvent } from "@/lib/apps/apps-client";
+import {
+  addApp as addAppViaBridge,
+  cancelAppInstall,
+  discardPresetAppProbe,
+  installPresetApp,
+  probePresetApp,
+  listApps,
+  listPresetApps,
+  onAppsEvent,
+  removeApp,
+  renameApp,
+  repairApp,
+  retryApp,
+  revealApp,
+  saveAsApp,
+  setAppAgent,
+  setAppPinned,
+  ensureAppChatSlot,
+  retryAppSkill,
+} from "@/lib/apps/apps-client";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
+import { markStartup } from "@/lib/platform/startup-marks";
+import { supersedeComposerDraft } from "@/lib/chat/state/composer/chat-composer-store";
+import { normalizeGithubRepoUrl } from "../../../../shared/platform/github-repo";
+import { useAppTranslation } from "../preferences/i18n-provider";
+
+type AppState = AppRecord["state"];
+type AppsResultNotice = "error" | "success" | null;
+export type AppsSidebarStatus = "loading" | AppsResultNotice;
+
+const workingStates: AppState[] = [
+  "creating",
+  "installing",
+  "updating",
+  "deleting",
+];
+const failedStates: AppState[] = [
+  "install-failed",
+  "update-failed",
+  "delete-failed",
+];
+
+function noticeForTransition(
+  previous: AppState | undefined,
+  record: AppRecord
+): AppsResultNotice {
+  if (
+    failedStates.includes(record.state) &&
+    record.lastError?.message !== "用户取消"
+  ) {
+    return "error";
+  }
+  return record.state === "ready" &&
+    previous !== undefined &&
+    workingStates.includes(previous)
+    ? "success"
+    : null;
+}
+
+export type AppListItem = {
+  record: AppRecordProjection;
+  step: string;
+  operation?: AppOperation;
+  runtimeState?: AppRuntimeState;
+};
+
+type AppsContextValue = {
+  apps: AppListItem[];
+  records: AppRecordProjection[];
+  pinnedRecords: AppRecordProjection[];
+  presets: PresetAppSummary[];
+  /** 三段协议：probe 冻结 → 用户确认 → install 携带 preflightId+digest；放弃即 discard */
+  probePreset: (presetId: string) => Promise<ReadyPresetProbeResult>;
+  installPreset: (input: InstallPresetInput) => Promise<AppRecord>;
+  discardPresetProbe: (preflightId: string) => Promise<void>;
+  loading: boolean;
+  /** 列表没拉回来（renderer 侧 IPC 失败）：视图层不得据此宣称「还没有 App」 */
+  listWarning: string;
+  refresh: () => void;
+  /** 网关降级：与「有哪些 App」无关，走页面横幅 */
+  runtimeWarning: string;
+  /** 逐 conversation 的「上一轮 Agent 看不见什么」，与页面级 warning 不同槽 */
+  agentVisibility: Record<string, AppAgentVisibility>;
+  highlightedId: string;
+  liveLogs: Record<string, string[]>;
+  sidebarStatus: AppsSidebarStatus;
+  addApp: (input: AddAppInput) => Promise<AppRecord>;
+  setAgent: (input: SetAppAgentInput) => Promise<AppRecord>;
+  saveAsApp: (input: SaveAsAppInput) => Promise<AppRecord>;
+  renameApp: (input: RenameAppInput) => Promise<AppRecord>;
+  setPinned: (appId: string, pinned: boolean) => Promise<AppRecord>;
+  ensureChatSlot: (
+    input: EnsureAppChatSlotInput
+  ) => Promise<EnsureAppChatSlotResult>;
+  retrySkill: (appId: string) => Promise<AppRecord>;
+  removeApp: (appId: string, mode?: RemoveAppMode) => Promise<void>;
+  retryApp: (appId: string) => Promise<void>;
+  repairApp: (appId: string) => Promise<void>;
+  cancelInstall: (appId: string) => Promise<void>;
+  revealApp: (appId: string) => Promise<void>;
+  highlightApp: (appId: string) => void;
+  acknowledgeSidebarStatus: () => void;
+};
+
+const AppsContext = createContext<AppsContextValue | null>(null);
+
+function applyAppInventoryEvents(
+  base: readonly AppRecordProjection[],
+  events: readonly AppsRendererEvent[]
+) {
+  const records = new Map(base.map((record) => [record.id, record]));
+  for (const event of events) {
+    if (event.type === "status") records.set(event.appId, event.record);
+    if (event.type === "removed") records.delete(event.appId);
+  }
+  return [...records.values()];
+}
+
+export function AppsProvider({
+  children,
+  fixedAppId,
+}: {
+  children: React.ReactNode;
+  fixedAppId?: string;
+}) {
+  const { t } = useAppTranslation();
+  const [records, setRecords] = useState<AppRecordProjection[]>([]);
+  const [presets, setPresets] = useState<PresetAppSummary[]>([]);
+  const recordStates = useRef(new Map<string, AppState>());
+  const [steps, setSteps] = useState<Record<string, string>>({});
+  const [operations, setOperations] = useState<Record<string, AppOperation>>({});
+  const [runtimeStates, setRuntimeStates] = useState<
+    Record<string, AppRuntimeState>
+  >({});
+  const [liveLogs, setLiveLogs] = useState<Record<string, string[]>>({});
+  const [listWarning, setListWarning] = useState("");
+  const [runtimeWarning, setRuntimeWarning] = useState("");
+  const [agentVisibility, setAgentVisibility] = useState<
+    Record<string, AppAgentVisibility>
+  >({});
+  const [highlightedId, setHighlightedId] = useState("");
+  const [resultNotice, setResultNotice] =
+    useState<AppsResultNotice>(null);
+  const [loading, setLoading] = useState(true);
+  const [reloadRevision, setReloadRevision] = useState(0);
+  const listEpoch = useRef(0);
+  const listRefreshing = useRef(false);
+  const bufferedEvents = useRef<AppsRendererEvent[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const currentEpoch = ++listEpoch.current;
+    listRefreshing.current = true;
+    bufferedEvents.current = [];
+    const unsubscribe = onAppsEvent((event) => {
+      if (!active) return;
+      if (fixedAppId && (!("appId" in event) || event.appId !== fixedAppId)) {
+        return;
+      }
+      if (listRefreshing.current) bufferedEvents.current.push(event);
+      if (event.type === "runtime-warning") {
+        setRuntimeWarning(event.message);
+      } else if (event.type === "agent-visibility") {
+        /* 旧 attempt 可能晚到；revision 是 conversation 内唯一覆盖资格。 */
+        setAgentVisibility((current) => {
+          const previous = current[event.visibility.conversationId];
+          if (previous && previous.revision >= event.visibility.revision) return current;
+          return {
+            ...current,
+            [event.visibility.conversationId]: event.visibility,
+          };
+        });
+      } else if (event.type === "status") {
+        const notice = noticeForTransition(
+          recordStates.current.get(event.appId),
+          event.record
+        );
+        recordStates.current.set(event.appId, event.record.state);
+        if (notice) {
+          setResultNotice((current) =>
+            notice === "error" || current === "error" ? "error" : notice
+          );
+        }
+        setRecords((current) => [
+          ...current.filter((record) => record.id !== event.appId),
+          event.record,
+        ]);
+        setSteps((current) =>
+          workingStates.includes(event.record.state)
+            ? current
+            : withoutKey(current, event.appId)
+        );
+        setOperations((current) => {
+          if (event.record.state === "deleting") {
+            return { ...current, [event.appId]: "delete" };
+          }
+          if (
+            event.record.state === "creating" ||
+            event.record.state === "installing"
+          ) {
+            return { ...current, [event.appId]: "install" };
+          }
+          if (event.record.state === "updating") {
+            return {
+              ...current,
+              [event.appId]:
+                current[event.appId] === "repair" ? "repair" : "update",
+            };
+          }
+          return withoutKey(current, event.appId);
+        });
+      } else if (event.type === "removed") {
+        recordStates.current.delete(event.appId);
+        setRecords((current) =>
+          current.filter((record) => record.id !== event.appId)
+        );
+        setSteps((current) => withoutKey(current, event.appId));
+        setOperations((current) => withoutKey(current, event.appId));
+        setRuntimeStates((current) => withoutKey(current, event.appId));
+        setLiveLogs((current) => withoutKey(current, event.appId));
+      } else if (event.type === "progress") {
+        setSteps((current) => ({ ...current, [event.appId]: event.step }));
+        setOperations((current) => ({
+          ...current,
+          [event.appId]: event.operation,
+        }));
+      } else if (event.type === "runtime") {
+        setRuntimeStates((current) => ({
+          ...current,
+          [event.appId]: event.state,
+        }));
+      } else if (event.type === "edit-draft-superseded") {
+        supersedeComposerDraft(event.draftId, event.chatId, event.incarnationId);
+      } else if (event.type === "log") {
+        setLiveLogs((current) => ({
+          ...current,
+          [event.appId]: [
+            ...(current[event.appId] ?? []).slice(-499),
+            event.line,
+          ],
+        }));
+      }
+    });
+    void listApps()
+      .then((snapshot) => {
+        if (!active || currentEpoch !== listEpoch.current) return;
+        const snapshotRecords = fixedAppId
+          ? snapshot.apps.filter((record) => record.id === fixedAppId)
+          : snapshot.apps;
+        const records = applyAppInventoryEvents(
+          snapshotRecords,
+          bufferedEvents.current
+        );
+        recordStates.current = new Map(
+          records.map((record) => [record.id, record.state])
+        );
+        setRecords(records);
+        setRuntimeWarning(bufferedEvents.current.reduce(
+          (warning, event) => event.type === "runtime-warning" ? event.message : warning,
+          snapshot.runtimeWarning ?? ""
+        ));
+      })
+      .catch((cause) => {
+        /* 列表整条没拉回来。records 于是是空的，但「空」在这里的意思是
+         * 「没读到」而不是「用户没装」——这条 warning 的唯一职责就是让
+         * 视图层区分这两者，别把一次 IPC 失败讲成用户的现状。
+         * main 侧不存在对应槽位：主档损坏时 AppStore 直接 fail-closed。 */
+        if (active) {
+          setListWarning(
+            t("apps.provider.listFailed", { message: errorMessage(cause) })
+          );
+        }
+      })
+      .finally(() => {
+        if (!active || currentEpoch !== listEpoch.current) return;
+        listRefreshing.current = false;
+        bufferedEvents.current = [];
+        setLoading(false);
+        markStartup("apps-loaded");
+      });
+    /* 预设目录是 main 内的编译期常量，唯一失败面是 IPC 桥缺席——与 listApps
+     * 同一故障类，页面级告警由它承担，这里降级记录即可。 */
+    if (!fixedAppId) {
+      void listPresetApps()
+        .then((summaries) => active && setPresets(summaries))
+        .catch((cause) => {
+          console.warn("[apps] preset catalog read failed", cause);
+        });
+    }
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [fixedAppId, reloadRevision, t]);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    setListWarning("");
+    setReloadRevision((current) => current + 1);
+  }, []);
+
+  const addApp = useCallback((input: AddAppInput) => {
+    const { repoUrl } = normalizeGithubRepoUrl(input.repoUrl);
+    return addAppViaBridge({ ...input, repoUrl });
+  }, []);
+
+  const highlightApp = useCallback((appId: string) => {
+    setHighlightedId(appId);
+    window.setTimeout(() => setHighlightedId(""), 2_000);
+  }, []);
+
+  const acknowledgeSidebarStatus = useCallback(() => {
+    setResultNotice(null);
+  }, []);
+
+  const sidebarStatus: AppsSidebarStatus = records.some((record) =>
+    workingStates.includes(record.state)
+  )
+    ? "loading"
+    : resultNotice;
+
+  const apps = useMemo<AppListItem[]>(
+    () =>
+      [...records]
+        .sort((left, right) => left.addedAt - right.addedAt)
+        .map((record) => ({
+          record,
+          step: steps[record.id] ?? "",
+          operation: operations[record.id],
+          runtimeState: runtimeStates[record.id],
+        })),
+    [operations, records, runtimeStates, steps]
+  );
+
+  const pinnedRecords = useMemo(
+    () =>
+      records
+        .filter((record) => record.pinnedAt !== null)
+        .sort(
+          (left, right) =>
+            left.pinnedAt! - right.pinnedAt! ||
+            left.addedAt - right.addedAt ||
+            left.id.localeCompare(right.id)
+        ),
+    [records]
+  );
+
+  const value = useMemo<AppsContextValue>(
+    () => ({
+      apps,
+      records,
+      pinnedRecords,
+      presets,
+      probePreset: probePresetApp,
+      installPreset: installPresetApp,
+      discardPresetProbe: discardPresetAppProbe,
+      loading,
+      listWarning,
+      refresh,
+      runtimeWarning,
+      agentVisibility,
+      highlightedId,
+      liveLogs,
+      sidebarStatus,
+      addApp,
+      setAgent: setAppAgent,
+      saveAsApp,
+      renameApp,
+      setPinned: setAppPinned,
+      ensureChatSlot: ensureAppChatSlot,
+      retrySkill: retryAppSkill,
+      removeApp: async (appId, mode) => {
+        const effectiveMode = mode ?? "cascade";
+        await removeApp(
+          appId,
+          effectiveMode,
+          crypto.randomUUID()
+        );
+      },
+      retryApp: async (appId) => {
+        await retryApp(appId);
+      },
+      repairApp: async (appId) => {
+        await repairApp(appId);
+      },
+      cancelInstall: async (appId) => {
+        await cancelAppInstall(appId);
+      },
+      revealApp: async (appId) => {
+        await revealApp(appId);
+      },
+      highlightApp,
+      acknowledgeSidebarStatus,
+    }),
+    [
+      apps,
+      records,
+      pinnedRecords,
+      presets,
+      loading,
+      listWarning,
+      refresh,
+      runtimeWarning,
+      agentVisibility,
+      highlightedId,
+      liveLogs,
+      sidebarStatus,
+      addApp,
+      highlightApp,
+      acknowledgeSidebarStatus,
+    ]
+  );
+
+  return <AppsContext.Provider value={value}>{children}</AppsContext.Provider>;
+}
+
+export function useApps() {
+  const context = useOptionalApps();
+  if (!context) throw new Error("useApps must be used within AppsProvider");
+  return context;
+}
+
+export function useOptionalApps() {
+  return useContext(AppsContext);
+}
+
+function withoutKey<T>(record: Record<string, T>, key: string) {
+  if (!(key in record)) return record;
+  const next = { ...record };
+  delete next[key];
+  return next;
+}

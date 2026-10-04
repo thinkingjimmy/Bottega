@@ -1,0 +1,73 @@
+/**
+ * [INPUT]: Public device facts, localized labels and host-owned rename/revoke/refresh capabilities.
+ * [OUTPUT]: One shared device list with a kind icon (computer, browser, phone), presence, platform, version (Bottega app, Web session or mobile app), stable editing and confirmation.
+ * [POS]: Pure account presentation; the host owns current-session key cleanup and transport authority.
+ */
+import { useId, useState } from "react";
+import { GlobeIcon, LaptopIcon, SmartphoneIcon } from "lucide-react";
+import { Button } from "../ui/controls/button";
+import { Input } from "../ui/controls/input";
+import { ConfirmationDialog } from "../ui/overlays/app-dialog";
+import { SettingsList, SettingsRow, SettingsBadge } from "../settings/content";
+import { SettingsButton } from "../settings/controls";
+import { relativeMoment } from "./moment";
+export interface AccountDevice {
+  deviceId: string; name: string; current: boolean;
+  state: "active" | "revoked" | "expired";
+  presenceState: "online" | "offline";
+  lastHeartbeatAt: number | null;
+  platform: "macos" | "windows" | "linux" | "browser" | "ios" | "android";
+  kind: "desktop" | "web" | "mobile"; appVersion: string;
+}
+export interface DeviceListProps {
+  devices: AccountDevice[];
+  copy(key: string, values?: Record<string, string>): string;
+  locale: string;
+  disabled?: boolean;
+  capabilities: { rename: boolean; revoke(device: AccountDevice): boolean; refresh?: boolean };
+  onRename(device: AccountDevice, name: string): Promise<unknown>;
+  onRevoke(device: AccountDevice): Promise<unknown>;
+  onRefresh?(): void;
+}
+export function DeviceList(props: DeviceListProps) {
+  return <div>{props.capabilities.refresh && props.onRefresh && <SettingsButton variant="ghost" disabled={props.disabled} onClick={props.onRefresh}>{props.copy("refresh")}</SettingsButton>}
+    <SettingsList>{props.devices.map(device => <DeviceRow key={device.deviceId} {...props} device={device} />)}</SettingsList>
+  </div>;
+}
+/* The kind is the first thing a reader scans for: which of these rows is the phone. */
+const kindIcons = { desktop: LaptopIcon, web: GlobeIcon, mobile: SmartphoneIcon } as const;
+function DeviceRow({ device, ...props }: DeviceListProps & { device: AccountDevice }) {
+  const { copy, locale, disabled, capabilities, onRename, onRevoke } = props;
+  const t = (key: string, values?: Record<string, string>) => copy(key.replace(/^cloud\./, ""), values); const inputId = useId();
+  const [editing, setEditing] = useState(false), [name, setName] = useState(device.name), [revoke, setRevoke] = useState(false);
+  const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
+  const run = (action: "rename" | "revoke") => {
+    if (busy) return; setBusy(true); setFailed(false);
+    if (disabled || action === "rename" && !capabilities.rename || action === "revoke" && !capabilities.revoke(device)) { setBusy(false); return; }
+    void Promise.resolve().then(() => action === "rename" ? onRename(device, name.trim()) : onRevoke(device))
+      .then(() => { setEditing(false); setRevoke(false); }).catch(() => setFailed(true)).finally(() => setBusy(false));
+  };
+  /* presence · platform · version: every fact the server already knows about the device. */
+  const presence = device.state === "revoked" ? t("cloud.revoked") : device.presenceState === "online" ? t("cloud.online") :
+    device.lastHeartbeatAt ? t("cloud.lastSeen", { when: relativeMoment(device.lastHeartbeatAt, locale) }) : t("cloud.offline");
+  const release = device.kind === "web" ? t("cloud.webSession") : t(device.kind === "mobile" ? "cloud.mobileApp" : "cloud.appVersion", { version: device.appVersion });
+  const description = [presence, t(`cloud.platform.${device.platform}`), release].join(" · ");
+  const KindIcon = kindIcons[device.kind];
+  return <div data-slot="device-row">
+    <SettingsRow leading={<KindIcon aria-hidden="true" data-kind={device.kind} className="size-4 shrink-0 text-muted-foreground" />} label={device.name} description={description}
+      badge={device.current && <SettingsBadge>{t("cloud.current")}</SettingsBadge>}
+      control={device.state === "active" && <div className="flex flex-wrap gap-1">
+        {capabilities.rename && <SettingsButton variant="ghost" disabled={disabled || busy} onClick={() => { setName(device.name); setFailed(false); setEditing(true); }}>{t("cloud.rename")}</SettingsButton>}
+        {capabilities.revoke(device) && <SettingsButton disabled={disabled || busy} variant="ghost" onClick={() => { setFailed(false); setRevoke(true); }}>{t("cloud.revoke")}</SettingsButton>}</div>} />
+    {editing && <form className="flex flex-wrap items-end gap-2 px-4 pb-4" onSubmit={event => { event.preventDefault(); run("rename"); }}>
+      <div className="min-w-0 flex-1 space-y-2"><label htmlFor={inputId} className="text-sm">{t("cloud.deviceName")}</label>
+        <Input id={inputId} value={name} onChange={event => setName(event.target.value)} required maxLength={40} autoFocus className="text-base" disabled={busy} /></div>
+      <Button type="submit" disabled={disabled || busy || !name.trim()}>{busy ? t("cloud.saving") : t("cloud.save")}</Button>
+      <Button type="button" variant="ghost" disabled={busy} onClick={() => setEditing(false)}>{t("cloud.cancel")}</Button>
+    </form>}
+    {failed && !revoke && <p role="alert" className="px-4 pb-4 text-destructive text-sm">{t("cloud.actionFailed")}</p>}
+    <ConfirmationDialog open={revoke} onOpenChange={setRevoke} title={t("cloud.revokeTitle")} busy={busy} confirmTone="destructive"
+      description={failed ? t("cloud.actionFailed") : t("cloud.revokeDescription")} confirmLabel={busy ? t("cloud.revoking") : t("cloud.revoke")}
+      cancelLabel={t("cloud.cancel")} onConfirm={() => { if (!busy) run("revoke"); }} />
+  </div>;
+}

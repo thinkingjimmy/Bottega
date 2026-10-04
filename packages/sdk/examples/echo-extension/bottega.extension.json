@@ -1,0 +1,59 @@
+{
+  "schema": "bottega.host-package/v1",
+  "packageId": "bottega.example-echo",
+  "packageVersion": "0.1.0",
+  "family": "host-package",
+  "presentation": "plugin",
+  "displayName": "Echo example",
+  "entries": {
+    "bridge": "dist/index.js"
+  },
+  "uiDelivery": "none",
+  "provides": [
+    {
+      "contract": "bottega.example.echo/v1",
+      "actions": [
+        "echo",
+        "ask"
+      ]
+    }
+  ],
+  "requires": [
+    "bottega.operations/v1"
+  ],
+  "permissions": {
+    "executionTrust": "explicitly-trusted-code",
+    "requestedCapabilities": []
+  },
+  "settings": [
+    {
+      "id": "prefix",
+      "type": "text",
+      "maxLength": 40,
+      "default": "",
+      "label": {
+        "text": "Prefix"
+      },
+      "description": {
+        "text": "Put in front of every echoed text."
+      },
+      "appliesAt": "immediate",
+      "owner": "store",
+      "scope": "device"
+    },
+    {
+      "id": "uppercase",
+      "type": "toggle",
+      "default": false,
+      "label": {
+        "text": "Uppercase"
+      },
+      "description": {
+        "text": "Echo text in capital letters."
+      },
+      "appliesAt": "immediate",
+      "owner": "store",
+      "scope": "device"
+    }
+  ]
+}

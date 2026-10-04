@@ -1,0 +1,782 @@
+/**
+ * [INPUT]: Depends on shared Project/Chat contracts, main/errors, lifecycle-fenced ProjectStore, filesystem validation, ProjectResourceCleanupCoordinator, rebind saga, and cross-domain cleanup ports
+ * [OUTPUT]: Provides Project operations, unbound folder binding, throttled Git origin refresh, configured cloud-removal handoff and deletion-fenced navigation without discarding native custody.
+ * [POS]: Main Project authority; archive/rebind preserve incarnation while permanent removal is delegated only to the durable resource cleanup coordinator
+ */
+
+import { realpath } from "node:fs/promises";
+import { basename } from "node:path";
+import type { BrowserWindow } from "electron";
+import {
+  PROJECT_UNAVAILABLE,
+  PROJECTS_CHANNEL,
+  workspaceCapabilityId,
+  type GitBranchTarget,
+  type Project,
+  type ProjectLocalDetachResult,
+  type SetProjectAppPinnedInput,
+  type SetProjectAppPinnedResult,
+  type ProjectsEvent,
+  type ProjectsSnapshot,
+} from "../../../shared/ipc/workspace/projects-ipc";
+import type { AppChatRole, ChatSummary } from "../../../shared/ipc/content/chats-ipc";
+import { translate } from "../../../shared/i18n/runtime";
+import { errorMessage, statusError } from "../ipc/errors";
+import { SerialQueue } from "../persistence/serial-queue";
+import { projectCloudDisplay } from "./service/portable-display";
+import { pickProjectDirectory } from "./service/folder-picker";
+import { ProjectRemoteRefresh } from "./git/remote-refresh";
+import { releaseLocalMissingProject } from "./rescue/local";
+import { publishProjectsEvent } from "./service/renderer-policy";
+import type { BuiltinMcpLease } from "../tools/lease";
+import {
+  assertWorkspaceDisjoint,
+  isUsableDirectory,
+} from "./fs-utils";
+import {
+  checkoutGitBranch,
+  createGitBranch,
+  listGitBranches,
+} from "./git/git-branches";
+import {
+  ProjectStore,
+  type ProjectRemovalOperation,
+  type StoredProject,
+} from "./store/project-store";
+import { bindRestoredProject } from "./rebind/cloud-binding";
+import type { ProjectRebindCapsule } from "./rebind/rebind-journal";
+import {
+  driveProjectRebind,
+  isProjectRebindSource,
+  isProjectRebindTarget,
+} from "./rebind/rebind-saga";
+import { ProjectResourceCleanupCoordinator } from "./resource-cleanup/coordinator";
+import { registerProjectsServiceIpc } from "./projects-service-ipc";
+import type { ProjectsServiceOptions } from "./projects-service-options";
+export type { ProjectsServiceOptions } from "./projects-service-options";
+
+export class ProjectsService {
+  private readonly queue = new SerialQueue();
+  private readonly activeRebinds = new Set<Promise<unknown>>();
+  private readonly deletingProjects = new Set<string>();
+  private window: BrowserWindow | null = null;
+  private admissionOpen = true;
+  private cloudRemoval: ((projectId: string) => Promise<void>) | null = null;
+  private rescueMissing: ((projectId: string) => Promise<number>) | null = null;
+  readonly resourceCleanup: ProjectResourceCleanupCoordinator;
+  private readonly remoteRefresh: ProjectRemoteRefresh;
+  constructor(readonly store: ProjectStore,
+    readonly options: ProjectsServiceOptions) {
+    this.resourceCleanup = options.resourceCleanup;
+    /* Only the probe that actually moved the origin publishes: an unchanged value must not wake
+       every Sidebar row once per Project per refresh window. */
+    this.remoteRefresh = options.remoteRefresh ?? new ProjectRemoteRefresh({ write: async (projectId, gitRemote) => {
+      if (this.store.get(projectId)?.gitRemote === gitRemote) return;
+      await this.store.setGitRemote(projectId, gitRemote);
+      this.publishStored(projectId);
+    } });
+    this.registerResourceCleanupHandlers();
+  }
+  private locale() { return this.options.locale?.() ?? "en"; }
+  async initialize() { await this.options.rebindJournal?.initialize(); }
+  async recoverMemoryRebinds() {
+    const journal = this.options.rebindJournal;
+    if (!journal) return;
+    for (const capsule of journal.list()) {
+      try {
+        await this.trackRebind(this.driveMemoryRebind(capsule));
+      } catch (cause) {
+        console.error(
+          `[projects] workspace rebind ${capsule.operationId} 待恢复`,
+          cause
+        );
+      }
+    }
+  }
+  recoverResourceCleanup() { return this.resourceCleanup.recoverPending(); }
+  async cleanupEmptyBaseCustody() {
+    if (!this.options.hasBaseForProject) return [];
+    const failures: Array<{ projectId: string; message: string }> = [];
+    for (const project of this.store.list()) {
+      if (
+        project.role !== "base-custody" ||
+        this.options.hasBaseForProject(project.id)
+      ) {
+        continue;
+      }
+      try {
+        await this.cleanupBaseCustody(project.id);
+      } catch (cause) {
+        failures.push({
+          projectId: project.id,
+          message: cause instanceof Error ? cause.message : String(cause),
+        });
+      }
+    }
+    return failures;
+  }
+  async cleanupBaseCustody(projectId: string) {
+    const project = this.store.get(projectId);
+    if (
+      project?.role !== "base-custody" ||
+      this.options.hasBaseForProject?.(projectId)
+    ) {
+      return false;
+    }
+    await this.resourceCleanup.remove(projectId, "delete-base-custody");
+    this.emit({ type: "removed", projectId });
+    return true;
+  }
+  register(window: BrowserWindow, rendererUrl: string) {
+    this.window = window;
+    registerProjectsServiceIpc(rendererUrl, this);
+    window.once("closed", () => {
+      if (this.window === window) this.window = null;
+    });
+  }
+
+  /** chooser 只冻结规范路径；history-import 的计数发生在真正落 Project 之前。 */
+  prepareExternalProject(window?: BrowserWindow) {
+    this.assertAdmission();
+    return pickProjectDirectory(this.locale(), window ?? this.window);
+  }
+  /** Sidebar "Choose folder…" for a Project restored without this computer's workspace row. */
+  chooseWorkspaceFolder(projectId: string) {
+    this.assertAdmission();
+    return bindRestoredProject(this, projectId);
+  }
+
+  /** prepare→commit 的唯一落盘点；重复目录只返回已有实体，调用者不得重放 onboarding 配置。 */
+  commitExternalProject(input: { canonicalRoot: string; name: string }) {
+    return this.runExclusive(async () => {
+      this.assertAdmission();
+      const canonical = await realpath(input.canonicalRoot);
+      if (!isUsableDirectory(canonical)) throw new Error("所选文件夹不可用");
+      const existing = this.store.findByDir(canonical);
+      if (existing) return { project: this.withMissing(existing), created: false } as const;
+      assertWorkspaceDisjoint(canonical, this.managedDirs());
+      const project = await this.store.add({
+        name: input.name || basename(canonical) || canonical,
+        dir: canonical,
+        appId: null,
+      });
+      const wire = this.withMissing(project);
+      this.remoteRefresh.schedule(project.id, canonical);
+      this.emit({ type: "upserted", project: wire });
+      return { project: wire, created: true } as const;
+    });
+  }
+  list(): Promise<ProjectsSnapshot> {
+    return this.queue.enqueue(async () => this.snapshot());
+  }
+  private snapshot(): ProjectsSnapshot {
+    const stored = this.store.list().filter((project) => project.role !== "base-custody");
+    const storedIds = new Set(this.store.list().map((project) => project.id));
+    const placeholders = [...this.options.listProjectRefs()]
+      .filter(([projectId]) => !storedIds.has(projectId))
+      .map(([id, reference]): Project => ({
+        id,
+        name: translate(this.locale(), "projects.missingName"),
+        dir: "",
+        workspaceBinding: { kind: "none" },
+        role: "workspace",
+        nameSource: "user",
+        grants: [],
+        appPlacements: [],
+        grantRevision: 0,
+        membershipRevision: 0,
+        projectLifecycleRevision: 0,
+        sortIndex: Number.MAX_SAFE_INTEGER,
+        createdAt: reference.latestUpdatedAt,
+        updatedAt: reference.latestUpdatedAt,
+        missing: true,
+      }))
+      .sort(
+        (left, right) =>
+          right.updatedAt - left.updatedAt || left.id.localeCompare(right.id)
+      );
+    return {
+      projects: [...stored.filter(project => !(project.sync?.deleted && project.sync.retention === "mirror")).map((project) => this.withMissing(project)), ...placeholders],
+      sortMode: this.store.getSortMode(),
+    };
+  }
+  managedDirs() {
+    return [...this.options.listManagedRoots(), ...this.store.listDirs()];
+  }
+  withMissing(project: StoredProject): Project {
+    const {
+      deletionCheckpoint: _checkpoint,
+      resourceAdmissions: _resourceAdmissions,
+      sync: _sync,
+      ...wire
+    } = project;
+    const binding = project.workspaceBinding;
+    /* external 由 opaque capability→路径；丢失判定只认 capability owner。 */
+    const capabilityId = workspaceCapabilityId(binding);
+    return {
+      ...wire, ...projectCloudDisplay(project, this.options.isAppProjectAvailable, this.options.localDeviceId?.() ?? null),
+      missing: capabilityId
+        ? !isUsableDirectory(this.store.resolveWorkspace(binding) ?? "")
+        : binding.kind === "app" &&
+            !this.options.isAppProjectAvailable(binding.appId),
+    };
+  }
+  ensureForApp(appId: string) {
+    const run = () => this.runExclusive(() => this.ensureForAppHeld(appId));
+    /* 只有「收编一个既有普通 Project」才是转换；已经是 App Project 或将要新建的
+       都没有可失去的授权，跳过 gate 而不是空转一遍全序。 */
+    const adopted = this.adoptableProject(appId);
+    return adopted && this.options.admitAppConversion
+      ? this.options.admitAppConversion(adopted, run)
+      : run();
+  }
+  private adoptableProject(appId: string) {
+    if (this.store.findByAppId(appId)) return null;
+    const dir =
+      this.options.resolveAppForBinding?.(appId)?.dir ??
+      this.options.resolveApp(appId)?.dir;
+    const sameDir = dir ? this.store.findByDir(dir) : undefined;
+    return sameDir && sameDir.workspaceBinding.kind !== "app"
+      ? sameDir.id
+      : null;
+  }
+  async ensureForAppHeld(appId: string, projectId?: string) {
+      const app =
+        this.options.resolveAppForBinding?.(appId) ??
+        this.options.resolveApp(appId);
+      if (!app) throw new Error("App 不可用（不存在或正在维护）");
+      const existing =
+        this.store.findByAppId(appId) ?? this.store.findByDir(app.dir);
+      if (existing) {
+        this.assertProjectOpen(existing.id);
+        this.assertNoMemoryRebind(existing.id);
+        this.assertNoPendingProjectCreation(existing.id);
+      }
+      const project = await this.store.ensureAppBinding({
+        appId,
+        ...app,
+        ...(projectId ? { projectId } : {}),
+      });
+      const wire = this.withMissing(project);
+      this.emit({ type: "upserted", project: wire });
+      return wire;
+  }
+  isAppBinding(projectId: string, appId: string) {
+    const binding = this.store.get(projectId)?.workspaceBinding;
+    return binding?.kind === "app" && binding.appId === appId;
+  }
+  publishStored(projectId: string) {
+    const stored = this.store.get(projectId);
+    if (stored) this.emit({ type: "upserted", project: this.withMissing(stored) });
+  }
+  setAppPinned(
+    input: SetProjectAppPinnedInput
+  ): Promise<SetProjectAppPinnedResult> {
+    return this.runExclusive(async () => {
+      const current = this.store.assertProjectLifecycle(
+        input.projectId,
+        input.expectedProjectLifecycleRevision
+      );
+      this.assertProjectOpen(input.projectId);
+      if (this.withMissing(current).missing) {
+        throw statusError(409, "Project 当前不可用，请刷新后重试");
+      }
+      const alreadyPinned = current.appPlacements.some(
+        (placement) => placement.appId === input.appId
+      );
+      if (
+        input.pinned &&
+        !alreadyPinned &&
+        this.options.canPinApp?.(input.appId) !== true
+      ) {
+        throw statusError(409, "App 尚未就绪，不能新增 Sidebar placement");
+      }
+      const result = await this.store.appPlacements.setPinned(
+        input.projectId,
+        input.appId,
+        input.pinned,
+        input.expectedProjectLifecycleRevision
+      );
+      const project = this.withMissing(result.project);
+      if (result.changed) this.emit({ type: "upserted", project });
+      return { project, changed: result.changed };
+    });
+  }
+  clearAppPlacementsHeld(appId: string) {
+    return this.store.appPlacements.clearAppPlacementsHeld(appId);
+  }
+  reconcileOrphanAppPlacementsHeld(liveAppIds: ReadonlySet<string>) {
+    return this.store.appPlacements.reconcileOrphanAppPlacementsHeld(liveAppIds);
+  }
+  publishProjectUpserts(projectIds: readonly string[]) {
+    for (const projectId of new Set(projectIds)) this.publishStored(projectId);
+  }
+  /** 只能在 conversation 门闩内调用；App 可见性与可发送性在此明确分层。 */
+  resolveCodexContext(projectId: string) {
+    this.assertNoMemoryRebind(projectId);
+    const project = this.store.get(projectId);
+    if (!project) {
+      throw new Error(`${PROJECT_UNAVAILABLE}: Project 记录不存在`);
+    }
+    const binding = project.workspaceBinding;
+    if (binding.kind === "app") {
+      const app =
+        this.options.resolveAppForBinding?.(binding.appId) ??
+        this.options.resolveApp(binding.appId);
+      if (!app || !isUsableDirectory(app.dir)) {
+        throw new Error("App 不可用（不存在或正在维护）");
+      }
+      return { workspace: app.dir, appId: binding.appId };
+    }
+    if (binding.kind === "unbound") throw new Error(`${PROJECT_UNAVAILABLE}: ${translate(this.locale(), "projects.unbound.turnRefused")}`);
+    if (binding.kind === "none") {
+      throw new Error(`${PROJECT_UNAVAILABLE}: Project 未绑定工作目录`);
+    }
+    const workspace = this.store.resolveWorkspace(binding);
+    if (!workspace || !isUsableDirectory(workspace)) {
+      throw new Error(`${PROJECT_UNAVAILABLE}: Project 文件夹已丢失`);
+    }
+    this.remoteRefresh.schedule(projectId, workspace);
+    return { workspace };
+  }
+  getWorkspaceBinding(projectId: string) { return this.store.get(projectId)?.workspaceBinding; }
+  getMembershipRevision(projectId: string) { return this.store.get(projectId)?.membershipRevision; }
+  getProjectLifecycleRevision(projectId: string) { return this.store.projectLifecycleRevision(projectId); }
+  resolveConversationContext(projectId: string, homeDir: string) {
+    this.assertNoMemoryRebind(projectId);
+    const project = this.store.get(projectId);
+    if (!project) {
+      throw new Error(`${PROJECT_UNAVAILABLE}: Project 记录不存在`);
+    }
+    /* A Project that never owned a folder runs in the Chat Home by design; one that lost its local
+       workspace row must not inherit that fallback, or its turns would silently run somewhere else. */
+    return project.workspaceBinding.kind === "none"
+      ? { workspace: homeDir }
+      : this.resolveCodexContext(projectId);
+  }
+  async listBranches(projectId: string, conversationId?: string) {
+    const workspace = conversationId
+      ? await this.options.resolveConversationBranchWorkspace?.(projectId, conversationId) ?? null
+      : this.branchWorkspace(projectId);
+    return workspace ? listGitBranches(workspace) : null;
+  }
+  checkoutBranch(projectId: string, target: GitBranchTarget) {
+    return this.runBranchMutation(projectId, (workspace) =>
+      checkoutGitBranch(workspace, target)
+    );
+  }
+  createBranch(projectId: string, name: string) {
+    return this.runBranchMutation(projectId, (workspace) =>
+      createGitBranch(workspace, name)
+    );
+  }
+  configureCloudRemoval(handler: (projectId: string) => Promise<void>) { if (this.cloudRemoval) throw new Error("Cloud Project removal is already configured"); this.cloudRemoval = handler; }
+  async deleteProjectData(projectId: string) {
+    await this.runExclusive(async () => {
+      this.assertProjectRemovalOpen(projectId, "delete-project-data");
+      this.assertNoMemoryRebind(projectId);
+      this.assertNoPendingProjectCreation(projectId);
+      const binding = this.store.get(projectId)?.workspaceBinding;
+      if (binding?.kind === "app") {
+        throw statusError(403, "App Project 请从 Apps 页删除");
+      }
+      this.deletingProjects.add(projectId);
+    });
+    try {
+      await this.cloudRemoval?.(projectId);
+      /* Project queue 只负责发布 product fence；cancel、Policy/Delivery drain 与
+         Chat bytes 删除都在门外推进，避免一个慢 provider 阻塞全局 Project。 */
+      await this.resourceCleanup.remove(projectId, "delete-project-data");
+      this.emit({ type: "removed", projectId });
+    } finally {
+      this.deletingProjects.delete(projectId);
+    }
+  }
+  detachLocalProject(projectId: string): Promise<ProjectLocalDetachResult> {
+    return this.runExclusive(async () => {
+      this.assertProjectRemovalOpen(projectId, "detach-local-project");
+      this.assertNoMemoryRebind(projectId);
+      this.assertNoPendingProjectCreation(projectId);
+      const project = this.store.get(projectId);
+      if (!project) throw statusError(404, "Project 不存在");
+      if (project.workspaceBinding.kind === "app") {
+        throw statusError(403, "App Project 请从 Apps 页管理");
+      }
+      if (this.options.hasActiveTurnsByProject(projectId)) {
+        throw statusError(409, "Project 正在运行任务，结束后再移除");
+      }
+      const reasons = [...new Set(this.options.localDetachReasons?.(projectId) ?? [])];
+      if (
+        this.options.hasManagedWorktreesForProject?.(projectId) &&
+        !reasons.includes("managed-worktree")
+      ) {
+        reasons.push("managed-worktree");
+      }
+      if (reasons.length) return { status: "archive-required", reasons };
+      const chatIds = this.options.listChatsByProject(projectId).filter(chatId => !this.options.isWorkflowChat?.(chatId));
+      await this.resourceCleanup.remove(projectId, "detach-local-project");
+      this.emit({ type: "removed", projectId });
+      return { status: "detached", movedChatCount: chatIds.length };
+    });
+  }
+  async removeAppProjectHeld(projectId: string, appId: string) {
+    this.assertNoMemoryRebind(projectId);
+    const binding = this.store.get(projectId)?.workspaceBinding;
+    if (binding?.kind !== "app" || binding.appId !== appId) {
+      throw new Error("Project 不属于目标 App");
+    }
+    await this.removeProjectHeld(projectId);
+  }
+  /** Archive purge 已完成 chat 删除；仍必须经过统一资源收敛器后才能删 Project 行。 */
+  async purgeProjectHeld(projectId: string, purgeIntentId: string) {
+    await this.cloudRemoval?.(projectId);
+    await this.resourceCleanup.remove(projectId, "archive-purge", purgeIntentId);
+    this.emit({ type: "removed", projectId });
+  }
+  async retainBaseCustodyHeld(projectId: string, appId: string) {
+    this.assertNoMemoryRebind(projectId);
+    const current = this.store.get(projectId);
+    if (
+      current?.role !== "base-custody" &&
+      (current?.workspaceBinding.kind !== "app" || current.workspaceBinding.appId !== appId)
+    ) {
+      throw new Error("Project is not owned by the target App");
+    }
+    const stored = await this.store.convertToBaseCustody(projectId);
+    this.emit({ type: "removed", projectId });
+    return this.withMissing(stored);
+  }
+  async moveChatProjectHeld(
+    chatId: string,
+    expectedSource: string | null,
+    target: string | null,
+    appRole?: AppChatRole | null
+  ) {
+    if (!this.options.moveChatProject) {
+      throw new Error("当前 Projects 组合缺少 chat project 移动能力");
+    }
+    if (expectedSource) this.assertProjectOpen(expectedSource);
+    if (target) this.assertProjectOpen(target);
+    const summary = await this.options.moveChatProject(
+      chatId,
+      expectedSource,
+      target,
+      appRole
+    );
+    this.options.publishChatUpserted(summary);
+    return summary;
+  }
+  /** Save 补偿专用：成员已迁回后只移除本次预分配的空 App Project。 */
+  async rollbackAppProjectHeld(projectId: string, appId: string) {
+    this.assertNoMemoryRebind(projectId);
+    const project = this.store.get(projectId);
+    if (!project) return;
+    const binding = project.workspaceBinding;
+    if (binding.kind !== "app" || binding.appId !== appId) {
+      throw new Error("回滚 Project 不属于目标 App");
+    }
+    if (this.options.listChatsByProject(projectId).length > 0) {
+      throw new Error("回滚 App Project 仍有成员 chat");
+    }
+    await this.resourceCleanup.remove(
+      projectId,
+      "rollback-app-project"
+    );
+    this.emit({ type: "removed", projectId });
+  }
+  private async removeProjectHeld(projectId: string) {
+    await this.resourceCleanup.remove(projectId, "delete-app-project");
+    this.emit({ type: "removed", projectId });
+  }
+  convertFromChat(input: { lease: BuiltinMcpLease; name: string }) {
+    return this.runExclusive(async () => {
+      const { lease } = input;
+      if (lease.state === "revoked") {
+        throw statusError(401, "内置 MCP lease 已撤销");
+      }
+      const binding = this.options.getChatBinding(lease.chatId);
+      if (!binding || binding.incarnationId !== lease.incarnationId) {
+        throw statusError(404, "聊天不存在或已被替换");
+      }
+      if (binding.projectId !== null) {
+        throw statusError(409, "当前聊天已经属于某个 Project");
+      }
+      let project: StoredProject;
+      try {
+        project = await this.store.addGrouping(input.name);
+      } catch (cause) {
+        throw statusError(500, errorMessage(cause), { cause });
+      }
+      let chat: ChatSummary;
+      try {
+        chat = await this.options.assignProjectToChat(
+          lease.chatId,
+          project.id
+        );
+      } catch (primary) {
+        const residue: string[] = [];
+        try {
+          await this.resourceCleanup.remove(
+            project.id,
+            "convert-compensation"
+          );
+        } catch (cleanupCause) {
+          residue.push(`Project 记录 ${project.id}`);
+          console.error("[projects] 补偿 remove 失败", cleanupCause);
+        }
+        const survivor = this.store.get(project.id);
+        if (survivor) {
+          this.emit({
+            type: "upserted",
+            project: this.withMissing(survivor),
+          });
+        } else {
+          this.emit({ type: "removed", projectId: project.id });
+        }
+        const suffix = residue.length
+          ? `（补偿未完成，请手动清理：${residue.join("、")}）`
+          : "";
+        throw statusError(500, `${errorMessage(primary)}${suffix}`, { cause: primary });
+      }
+      const wire = this.withMissing(project);
+      this.emit({ type: "upserted", project: wire });
+      this.options.publishChatUpserted(chat);
+      return {
+        project_id: project.id,
+        project_name: project.name,
+        project_dir: project.dir,
+        chat_id: chat.id,
+        note: "转换已完成；Project 仅用于分组，下一轮仍使用 Chat Home，可在设置中另行绑定工作目录。",
+      };
+    });
+  }
+  configureMissingRescue(release: (projectId: string) => Promise<number>) {
+    this.rescueMissing = release;
+  }
+  async releaseMissing(projectId: string) {
+    const count = this.rescueMissing ? await this.rescueMissing(projectId) :
+      await this.runExclusive(() => releaseLocalMissingProject(projectId, this.store, this.options));
+    this.emit({ type: "removed", projectId });
+    return count;
+  }
+  runExclusive<T>(job: () => Promise<T>): Promise<T> {
+    this.assertAdmission();
+    return this.queue.enqueue(job);
+  }
+  /** 只能在 runExclusive 任务内调用；调用方必须维持 Lifecycle → ChatStore 锁序。 */
+  isUsable(projectId: string) {
+    if (this.deletingProjects.has(projectId)) return false;
+    const project = this.store.get(projectId);
+    return Boolean(project && !this.withMissing(project).missing);
+  }
+  resolveRevealDirectory(projectId: string) {
+    const project = this.store.get(projectId);
+    if (
+      !project ||
+      project.role !== "workspace" ||
+      project.dir === "" ||
+      !this.isProjectOpen(projectId)
+    ) {
+      throw new Error(`${PROJECT_UNAVAILABLE}: Project 不可显示`);
+    }
+    const binding = project.workspaceBinding;
+    const directory =
+      binding.kind === "external"
+        ? this.store.resolveWorkspace(binding)
+        : binding.kind === "app" &&
+            this.options.isAppProjectAvailable(binding.appId)
+          ? this.options.resolveAppDirectory?.(binding.appId)
+          : undefined;
+    if (!directory || !isUsableDirectory(directory)) {
+      throw new Error(`${PROJECT_UNAVAILABLE}: Project 目录不可用`);
+    }
+    return directory;
+  }
+  private branchWorkspace(projectId: string) {
+    this.assertNoMemoryRebind(projectId);
+    const project = this.store.get(projectId);
+    if (
+      !project ||
+      !this.isProjectOpen(projectId) ||
+      this.withMissing(project).missing
+    ) {
+      return null;
+    }
+    const binding = project.workspaceBinding;
+    if (binding.kind === "app") {
+      return this.options.resolveApp(binding.appId)?.dir ?? null;
+    }
+    return binding.kind === "external"
+      ? this.store.resolveWorkspace(binding) ?? null
+      : null;
+  }
+  private runBranchMutation<T>(
+    projectId: string,
+    mutate: (workspace: string) => Promise<T>
+  ) {
+    return this.runExclusive(async () => {
+      const workspace = this.branchWorkspace(projectId);
+      if (!workspace) throw new Error(`${PROJECT_UNAVAILABLE}: Project 不可用`);
+      if (this.options.hasActiveTurnsByProject(projectId)) {
+        throw new Error("Project 正在运行任务，停止后再切换 branch");
+      }
+      return mutate(workspace);
+    });
+  }
+  stopAdmission() {
+    this.admissionOpen = false;
+  }
+  async closeAndFlush() {
+    await Promise.allSettled([this.remoteRefresh.flush(), ...this.activeRebinds]);
+    this.queue.close();
+    await this.queue.flush();
+    await this.options.rebindJournal?.closeAndFlush();
+  }
+  reopen() {
+    this.queue.reopen();
+    this.admissionOpen = true;
+  }
+
+  private assertAdmission() {
+    if (!this.admissionOpen) throw new Error("应用正在退出，Project 操作已关闭");
+  }
+
+  private isProjectOpen(projectId: string) {
+    return !this.deletingProjects.has(projectId) &&
+      !this.store.get(projectId)?.deletionCheckpoint && !this.store.get(projectId)?.sync?.deleted &&
+      !this.store.get(projectId)?.archivedAt &&
+      (this.options.isProjectOpen?.(projectId) ?? true);
+  }
+
+  assertProjectOpen(projectId: string) {
+    if (!this.isProjectOpen(projectId)) {
+      throw new Error("ARCHIVED: Project 不接受绑定或结构变更");
+    }
+  }
+
+  private assertProjectRemovalOpen(
+    projectId: string,
+    operation: ProjectRemovalOperation
+  ) {
+    const checkpoint = this.store.get(projectId)?.deletionCheckpoint;
+    if (
+      this.deletingProjects.has(projectId) ||
+      (checkpoint && checkpoint.operation !== operation) ||
+      !(this.options.isProjectOpen?.(projectId) ?? true)
+    ) {
+      throw new Error("ARCHIVED: Project 不接受绑定或结构变更");
+    }
+  }
+
+  assertNoMemoryRebind(projectId: string) {
+    if (this.deletingProjects.has(projectId)) {
+      throw statusError(409, "Project 正在删除，请稍后重试");
+    }
+    if (this.options.rebindJournal?.get(projectId)) {
+      throw statusError(409, "Project 工作目录正在安全改绑；完成 Memory 对账后再试");
+    }
+  }
+  private assertNoPendingProjectCreation(projectId: string) {
+    if (this.options.hasPendingProjectCreation?.(projectId)) {
+      throw statusError(
+        409,
+        "Project 正在兑现待恢复的 Section 创建；完成或失败收敛前不能删除或转换"
+      );
+    }
+  }
+  assertWorkspaceRebindAllowed(projectId: string) {
+    this.assertNoMemoryRebind(projectId);
+    if (this.options.hasManagedWorktreesForProject?.(projectId))
+      throw statusError(409, "Project 仍拥有 managed worktree Chat；请先永久删除这些 Chat 再改绑");
+    if (this.options.hasDeletionFenceForProject?.(projectId)) {
+      throw statusError(409, "Project 中有 Chat 删除待完成，请稍后重试改绑");
+    }
+  }
+
+  trackRebind<T>(operation: Promise<T>) {
+    this.activeRebinds.add(operation);
+    void operation
+      .finally(() => this.activeRebinds.delete(operation))
+      .catch(() => {});
+    return operation;
+  }
+
+  private registerResourceCleanupHandlers() {
+    this.resourceCleanup.registerRuntime("delete-project-data", (context) =>
+      this.cleanupProjectRuntime(context.projectId, undefined)
+    );
+    this.resourceCleanup.registerRuntime("delete-app-project", (context) =>
+      this.cleanupProjectRuntime(context.projectId, "held")
+    );
+    this.resourceCleanup.registerRuntime("delete-base-custody", (context) =>
+      this.cleanupProjectRuntime(context.projectId, "held")
+    );
+    this.resourceCleanup.registerRuntime("detach-local-project", (context) =>
+      this.detachProjectRuntime(context.projectId)
+    );
+    this.resourceCleanup.registerRuntime("archive-purge", async (context) => {
+      await this.options.cleanupWorkflows?.(context.projectId);
+      await this.options.removeBaseForProject?.(context.projectId);
+    });
+    this.resourceCleanup.registerRuntime("rollback-app-project", async () => undefined);
+    this.resourceCleanup.registerRuntime("convert-compensation", async () => undefined);
+  }
+
+  private async cleanupProjectRuntime(
+    projectId: string,
+    lifecycle?: "held"
+  ) {
+    /* Before any turn is killed or Chat removed: a workflow step is stopped through its run, on evidence (A-01). */
+    await this.options.cleanupWorkflows?.(projectId);
+    await this.options.cancelTurnsByProject(projectId);
+    await this.options.removeChatsByProject(projectId, lifecycle);
+    await this.options.removeBaseForProject?.(projectId);
+  }
+
+  private async detachProjectRuntime(projectId: string) {
+    await this.options.cleanupWorkflows?.(projectId);
+    /* Its workflow Chats go with the runs (proven stopped just above): outside their run they are nowhere to be opened. */
+    for (const chatId of this.options.listChatsByProject(projectId)) {
+      if (this.options.isWorkflowChat?.(chatId)) await this.options.removeChat!(chatId);
+      else await this.options.releaseChatProject(chatId);
+    }
+  }
+
+  async driveMemoryRebind(capsule: ProjectRebindCapsule) {
+    const journal = this.options.rebindJournal;
+    return driveProjectRebind({
+      capsule,
+      journal,
+      prepare: this.options.prepareMemoryRebind,
+      commit: () =>
+        this.queue.enqueue(async () => {
+          const current = this.store.get(capsule.projectId);
+          if (!current) {
+            throw new Error("Project 记录已丢失，rebind capsule 需要人工对账");
+          }
+          if (isProjectRebindTarget(current, capsule)) {
+            await this.options.onWorkspaceRebound?.(capsule);
+            await journal?.finish(capsule.operationId);
+            return this.withMissing(current);
+          }
+          if (!isProjectRebindSource(current, capsule)) {
+            throw new Error("Project binding 已变化，rebind capsule 需要人工对账");
+          }
+          const stored = await this.store.setWorkspaceBinding(
+            capsule.projectId,
+            capsule.targetBinding,
+            capsule.targetDir
+          );
+          await this.options.onWorkspaceRebound?.(capsule);
+          await journal?.finish(capsule.operationId);
+          const project = this.withMissing(stored);
+          this.emit({ type: "upserted", project });
+          return project;
+        }),
+    });
+  }
+
+  emit(event: ProjectsEvent) {
+    publishProjectsEvent(PROJECTS_CHANNEL.event, event, this.window);
+  }
+}

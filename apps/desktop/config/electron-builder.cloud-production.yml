@@ -1,0 +1,8 @@
+# [INPUT]: Extends the stable desktop package from the project root and its verified production assembly.
+# [OUTPUT]: Packages the stable Bottega identity, profile, callback scheme and official updater without publishing.
+# [POS]: Production cloud packaging; candidate acceptance uses the isolated Cloud Dev configuration.
+extends: electron-builder.yml
+protocols:
+  - name: Bottega
+    schemes:
+      - bottega

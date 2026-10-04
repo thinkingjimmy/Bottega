@@ -1,0 +1,332 @@
+/**
+ * [INPUT]: Depends on Node fs/path, user home, the history-import adapter kernel (bounded fan-out, head reads, stable streams) and the shared turn-folding seam
+ * [OUTPUT]: Provides ClaudeHistoryAdapter with constant-memory identity/full scans (prefix-filtered directories, SCAN_FANOUT-bounded file reads) and turn-bounded JSONL streaming that preserves assistant fragment and tool-result merging, folds a turn into one assistant block, strips the product-context envelope from content blocks and titles, and skips every non-conversation record
+ * [POS]: apps/desktop/electron/main/history-import/adapters; The Claude Code format adapter for history-import; slug is only rough, true attribution is only recognized by the record cwd
+ */
+
+import { readdir, stat } from "node:fs/promises";
+import { basename, join } from "node:path";
+import type {
+  ForeignHistoryMessage,
+  ForeignToolEvent,
+} from "../../../../shared/ipc/content/history-import-ipc";
+import {
+  HISTORY_FILE_BYTES,
+  HISTORY_PARSER_VERSION,
+  SCAN_FANOUT,
+  batchHistoryTurns,
+  collectHistoryBatches,
+  digest,
+  fingerprint,
+  fingerprintRevision,
+  storageFingerprint,
+  initialSourceIncarnation,
+  isWithin,
+  mapWithLimit,
+  normalizedAliases,
+  opaqueSessionId,
+  readHeadLines,
+  streamStableJsonl,
+  timestamp,
+  type AdapterEntry,
+  type AdapterScan,
+  type HistoryAdapter,
+  type HistoryBlockBatches,
+  type HistoryBlockTurns,
+  type ParsedHistory,
+  type ScanDepth,
+} from "./adapter";
+import { envelopeFreeTitle, foldHistoryTurns, stripProductEnvelopes } from "../turn-folding";
+
+type Json = Record<string, unknown>;
+
+export class ClaudeHistoryAdapter implements HistoryAdapter {
+  readonly sourceKind = "claude" as const;
+  readonly parserVersion = HISTORY_PARSER_VERSION;
+  private readonly sourceRoot: string;
+
+  /** `claudeRoot` is Claude's state root as the fence table resolves it (import-worker/sources.ts). */
+  constructor(claudeRoot: string) {
+    this.sourceRoot = join(claudeRoot, "projects");
+  }
+
+  async scanProject(canonicalRoot: string, depth: ScanDepth = "full"): Promise<AdapterScan> {
+    const storage = await storageFingerprint(this.sourceRoot);
+    if (!storage) return emptyScan(this.sourceKind);
+    /* 目录名就是编码过的 cwd：前缀不匹配的 Project 一个文件都不用碰。 */
+    const prefix = encodeClaudePath(canonicalRoot);
+    const directories = (await safeDirectories(this.sourceRoot)).filter((directory) => directory.name.startsWith(prefix));
+    const paths = (await Promise.all(directories.map(async (directory) => {
+      const root = join(this.sourceRoot, directory.name);
+      return (await safeFiles(root)).filter((file) => file.name.endsWith(".jsonl")).map((file) => join(root, file.name));
+    }))).flat();
+    const entries = (await mapWithLimit(paths, SCAN_FANOUT, async (path): Promise<AdapterEntry | null> => {
+      try {
+        const meta = await sessionMeta(path, canonicalRoot, depth);
+        if (!meta) return null;
+        const value = await fingerprint(path, this.parserVersion);
+        const canonicalNativeId = meta.sessionId || basename(path, ".jsonl");
+        const aliases = normalizedAliases([
+          canonicalNativeId,
+          basename(path, ".jsonl"),
+        ]);
+        const key = {
+          sourceKind: this.sourceKind,
+          storageFingerprint: storage,
+          canonicalNativeId,
+          aliases,
+          resumeAlias: canonicalNativeId,
+        } as const;
+        return {
+          opaqueId: opaqueSessionId(key),
+          projectId: "",
+          sourceKind: this.sourceKind,
+          key,
+          title: meta.title,
+          cwd: meta.cwd,
+          createdAt: meta.createdAt,
+          updatedAt: meta.updatedAt,
+          historyRevision: fingerprintRevision(value),
+          canResume: true,
+          archived: false,
+          incompleteTail: meta.incompleteTail,
+          sourceIncarnation: initialSourceIncarnation(key, value),
+          sourcePath: path,
+          fingerprint: value,
+        };
+      } catch {
+        /* 逐文件 fail-soft：EACCES、活跃写入与损坏文件一律跳过整条来源不受累 */
+        return null;
+      }
+    })).filter((entry): entry is AdapterEntry => entry !== null);
+    entries.sort(byCreatedAt);
+    return {
+      sourceKind: this.sourceKind,
+      installed: true,
+      entries,
+      sourceRevision: digest(entries.map((entry) => entry.historyRevision).join("\0")),
+    };
+  }
+
+  parseBatches(entry: AdapterEntry, signal?: AbortSignal): HistoryBlockBatches {
+    return batchHistoryTurns(foldHistoryTurns(this.parseTurns(entry, signal), signal), signal);
+  }
+
+  async parse(entry: AdapterEntry, signal?: AbortSignal): Promise<ParsedHistory> {
+    return collectHistoryBatches(this.parseBatches(entry, signal));
+  }
+
+  private async *parseTurns(
+    entry: AdapterEntry,
+    signal?: AbortSignal
+  ): HistoryBlockTurns {
+    const source = streamStableJsonl(entry.sourcePath, entry.fingerprint, signal);
+    let blocks: ForeignHistoryMessage[] = [];
+    const assistant = new Map<string, ForeignHistoryMessage>();
+    const tools = new Map<string, ForeignToolEvent>();
+    let deliverySeq = 0;
+    const flush = () => {
+      if (!blocks.length) return [];
+      const ready = refreshToolOutputs(blocks, tools);
+      blocks = [];
+      assistant.clear();
+      tools.clear();
+      return ready;
+    };
+    while (true) {
+      const next = await source.next();
+      if (next.done) {
+        const ready = flush();
+        if (ready.length) yield ready;
+        return next.value;
+      }
+      const { line } = next.value;
+      deliverySeq += 1;
+      let raw: Json;
+      try {
+        raw = JSON.parse(line) as Json;
+      } catch {
+        continue;
+      }
+      if (ignoredClaudeRecord(raw)) continue;
+      /* 会话记录之外的一切——已知元数据、未来才出现的记录类型、半行坏
+         JSON——都不是对话内容，跳过即可，不得物化成一条消息。 */
+      const role = raw.type === "assistant" || raw.type === "user" ? raw.type : null;
+      if (!role) continue;
+      const message = object(raw.message);
+      const id = string(message?.id) ?? string(raw.uuid) ?? `${role}-${deliverySeq}`;
+      const at = timestamp(raw.timestamp, entry.createdAt);
+      const extracted = claudeContent(message?.content, tools);
+      if (role === "user" && extracted.onlyToolResults) continue;
+      if (!extracted.text.trim() && !extracted.tools.length) continue;
+      if (role === "user") {
+        const ready = flush();
+        if (ready.length) yield ready;
+      }
+      if (role === "assistant") {
+        const current = assistant.get(id);
+        if (current) {
+          const merged = {
+            ...current,
+            content: [current.content, extracted.text].filter(Boolean).join("\n"),
+            tools: mergeTools(current.tools ?? [], extracted.tools),
+          };
+          assistant.set(id, merged);
+          const index = blocks.findIndex((block) => block.id === id);
+          if (index >= 0) blocks[index] = merged;
+          continue;
+        }
+      }
+      const block: ForeignHistoryMessage = {
+        kind: "message",
+        id,
+        nativeTurnId: id,
+        deliverySeq,
+        role,
+        content: extracted.text.trim() || "已调用工具",
+        createdAt: at,
+        ...(extracted.tools.length ? { tools: extracted.tools } : {}),
+      };
+      blocks.push(block);
+      if (role === "assistant") assistant.set(id, block);
+    }
+  }
+}
+
+export function encodeClaudePath(path: string) {
+  return path.replaceAll(/[^A-Za-z0-9]/g, "-");
+}
+
+/** 归属判据唯一出处：cwd 落在 Project 根内且不落在其 .claude/**（worktree agent）下。 */
+function ownedCwd(cwd: string, projectRoot: string) {
+  return isWithin(projectRoot, cwd) && !isWithin(join(projectRoot, ".claude"), cwd);
+}
+
+/**
+ * 两档会话元数据。头读只为归属过滤：cwd/sessionId 在头部命中即可裁决归属，
+ * 不属于本 Project 的文件（slug 前缀假阳性、worktree 会话）零全文成本跳过；
+ * identity 档命中后以 stat 兜底呈现字段，full 档回到全文（后置 custom-title
+ * 决定了 title 不可头读，PRD §F1）。头部未见身份的异形文件退回全文，不猜。
+ * 4 GiB 流式上限在此统一裁决，两档对超大文件的收录结论必须一致。
+ */
+async function sessionMeta(path: string, projectRoot: string, depth: ScanDepth) {
+  const fallback = await stat(path);
+  if (fallback.size > HISTORY_FILE_BYTES) return null;
+  const head = await readHeadLines(path);
+  let cwd = "", sessionId = "";
+  for (const line of head.lines) {
+    let raw: Json;
+    try { raw = JSON.parse(line) as Json; } catch { continue; }
+    cwd ||= string(raw.cwd) ?? "";
+    sessionId ||= string(raw.sessionId) ?? "";
+    if (cwd && sessionId) break;
+  }
+  if (cwd && !ownedCwd(cwd, projectRoot)) return null;
+  if (depth === "identity" && cwd && sessionId) {
+    return {
+      cwd,
+      sessionId,
+      title: "Claude Code 会话",
+      createdAt: timestamp(undefined, fallback.birthtimeMs),
+      updatedAt: timestamp(undefined, fallback.mtimeMs),
+      incompleteTail: false,
+    };
+  }
+  return fullMeta(path, projectRoot);
+}
+
+async function fullMeta(path: string, projectRoot: string) {
+  const source = streamStableJsonl(path);
+  let cwd = "", sessionId = "", title = "";
+  let createdAt = Number.POSITIVE_INFINITY, updatedAt = 0;
+  let incompleteTail = false;
+  while (true) {
+    const next = await source.next();
+    if (next.done) {
+      incompleteTail = next.value;
+      break;
+    }
+    const { line } = next.value;
+    let raw: Json;
+    try { raw = JSON.parse(line) as Json; } catch { continue; }
+    cwd ||= string(raw.cwd) ?? "";
+    sessionId ||= string(raw.sessionId) ?? "";
+    const at = timestamp(raw.timestamp, 0);
+    if (at) {
+      createdAt = Math.min(createdAt, at);
+      updatedAt = Math.max(updatedAt, at);
+    }
+    const custom = string(raw.customTitle) ?? string(raw.title);
+    if (raw.type === "custom-title" && custom) title = custom;
+    if (!title && raw.type === "user" && !raw.isMeta) {
+      title = claudeContent(object(raw.message)?.content, new Map()).text.trim();
+    }
+  }
+  if (!cwd || !ownedCwd(cwd, projectRoot)) return null;
+  const fallback = await stat(path);
+  return {
+    cwd,
+    sessionId,
+    title: envelopeFreeTitle(title, "Claude Code 会话"),
+    createdAt: Number.isFinite(createdAt) ? createdAt : timestamp(undefined, fallback.birthtimeMs),
+    updatedAt: updatedAt || timestamp(undefined, fallback.mtimeMs),
+    incompleteTail,
+  };
+}
+
+function claudeContent(value: unknown, results: Map<string, ForeignToolEvent>) {
+  if (typeof value === "string") return { text: value, tools: [], onlyToolResults: false };
+  if (!Array.isArray(value)) return { text: "", tools: [], onlyToolResults: false };
+  const text: string[] = [], tools: ForeignToolEvent[] = [];
+  let toolResults = 0;
+  for (const item of value) {
+    const block = object(item);
+    if (!block) continue;
+    /* 产品信封是独立的一块 text block（也可能与正文同块），剥掉它再入正文；
+       整块只剩信封的直接消失，用户那句话因此才是第一条用户消息与标题。 */
+    if (block.type === "text" && typeof block.text === "string") {
+      const text_ = stripProductEnvelopes(block.text);
+      if (text_) text.push(text_);
+    }
+    if (block.type === "tool_use") {
+      const event = {
+        id: string(block.id) ?? `tool-${tools.length}`,
+        name: string(block.name) ?? "tool",
+        ...(block.input === undefined ? {} : { input: safeJson(block.input) }),
+      };
+      tools.push(event);
+      results.set(event.id, event);
+    }
+    if (block.type === "tool_result") {
+      toolResults += 1;
+      const id = string(block.tool_use_id);
+      const current = id ? results.get(id) : undefined;
+      if (current) results.set(id!, { ...current, output: contentText(block.content) });
+    }
+  }
+  return { text: text.join("\n"), tools, onlyToolResults: toolResults > 0 && !text.length && !tools.length };
+}
+
+function refreshToolOutputs(blocks: ForeignHistoryMessage[], results: Map<string, ForeignToolEvent>) {
+  return blocks.map((block) => !block.tools ? block : {
+    ...block,
+    tools: block.tools.map((tool) => results.get(tool.id) ?? tool),
+  });
+}
+
+function mergeTools(left: ForeignToolEvent[], right: ForeignToolEvent[]) {
+  return [...new Map([...left, ...right].map((tool) => [tool.id, tool])).values()];
+}
+
+function ignoredClaudeRecord(raw: Json) {
+  return raw.isSidechain === true || raw.isMeta === true || raw.type === "system" || raw.type === "progress";
+}
+
+const object = (value: unknown) => value && typeof value === "object" && !Array.isArray(value) ? value as Json : null;
+const string = (value: unknown) => typeof value === "string" && value ? value : null;
+const safeJson = (value: unknown) => { try { return JSON.stringify(value); } catch { return "[unserializable]"; } };
+const contentText = (value: unknown): string => typeof value === "string" ? value : Array.isArray(value) ? value.map((item) => typeof item === "string" ? item : string(object(item)?.text) ?? "").filter(Boolean).join("\n") : "";
+const byCreatedAt = (left: AdapterEntry, right: AdapterEntry) => right.createdAt - left.createdAt || left.opaqueId.localeCompare(right.opaqueId);
+const emptyScan = (sourceKind: "claude"): AdapterScan => ({ sourceKind, installed: false, entries: [], sourceRevision: "missing" });
+async function safeDirectories(root: string) { try { return (await readdir(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()); } catch { return []; } }
+async function safeFiles(root: string) { try { return (await readdir(root, { withFileTypes: true })).filter((entry) => entry.isFile()); } catch { return []; } }

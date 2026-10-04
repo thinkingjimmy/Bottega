@@ -1,0 +1,37 @@
+/**
+ * [INPUT]: Depends on initialized Extension integration, BackendRuntimeRegistry and the backend descriptors' executable search, SkillsCatalog, UnifiedSkillsService, and userData/home/env/folder chooser
+ * [OUTPUT]: Provides createUnifiedSkillsService with a required folder root, durable Library-first initialization, installed-runtime authority, and catalog invalidation wiring
+ * [POS]: Post-cutover startup composition for Unified Skills; it contains no Codex-native or projection bridge
+ */
+
+import type { AppExtensionIntegration } from "../../extensions/integration/app-extension-composition";
+import { UnifiedSkillsService } from "../../skills-management/service";
+import type { SkillsCatalog } from "../../skills/catalog/skills-catalog";
+import { backendRuntimeRegistry, requireProvider } from "../../backends";
+import type { LibraryCustodyProbe } from "../../skills-management/library-store";
+
+export async function createUnifiedSkillsService(input: Readonly<{
+  userData: string;
+  libraryRoot: () => string | null;
+  userHome: string;
+  env: NodeJS.ProcessEnv;
+  extensions: AppExtensionIntegration;
+  catalog: SkillsCatalog;
+  custodyReferenced?: LibraryCustodyProbe;
+  chooseLocalFolder(): Promise<string | null>;
+}>) {
+  const service = new UnifiedSkillsService({
+    userData: input.userData,
+    libraryRoot: input.libraryRoot,
+    userHome: input.userHome,
+    env: input.env,
+    registry: input.extensions.registry,
+    runtimeRegistry: backendRuntimeRegistry,
+    locateRuntime: async (agent) => (await requireProvider(agent).detectRuntime()).length > 0,
+    invalidateCatalog: () => input.catalog.invalidate(),
+    custodyReferenced: input.custodyReferenced,
+    chooseLocalFolder: input.chooseLocalFolder,
+  });
+  await service.initialize();
+  return service;
+}

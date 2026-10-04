@@ -1,0 +1,138 @@
+/**
+ * [INPUT]: Depends on turn draft, Plan request state, effective terminal, subagent registry, backend identity, Memory outcome, and reserved assistant identity
+ * [OUTPUT]: Canonical assistant and subagent terminal projection, preserving interrupted partial content, turn identity, completion reason and normalized result hash without failure placeholder text.
+ * [POS]: apps/desktop/electron/main/agent/turns/commit; Pure final projection for the agent module; persistence receives structure and never display fallback text
+ */
+
+import { createHash } from "node:crypto";
+import { canonicalJson } from "../../../../../shared/local-storage/contracts";
+import { normalizeMessage } from "../../../chats/chat-commit";
+import {
+  settle,
+  type SubagentSettleOutcome,
+  type TurnFailure,
+} from "../../../../../shared/chats/model/chat-turn-reducer";
+import { planMessageKind } from "../../../../../shared/chats/model/chat-plan-kind";
+import type {
+  ChatMessage,
+  TurnCommitInput,
+} from "../../../../../shared/ipc/content/chats-ipc";
+import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
+import { providerDisplayName } from "../../../backends";
+import { builtinProviderCatalog } from "../../../../../shared/providers/catalog";
+import type { SourceTerminal, TurnEntry } from "../turn/turn-registry-model";
+import {
+  deriveMemoryTurnOutcome,
+  type MemoryTurnFacts,
+} from "../../../memory/core/domain";
+
+function turnFailure(
+  backend: ProviderId,
+  terminal: SourceTerminal
+): TurnFailure | undefined {
+  if (terminal.type !== "error") return undefined;
+  return terminal.failure
+    ? { failure: terminal.failure }
+    : { agent: providerDisplayName(backend), message: terminal.message };
+}
+
+/* 子 agent 收敛的唯一判据是 turn 终态，不是「有没有报终态」——两家来源
+   （codex.subagent 全量源 / claudeCode 归属源）都只在真被打断时才下发
+   interrupted。判据取终态而非猜测，真中断因此不会被误标成功。 */
+const subagentOutcomeOf = (
+  terminal: SourceTerminal
+): SubagentSettleOutcome =>
+  terminal.type === "done" ? "completed" : "interrupted";
+
+/* A CLI that never reports its plan decision (descriptor `planDecision: "synthesized"`) gets one derived at commit. */
+const synthesizesPlanDecision = (backend: string) => {
+  const lookup = builtinProviderCatalog.get(backend);
+  return lookup.known && lookup.entry.descriptor.planDecision === "synthesized";
+};
+
+export function synthesizedPlanMessageKind(input: {
+  backend: ProviderId;
+  planRequested: boolean;
+  terminalType: SourceTerminal["type"];
+  content: string;
+}): "plan" | undefined {
+  return synthesizesPlanDecision(input.backend) &&
+    input.planRequested &&
+    input.terminalType === "done" &&
+    Boolean(input.content.trim())
+    ? "plan"
+    : undefined;
+}
+
+export function prepareTurnCommit(
+  entry: TurnEntry,
+  memoryFacts?: Omit<MemoryTurnFacts, "assistantMessagePresent">
+): TurnCommitInput {
+  const terminal = entry.effectiveTerminal;
+  if (!terminal) {
+    const subagentsDelta = entry.subagents.settle();
+    return subagentsDelta && Object.keys(subagentsDelta).length ? { subagentsDelta } : {};
+  }
+  const subagentOutcome = subagentOutcomeOf(terminal);
+  const result = settle(
+    entry.draft,
+    Date.now(),
+    turnFailure(entry.backend, terminal),
+    entry.planRequested,
+    subagentOutcome
+  );
+  const subagentsDelta = entry.subagents.settle(subagentOutcome);
+  const assistantMessagePresent = Boolean(
+    result
+  );
+  if (!result || !assistantMessagePresent) {
+    return subagentsDelta && Object.keys(subagentsDelta).length
+      ? { subagentsDelta }
+      : {};
+  }
+  const memoryOutcome = memoryFacts
+    ? deriveMemoryTurnOutcome({ ...memoryFacts, assistantMessagePresent })
+    : null;
+  const messageKind =
+    planMessageKind(terminal.type, result, entry.planRequested) ??
+    synthesizedPlanMessageKind({
+      backend: entry.backend,
+      planRequested: entry.planRequested,
+      terminalType: terminal.type,
+      content: result.content,
+    });
+  const message = normalizeMessage({
+      id: entry.messageId,
+      seq: entry.assistantSeq,
+      role: "assistant",
+      backend: entry.backend,
+      turnId: entry.requestId,
+      completion: terminal.type === "done" ? "complete" : "interrupted",
+      ...(terminal.type === "done" ? {} : { completionReason: terminal.type === "cancelled" ? "source-cancelled" as const : "source-error" as const }),
+      content: result.content,
+      ...(result.parts ? { parts: result.parts } : {}),
+      durationMs: result.durationMs,
+      ...(result.isError ? { isError: true } : {}),
+      ...(terminal.failureKind ? { failureKind: terminal.failureKind } : {}),
+      ...(terminal.failure ? { failure: terminal.failure } : {}),
+      ...(terminal.usageLimit ? { usageLimit: terminal.usageLimit } : {}),
+      ...(messageKind ? { kind: messageKind } : {}),
+      ...(memoryOutcome
+        ? {
+            contextReceipt: {
+              version: 1 as const,
+              requestId: entry.requestId,
+              memory: memoryOutcome,
+            },
+          }
+        : {}),
+      createdAt: Date.now(),
+    } satisfies ChatMessage);
+  if (message.role !== "assistant") throw new Error("Invalid assistant projection");
+  const resultHash = createHash("sha256").update(canonicalJson(message)).digest("hex");
+  return { message: { ...message, resultHash },
+    ...(subagentsDelta && Object.keys(subagentsDelta).length
+      ? { subagentsDelta }
+      : {}),
+  };
+}

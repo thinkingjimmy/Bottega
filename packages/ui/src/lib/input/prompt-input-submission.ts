@@ -1,0 +1,79 @@
+/**
+ * [INPUT]: Depends on PromptInput The order of the synchronized call for the event is the lifecycle of AbortSignal
+ * [OUTPUT]: Provides PromptInputSubmissionGate (a synchronous, subscribable re-entrancy lock), throwIfSubmissionAborted, and awaitSubmissionStep, which wraps an async step so it rejects immediately on abort
+ * [POS]: packages/ui/src/lib/input; ui/lib's shared submission-concurrency kernel; views project the busy state while the runtime enforces the same single-flight and abort boundary
+ */
+
+export class PromptInputSubmissionGate {
+  private active = false;
+  private readonly listeners = new Set<() => void>();
+
+  tryEnter() {
+    if (this.active) return false;
+    this.active = true;
+    this.notify();
+    return true;
+  }
+
+  leave() {
+    if (!this.active) return;
+    this.active = false;
+    this.notify();
+  }
+
+  /** A gate held outside the view (one per Chat) lets a remounted composer see a submission started by the one it replaced. */
+  subscribe(listener: () => void) {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+
+  private notify() {
+    for (const listener of [...this.listeners]) listener();
+  }
+
+  isActive() {
+    return this.active;
+  }
+}
+
+function abortError(signal: AbortSignal) {
+  if (signal.reason instanceof Error) return signal.reason;
+  const error = new Error("提交生命周期已结束");
+  error.name = "AbortError";
+  return error;
+}
+
+export function throwIfSubmissionAborted(signal: AbortSignal) {
+  if (signal.aborted) throw abortError(signal);
+}
+
+export function awaitSubmissionStep<T>(
+  signal: AbortSignal,
+  step: () => T | PromiseLike<T>
+): Promise<T> {
+  throwIfSubmissionAborted(signal);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(abortError(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void Promise.resolve()
+      .then(() => {
+        throwIfSubmissionAborted(signal);
+        return step();
+      })
+      .then(
+        (value) => {
+          signal.removeEventListener("abort", onAbort);
+          if (signal.aborted) reject(abortError(signal));
+          else resolve(value);
+        },
+        (cause) => {
+          signal.removeEventListener("abort", onAbort);
+          reject(cause);
+        }
+      );
+    if (signal.aborted) onAbort();
+  });
+}

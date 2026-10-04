@@ -1,0 +1,45 @@
+{
+  "$comment": "TASK-35 G0/G1: exact RunAsNode / process.execPath uses per production file. Counts only go down; G1 (--final --platform=<p>) needs every entry that is neither keep nor scoped to another platform migrated.",
+  "files": {
+    "electron/main/workers/app-gui-compiler-entry.ts": {
+      "class": "C7 compiler probe: runs the binary the compiler itself runs on",
+      "uses": 1,
+      "keep": true
+    },
+    "electron/main/apps/execution/command.ts": {
+      "class": "C9 Windows npm / pnpm / yarn via npm-cli.js: reachable only on win32, where afterPack refuses to package until slice 8 moves it onto the bundled node.exe; --final for win32 fails while it remains",
+      "uses": 1,
+      "platform": "win32"
+    },
+    "electron/main/apps/gui-build/composition.ts": {
+      "class": "C6: the Windows compiler wrapper sits beside the app executable (a path, not a Node launch)",
+      "uses": 2,
+      "keep": true
+    },
+    "electron/main/apps/gui-build/pipeline/sandbox.ts": {
+      "class": "C6: the Windows compiler wrapper sits beside the app executable (a path, not a Node launch)",
+      "uses": 1,
+      "keep": true
+    },
+    "electron/main/custody/guardian-entry.ts": {
+      "class": "identity: the guardian records its own executable",
+      "uses": 1,
+      "keep": true
+    },
+    "electron/main/runtime/index.ts": {
+      "class": "the launch port refuses the app's own executable as CODEX_PATH (E4)",
+      "uses": 1,
+      "keep": true
+    },
+    "electron/main/runtime/plan.ts": {
+      "class": "the launch port strips it",
+      "uses": 1,
+      "keep": true
+    },
+    "electron/main/system-dock/composition.ts": {
+      "class": "identity: the Dock names the app bundle",
+      "uses": 1,
+      "keep": true
+    }
+  }
+}

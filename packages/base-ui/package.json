@@ -1,0 +1,244 @@
+{
+  "name": "@ai-chat/base-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./ui/state/record-plugins": {
+      "types": "./dist/ui/state/record-plugins.d.ts",
+      "default": "./dist/ui/state/record-plugins.js"
+    },
+    "./ui/state/record-slots": {
+      "types": "./dist/ui/state/record-slots.d.ts",
+      "default": "./dist/ui/state/record-slots.js"
+    },
+    "./ui/base-workbench-support": {
+      "types": "./dist/ui/base-workbench-support.d.ts",
+      "default": "./dist/ui/base-workbench-support.js"
+    },
+    "./ui/base-workbench": {
+      "types": "./dist/ui/base-workbench.d.ts",
+      "default": "./dist/ui/base-workbench.js"
+    },
+    "./ui/editors/cells/base-cell-editor": {
+      "types": "./dist/ui/editors/cells/base-cell-editor.d.ts",
+      "default": "./dist/ui/editors/cells/base-cell-editor.js"
+    },
+    "./ui/editors/cells/base-record-editor": {
+      "types": "./dist/ui/editors/cells/base-record-editor.d.ts",
+      "default": "./dist/ui/editors/cells/base-record-editor.js"
+    },
+    "./ui/editors/panels/base-formula-editor": {
+      "types": "./dist/ui/editors/panels/base-formula-editor.d.ts",
+      "default": "./dist/ui/editors/panels/base-formula-editor.js"
+    },
+    "./ui/editors/panels/base-relation-picker": {
+      "types": "./dist/ui/editors/panels/base-relation-picker.d.ts",
+      "default": "./dist/ui/editors/panels/base-relation-picker.js"
+    },
+    "./ui/editors/panels/base-row-history": {
+      "types": "./dist/ui/editors/panels/base-row-history.d.ts",
+      "default": "./dist/ui/editors/panels/base-row-history.js"
+    },
+    "./ui/workflow/port": {
+      "types": "./dist/ui/workflow/port.d.ts",
+      "default": "./dist/ui/workflow/port.js"
+    },
+    "./ui/workflow/setup-dialog": {
+      "types": "./dist/ui/workflow/setup-dialog.d.ts",
+      "default": "./dist/ui/workflow/setup-dialog.js"
+    },
+    "./ui/workflow/run-port": {
+      "types": "./dist/ui/workflow/run-port.d.ts",
+      "default": "./dist/ui/workflow/run-port.js"
+    },
+    "./ui/workflow/run-details": {
+      "types": "./dist/ui/workflow/run-details.d.ts",
+      "default": "./dist/ui/workflow/run-details.js"
+    },
+    "./ui/workflow/runs-context": {
+      "types": "./dist/ui/workflow/runs-context.d.ts",
+      "default": "./dist/ui/workflow/runs-context.js"
+    },
+    "./ui/workflow/record-section": {
+      "types": "./dist/ui/workflow/record-section.d.ts",
+      "default": "./dist/ui/workflow/record-section.js"
+    },
+    "./ui/workflow/run-chooser": {
+      "types": "./dist/ui/workflow/run-chooser.d.ts",
+      "default": "./dist/ui/workflow/run-chooser.js"
+    },
+    "./ui/workflow/confirm-panel": {
+      "types": "./dist/ui/workflow/confirm-panel.d.ts",
+      "default": "./dist/ui/workflow/confirm-panel.js"
+    },
+    "./ui/state/base-mutation-error": {
+      "types": "./dist/ui/state/base-mutation-error.d.ts",
+      "default": "./dist/ui/state/base-mutation-error.js"
+    },
+    "./ui/state/lease-retry": {
+      "types": "./dist/ui/state/lease-retry.d.ts",
+      "default": "./dist/ui/state/lease-retry.js"
+    },
+    "./ui/chrome/base-tab-chrome": {
+      "types": "./dist/ui/chrome/base-tab-chrome.d.ts",
+      "default": "./dist/ui/chrome/base-tab-chrome.js"
+    },
+    "./ui/chrome/base-toolbar": {
+      "types": "./dist/ui/chrome/base-toolbar.d.ts",
+      "default": "./dist/ui/chrome/base-toolbar.js"
+    },
+    "./ui/chrome/base-view-tabs": {
+      "types": "./dist/ui/chrome/base-view-tabs.d.ts",
+      "default": "./dist/ui/chrome/base-view-tabs.js"
+    },
+    "./ui/views/view-config-bar": {
+      "types": "./dist/ui/views/view-config-bar.d.ts",
+      "default": "./dist/ui/views/view-config-bar.js"
+    },
+    "./ui/views/gallery/gallery-zoom": {
+      "types": "./dist/ui/views/gallery/gallery-zoom.d.ts",
+      "default": "./dist/ui/views/gallery/gallery-zoom.js"
+    },
+    "./ui/views/gallery/base-gallery-view": {
+      "types": "./dist/ui/views/gallery/base-gallery-view.d.ts",
+      "default": "./dist/ui/views/gallery/base-gallery-view.js"
+    },
+    "./ui/views/gallery/gallery-thumbnail": {
+      "types": "./dist/ui/views/gallery/gallery-thumbnail.d.ts",
+      "default": "./dist/ui/views/gallery/gallery-thumbnail.js"
+    },
+    "./ui/views/chart/base-chart-view": {
+      "types": "./dist/ui/views/chart/base-chart-view.d.ts",
+      "default": "./dist/ui/views/chart/base-chart-view.js"
+    },
+    "./ui/views/table/base-table-view": {
+      "types": "./dist/ui/views/table/base-table-view.d.ts",
+      "default": "./dist/ui/views/table/base-table-view.js"
+    },
+    "./ui/views/table/base-table-summary": {
+      "types": "./dist/ui/views/table/base-table-summary.d.ts",
+      "default": "./dist/ui/views/table/base-table-summary.js"
+    },
+    "./ui/views/list/base-list-view": {
+      "types": "./dist/ui/views/list/base-list-view.d.ts",
+      "default": "./dist/ui/views/list/base-list-view.js"
+    },
+    "./ui/views/kanban/base-kanban-view": {
+      "types": "./dist/ui/views/kanban/base-kanban-view.d.ts",
+      "default": "./dist/ui/views/kanban/base-kanban-view.js"
+    },
+    "./charts/chart-option": {
+      "types": "./dist/charts/chart-option.d.ts",
+      "default": "./dist/charts/chart-option.js"
+    },
+    "./charts/chart-theme": {
+      "types": "./dist/charts/chart-theme.d.ts",
+      "default": "./dist/charts/chart-theme.js"
+    },
+    "./charts/chart-pack": {
+      "types": "./dist/charts/chart-pack.d.ts",
+      "default": "./dist/charts/chart-pack.js"
+    },
+    "./charts/chart-model": {
+      "types": "./dist/charts/chart-model.d.ts",
+      "default": "./dist/charts/chart-model.js"
+    },
+    "./charts/chart-lifecycle": {
+      "types": "./dist/charts/chart-lifecycle.d.ts",
+      "default": "./dist/charts/chart-lifecycle.js"
+    },
+    "./charts/chart-ops": {
+      "types": "./dist/charts/chart-ops.d.ts",
+      "default": "./dist/charts/chart-ops.js"
+    },
+    "./charts/render/chart-viewport": {
+      "types": "./dist/charts/render/chart-viewport.d.ts",
+      "default": "./dist/charts/render/chart-viewport.js"
+    },
+    "./ui/views/map-support/map-model": {
+      "types": "./dist/ui/views/map-support/map-model.d.ts",
+      "default": "./dist/ui/views/map-support/map-model.js"
+    },
+    "./ui/views/map-support/map-popup": {
+      "types": "./dist/ui/views/map-support/map-popup.d.ts",
+      "default": "./dist/ui/views/map-support/map-popup.js"
+    },
+    "./ui/media/model": {
+      "types": "./dist/ui/media/model.d.ts",
+      "default": "./dist/ui/media/model.js"
+    },
+    "./i18n/zh-cn": {
+      "types": "./dist/i18n/zh-cn.d.ts",
+      "default": "./dist/i18n/zh-cn.js"
+    },
+    "./i18n/es": {
+      "types": "./dist/i18n/es.d.ts",
+      "default": "./dist/i18n/es.js"
+    },
+    "./i18n/en": {
+      "types": "./dist/i18n/en.d.ts",
+      "default": "./dist/i18n/en.js"
+    },
+    "./i18n/fr": {
+      "types": "./dist/i18n/fr.d.ts",
+      "default": "./dist/i18n/fr.js"
+    },
+    "./i18n/ja": {
+      "types": "./dist/i18n/ja.d.ts",
+      "default": "./dist/i18n/ja.js"
+    },
+    "./ui/platform/context": {
+      "types": "./dist/ui/platform/context.d.ts",
+      "default": "./dist/ui/platform/context.js"
+    },
+    "./ui/platform/i18n": {
+      "types": "./dist/ui/platform/i18n.d.ts",
+      "default": "./dist/ui/platform/i18n.js"
+    },
+    "./ui/platform/contracts": {
+      "types": "./dist/ui/platform/contracts.d.ts"
+    },
+    "./ui/platform/gallery": {
+      "types": "./dist/ui/platform/gallery.d.ts",
+      "default": "./dist/ui/platform/gallery.js"
+    },
+    "./ui/media/use-gallery-thumbnail": {
+      "types": "./dist/ui/media/use-gallery-thumbnail.d.ts",
+      "default": "./dist/ui/media/use-gallery-thumbnail.js"
+    },
+    "./ui/media/gallery-failure": {
+      "types": "./dist/ui/media/gallery-failure.d.ts",
+      "default": "./dist/ui/media/gallery-failure.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "node scripts/build.mjs",
+    "build": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "zod": "4.6.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-i18next": "^17.0.11",
+    "i18next": "26.3.6",
+    "@ai-chat/ui": "workspace:*",
+    "@bottega/contracts": "workspace:*",
+    "@dnd-kit/core": "6.3.1",
+    "@tanstack/react-table": "8.21.3",
+    "@tanstack/react-virtual": "3.14.8",
+    "echarts": "6.1.0",
+    "maplibre-gl": "^6.0.0",
+    "lucide-react": "1.24.0",
+    "@ai-chat/base-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/geojson": "7946.0.16",
+    "typescript": "5.9.3",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "vite": "7.3.6",
+    "@types/node": "22.18.6"
+  }
+}

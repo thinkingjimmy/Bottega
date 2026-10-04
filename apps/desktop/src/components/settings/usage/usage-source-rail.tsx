@@ -1,0 +1,125 @@
+/**
+ * [INPUT]: Depends on React useId, i18n, shared usage source contracts, branded Agent icons, token formatting, SettingsSurface, and UI Tabs/Skeleton.
+ * [OUTPUT]: Provides UsageSourceRail with source totals (a skeleton only while a load is running, nothing for a tab that could not be read) and a persistent active panel that preserves layout and chart preferences across source changes.
+ * [POS]: settings/usage's source-navigation surface; the caller supplies the selected source's content without remounting the panel.
+ */
+
+import { useId, type ReactNode } from "react";
+import { Layers } from "lucide-react";
+import {
+  USAGE_SOURCE_ORDER,
+  type UsageQueryTarget,
+} from "../../../../shared/ipc/settings/usage-ipc";
+import { SettingsSurface } from "@/components/settings/settings-layout";
+import { AgentBackendIcon, backendLabel } from "@/lib/agent/agent-backends";
+import { formatCompactTokens } from "@/lib/usage/usage-client";
+import type { UsageSummaries } from "@/lib/usage/usage-view-state";
+import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@ai-chat/ui/components/ui/tabs";
+import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
+
+/* ============================================================
+ * 源清单由 USAGE_SOURCE_ORDER 派生。它与后端注册域正交：新增
+ * Agent 后端不会自动出现在这里，只有真正有本地用量账本的源才进表。
+ * ============================================================ */
+
+const SOURCES = [
+  { target: "all" as UsageQueryTarget, label: "", icon: null },
+  ...USAGE_SOURCE_ORDER.map((source) => ({
+    target: source as UsageQueryTarget,
+    label: backendLabel(source),
+    icon: source,
+  })),
+];
+
+/* ============================================================
+ * 表面归这里，不再由调用方另起一张卡——与 memory-backend-tabs 同一条
+ * 法则。页签条曾是一条灰底药丸，面板是它下面另一张卡，中间一道缝：
+ * 于是「这块面板归哪个页签」要靠猜。现在两者是同一块表面的上下两段，
+ * 归属只用一条 2px 下划线来说，压在页签与面板的分界线上。
+ *
+ * 每个页签都挂着自己的 lifetime token：藏起来的是面板，不是事实——
+ * 四个源的横向对比必须常驻，否则选择本身无从下手。图标、名称与数字
+ * 是一个内容组；等宽只属于页签本身，不能用 auto margin 把数字推到列尾。
+ * ============================================================ */
+
+export function UsageSourceRail({
+  value,
+  summaries,
+  loading = false,
+  onChange,
+  children,
+}: {
+  value: UsageQueryTarget;
+  summaries: UsageSummaries;
+  /** A load is running: a tab without its summary pulses; once it settles, a tab that could not be read shows no number. */
+  loading?: boolean;
+  onChange: (target: UsageQueryTarget) => void;
+  children: ReactNode;
+}) {
+  const { t } = useAppTranslation();
+  const panelId = useId();
+  return (
+    <Tabs
+      value={value}
+      onValueChange={(next) => onChange(next as UsageQueryTarget)}
+      className="gap-0"
+    >
+      <SettingsSurface>
+        <TabsList
+          variant="line"
+          aria-label={t("settings.usage.source")}
+          className="w-full items-stretch justify-start gap-0 rounded-none border-b border-border bg-transparent p-0 group-data-horizontal/tabs:h-auto"
+        >
+          {SOURCES.map((source) => {
+            const summary = summaries[source.target];
+            return (
+              <TabsTrigger
+                key={source.target}
+                value={source.target}
+                aria-controls={panelId}
+                data-testid={`usage-tab-${source.target}`}
+                className="h-auto flex-none cursor-pointer justify-start gap-2 rounded-none px-4 py-3 text-sm @max-xl:min-w-0 @max-xl:flex-1"
+              >
+                {source.icon ? (
+                  <AgentBackendIcon backend={source.icon} className="size-4" />
+                ) : (
+                  <Layers className="size-4" />
+                )}
+                <span
+                  data-testid={`usage-tab-label-${source.target}`}
+                  className="min-w-0 truncate"
+                >
+                  {source.target === "all"
+                    ? t("settings.usage.all")
+                    : source.label}
+                </span>
+                {/* 数字用与 memory 页签同形的药丸：同一个位置只能有一种
+                    形状，含义交给内容。它紧跟名称；等宽由外层 tab 承担。
+
+                    窄到装不下时它先走：表面是 overflow-hidden，页签排不下不会
+                    滚而是被裁掉——200% 缩放下最后一个源就点不到了。丢掉数字换回
+                    四个源都可达，比丢掉一个源划算。 */}
+                {summary ? (
+                  <span className="shrink-0 rounded-full bg-foreground/[0.06] px-2 py-0.5 font-medium text-[11px] tabular-nums @max-xl:hidden">
+                    {formatCompactTokens(summary.stats.lifetimeTokens)}
+                  </span>
+                ) : loading ? (
+                  <Skeleton className="h-4 w-10 shrink-0 rounded-full @max-xl:hidden" />
+                ) : null}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+        {/* Keep the panel mounted: removing it between sources collapses the
+            scroll range and resets chart preferences before the next panel mounts. */}
+        <TabsContent id={panelId} value={value}>{children}</TabsContent>
+      </SettingsSurface>
+    </Tabs>
+  );
+}

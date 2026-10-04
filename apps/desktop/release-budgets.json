@@ -1,0 +1,27 @@
+{
+  "schema": "bottega.release-budgets/v1",
+  "description": "Upper bounds asserted by scripts/verify-packaged-payload.mjs for the current platform. Values are the first measured build after the 2026-09-04 size reduction with node_modules unpacked beside the ASAR and TypeScript declarations kept for the packaged App GUI compiler (DMG UDBZ 173103249; ZIP deflate-9 214292444; darwin unpackedPayloadBytes 627186432) plus 10%. The unpacked layout costs the per-file-deflated ZIP about 20 MiB versus a packed ASAR; that is the price of a working packaged compiler. Platforms without keys are measure-only until a real machine verifies them.",
+  "installers": {
+    "darwin-arm64.dmg": 190413574,
+    "darwin-arm64.zip": 235721689
+  },
+  "unpackedPayload": {
+    "darwin-arm64": 689905076
+  },
+  "bundledRuntimes": {
+    "node 24.18.0 darwin-arm64": {
+      "description": "The pinned Node that TASK-34 ships inside the macOS installers (D-RUNTIME). Approved by Jimmy on 2026-09-26 up to +40 MB (40,000,000 bytes) per macOS installer; a Node update changes only this line and needs its own approval. Measured on the official node-v24.18.0-darwin-arm64.tar.xz (SHA-256 4477b9f78efb77744cf5eb57a0e9594dba66466b38b4e93fa9f35cb907a095a6, matching SHASUMS256.txt): bin/node 120965360 bytes plus LICENSE 157606 bytes, ZIP deflate-9 and DMG UDBZ increases. verify-packaged-payload.mjs adds approvedIncreaseBytes to the installer ceilings, and approvedUnpackedIncreaseBytes to the unpacked-payload ceiling, only when this Node is packaged. The unpacked line was approved separately by Jimmy on 2026-09-26 (D-RUNTIME) at the packaged size measured in TASK-34 part 2a: the ad-hoc-signed bin/node 120262048 bytes + LICENSE 157606 + runtime-manifest.json 2159 = 120421813 bytes.",
+      "approvedIncreaseBytes": {
+        "darwin-arm64.dmg": 40000000,
+        "darwin-arm64.zip": 40000000
+      },
+      "measuredIncreaseBytes": {
+        "darwin-arm64.dmg": 36609107,
+        "darwin-arm64.zip": 38839314
+      },
+      "approvedUnpackedIncreaseBytes": {
+        "darwin-arm64": 120421813
+      }
+    }
+  }
+}

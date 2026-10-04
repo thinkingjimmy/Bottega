@@ -1,0 +1,71 @@
+/**
+ * [INPUT]: Depends on the public Chat registry, transcript models and closed local continuation contracts.
+ * [OUTPUT]: Defines fixed-purpose Chat facts/deletion, Project deletion review, retained catalogs, file reading, continuation IPC (including Home snapshot Retry/Skip) and the signed-out catalog answer; live watch failures are classified transient or terminal and transient ones re-attach (T20-8b).
+ * [POS]: Trusted renderer boundary; account scopes and file paths remain main-owned.
+ */
+import { z } from "zod";
+import { cloudIdSchema as id } from "@ai-chat/cloud-protocol/auth/index";
+import { encryptedFileDescriptorSchema } from "@ai-chat/cloud-protocol/blobs/encrypted";
+import { chatCatalogPageSchema, transcriptRequestSchema, type TranscriptPage, type TranscriptRequest } from "@ai-chat/chat-ui/model";
+import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
+import type { ExecutionView } from "@ai-chat/chat-ui/contracts";
+import type { ExecutionDraft } from "./execution";
+import type { RecoveryIdentity, RecoveryPage, RetainedCatalog, RetainedMetadata } from "./recovery";
+import type { BlobDescriptor } from "@ai-chat/cloud-protocol";
+import type { ChatQueryInput, ChatQueryName, ChatQueryResult } from "@ai-chat/chat-ui/read-source";
+import type { ChatFactsView, ChatFactsEdit, ChatFactsDecision } from "./facts";
+import type { ChatDeletionView, ChatDeletionRequest, ChatDeletionKeep } from "./deletion";
+import type { ProjectDeletionCatalog, ProjectDeletionReview, ProjectDeletionDecision } from "./projects/deletion";
+const chatReadNames = ["chats/metadata:head", "chats/metadata:catalog", "chats/metadata:page", "chats/catalog:page", "chats/body/reads:head",
+  "chats/body/reads:page", "chats/body/reads:get", "chats/body/reads:block", "chats/imported/reads:head", "chats/imported/reads:page", "turns/reads:state", "turns/reads:page"] as const;
+export const chatReadSchema = z.object({ name: z.enum(chatReadNames), input: z.unknown() }).strict();
+export const chatWatchSchema = chatReadSchema.extend({ subscriptionId: z.string().uuid() }).strict();
+export const chatCatalogRequestSchema = z.object({ afterRevision: z.number().int().nonnegative(), throughRevision: z.number().int().nonnegative().nullable() }).strict();
+export const chatFileOpenSchema = z.object({ chatId: id, descriptor: encryptedFileDescriptorSchema }).strict();
+export const chatFileReadSchema = z.object({ leaseId: z.string().uuid(), offset: z.number().int().nonnegative().safe(), length: z.number().int().positive().max(1024 * 1024) }).strict();
+export const chatIdRequestSchema = z.object({ chatId: id }).strict();
+/** Skip names the Home job the status row showed, so the action cannot land on a different job (review 0929 R02). */
+export const homeSkipRequestSchema = z.object({ chatId: id, jobId: z.string().min(1).max(384) }).strict();
+/* 账号还没落到本机 binding 上时的目录答复。渲染端只想画一页列表，收到的却是
+   `CHAT_ACCOUNT_UNAVAILABLE` 的一整条堆栈——那是主进程日志里唯一的内容，也是
+   一个必然出现的时序窗口。main 从不对只想上色的界面抛错（同 cloudComputersResult）。 */
+export const chatCatalogResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("catalog"), page: chatCatalogPageSchema }).strict(),
+  z.object({ kind: z.literal("signed-out") }).strict(),
+]);
+export type ChatCatalogResult = z.infer<typeof chatCatalogResultSchema>;
+export { CHAT_CHANNEL } from "../ipc-channels/cloud";
+export interface CloudChatBridge {
+  deletion(input: { chatId: string }): Promise<ChatDeletionView>;
+  requestDeletion(input: ChatDeletionRequest): Promise<ChatDeletionView>;
+  keepDeletion(input: ChatDeletionKeep): Promise<ChatDeletionView>;
+  facts(input: { chatId: string }): Promise<ChatFactsView>;
+  editFacts(input: ChatFactsEdit): Promise<ChatFactsView>;
+  resolveFacts(input: ChatFactsDecision): Promise<ChatFactsView>;
+  retainedCatalog(input: { afterId: string | null }): Promise<RetainedCatalog>;
+  retainedMetadata(input: RecoveryIdentity & { before: number | null }): Promise<RetainedMetadata>;
+  projectDeletionCatalog(input: { afterId: string | null }): Promise<ProjectDeletionCatalog>;
+  reviewProjectDeletion(input: { projectId: string }): Promise<ProjectDeletionReview>;
+  resolveProjectDeletion(input: ProjectDeletionDecision): Promise<void>;
+  retryProjectDeletion(input: { projectId: string }): Promise<void>;
+  recoveryPage(input: RecoveryIdentity & { before: number | null }): Promise<RecoveryPage>;
+  recoveryFile(input: RecoveryIdentity & { messageId: string; descriptor: BlobDescriptor }): Promise<{ leaseId: string }>;
+  onLocalChanged(changed: () => void): () => void;
+  catalog(input: z.infer<typeof chatCatalogRequestSchema>): Promise<ChatCatalogResult>;
+  head(input: { chatId: string }): Promise<CloudChatHead | null>;
+  execution(input: { chatId: string }): Promise<ExecutionView>;
+  prepare(input: { chatId: string }): Promise<void>;
+  retryHome(input: { chatId: string }): Promise<void>;
+  skipHome(input: z.infer<typeof homeSkipRequestSchema>): Promise<void>;
+  bindProject(input: { chatId: string }): Promise<boolean>;
+  draft(input: { chatId: string; incarnationId: string }): Promise<ExecutionDraft>;
+  saveDraft(input: { chatId: string; incarnationId: string; expectedRevision: number; text: string }): Promise<ExecutionDraft>;
+  transcript(input: TranscriptRequest): Promise<TranscriptPage>;
+  query<N extends ChatQueryName>(name: N, input: ChatQueryInput<N>): Promise<ChatQueryResult<N>>;
+  /** failed(transient): whether another watch may succeed (T20-8b); a refusal by name, a decrypt or a shape failure is not. */
+  watch<N extends ChatQueryName>(name: N, input: ChatQueryInput<N>, changed: (value: ChatQueryResult<N>) => void, failed: (transient: boolean) => void): () => void;
+  openFile(input: z.infer<typeof chatFileOpenSchema>): Promise<{ leaseId: string }>;
+  readFile(input: z.infer<typeof chatFileReadSchema>): Promise<Uint8Array>;
+  closeFile(input: { leaseId: string }): Promise<void>;
+}
+export { transcriptRequestSchema };

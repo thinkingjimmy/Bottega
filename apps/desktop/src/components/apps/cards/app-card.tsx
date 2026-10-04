@@ -1,0 +1,384 @@
+/**
+ * [INPUT]: Shared AppCard/AppCardStatus, localized surface failures, appDisplayName, AppsProvider, lifecycle dialogs, routing and platform actions.
+ * [OUTPUT]: Provides native AppCard facts and capabilities to the shared catalog presentation, retaining lifecycle and cloud-management actions. An interrupted update or install reads from the Apps catalog by phase (U06-d). Adds the approved close/reopen menu and retained-data impact dialog.
+ * [POS]: apps/desktop/src/components/apps/cards; App listing unit; the badge follows generation readiness without exposing internal terminology, and main-owned navigation focuses an existing Studio instead of rendering twice
+ */
+
+import { useAppEnablement } from "../availability/control";
+import {
+  AppCard as SharedAppCard,
+  AppCardStatus,
+} from "@ai-chat/ui/components/catalog/app-card";
+import { appDisplayName } from "../../../../shared/ipc/apps/apps-ipc";
+import { useState } from "react";
+import {
+  AppWindowIcon,
+  ExternalLink,
+  FolderOpen,
+  MoreHorizontal,
+  Pin,
+  PinOff,
+  RefreshCw,
+  Wrench,
+  Trash2,
+} from "lucide-react";
+import { useNavigate } from "react-router";
+import type { AppListItem } from "@/components/providers/content/apps-provider";
+import { useApps } from "@/components/providers/content/apps-provider";
+import { useSettingsNavigation } from "@/components/providers/navigation/context";
+import { Button } from "@ai-chat/ui/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@ai-chat/ui/components/ui/dropdown-menu";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
+import { cn } from "@ai-chat/ui/lib/utils";
+import { openExternal } from "@/lib/agent/agent-client";
+import { repairSite } from "../../../../shared/ipc/apps/apps-ipc";
+import {
+  appStateLabelKey,
+  cancelOperationLabelKey,
+  effectiveAppOperation,
+  isAwaitingGeneration,
+  isCancelableOperation,
+  isFailedState,
+  interruptedErrorKey,
+  isPendingBaseImport,
+  isWorkingState,
+  retryLabelKey,
+} from "../app-state";
+import { AppDeleteDialog } from "../dialogs/delete-dialog";
+import { RepairConfirmDialog } from "../dialogs/repair-dialog";
+import { surfaceErrorMessage } from "@/lib/chat-composer/errors";
+import { appStudioSurface } from "../../../../shared/ipc/settings/window-surfaces-ipc";
+import { openSurfaceInWindow, showSurface } from "@/lib/platform/window-surfaces-client";
+import {
+  useAppTranslation,
+  useSystemFileManagerRevealLabel,
+} from "@/components/providers/preferences/i18n-provider";
+
+type AppCardProps = {
+  app: AppListItem;
+  onOpenProgress: (appId: string) => void;
+};
+
+export function AppCard({ app, onOpenProgress }: AppCardProps) {
+  const { t, i18n } = useAppTranslation();
+  const settings = useSettingsNavigation();
+  const revealLabel = useSystemFileManagerRevealLabel();
+  const navigate = useNavigate();
+  const {
+    highlightedId,
+    removeApp,
+    retryApp,
+    repairApp,
+    cancelInstall,
+    revealApp,
+    setPinned,
+  } = useApps();
+  const [openError, setOpenError] = useState("");
+  const [deleteDialog, setDeleteDialog] = useState({
+    open: false,
+    name: "",
+    isBase: false,
+  });
+  const [repairOpen, setRepairOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const { record } = app;
+  const enablement = useAppEnablement(record, i18n.language);
+  const name = appDisplayName(record);
+  const description =
+    record.manifest?.description ??
+    (isAwaitingGeneration(record)
+      ? t("apps.card.awaitingAuthorization")
+      : t("apps.card.preparing", { name: record.displayName }));
+  const icon = record.manifest?.icon ?? "📦";
+  const failed = isFailedState(record.state), interruptedKey = interruptedErrorKey(record);
+  const working = isWorkingState(record.state);
+  const effectiveOperation = effectiveAppOperation(record, app.operation);
+  /* 徽标只在真的成了代时才敢说绿：否则它会和同一张卡上的占位图标、
+     「正在准备…」描述当面对质。 */
+  const awaitingGeneration = isAwaitingGeneration(record);
+  const detailRoute = `/apps/${record.id}/app`;
+  const surface = appStudioSurface(record.id);
+
+  const act = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setOpenError("");
+    try {
+      await action();
+      return true;
+    } catch (cause) {
+      setOpenError(surfaceErrorMessage(cause, t("apps.card.operationFailed")));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openCurrent = async () => {
+    if (!record.enabled) { navigate(detailRoute); return; }
+    const result = await showSurface(surface, detailRoute);
+    if (!result) navigate(detailRoute);
+  };
+
+  const openWindow = async () => {
+    const result = await openSurfaceInWindow(surface, record.id, detailRoute);
+    if (!result) throw new Error(t("windowSurface.openInWindowUnavailable"));
+  };
+
+  return (
+    <>
+      <SharedAppCard
+        data-app-id={record.id}
+        className={cn(highlightedId === record.id && "ring-2 ring-primary")}
+        name={name}
+        icon={icon}
+        description={description}
+        status={
+          <AppCardStatus
+            tone={
+              !record.enabled ? "neutral" : failed
+                ? "error"
+                : working || awaitingGeneration
+                  ? "warning"
+                  : record.state === "ready"
+                    ? "success"
+                    : "neutral"
+            }
+          >
+            {working && <Spinner className="mr-1 inline size-3" />}
+            {record.enabled ? t(appStateLabelKey(record)) : enablement.copy.closed}
+          </AppCardStatus>
+        }
+        primaryAction={
+          working ? (
+            <button
+              type="button"
+              aria-label={t("apps.card.openProgress", { name })}
+              onClick={() => onOpenProgress(record.id)}
+            >
+              <span className="sr-only">
+                {t("apps.card.openProgress", { name })}
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              aria-label={t("apps.card.openDetails", { name })}
+              onClick={() => void act(openCurrent)}
+            >
+              <span className="sr-only">
+                {t("apps.card.openDetails", { name })}
+              </span>
+            </button>
+          )
+        }
+        actions={
+          <>
+            {/* 仓库地址收成图标：它是一条出口，不是卡片要陈述的内容。整行 URL
+                在卡片底部既截断又占掉一整行高度，而读者从不需要读它，只需要
+                能去。真身留在 title/aria-label 里，鼠标一停就看得见。
+                用 ExternalLink 而非 GitHub 标记：sourceRepoUrl 未必是 GitHub，
+                挂上品牌图标就是在替来源撒谎。 */}
+            {record.sourceRepoUrl && (
+              <Button
+                aria-label={t("apps.card.openSource", {
+                  url: record.sourceRepoUrl,
+                })}
+                onClick={() =>
+                  void act(() => openExternal(record.sourceRepoUrl!))
+                }
+                size="icon-sm"
+                title={record.sourceRepoUrl}
+                type="button"
+                variant="ghost"
+              >
+                <ExternalLink />
+              </Button>
+            )}
+            <Button
+              aria-label={t(
+                record.pinnedAt === null ? "apps.pin" : "apps.unpin",
+              )}
+              aria-pressed={record.pinnedAt !== null}
+              disabled={busy}
+              onClick={() =>
+                void act(async () => {
+                  await setPinned(record.id, record.pinnedAt === null);
+                })
+              }
+              size="icon-sm"
+              title={t(record.pinnedAt === null ? "apps.pin" : "apps.unpin")}
+              type="button"
+              variant="ghost"
+            >
+              {record.pinnedAt === null ? <Pin /> : <PinOff />}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t("apps.menu")}
+                >
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-max min-w-0">
+                {record.enabled && record.state === "ready" && (
+                  <DropdownMenuItem
+                    className="whitespace-nowrap"
+                    onSelect={() => void act(openWindow)}
+                  >
+                    <AppWindowIcon />
+                    {t("windowSurface.openInWindow")}
+                  </DropdownMenuItem>
+                )}
+                {record.state !== "installing" && (
+                  <DropdownMenuItem
+                    className="whitespace-nowrap"
+                    onSelect={() => void act(() => revealApp(record.id))}
+                  >
+                    <FolderOpen />
+                    {revealLabel}
+                  </DropdownMenuItem>
+                )}
+                {record.enabled && isFailedState(record.state) && (
+                  <DropdownMenuItem
+                    className="whitespace-nowrap"
+                    onSelect={() => void act(() => retryApp(record.id))}
+                  >
+                    <RefreshCw />
+                    {isPendingBaseImport(record)
+                      ? t("apps.card.continueInstall")
+                      : t(retryLabelKey[record.state])}
+                  </DropdownMenuItem>
+                )}
+                {isPendingBaseImport(record) && (
+                  <DropdownMenuItem
+                    variant="destructive"
+                    className="whitespace-nowrap"
+                    onSelect={() => void act(() => cancelInstall(record.id))}
+                  >
+                    <Trash2 />
+                    {t("apps.card.cancelInstall")}
+                  </DropdownMenuItem>
+                )}
+                {record.enabled && !isPendingBaseImport(record) && repairSite(record) && (
+                  <DropdownMenuItem
+                    className="whitespace-nowrap"
+                    onSelect={() => setRepairOpen(true)}
+                  >
+                    <Wrench />
+                    {t("apps.card.repair")}
+                  </DropdownMenuItem>
+                )}
+                {working && isCancelableOperation(effectiveOperation) && (
+                  <DropdownMenuItem
+                    variant="destructive"
+                    className="whitespace-nowrap"
+                    onSelect={() => void act(() => cancelInstall(record.id))}
+                  >
+                    <Trash2 />
+                    {t(cancelOperationLabelKey[effectiveOperation])}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled={working || busy || enablement.busy} onSelect={enablement.toggle}>
+                  {record.enabled ? enablement.copy.closeMenu : enablement.copy.open}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant={record.cloudManaged ? "default" : "destructive"}
+                  className="whitespace-nowrap"
+                  // openError 是整张卡共用的：不清一次，上一个动作的失败会
+                  // 换个上下文重新出现在删除弹窗里，冤枉了这次操作。
+                  onSelect={() => {
+                    setOpenError("");
+                    if (record.cloudManaged) {
+                      const catalog = document.getElementById("cloud-apps");
+                      if (catalog) {
+                        catalog.scrollIntoView({ block: "start" });
+                        catalog.focus({ preventScroll: true });
+                      } else settings?.openAccount();
+                      return;
+                    }
+                    /* 删除会先撤掉 active generation，中间快照的 manifest
+                       因此为 null。弹窗的题型属于用户刚刚确认的意图，不能
+                       跟着生命周期快照从 Base 选择题变成 Web 确认题。 */
+                    setDeleteDialog({
+                      open: true,
+                      name,
+                      isBase: record.manifest?.kind === "base",
+                    });
+                  }}
+                >
+                  <Trash2 />
+                  {t(
+                    record.cloudManaged
+                      ? "cloud.appRemoval.manage"
+                      : "apps.card.delete",
+                  )}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      >
+        {(working || failed) && (
+          <p
+            className={cn(
+              "line-clamp-2 text-xs",
+              failed ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {failed
+              ? (interruptedKey ? t(interruptedKey) : record.lastError?.message)
+              : app.step || t("apps.card.processing")}
+          </p>
+        )}
+        {record.agentWarning && (
+          <p className="line-clamp-2 text-amber-700 text-xs">
+            {t("apps.card.agentWarning", { warning: record.agentWarning })}
+          </p>
+        )}
+        {/* 错误从前只挂在仓库链接那一段里，没有仓库地址的卡片做任何操作
+                失败都无声无息——它属于整张卡，不属于其中一个按钮。 */}
+        {openError && (
+          <p role="alert" className="text-destructive text-xs">
+            {openError}
+          </p>
+        )}
+      </SharedAppCard>
+
+      {enablement.error && <p role="alert" className="text-sm text-destructive">{enablement.error}</p>}
+      {enablement.dialog}
+      <AppDeleteDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) =>
+          setDeleteDialog((current) => ({ ...current, open }))
+        }
+        name={deleteDialog.name}
+        isBase={deleteDialog.isBase}
+        error={openError}
+        onDelete={(mode) => act(() => removeApp(record.id, mode))}
+      />
+
+      <RepairConfirmDialog
+        open={repairOpen}
+        onOpenChange={setRepairOpen}
+        busy={busy}
+        onConfirm={() =>
+          void act(() => repairApp(record.id)).then(
+            (ok) => ok && setRepairOpen(false),
+          )
+        }
+      />
+    </>
+  );
+}

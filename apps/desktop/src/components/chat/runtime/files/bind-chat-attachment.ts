@@ -1,0 +1,356 @@
+/**
+ * [INPUT]: Depends on React setter/ref interface, Codex attach client, renderer locale/catalog runtime, chat turn projection, user input projection, and hydration
+ * [OUTPUT]: Provides bindChatAttachment; each generation releases old request/Steer projections, joins attach replay with message-free runtime context (a rejected attach is reported with a retry that re-runs only the attach), starts paged message loading, and projects item/delta state
+ * [POS]: apps/desktop/src/components/chat/runtime/files; The main-owned turn-binding device for chat/runtime; runtime facts and timeline bytes enter through separate bounded ports
+ */
+
+import type { ChatAgentId } from "../../../../../shared/chat-agent/options";
+import { readAgentDraft } from "@/lib/chat-agent-draft/state";
+import type { Dispatch, MutableRefObject, SetStateAction } from "react";
+import type { ChatStatus } from "ai";
+import type { ChatMessage, ChatRuntimeContext } from "../../../../../shared/ipc/content/chats-ipc";
+import type {
+  AgentApprovalRequest,
+  AgentEvent,
+  SessionRef,
+  SteerOutboxProjection,
+} from "../../../../../shared/ipc/agent/agent-ipc";
+import type { TurnDraft } from "../../../../../shared/chats/model/chat-turn-reducer";
+import { type AgentRequest } from "@/lib/agent/agent-client";
+import {
+  applyTurnEvent,
+  mergeChatMessages,
+  projectionFromSnapshot,
+  projectionStatusOf,
+  type ChatProjectionStatus,
+  type ChatTurnProjection,
+  type ProjectedSubagent,
+} from "@/lib/chat/session/chat-turn-attach";
+import {
+  createChatHydration,
+  updateChatHydration,
+  type ChatHydration,
+} from "@/lib/chat/state/chat-hydration";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
+import { effectiveLocale } from "@/lib/appearance/i18n-locale";
+import { translate } from "../../../../../shared/i18n/runtime";
+import { projectPendingUserInput } from "@/lib/chat/session/chat-user-input-state";
+import { firstProviderId } from "@/lib/provider-catalog/store";
+import { localChatReads } from "@/lib/cloud/chat/platform/local";
+import {
+  messageId,
+  type PendingPlanDecisionState,
+  type PendingUserInputState,
+} from "../chat-session-model";
+
+type Setter<T> = Dispatch<SetStateAction<T>>;
+export type BufferedProjectionEvent = Extract<
+  AgentEvent,
+  {
+    type:
+      | "item"
+      | "item-delta"
+      | "item-removed"
+      | "subagent-item"
+      | "subagent-item-delta";
+  }
+>;
+
+function projectionEventKey(event: BufferedProjectionEvent) {
+  if (event.type === "item") return `item:${event.item.itemId}`;
+  if (event.type === "item-delta") return `delta:${event.itemId}`;
+  if (event.type === "item-removed") return `remove:${event.itemId}`;
+  if (event.type === "subagent-item") {
+    return `subagent-item:${event.agentThreadId}:${event.item.itemId}`;
+  }
+  return `subagent-delta:${event.agentThreadId}:${event.itemId}`;
+}
+
+export function coalesceProjectionEvent(
+  pending: readonly BufferedProjectionEvent[],
+  event: BufferedProjectionEvent
+) {
+  const next = [...pending];
+  const last = next.at(-1);
+  if (!last || projectionEventKey(last) !== projectionEventKey(event)) {
+    next.push(event);
+    return next;
+  }
+  if (
+    (last.type === "item-delta" && event.type === "item-delta") ||
+    (last.type === "subagent-item-delta" &&
+      event.type === "subagent-item-delta")
+  ) {
+    next[next.length - 1] = {
+      ...event,
+      text: `${last.text}${event.text}`,
+    };
+  } else {
+    next[next.length - 1] = event;
+  }
+  return next;
+}
+
+export type ChatAttachmentBinding = {
+  platform?: Pick<typeof localChatReads, "transcript" | "live">;
+  chatId: string;
+  getChat: (chatId: string) => Promise<ChatRuntimeContext | null>;
+  onRecordAgent?: (agent: ChatAgentId) => void;
+  onRecord?: (record: ChatRuntimeContext | null) => void;
+  onSteerSnapshot?: (intents: SteerOutboxProjection[]) => void;
+  refs: {
+    generation: MutableRefObject<number>;
+    projection: MutableRefObject<ChatTurnProjection>;
+    messages: MutableRefObject<ChatMessage[]>;
+    draft: MutableRefObject<TurnDraft | null>;
+    request: MutableRefObject<AgentRequest | null>;
+    recordExists: MutableRefObject<boolean>;
+    incarnationId?: MutableRefObject<string | null>;
+  };
+  set: {
+    hydration: Setter<ChatHydration>;
+    projectionStatus: (next: ChatProjectionStatus) => void;
+    hydratedChatId: Setter<string | null>;
+    loading: Setter<boolean>;
+    persisted: Setter<boolean>;
+    messages: Setter<ChatMessage[]>;
+    session: Setter<SessionRef | undefined>;
+    draft: Setter<TurnDraft | null>;
+    subagents: Setter<Record<string, ProjectedSubagent>>;
+    approvals: Setter<AgentApprovalRequest[]>;
+    activeRequestId: Setter<string | null>;
+    status: Setter<ChatStatus>;
+    pendingUserInput: Setter<PendingUserInputState | null>;
+    pendingPlanDecision: Setter<PendingPlanDecisionState | null>;
+    cancelPending: Setter<boolean>;
+    approvalBusy: Setter<boolean>;
+    approvalError: Setter<string>;
+    queued: Setter<boolean>;
+    queueNotice: Setter<string>;
+    /** A rejected attach, shown on the composer with a retry that re-runs only the attach (null while none). */
+    attachFailure?: (failure: { message: string; retry(): void } | null) => void;
+  };
+};
+
+const emptyProjection = (): ChatTurnProjection => ({
+  messages: [],
+  draft: null,
+  approvals: [],
+  userInputs: [],
+  subagents: {},
+  blocksNewTurn: true,
+  steeringSupported: false,
+});
+
+const localError = (content: string, backend: ChatAgentId): ChatMessage => ({
+  backend,
+  id: messageId("assistant"),
+  role: "assistant",
+  content,
+  isError: true,
+  createdAt: Date.now(),
+  seq: Number.MAX_SAFE_INTEGER,
+});
+
+export function bindChatAttachment(binding: ChatAttachmentBinding) {
+  const { refs, set } = binding;
+  let active = true;
+  let record: ChatRuntimeContext | null = null;
+  let snapshot: Parameters<typeof projectionFromSnapshot>[1] = null;
+  const generation = ++refs.generation.current;
+  /* 同一 hook 原位切 chat 时，旧请求与旧 Steer 投影都属于上一代身份。
+     新 attach 先清权威句柄，再异步读取新 chat；未知期间必须 fail closed。 */
+  refs.request.current?.dispose();
+  refs.request.current = null;
+  set.activeRequestId(null);
+  binding.onSteerSnapshot?.([]);
+  set.hydration(createChatHydration(generation));
+  set.hydratedChatId(null);
+  set.loading(true);
+  refs.projection.current = emptyProjection();
+
+  // 本地错误提示同样必须并入投影——直写 set.messages 会被下一个事件的全量投影覆盖
+  const appendLocalError = (content: string) => {
+    refs.projection.current = {
+      ...refs.projection.current,
+      messages: mergeChatMessages(refs.projection.current.messages, [
+        localError(content, readAgentDraft(binding.chatId).canonical?.agent ?? firstProviderId()),
+      ]),
+    };
+    refs.messages.current = refs.projection.current.messages;
+    set.messages(refs.messages.current);
+  };
+
+  const project = (next: ChatTurnProjection) => {
+    if (!active || refs.generation.current !== generation) return;
+    const projected = next;
+    refs.projection.current = projected;
+    refs.messages.current = projected.messages;
+    refs.draft.current = projected.draft;
+    set.messages(projected.messages);
+    set.session(projected.session);
+    set.draft(projected.draft);
+    set.subagents(projected.subagents);
+    set.approvals(projected.approvals);
+    set.activeRequestId(projected.blocksNewTurn ? projected.requestId ?? null : null);
+    set.status(projected.blocksNewTurn ? "streaming" : "ready");
+    set.pendingUserInput((current) =>
+      projectPendingUserInput(current, projected.userInputs)
+    );
+    if (projected.requestId) {
+      set.queued(false);
+      set.queueNotice("");
+    }
+    set.projectionStatus(projectionStatusOf(projected));
+  };
+
+  let pendingEvents: BufferedProjectionEvent[] = [];
+  let scheduled:
+    | { kind: "frame"; id: number }
+    | { kind: "timer"; id: number }
+    | null = null;
+
+  const flushEvents = () => {
+    if (scheduled?.kind === "frame") {
+      window.cancelAnimationFrame(scheduled.id);
+    } else if (scheduled) {
+      window.clearTimeout(scheduled.id);
+    }
+    scheduled = null;
+    if (pendingEvents.length === 0) return;
+    let next = refs.projection.current;
+    for (const event of pendingEvents) next = applyTurnEvent(next, event);
+    pendingEvents = [];
+    project(next);
+  };
+
+  const scheduleFlush = () => {
+    if (scheduled) return;
+    if (
+      document.visibilityState === "visible" &&
+      typeof window.requestAnimationFrame === "function"
+    ) {
+      scheduled = {
+        kind: "frame",
+        id: window.requestAnimationFrame(flushEvents),
+      };
+    } else {
+      scheduled = {
+        kind: "timer",
+        id: window.setTimeout(flushEvents, 16),
+      };
+    }
+  };
+
+  const bufferEvent = (event: BufferedProjectionEvent) => {
+    pendingEvents = coalesceProjectionEvent(pendingEvents, event);
+    scheduleFlush();
+  };
+
+  const handleProjectedEvent = (event: AgentEvent) => {
+    if (
+      event.type === "item" ||
+      event.type === "item-delta" ||
+      event.type === "item-removed" ||
+      event.type === "subagent-item" ||
+      event.type === "subagent-item-delta"
+    ) {
+      bufferEvent(event);
+      return;
+    }
+    flushEvents();
+    project(applyTurnEvent(refs.projection.current, event));
+    if (event.type !== "turn-persisted") return;
+    refs.request.current?.dispose();
+    refs.request.current = null;
+    set.cancelPending(false);
+    if (!["stored", "empty", "missing"].includes(event.outcome)) return;
+    set.approvalBusy(false);
+    set.approvalError("");
+    if (
+      event.assistantMessage?.role === "assistant" &&
+      event.assistantMessage.kind === "plan"
+    ) {
+      set.pendingPlanDecision({
+        messageId: event.assistantMessage.id,
+        busy: false,
+        error: "",
+      });
+    }
+  };
+
+  const platform = binding.platform ?? localChatReads;
+  let attachment: ReturnType<typeof platform.live.attach> | null = null;
+  /* Hydration waits on this attach; a rejection used to leave the composer locked with only a transcript line. */
+  const attach = () => {
+    attachment?.dispose();
+    set.attachFailure?.(null);
+    const current = platform.live.attach(binding.chatId, {
+      onSnapshot(result) {
+        flushEvents();
+        snapshot = result.turn;
+        binding.onSteerSnapshot?.(result.steerIntents);
+        project(projectionFromSnapshot(record, snapshot, refs.projection.current.messages));
+      },
+      onEvent: handleProjectedEvent,
+    });
+    attachment = current;
+    void current.ready.then(
+      () => {
+        if (active && attachment === current) {
+          set.hydration((existing) =>
+            updateChatHydration(existing, generation, { attachReplayed: true })
+          );
+        }
+      },
+      (cause) => {
+        if (active && attachment === current) set.attachFailure?.({ message: errorMessage(cause), retry: attach });
+      }
+    );
+  };
+  attach();
+
+  void binding.getChat(binding.chatId)
+    .then((nextRecord) => {
+      if (!active) return;
+      record = nextRecord;
+      binding.onRecord?.(record);
+      if (record) platform.transcript.load(record.id);
+      if (record) binding.onRecordAgent?.(record.agent);
+      refs.recordExists.current = Boolean(record);
+      if (refs.incarnationId) {
+        refs.incarnationId.current = record?.incarnationId ?? null;
+      }
+      set.persisted(Boolean(record));
+      project(projectionFromSnapshot(record, snapshot, refs.projection.current.messages));
+    })
+    .catch((cause) => {
+      if (!active) return;
+      refs.recordExists.current = false;
+      if (refs.incarnationId) refs.incarnationId.current = null;
+      appendLocalError(
+        translate(effectiveLocale(), "chat.runtime.attachment.chatLoadFailed", {
+          message: errorMessage(cause),
+        })
+      );
+    })
+    .finally(() => {
+      if (!active) return;
+      set.hydratedChatId(binding.chatId);
+      set.loading(false);
+      set.hydration((current) =>
+        updateChatHydration(current, generation, { chatLoaded: true })
+      );
+    });
+
+  return () => {
+    active = false;
+    if (scheduled?.kind === "frame") {
+      window.cancelAnimationFrame(scheduled.id);
+    } else if (scheduled) {
+      window.clearTimeout(scheduled.id);
+    }
+    pendingEvents = [];
+    attachment?.dispose();
+  };
+}

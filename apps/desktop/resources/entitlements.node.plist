@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  [INPUT]: Depends on the macOS hardened runtime and scripts/node-runtime/after-pack.mjs, which signs the bundled Node with this file alone
+  [OUTPUT]: Grants the bundled Node JIT execution (V8, WebAssembly) and loading of native libraries not signed by the app's team
+  [POS]: The bundled Node's own entitlement contract (TASK-34); never the app-wide entitlements.mac.plist, which electron-builder's signIgnore keeps off this binary
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

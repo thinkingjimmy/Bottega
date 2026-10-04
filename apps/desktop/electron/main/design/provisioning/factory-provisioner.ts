@@ -1,0 +1,435 @@
+/**
+ * [INPUT]: Depends on DurableJson, immutable package inspection/copy/digest primitives, an exact catalog trust tuple, and App lifecycle/grant/custody ports with terminal package-rejection proof
+ * [OUTPUT]: Provides DesignFactoryProvisioner with offline eager installation, resumable final-grant commit, owner-exact delete tombstone, user-explicit offline reinstall including missing-owner legacy recovery, drift state, and rollback-safe reset-to-pin
+ * [POS]: Design factory delivery state machine; ensure, reinstall and reset-to-pin run one at a time and concurrent automatic ensures share one flight, so no two share a staging directory; it alone may auto-approve the factory grant set and never treats preset identity without exact bytes as trust
+ */
+
+import { AppCompatibilityError, readCompatibility, runningBottegaVersion } from "../../apps/compatibility/read";
+import { appCompatibilityRequests, type AppCompatibilityRequests } from "../../apps/compatibility/requests";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import { rm } from "node:fs/promises";
+import { z } from "zod";
+import { DurableJson } from "../../persistence/durable-json";
+import {
+  copyPackage,
+  inspectPackage,
+  packageDigest,
+  removePackageArtifact,
+} from "../../apps/share/package/package-contract";
+
+const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+const trustSchema = z
+  .object({
+    presetId: z.literal("design-canvas"),
+    repoUrl: z.string().url().regex(/^https:\/\/github\.com\//),
+    catalogPin: z.string().regex(/^[a-f0-9]{40}$/),
+    treeDigest: digestSchema,
+  })
+  .strict();
+const phaseSchema = z.enum([
+  "none",
+  "installed",
+  "gui-approved",
+  "promoted",
+  "custody-ready",
+  "complete",
+]);
+const conditionSchema = z.enum([
+  "provisioning",
+  "waiting-host",
+  "factory",
+  "drifted",
+  "pin-drift",
+  "failed",
+  "resetting",
+  "reset-failed",
+  "deleted",
+]);
+const fileSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    revision: z.number().int().nonnegative(),
+    requestId: z.string().uuid(),
+    custodySlotId: z.literal("factory:design-canvas:singleton"),
+    trust: trustSchema.nullable(),
+    appId: z.string().regex(/^[a-z0-9]{10}$/).nullable(),
+    phase: phaseSchema,
+    condition: conditionSchema,
+    previousDigest: digestSchema.nullable(),
+    error: z.string().max(3_500).nullable(),
+    compatibilityRequestId: z.string().uuid().optional(),
+    blockedHostVersion: z.string().nullable().optional(),
+    deletedAt: z.number().int().nonnegative().nullable(),
+    updatedAt: z.number().int().nonnegative(),
+  })
+  .strict();
+
+type FactoryFile = z.infer<typeof fileSchema>;
+export type DesignFactoryTrust = z.infer<typeof trustSchema>;
+export type DesignFactoryApp = Readonly<{
+  id: string;
+  origin: "github" | "local" | "preset";
+  presetId?: string;
+  installedPresetPin?: string;
+  ready: boolean;
+  pending: boolean;
+  defaultGrant: boolean;
+  activeSourceDigest: string | null;
+}>;
+
+export type DesignFactoryPorts = Readonly<{
+  find(appId: string | null): DesignFactoryApp | null;
+  wasInstallRejected(requestId: string): Promise<boolean>;
+  install(input: {
+    requestId: string;
+    packageRoot: string;
+    packageDigest: string;
+    trust: DesignFactoryTrust;
+  }): Promise<DesignFactoryApp>;
+  approveFactoryGui(appId: string): Promise<DesignFactoryApp>;
+  promote(appId: string): Promise<DesignFactoryApp>;
+  activateCustody(appId: string): Promise<void>;
+  orphanCustody(appId: string): Promise<void>;
+  enableGlobal(appId: string): Promise<DesignFactoryApp>;
+  resetToPayload(input: {
+    appId: string;
+    packageRoot: string;
+    trust: DesignFactoryTrust;
+  }): Promise<DesignFactoryApp>;
+}>;
+
+export class DesignFactoryProvisioner {
+  private readonly root: string;
+  private readonly file: DurableJson<FactoryFile>;
+  private readonly compatibilityRequests: AppCompatibilityRequests;
+  private ports: DesignFactoryPorts | null = null;
+  /* One request, one staging directory: ensure, reinstall and reset-to-pin run one at a time, and concurrent automatic ensures (startup,
+     deferred maintenance, a driver) share the one in flight (final-run 0930 design lane: two of them rm-ing and copying the same staging
+     tree gave ENOTEMPTY or APP_CANDIDATE_DIGEST_CHANGED). A settled flight is cleared, so a later call, or a retry after a failure, runs. */
+  private chain: Promise<unknown> = Promise.resolve();
+  private automatic: Readonly<{ key: string; flight: Promise<FactoryFile> }> | null = null;
+
+  constructor(
+    userData: string,
+    private readonly now: () => number = Date.now,
+    private readonly createId: () => string = randomUUID,
+    private readonly hostVersion = runningBottegaVersion
+  ) {
+    this.compatibilityRequests = appCompatibilityRequests(userData);
+    this.root = join(userData, "design", "provisioning");
+    this.file = new DurableJson(join(this.root, "factory.json"), fileSchema, () => ({
+      schemaVersion: 1,
+      revision: 0,
+      requestId: createId(),
+      custodySlotId: "factory:design-canvas:singleton",
+      trust: null,
+      appId: null,
+      phase: "none",
+      condition: "provisioning",
+      previousDigest: null,
+      error: null,
+      deletedAt: null,
+      updatedAt: this.now(),
+    }));
+  }
+
+  initialize() {
+    return this.file.initialize();
+  }
+
+  configure(ports: DesignFactoryPorts) {
+    if (this.ports) throw new Error("Design factory ports 已配置");
+    this.ports = ports;
+  }
+
+  snapshot() {
+    return this.file.snapshot();
+  }
+
+  /** An automatic ensure joins the one in flight for the same source and trust; any other waits its turn, as does an explicit (manual) one, so a person's request is never swallowed by an
+      automatic early return. */
+  ensure(sourceRoot: string, rawTrust: DesignFactoryTrust, manual = false): Promise<FactoryFile> {
+    if (manual) return this.exclusive(() => this.ensureNow(sourceRoot, rawTrust, true));
+    // Only the same source and trust join: a caller with another pin (a host upgrade mid-flight) queues and gets its own answer.
+    const key = JSON.stringify([sourceRoot, rawTrust]);
+    if (this.automatic?.key === key) return this.automatic.flight;
+    const flight = this.exclusive(() => this.ensureNow(sourceRoot, rawTrust, false));
+    const entry = { key, flight };
+    this.automatic = entry;
+    const clear = () => { if (this.automatic === entry) this.automatic = null; };
+    flight.then(clear, clear);
+    return flight;
+  }
+
+  private exclusive<T>(work: () => Promise<T>): Promise<T> {
+    const next = this.chain.then(work, work);
+    this.chain = next.catch(() => undefined);
+    return next;
+  }
+
+  private async ensureNow(sourceRoot: string, rawTrust: DesignFactoryTrust, manual: boolean): Promise<FactoryFile> {
+    const trust = trustSchema.parse(rawTrust);
+    const state = this.file.snapshot();
+    if (!manual && state.condition === "waiting-host" && state.blockedHostVersion === this.hostVersion()) return state;
+    if (
+      state.condition === "deleted" ||
+      (state.condition === "failed" && state.deletedAt !== null)
+    ) return state;
+    try {
+      await assertSourceTrust(sourceRoot, trust, this.hostVersion());
+      let app = this.requirePorts().find(state.appId);
+      // 拒绝静默复活是全局前置，不止 complete/factory 分支：一旦账本记过 appId 却查无
+      // App（冷启动隔离/外部移除），任何 condition（drifted/pin-drift/reset-failed/…）
+      // 都不得落到 install() 重新自动授权——那是把一次授权事件伪装成首装。
+      if (state.appId !== null && !app) {
+        return this.record({ condition: "failed", error: "Design factory App 已缺失，拒绝静默复活" });
+      }
+      if (state.phase === "complete" && state.condition === "factory") {
+        if (!isTrustedFactory(app!, trust)) {
+          return this.record({
+            condition: app!.installedPresetPin === trust.catalogPin
+              ? "drifted"
+              : "pin-drift",
+            appId: app!.id,
+            error: null,
+          });
+        }
+        // defaultGrant=null is a durable user close, never an incomplete install.
+        return state;
+      }
+      if (app && !isTrustedFactory(app, trust)) {
+        const condition = app.installedPresetPin === trust.catalogPin
+          ? "drifted"
+          : "pin-drift";
+        return this.record({ condition, appId: app.id, error: null });
+      }
+      if (!app) {
+        /* A failed pre-delivery request is immutable. Only its terminal rejection permits a
+           fresh identity; interrupted requests keep their original identity for recovery. */
+        if (state.phase === "none" && await this.requirePorts().wasInstallRejected(state.requestId)) {
+          await this.file.mutate(current => {
+            current.requestId = this.createId();
+            current.condition = "provisioning";
+            current.error = null;
+            current.revision += 1;
+            current.updatedAt = this.now();
+          });
+        }
+        app = await this.install(sourceRoot, trust);
+      }
+      if (app.pending) {
+        app = await this.requirePorts().approveFactoryGui(app.id);
+        await this.record({ phase: "gui-approved", appId: app.id, trust });
+      }
+      if (!app.ready) {
+        app = await this.requirePorts().promote(app.id);
+        await this.record({ phase: "promoted", appId: app.id, trust });
+      }
+      await this.requirePorts().activateCustody(app.id);
+      await this.record({ phase: "custody-ready", appId: app.id, trust });
+      if (!app.defaultGrant) app = await this.requirePorts().enableGlobal(app.id);
+      if (!app.ready || !app.defaultGrant || !isTrustedFactory(app, trust)) {
+        throw new Error("Design factory 最终 grant/cutover 证明不完整");
+      }
+      return this.record({
+        phase: "complete",
+        condition: "factory",
+        appId: app.id,
+        trust,
+        previousDigest: null,
+        deletedAt: null,
+        error: null,
+      });
+    } catch (cause) {
+      if (cause instanceof AppCompatibilityError) {
+        const failure = await this.compatibilityRequests.remember(cause.compatibility);
+        return this.record({ condition: "waiting-host", compatibilityRequestId: failure.requestId, blockedHostVersion: this.hostVersion(), error: null });
+      }
+      await this.record({
+        condition: "failed",
+        error: errorMessage(cause),
+      });
+      throw cause;
+    }
+  }
+
+  reinstall(sourceRoot: string, rawTrust: DesignFactoryTrust) {
+    const requested = this.file.snapshot();
+    return this.exclusive(async () => {
+      const current = this.file.snapshot();
+      // A reinstall asked for while the factory waited on the host is satisfied by an install that completed first.
+      if (requested.condition === "waiting-host" && requested.appId === null && current.phase === "complete" && current.condition === "factory") return current;
+      return this.reinstallNow(sourceRoot, rawTrust);
+    });
+  }
+
+  private async reinstallNow(sourceRoot: string, rawTrust: DesignFactoryTrust) {
+    const trust = trustSchema.parse(rawTrust);
+    const state = this.file.snapshot();
+    if (state.condition === "waiting-host" && state.appId === null) return this.ensureNow(sourceRoot, trust, true);
+    const missingOwnerAppId = this.missingOwnerAppId(state);
+    const retryingExplicitReinstall =
+      state.condition === "failed" && state.deletedAt !== null;
+    if (
+      state.condition !== "deleted" &&
+      !retryingExplicitReinstall &&
+      missingOwnerAppId === null
+    ) {
+      throw new Error("Design factory 仅能在用户显式删除后重装");
+    }
+    // 旧版删除可能已移除 AppStore 壳却未落 factory 墓碑。只有用户点击
+    // 显式重装时才允许收敛此状态；先 orphan 旧 custody，再丢弃旧 appId。
+    await this.orphanMissingOwner(missingOwnerAppId);
+    await this.resetForReinstall(trust);
+    return this.ensureNow(sourceRoot, trust, true);
+  }
+
+  private missingOwnerAppId(state: FactoryFile) {
+    if (state.appId === null) return null;
+    return this.requirePorts().find(state.appId) ? null : state.appId;
+  }
+
+  private async orphanMissingOwner(appId: string | null) {
+    if (appId === null) return;
+    try {
+      await this.requirePorts().orphanCustody(appId);
+    } catch (cause) {
+      await this.record({ condition: "failed", error: errorMessage(cause) });
+      throw cause;
+    }
+  }
+
+  private resetForReinstall(trust: DesignFactoryTrust) {
+    return this.file.mutate((current) => {
+      current.revision += 1;
+      current.requestId = this.createId();
+      current.trust = trust;
+      current.appId = null;
+      current.phase = "none";
+      current.condition = "provisioning";
+      current.previousDigest = null;
+      current.error = null;
+      current.deletedAt ??= this.now();
+      current.updatedAt = this.now();
+      return current;
+    });
+  }
+
+  resetToPin(sourceRoot: string, rawTrust: DesignFactoryTrust) {
+    return this.exclusive(() => this.resetToPinNow(sourceRoot, rawTrust));
+  }
+
+  private async resetToPinNow(sourceRoot: string, rawTrust: DesignFactoryTrust) {
+    const trust = trustSchema.parse(rawTrust);
+    const current = this.file.snapshot();
+    if (current.condition === "deleted") throw new Error("Design factory 已被用户删除");
+    const app = this.requirePorts().find(current.appId);
+    if (!app?.ready || !app.defaultGrant) throw new Error("Design factory 不可重置");
+    await assertSourceTrust(sourceRoot, trust, this.hostVersion());
+    await this.record({
+      condition: "resetting",
+      previousDigest: digestSchema.nullable().parse(app.activeSourceDigest),
+      error: null,
+    });
+    const staging = await this.copyToStaging(sourceRoot, `${current.requestId}-reset`);
+    try {
+      const reset = await this.requirePorts().resetToPayload({
+        appId: app.id,
+        packageRoot: staging,
+        trust,
+      });
+      if (!reset.ready || !reset.defaultGrant || !isTrustedFactory(reset, trust)) {
+        throw new Error("Design factory reset 未落到目标 pin");
+      }
+      return await this.record({
+        condition: "factory",
+        phase: "complete",
+        trust,
+        previousDigest: null,
+        error: null,
+      });
+    } catch (cause) {
+      await this.record({ condition: "reset-failed", error: errorMessage(cause) });
+      throw cause;
+    } finally {
+      await removePackageArtifact(join(staging, "..")).catch(() => undefined);
+    }
+  }
+
+  markDeleted(appId: string) {
+    const current = this.file.snapshot();
+    /* 只有账本精确拥有的 App 才能写删除墓碑。appId=null 是尚未安装，不是
+       「任何 App 都算我的」；否则普通 App 删除会意外解锁 factory 重装。 */
+    if (current.appId !== appId) return Promise.resolve(current);
+    return this.record({
+      appId,
+      condition: "deleted",
+      phase: "none",
+      deletedAt: this.now(),
+      error: null,
+    });
+  }
+
+  closeAndFlush() {
+    return this.file.closeAndFlush();
+  }
+
+  private async install(sourceRoot: string, trust: DesignFactoryTrust) {
+    const current = this.file.snapshot();
+    const packageRoot = await this.copyToStaging(sourceRoot, current.requestId);
+    try {
+      const app = await this.requirePorts().install({
+        requestId: current.requestId,
+        packageRoot,
+        packageDigest: trust.treeDigest.slice("sha256:".length),
+        trust,
+      });
+      await this.record({ phase: "installed", appId: app.id, trust, error: null });
+      return app;
+    } catch (cause) {
+      await removePackageArtifact(join(packageRoot, "..")).catch(() => undefined);
+      throw cause;
+    }
+  }
+
+  private async copyToStaging(sourceRoot: string, name: string) {
+    const parent = join(this.root, "staging", name);
+    const packageRoot = join(parent, "package");
+    await rm(parent, { recursive: true, force: true });
+    await copyPackage(sourceRoot, packageRoot);
+    return packageRoot;
+  }
+
+  private record(patch: Partial<Omit<FactoryFile, "schemaVersion" | "revision" | "requestId" | "custodySlotId" | "updatedAt">>) {
+    return this.file.mutate((state) => {
+      Object.assign(state, patch);
+      state.revision += 1;
+      state.updatedAt = this.now();
+      return state;
+    });
+  }
+
+  private requirePorts() {
+    if (!this.ports) throw new Error("Design factory ports 尚未配置");
+    return this.ports;
+  }
+}
+
+async function assertSourceTrust(sourceRoot: string, trust: DesignFactoryTrust, hostVersion: string | null) {
+  const inspection = await inspectPackage(sourceRoot);
+  if (inspection.ignored.length) throw new Error("Design factory payload 含未签名文件");
+  const actual = `sha256:${await packageDigest(sourceRoot, inspection.files)}`;
+  if (actual !== trust.treeDigest) throw new Error("Design factory treeDigest 不匹配");
+  await readCompatibility(sourceRoot, { appName: "Design Canvas", presetId: trust.presetId, repoUrl: trust.repoUrl, commitSha: trust.catalogPin, contentDigest: actual }, hostVersion);
+}
+
+function isTrustedFactory(app: DesignFactoryApp, trust: DesignFactoryTrust) {
+  return app.origin === "preset" &&
+    app.presetId === trust.presetId &&
+    app.installedPresetPin === trust.catalogPin &&
+    app.activeSourceDigest === trust.treeDigest;
+}
+
+const errorMessage = (cause: unknown) =>
+  (cause instanceof Error ? cause.message : String(cause)).slice(0, 3_500);

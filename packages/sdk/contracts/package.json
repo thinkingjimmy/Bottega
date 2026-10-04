@@ -1,0 +1,43 @@
+{
+  "name": "@bottega/contracts",
+  "version": "0.1.0",
+  "description": "Bottega's public contracts: resources, principals, operations, canonical JSON and the workflow and plugin shapes. 0.x is a host protocol preview.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      "./*": {
+        "types": "./dist/*.d.ts",
+        "import": "./dist/*.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node ../build.mjs"
+  },
+  "peerDependencies": {
+    "zod": "~4.6.4"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.6",
+    "esbuild": "0.28.1",
+    "typescript": "5.9.3",
+    "zod": "4.6.4"
+  }
+}

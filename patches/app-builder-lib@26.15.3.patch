@@ -1,0 +1,90 @@
+diff --git a/out/node-module-collector/pnpmNodeModulesCollector.js b/out/node-module-collector/pnpmNodeModulesCollector.js
+index bbbbe6b..f86d8c1 100644
+--- a/out/node-module-collector/pnpmNodeModulesCollector.js
++++ b/out/node-module-collector/pnpmNodeModulesCollector.js
+@@ -99,37 +99,51 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+         this.productionGraph[dependencyId] = { dependencies: [] };
+         if (((_a = tree.dedupedDependenciesCount) !== null && _a !== void 0 ? _a : 0) > 0) {
+             const realDep = this.allDependencies.get(dependencyId);
+             if (realDep) {
+                 this.cache.logSummary[moduleManager_1.LogMessageByKey.PKG_DUPLICATE_REF].push(dependencyId);
+                 tree = realDep;
+             }
+-            else {
+-                this.cache.logSummary[moduleManager_1.LogMessageByKey.PKG_DUPLICATE_REF_UNRESOLVED].push(dependencyId);
+-                return;
+-            }
+         }
+         const packageName = tree.name || tree.from;
+-        const { packageJson } = (await this.locateFromDepOrRoot(packageName, tree.path, tree.version)) || {};
++        const located = await this.locateFromDepOrRoot(packageName, tree.path, tree.version);
++        const { packageJson } = located || {};
+         const all = packageJson ? { ...packageJson.dependencies, ...packageJson.optionalDependencies } : { ...tree.dependencies, ...tree.optionalDependencies };
+         const optional = packageJson ? { ...packageJson.optionalDependencies } : {};
+-        const deps = { ...(tree.dependencies || {}), ...(tree.optionalDependencies || {}) };
++        let deps = { ...(tree.dependencies || {}), ...(tree.optionalDependencies || {}) };
++        if (Object.keys(deps).length === 0 && packageJson) {
++            deps = {};
++            for (const [childName, requiredRange] of Object.entries(all)) {
++                const child = await this.locateFromDepOrRoot(childName, (located === null || located === void 0 ? void 0 : located.packageDir) || tree.path, requiredRange);
++                if (!child) {
++                    this.logMissingDependency(`${childName}@${requiredRange}`);
++                    continue;
++                }
++                const childTree = { name: childName, version: child.packageJson.version, path: child.packageDir };
++                deps[childName] = childTree;
++                this.allDependencies.set(`${childName}@${child.packageJson.version}`, childTree);
++            }
++        }
+         this.productionGraph[dependencyId] = { dependencies: [] };
+         const depPromises = Object.entries(deps).map(async ([packageName, dependency]) => {
+             // First check if it's in production dependencies
+             if (!all[packageName]) {
+                 return undefined;
+             }
+-            // Then check if optional dependency path exists (using actual resolved path)
+-            if (optional[packageName]) {
+-                const pkg = await this.locateFromDepOrRoot(packageName, tree.path, dependency.version);
+-                if (!pkg) {
+-                    this.logMissingDependency(`${packageName}@${dependency.version}`);
+-                    return undefined;
+-                }
++            const child = await this.locateFromDepOrRoot(packageName, (located === null || located === void 0 ? void 0 : located.packageDir) || tree.path, dependency.version);
++            if (!child && optional[packageName]) {
++                this.logMissingDependency(`${packageName}@${dependency.version}`);
++                return undefined;
+             }
+             const { id: childDependencyId, pkgOverride } = this.normalizePackageVersion(packageName, dependency);
+-            await this.extractProductionDependencyGraph(pkgOverride, childDependencyId);
++            const resolvedTree = {
++                ...pkgOverride,
++                path: (child === null || child === void 0 ? void 0 : child.packageDir) || pkgOverride.path,
++            };
++            if (resolvedTree.path) {
++                this.allDependencies.set(childDependencyId, resolvedTree);
++            }
++            await this.extractProductionDependencyGraph(resolvedTree, childDependencyId);
+             return childDependencyId;
+         });
+         const collectedDependencies = [];
+         for (const dep of depPromises) {
+@@ -148,9 +162,6 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+     async collectDepsRecursively(tree) {
+         const visit = async (key, value) => {
+             var _a, _b;
+-            if (((_a = value === null || value === void 0 ? void 0 : value.dedupedDependenciesCount) !== null && _a !== void 0 ? _a : 0) > 0) {
+-                return;
+-            }
+             const id = `${key}@${value.version}`;
+             // The pnpm list output can include the same `name@version` thousands of times across a
+             // deep workspace; without this guard we re-resolve and re-recurse each occurrence.
+@@ -160,6 +171,9 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+             this.collectedDeps.add(id);
+             const pkg = await this.locateFromDepOrRoot(key, value.path, value.version);
+             this.allDependencies.set(id, { ...value, path: (_b = pkg === null || pkg === void 0 ? void 0 : pkg.packageDir) !== null && _b !== void 0 ? _b : value.path });
++            if (((_a = value === null || value === void 0 ? void 0 : value.dedupedDependenciesCount) !== null && _a !== void 0 ? _a : 0) > 0) {
++                return;
++            }
+             await this.collectDepsRecursively(value);
+         };
+         for (const [key, value] of Object.entries(tree.dependencies || {})) {

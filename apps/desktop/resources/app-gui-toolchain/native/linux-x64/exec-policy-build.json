@@ -1,0 +1,40 @@
+{
+  "schema": "bottega.linux-exec-build/v1",
+  "target": "x86_64-linux-gnu",
+  "sourceTransform": "strip-protocol-lines/v1",
+  "sourceSha256": "sha256:f15f0ae3154806067e10161c2a0f8a774edc5d049bf37a1474a5fbd5e82dcdfc",
+  "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.3)",
+  "linker": "LLD 17.0.6 (compatible with GNU linkers)",
+  "ccFlags": [
+    "--target=x86_64-linux-gnu",
+    "-std=gnu11",
+    "-Os",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-ffreestanding",
+    "-fno-builtin",
+    "-fno-stack-protector",
+    "-fno-asynchronous-unwind-tables",
+    "-fno-unwind-tables",
+    "-fno-ident",
+    "-fno-pie"
+  ],
+  "linkFlags": [
+    "-flavor",
+    "gnu",
+    "-m",
+    "elf_x86_64",
+    "--build-id=none",
+    "-z",
+    "noexecstack",
+    "-static",
+    "-e",
+    "_start",
+    "--strip-all"
+  ],
+  "output": {
+    "bytes": 4192,
+    "sha256": "sha256:1add6a1478e6dde3f3bbf28d4ab0fc5bc2fedbff6cfa1a5e85cf13b80d18294f"
+  }
+}

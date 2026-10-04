@@ -1,0 +1,77 @@
+/**
+ * [INPUT]: Shared sidebar row DOM attributes.
+ * [OUTPUT]: Title overflow masks, reduced-motion handling and visible separated touch action targets.
+ * [POS]: Workspace row stylesheet.
+ */
+
+
+.sidebar-row-title {
+
+  --sidebar-row-action-strip: 3rem;
+  container-type: inline-size;
+  overflow: hidden;
+
+  text-overflow: clip !important;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, black calc(100% - 1.5rem), transparent);
+}
+
+.sidebar-row-title-marquee {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+
+li:is(:hover, :has(:focus-visible), :has([aria-expanded="true"])) > a .sidebar-row-title {
+  mask-image: linear-gradient(
+    to right,
+    black calc(100% - var(--sidebar-row-action-strip) - 1.5rem),
+    transparent calc(100% - var(--sidebar-row-action-strip))
+  );
+}
+
+li:is(:hover, :has(:focus-visible), :has([aria-expanded="true"])) > a .sidebar-row-title-marquee {
+  transform: translateX(
+    min(0px, calc(100cqw - 100% - var(--sidebar-row-action-strip) - 1.75rem))
+  );
+  transition: transform 2000ms ease-in-out;
+}
+
+
+li[data-chat-dragging] > :is([data-sidebar="menu-button"], [data-sidebar="menu-sub-button"]) {
+  background: var(--sidebar-accent);
+  opacity: 0.4;
+}
+
+/* Touch actions are visible, separate 44px targets; title space is reserved. */
+@media (hover: none), (pointer: coarse), (max-width: 767px) {
+  li:has(> [data-chat-row-action]) > :is([data-sidebar="menu-button"], [data-sidebar="menu-sub-button"]) {
+    min-height: 44px;
+    padding-right: 88px;
+  }
+  [data-chat-row-action] {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    width: 44px;
+    height: 44px;
+    top: 0;
+    right: 0;
+  }
+  [data-chat-row-action="more"] { right: 44px; }
+  [data-chat-row-action]::after { display: none; }
+  li:has(> [data-chat-row-action]) .sidebar-row-title { --sidebar-row-action-strip: 0px; }
+}
+@media (hover: none), (pointer: coarse), (max-width: 767px) {
+  [data-project-sort], [data-project-section-action], [data-project-row-action] { opacity: 1 !important; pointer-events: auto !important; width: 44px; height: 44px; top: 0; }
+  [data-project-sort]::after, [data-project-section-action]::after, [data-project-row-action]::after { display: none; }
+  [data-project-section-action="new"] { right: 0; }
+  .group\/projects-header:has([data-project-section-action="new"]) [data-project-sort] { right: 44px; }
+  [data-project-row-action="more"] { right: 0; }
+  .group\/project-row:has([data-project-row-action="new"]) [data-project-row-action="more"] { right: 44px; }
+  [data-project-row-action="new"] { right: 0; }
+  .group\/project-row:has([data-project-row-action]) [data-sidebar="menu-button"] { min-height: 44px; padding-right: 44px; }
+  .group\/project-row:has([data-project-row-action="new"]) [data-sidebar="menu-button"] { padding-right: 88px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-row-title-marquee { transition: none !important; transform: none !important; }
+}

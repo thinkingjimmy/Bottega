@@ -1,0 +1,34 @@
+{
+  "name": "bottega-record-review",
+  "version": "0.1.0",
+  "description": "Review a Base record and save a result from an isolated UI.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "files": [
+    "dist",
+    "bottega.extension.json",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@bottega/sdk": "0.1.0"
+  },
+  "peerDependencies": {
+    "zod": "~4.6.4"
+  },
+  "devDependencies": {
+    "@bottega/testing": "0.1.0",
+    "@types/node": "22.18.6",
+    "esbuild": "0.28.1",
+    "typescript": "5.9.3",
+    "zod": "4.6.4"
+  }
+}

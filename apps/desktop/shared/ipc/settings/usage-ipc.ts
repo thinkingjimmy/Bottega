@@ -1,0 +1,85 @@
+/**
+ * [INPUT]: Depends on the quota bridge type; local USAGE_SOURCE_ORDER remains independent of agent-ipc's AGENT_BACKEND_ORDER.
+ * [OUTPUT]: Composes the optional quota bridge and provides Usage Source domain subgroup/identity, query target, token/cost statistics, price revision, push, scan progress DTO and preload bridge agreement
+ * [POS]: apps/desktop/shared/ipc/settings; IPC single truth source, connecting Electron main, preload and renderer
+ */
+
+/* ============================================================
+ * 用量源域 ≠ 后端注册域。接入一个新 Agent 后端不等于它有本地
+ * 用量账本：源必须落盘可解析的 JSONL 且已完成价格对账，才有资格
+ * 进这张表。故此处是独立元组，绝不从 AGENT_BACKEND_ORDER 派生。
+ * ============================================================ */
+export const USAGE_SOURCE_ORDER = ["codex", "claude", "kimi"] as const;
+export type UsageSourceId = (typeof USAGE_SOURCE_ORDER)[number];
+
+export const USAGE_QUERY_TARGETS = ["all", ...USAGE_SOURCE_ORDER] as const;
+export type UsageQueryTarget = (typeof USAGE_QUERY_TARGETS)[number];
+
+export type DailyTokens = Record<string, number>;
+
+export type UsageStats = {
+  lifetimeTokens: number;
+  lifetimeCostUsd: number;
+  peakDayTokens: number;
+  peakDay: string | null;
+  longestChatMs: number;
+  currentStreakDays: number;
+  longestStreakDays: number;
+};
+
+/** What went wrong, stable across locales: the renderer words the ones that affect a summary; `message` is an English diagnostic
+    for logs only. A cache that was rebuilt or not saved changes no number and is only logged, never an issue. */
+export type UsageIssueCode = "source-unreadable" | "file-unreadable" | "file-unparseable" | "scope-degraded" | "lines-unparseable";
+export type UsageIssue = {
+  source: UsageSourceId;
+  code: UsageIssueCode;
+  kind: "source" | "file" | "line";
+  affectsSummary: boolean;
+  failedFiles: number;
+  failedLines: number;
+  message: string;
+};
+
+export type AgentUsageSummary = {
+  target: UsageQueryTarget;
+  status: "ok" | "partial" | "no-data" | "error";
+  stats: UsageStats;
+  daily: DailyTokens;
+  dailyCostUsd: Record<string, number>;
+  dailyUnpricedTokens: Record<string, number>;
+  pricingRevision: number;
+  timeZone: string;
+  todayKey: string;
+  scannedFiles: number;
+  issues: UsageIssue[];
+};
+
+export type UsageScanProgress = {
+  source: UsageSourceId;
+  scanId: number;
+  phase: "start" | "progress" | "done";
+  outcome?: "ok" | "cancelled" | "error";
+  scanned: number;
+  total: number;
+};
+
+export type UsagePricingUpdate = {
+  pricingRevision: number;
+};
+
+export const USAGE_CHANNEL = {
+  getSummary: "usage:get-summary",
+  scanProgress: "usage:scan-progress",
+  pricingUpdated: "usage:pricing-updated",
+  replayProgress: "usage:replay-progress",
+} as const;
+
+export type UsageBridgeApi = {
+  limits?: import("../../usage-limits/types").UsageLimitsBridgeApi;
+  getSummary: (
+    target: UsageQueryTarget,
+    opts?: { forceRefresh?: boolean }
+  ) => Promise<AgentUsageSummary>;
+  onScanProgress: (cb: (progress: UsageScanProgress) => void) => () => void;
+  onPricingUpdated: (cb: (update: UsagePricingUpdate) => void) => () => void;
+};

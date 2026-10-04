@@ -1,0 +1,103 @@
+/**
+ * [INPUT]: Depends on the user's native Codex runtime, supervised commands (admitted and watchdog-tracked), App tool clean core and general maintenance session agreement
+ * [OUTPUT]: Provides codexMaintenance, creates user-default jobs and mechanical verification of MCP/skill requirements
+ * [POS]: The App maintenance adapter for Codex descriptor; Not copying or deleting user authentication
+ */
+
+import {
+  appendFile,
+  mkdir,
+  readFile,
+  rm,
+} from "node:fs/promises";
+import { join } from "node:path";
+import {
+  buildPluginMarketplace,
+  type ExtensionPlan,
+  verifyExtensionPlan,
+} from "../../../apps/install/extension";
+import {
+  buildAgentToolInventory,
+} from "../../../apps/runtime/agent-tools";
+import { codexEnvironment } from "../environment";
+import { codexHome } from "../../../backends/sandbox/fences";
+import { workspaceMaintenanceJob } from "../../../backends/jobs/maintenance-job";
+import type { MaintenanceAdapter } from "../../../backends/types";
+import { runSupervisedCommand } from "../../../backends/jobs/supervised-command";
+import type { AgentBackendId } from "../../../../../shared/ipc/agent/agent-ipc";
+
+/* A supervised auxiliary process: admitted per Agent, tracked for the crash watchdog while it runs (TASK-13 D). */
+const runJson = (backend: AgentBackendId, executable: string, args: string[], cwd: string, env: NodeJS.ProcessEnv) =>
+  runSupervisedCommand({ backend, command: executable, args, cwd, env, timeoutMs: 15_000, maxBuffer: 4 * 1024 * 1024,
+    label: `codex ${args.slice(0, 2).join(" ")}` }).then(result => result.stdout);
+
+async function trustProject(homeDir: string, appDir: string) {
+  const configPath = join(homeDir, "config.toml");
+  const marker = `[projects.${JSON.stringify(appDir)}]`;
+  const current = await readFile(configPath, "utf8").catch(() => "");
+  if (current.includes(marker)) return;
+  await appendFile(
+    configPath,
+    `${current && !current.endsWith("\n") ? "\n" : ""}${marker}\ntrust_level = "trusted"\n`,
+    { mode: 0o600 }
+  );
+}
+
+export const codexMaintenance: MaintenanceAdapter = {
+  async open({ backend, runtime }) {
+    /* CODEX_HOME 解析只有一处真相源（trim+resolve+homedir 回退）；
+       在这里再写一遍 `process.env.HOME || ""` 就是第二套会漂移的答案。 */
+    const homeDir = codexHome();
+    await mkdir(homeDir, { recursive: true, mode: 0o700 });
+    const env = codexEnvironment(runtime);
+    return {
+      createJob: workspaceMaintenanceJob,
+      async applyExtension(input) {
+        const plan = input.value as ExtensionPlan;
+        await verifyExtensionPlan(input.appDir, plan);
+        await trustProject(homeDir, input.record.dir);
+        if (!plan.pluginName) {
+          await input.appendLog("[agent] 已批准并信任项目级 .agent/config.toml");
+          return;
+        }
+        const marketplaceName = `app-${input.record.id}`;
+        const marketplaceRoot = await buildPluginMarketplace({
+          userData: input.userData,
+          record: input.record,
+          appDir: input.appDir,
+          pluginName: plan.pluginName,
+        });
+        const selector = `${plan.pluginName}@${marketplaceName}`;
+        const execute = (args: string[], cwd = input.appDir, allowFailure = false) =>
+          input.execute(runtime.executable, args, { cwd, env, allowFailure });
+        await execute(["plugin", "remove", selector, "--json"], input.appDir, true);
+        await execute(
+          ["plugin", "marketplace", "remove", marketplaceName, "--json"],
+          input.appDir,
+          true
+        );
+        // SOURCE 恒传 "."，避免含 @ 的绝对路径被 Codex 误判为 owner/repo@ref。
+        await execute(["plugin", "marketplace", "add", ".", "--json"], marketplaceRoot);
+        await execute(["plugin", "add", selector, "--json"]);
+        const listed = await execute(["plugin", "list"]);
+        if (!listed.stdout.includes(selector)) {
+          throw new Error("Codex plugin list 未显示已安装扩展");
+        }
+        await input.appendLog(`[agent] 已安装扩展 ${selector}`);
+      },
+      async inspectToolInventory(workspace) {
+        const [mcpJson, pluginJson] = await Promise.all([
+          runJson(backend, runtime.executable, ["mcp", "list", "--json"], workspace, env),
+          runJson(backend, runtime.executable, ["plugin", "list", "--json"], workspace, env),
+        ]);
+        return buildAgentToolInventory(workspace, mcpJson, pluginJson);
+      },
+    };
+  },
+  async cleanup({ userData, appId }) {
+    await rm(join(userData, "plugin-marketplaces", appId), {
+      recursive: true,
+      force: true,
+    });
+  },
+};
