@@ -2,6 +2,7 @@
  * [INPUT]: Depends on the English Catalog shape and Spanish feature catalogs, including Agent and Chat-storage failures, Apps, Chat, and Settings, with shared cloud account/approval and isolated composer copy.
  * [OUTPUT]: Provides the complete Spanish catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery General appearance provides theme, language and archive confetti.
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
+ * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
  * [POS]: Spanish desktop locale; compile-time structure must match English exactly
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/es";
@@ -298,7 +299,6 @@ currentModelUnavailable: "{{model}} (no disponible)"
       modelSelector: { ...composerCopy.chat.composer.modelSelector },
     },
     resumeFailure: composerCopy.resumeFailure,
-    checkAgain: "Comprobar de nuevo",
     workedFor: "Trabajó durante {{duration}}",
     sectionImagesDisclosure:
       "Se enviarán a {{backend}} hasta {{count}} imágenes por Section ({{megabytes}} MB en total durante este turno).",

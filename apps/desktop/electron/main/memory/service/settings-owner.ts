@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on SettingsStore, the Memory target resolver, ManagedRuntimeRegistry and consent bound to sharing mode/generation.
- * [OUTPUT]: Provides MemorySettingsOwner with sequential revision-bound mutations, durable remote receipts, same-provider privacy pause fallback, compensation and forward retries.
+ * [OUTPUT]: Provides MemorySettingsOwner with independent plugin availability, sequential revision-bound service mutations, durable remote receipts, compensation and forward retries.
  * [POS]: The main/memory/service settings.memory is the only entry; The renderer's intent and lifecycle convergence must be met through it
  * The same queue owns default-off workflow reads, which require live consent and invalidate old role contexts on transition.
  */
@@ -56,6 +56,27 @@ export class MemorySettingsOwner {
 
   constructor(private readonly dependencies: MemorySettingsOwnerDependencies) {}
 
+  /** Availability never grants consent or changes the user's retained service preference. */
+  setPluginEnabled(pluginEnabled: boolean): Promise<SettingsEnvelope> {
+    return this.queue.enqueue(async () => {
+      const envelope = this.dependencies.settings.envelope();
+      const current = envelope.settings.memory;
+      if (current.pluginEnabled === pluginEnabled) return envelope;
+      const pending = await this.dependencies.settings.setMemoryTrusted({
+        ...current, pluginEnabled, pendingRevision: null,
+        applyStatus: { state: "pending", message: null, at: Date.now() },
+      });
+      try {
+        // Revoke live authority before resolving runtime facts; a broken backend must not prevent stopping Memory.
+        if (!pluginEnabled) await this.dependencies.pause();
+      } catch (cause) {
+        await this.compensateSettings(current, cause);
+        throw cause;
+      }
+      return this.applyLatest(pending);
+    });
+  }
+
   /* ============================================================
    * 四条 mutation 是 renderer 唯一能对 memory 说的话。通用
    * settings:set 已在类型与运行时双重拒绝 memory——「任何守护都能
@@ -109,7 +130,7 @@ export class MemorySettingsOwner {
         return { paused: input.paused, appliedAt: previous.committedAt };
       }
       if (!this.dependencies.settings.get().memoryPhoneFacade) throw new Error("facade-disabled");
-      if (!current.enabled) throw new Error("memory-not-enabled");
+      if (!current.pluginEnabled || !current.enabled) throw new Error("memory-not-enabled");
       const target = input.paused ? await this.resolvePauseTarget(current)
         : await this.resolveTarget(current).catch(() => { throw new Error("backend-unavailable"); });
       if (!input.paused && !target.canEnable) throw new Error("backend-unavailable");
@@ -141,7 +162,7 @@ export class MemorySettingsOwner {
   setWorkflowRoles(enabled: boolean): Promise<SettingsEnvelope> {
     return this.queue.enqueue(async () => {
       const current = this.dependencies.settings.get();
-      if (enabled && (!current.memory.enabled || current.memory.paused || !this.dependencies.workflowConsentActive?.())) {
+      if (enabled && (!current.memory.pluginEnabled || !current.memory.enabled || current.memory.paused || !this.dependencies.workflowConsentActive?.())) {
         throw new Error("memory-workflow-consent-required");
       }
       if (current.memoryWorkflowRoles === enabled) return this.dependencies.settings.envelope();
@@ -178,8 +199,7 @@ export class MemorySettingsOwner {
       const envelope = this.dependencies.settings.envelope();
       const memory = envelope.settings.memory;
       if (memory.provider !== providerId) return envelope;
-      const target = await this.resolveTarget(memory);
-      return this.applyAndSettle(target, envelope);
+      return this.applyLatest(envelope);
     });
   }
 
@@ -223,7 +243,7 @@ export class MemorySettingsOwner {
     if (this.retryTimer) return;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
-      void this.retryApply();
+      void this.retryApply().catch(() => this.scheduleRetry());
     }, this.dependencies.retryDelayMs ?? RETRY_DELAY_MS);
     this.retryTimer.unref?.();
   }
@@ -233,15 +253,33 @@ export class MemorySettingsOwner {
       const envelope = this.dependencies.settings.envelope();
       const state = envelope.settings.memory.applyStatus?.state;
       if (state !== "failed" && state !== "pending") return null;
-      const memory = envelope.settings.memory;
-      const target = memory.paused ? await this.resolvePauseTarget(memory) : await this.resolveTarget(memory);
-      return this.applyAndSettle(target, envelope);
+      return this.applyLatest(envelope);
     });
   }
 
   dispose() {
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = null;
+  }
+
+  private async applyLatest(envelope: SettingsEnvelope) {
+    try {
+      const memory = envelope.settings.memory;
+      const target = !memory.pluginEnabled || memory.paused
+        ? await this.resolvePauseTarget(memory) : await this.resolveTarget(memory);
+      return await this.applyAndSettle(target, envelope);
+    } catch {
+      return this.markApplyFailed(envelope);
+    }
+  }
+
+  private markApplyFailed(pending: SettingsEnvelope) {
+    this.scheduleRetry();
+    return this.dependencies.settings.setMemoryTrusted({
+      ...this.dependencies.settings.get().memory,
+      pendingRevision: pending.revision,
+      applyStatus: { state: "failed", message: null, at: Date.now() },
+    });
   }
 
   private async applyAndSettle(
@@ -259,19 +297,8 @@ export class MemorySettingsOwner {
       // Publish the settled projection only after settings commit; identical config must not repeat policy/runtime effects.
       await this.dependencies.apply(target, settled.settings.memory);
       return settled;
-    } catch (cause) {
-      const message = "Memory 配置暂未生效，将自动重试";
-      this.scheduleRetry();
-      try {
-        return await this.dependencies.settings.setMemoryTrusted({
-          ...this.dependencies.settings.get().memory,
-          pendingRevision: pending.revision,
-          applyStatus: { state: "failed", message, at: Date.now() },
-        });
-      } catch {
-        /* retry 已先武装；保留原 apply/persist 异常，不制造第二个失败面。 */
-        throw cause;
-      }
+    } catch {
+      return this.markApplyFailed(pending);
     }
   }
 
@@ -279,6 +306,8 @@ export class MemorySettingsOwner {
     current: MemorySettings,
     mutation: MemorySettingsMutation
   ) {
+    if (!current.pluginEnabled && (mutation.kind === "enable-with-consent" || mutation.kind === "cutover-with-consent" ||
+        (mutation.kind === "set-paused" && !mutation.paused))) throw new Error("memory-plugin-disabled");
     switch (mutation.kind) {
       case "cutover-with-consent": {
         this.assertMutable("切换记忆后端");
@@ -350,7 +379,7 @@ export class MemorySettingsOwner {
             this.dependencies.consumeConsentAuthority(
               mutation.authorityToken,
               target,
-              current.paused ? "configuration" : "live"
+              !current.pluginEnabled || current.paused ? "configuration" : "live"
             ),
         };
       }

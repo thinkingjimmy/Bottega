@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React, shared Command primitives, pointer capabilities and host-owned copy/results.
- * [OUTPUT]: SearchDialog, SearchPalette and SearchNotice with common geometry, focus and selection behavior.
+ * [OUTPUT]: SearchDialog, SearchPalette and SearchNotice with a borderless search row, input/results divider and shared focus/selection behavior.
  * [POS]: Native/Web command search presentation; no query transport, routing or account authority.
  */
 import { useId, useState, type ComponentProps, type ReactNode } from "react";
@@ -81,6 +81,7 @@ export function SearchPalette({
       </label>
       <CommandInput
         {...inputProps}
+        variant="borderless"
         id={id}
         data-slot="input-group-control"
         data-search-input

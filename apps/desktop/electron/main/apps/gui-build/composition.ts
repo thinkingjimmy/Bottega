@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron-as-Node, packaged compiler/toolchain bytes, signed component snapshots, private staging, and release-pinned Linux system/stable component selection
+ * [INPUT]: Depends on the bundled Node, native esbuild resolver, packaged compiler/toolchain bytes, signed component snapshots, private staging, and release-pinned Linux system/stable component selection
  * [OUTPUT]: Provides production App and plugin GUI build compositions with hashed runtime custody, offline component scaffolding, and a never-throwing create whose missing payload becomes a typed GUI_COMPILER_SANDBOX_UNAVAILABLE build failure compilerProgram (TASK-35 C6).
  * [POS]: apps/gui-build composition leaf wired by AppsService; a damaged toolchain payload closes authoring only and leaves every other App runnable
  */
@@ -16,6 +16,7 @@ import { AppGuiComponentScaffolder } from "./scaffold/component-scaffolder";
 import { AppGuiAdmissionPolicy } from "./admission";
 import type { CompilerSandboxPort } from "./contracts";
 import { LinuxCompilerLocator } from "./native/linux/locator";
+import { resolveEsbuildExecutable } from "./native/esbuild";
 import { inspectPluginSource } from "./source/inspection";
 import { runtimePort } from "../../runtime";
 
@@ -69,7 +70,7 @@ export function createPluginGuiBuildService(userData: string) {
 function compilerService(stagingRoot: string, plugin = false) {
   const program = compilerProgram();
   const compilerEntry = program.entry();
-  const esbuildExecutable = unpacked(require.resolve("esbuild/bin/esbuild"));
+  const esbuildExecutable = resolveEsbuildExecutable(require.resolve("esbuild/package.json"));
   const oxideNative = resolveOxideNative();
   const resourcesRoot = app?.isPackaged === true && typeof process.resourcesPath === "string" && process.resourcesPath
     ? process.resourcesPath

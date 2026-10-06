@@ -296,8 +296,6 @@ export const copy = {
         effortUnavailable: "現在のモデルでは Effort を変更できません",
         noModels: "利用可能なモデルが見つかりません",
         backendDefaultModel: "バックエンドの既定モデル",
-        speedDescription:
-          "対応する Opus 5/4.8 モデルでは約 2.5 倍高速です。usage credits の消費は増えますが、サブスクリプションのレート制限枠は消費しません。",
         speedReason: {
           modelUnsupported: "現在のモデルは Fast を提供していません",
           backendOff: "バックエンドがこのセッションで Fast を無効にしました",

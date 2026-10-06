@@ -296,8 +296,6 @@ export const copy = {
         effortUnavailable: "The current model does not support changing Effort",
         noModels: "No available models found",
         backendDefaultModel: "Backend default model",
-        speedDescription:
-          "About 2.5× faster on supported Opus 5/4.8 models. Costs more usage credits but does not consume the subscription rate-limit pool.",
         /* 运行态判据的产品说法。后端自己的解释（免费计划、模型不支持…）
            由 adapter 的 turned-off 消息原样进转录，这里不复述。 */
         speedReason: {

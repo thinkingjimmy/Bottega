@@ -1,6 +1,6 @@
 /**
- * [INPUT]: System light/dark preference and native system fonts.
- * [OUTPUT]: Bundled dialog CSS with shared hierarchy, wrapping paths and visible keyboard interaction.
+ * [INPUT]: System light/dark preference, native system fonts and document-owned keyboard navigation state.
+ * [OUTPUT]: Bundled dialog CSS with shared hierarchy, left-aligned link-like support actions, straight separators and borderless keyboard focus feedback.
  * [POS]: Styles for the pre-renderer desktop surface; no network or application renderer dependency.
  */
 export const dialogStyles = `
@@ -15,7 +15,9 @@ h1 { margin:0; font-size:21px; line-height:1.4; letter-spacing:-.02em; font-weig
 button { appearance:none; font:inherit; font-weight:500; border:0; border-radius:8px; background:transparent; color:var(--fg); min-height:44px; padding:8px 14px; cursor:pointer; flex-shrink:0; }
 button:hover:not(:disabled) { background:var(--hover); }
 button:active:not(:disabled) { filter:brightness(.9); }
-button:focus-visible,input:focus-visible { outline:2px solid var(--fg); outline-offset:3px; }
+button:focus,input:focus { outline:none; }
+body[data-keyboard-navigation] button:focus-visible { text-decoration:underline; text-underline-offset:4px; }
+body[data-keyboard-navigation] button:not(.primary):not(.quiet):focus-visible { background:var(--hover); }
 button:disabled { color:var(--muted); cursor:default; }
 button.primary { background:var(--button); color:var(--on-button); min-width:84px; }
 button.primary:hover:not(:disabled) { background:var(--button); opacity:.88; }
@@ -25,13 +27,17 @@ button.copy { min-width:var(--copy-width, 11em); }
 .retry { position:relative; flex-shrink:0; }
 .icon { width:44px; padding:10px; color:var(--muted); display:grid; place-items:center; }
 .icon svg { width:20px; height:20px; }
+.retry .icon svg { width:10px; height:10px; }
+body[data-keyboard-navigation] .retry .icon:focus-visible { color:var(--fg); }
 .tooltip { display:none; position:absolute; top:100%; left:50%; transform:translateX(-50%); background:var(--fg); color:var(--bg); white-space:nowrap; padding:4px 8px; border-radius:5px; font-size:12px; z-index:2; pointer-events:none; }
-.retry:not(.dismissed):has(button:is(:hover,:focus-visible)) .tooltip { display:block; }
+.retry:not(.dismissed):has(button:hover) .tooltip,
+body[data-keyboard-navigation] .retry:not(.dismissed):has(button:focus-visible) .tooltip { display:block; }
 .candidates { margin-top:24px; display:grid; gap:4px; }
-.candidate { display:flex; align-items:flex-start; gap:12px; padding:14px 12px; border-radius:8px; cursor:pointer; }
-.candidate + .candidate { border-top:1px solid var(--line); }
+.candidate { position:relative; display:flex; align-items:flex-start; gap:12px; padding:14px 12px; border-radius:8px; cursor:pointer; }
+.candidate + .candidate::before { content:""; position:absolute; top:0; left:12px; right:12px; height:1px; background:var(--line); }
 .candidate:has(input:checked) { background:var(--hover); }
-.candidate:has(input:focus-visible) { outline:2px solid var(--fg); outline-offset:2px; }
+body[data-keyboard-navigation] .candidate:has(input:focus-visible) { background:var(--hover); }
+body[data-keyboard-navigation] .candidate:has(input:focus-visible) .path { text-decoration:underline; text-underline-offset:4px; }
 .candidate input { margin:4px 0 0; width:17px; height:17px; accent-color:var(--fg); flex-shrink:0; }
 .candidate-info { min-width:0; flex:1; }
 .path { overflow-wrap:anywhere; user-select:text; }
@@ -41,6 +47,8 @@ button.copy { min-width:var(--copy-width, 11em); }
 .previous .path { margin-top:4px; }
 footer { margin-top:28px; display:flex; align-items:center; justify-content:flex-end; gap:12px; flex-wrap:wrap; }
 .support,.actions { display:flex; align-items:center; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
-footer.split .support { margin-right:auto; justify-content:flex-start; }
+.support { margin-right:auto; justify-content:flex-start; gap:24px; }
+.support button { padding-inline:0; text-align:left; }
+.support button:hover:not(:disabled) { background:transparent; text-decoration:underline; text-underline-offset:4px; }
 @media (max-width:520px) { main { padding:24px 20px 16px; } footer.split .support { width:100%; } .actions { margin-left:auto; } }
 `;

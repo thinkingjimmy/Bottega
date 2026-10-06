@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on remote ExecutionFacade creation receipts, canonical UTF-8 text budgets, target capabilities and catalogs, the shared first-message readiness flow and host-owned completion/local-navigation callbacks.
- * [OUTPUT]: Frozen first-send intent (an App's first Edit Chat when `appTarget` names the App, whose existing Edit Chat takes the text unsent, U06 Q7-d) (a checkpoint-recovered one is looked up by its original ids before any retry; one refused for its files before anything was stored unlocks the draft's files and retries as a new message), Send and Retry greyed while any file is not sendable, visible sent progress, editable next draft, creation on the computer the host names — greyed in place with that computer's sentence when it cannot take one — and inline structured recovery with separate custody for unsent original and newer drafts.; U06-c: with `appTarget` text only (no files, sketch or references, the rule said), the starting line naming the computer, refusals by name and a notice for the host when another Edit Chat took the text
+ * [OUTPUT]: Frozen first-send intent (an App's first Edit Chat when `appTarget` names the App, whose existing Edit Chat takes the text unsent, U06 Q7-d) (a checkpoint-recovered one is looked up by its original ids before any retry; one refused for its files before anything was stored unlocks the draft's files and retries as a new message), Send and Retry greyed while any file is not sendable, visible sent progress, editable next draft, creation on the computer the host names — greyed in place with that computer's sentence when it cannot take one, and covered by the read-only card when sync is not connected — and inline structured recovery with separate custody for unsent original and newer drafts.; U06-c: with `appTarget` text only (no files, sketch or references, the rule said), the starting line naming the computer, refusals by name and a notice for the host when another Edit Chat took the text
  * [POS]: Shared creation form; explicit submit intent owns the automatic first message until preparation, cancellation or route handoff.
  */
 import { useRemoteReferences } from "./composer/input/references";
@@ -32,6 +32,7 @@ import { remoteReasonSchema, type RemoteReason } from "@ai-chat/cloud-protocol/r
 import { remoteCopy } from "../../i18n/messages/remote";
 import { targetReason } from "./computer/selectors";
 import { RemoteAgentSelector } from "./computer/agent";
+import { Cloud } from "lucide-react";
 import { RemoteUnavailable } from "./computer/unavailable";
 import { PlatformGlyph } from "./computer/glyphs";
 export function RemoteCreateChat({ platform, locale, projectId, appTarget, appName, onCreated, onDirtyChange, heading: _heading = true, computer, draft, context, disabledActions }: {
@@ -147,6 +148,8 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
   }, [recovered, port, store, platform, draftKey, onCreated]);
   const action = sendAction(copy, { head: null, target, ready: true, busy, retryCreate: Boolean(attempt) && !busy });
   const unavailable = targets.value !== null && targets.value.remoteControlEnabled === false;
+  /* Targets still arriving is not "sync is disconnected": the card waits until the account or the port has actually failed. */
+  const syncDisconnected = remoteBlockedReason === copy.disconnected && !(targets.value === null && connected);
   /* The computer is named by the sidebar, so this composer only speaks when it cannot take the message. */
   const block = computer?.block ?? null;
   const notice = remoteBlockedReason
@@ -159,8 +162,10 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
       {busy && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><span className="chat-remote-working" aria-hidden="true" />{appTarget ? <AppEditStarting locale={locale} computer={appValues.computer} /> : copy.sent}</p>}
     </div> : <ChatEmptyState title={composerCopy(locale).empty} />}
     <ComposerDock className="chat-remote"><fieldset disabled={locked} className="min-w-0">{context}</fieldset>
-      {notice && !unavailable && <div className="chat-remote-hint" role="status" data-computer-notice><p>{notice}</p></div>}
-      {unavailable ? <RemoteUnavailable icon={<PlatformGlyph kind="none" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disabled} description={copy.disabledDescription} actions={disabledActions} /> : <ComposerForm className="chat-remote-form" onSubmit={event => { event.preventDefault(); void create(); }} aria-busy={busy} {...controls.events}>
+      {notice && !unavailable && !syncDisconnected && !(targets.value === null && notice === copy.disconnected) && <div className="chat-remote-hint" role="status" data-computer-notice><p>{notice}</p></div>}
+      {unavailable ? <RemoteUnavailable icon={<PlatformGlyph kind="none" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disabled} description={copy.disabledDescription} actions={disabledActions} />
+        : syncDisconnected ? <RemoteUnavailable icon={<Cloud aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disconnectedTitle} description={copy.disconnectedDescription} />
+        : <ComposerForm className="chat-remote-form" onSubmit={event => { event.preventDefault(); void create(); }} aria-busy={busy} {...controls.events}>
         {controls.files}
         <RemoteEditor references={completeDraft.references} suggestions={references}
           removeReference={key => store.update({ references: store.snapshot().references.filter(item => (item.value.kind === "file" ? `file:${item.value.path}` : `library:${item.value.libraryId}`) !== key) })} text={text} change={setText} files={completeDraft.files} remove={id => { if (!locked) store.remove(id); }} disabled={false} placeholder={copy.placeholder}
@@ -176,7 +181,7 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
             : <PromptInputSubmit className="shrink-0 rounded-full max-md:size-11 pointer-coarse:size-11" aria-label={copy.send} status={busy ? "submitted" : undefined} tooltip={block?.reason} disabled={busy || !allowed || disabled || !hasInput} />}
         </ComposerActions></ComposerToolbar>
       </ComposerForm>}
-      {appTarget && !unavailable && <AppEditTextOnly locale={locale} />}
+      {appTarget && !unavailable && !syncDisconnected && <AppEditTextOnly locale={locale} />}
       {failure && <div role="alert" className="chat-remote-hint"><p>{refused && retryBudget ? retryBudget : appTarget
         ? <AppEditFailure locale={locale} failure={{ reason: failure, refusal }} values={appValues} fallback={reasonCopy(failure, copy)} /> : reasonCopy(failure, copy)}</p>
         {attempt?.receipt && <Button type="button" variant="outline" disabled={busy} onClick={async () => {

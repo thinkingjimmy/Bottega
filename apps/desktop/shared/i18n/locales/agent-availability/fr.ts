@@ -1,9 +1,12 @@
 /**
  * [INPUT]: Depends on the shared availability state vocabulary.
- * [OUTPUT]: Provides localized Agent availability and recovery copy.
+ * [OUTPUT]: Localized availability, login recovery, installed-provider empty states and separate required/optional update copy.
  * [POS]: Availability locale leaf.
  */
 export const agentAvailabilityFr = {
+  "updateAvailable": "Mise à jour disponible",
+  "updateForUsage": "Mettez à jour pour consulter l’utilisation",
+  "noInstalledProviders": "Aucun Provider installé",
   "state": {
     "recent-sign-in": "Connexion requise récemment",
     "connection": "Problème de connexion",
@@ -14,7 +17,7 @@ export const agentAvailabilityFr = {
     "unverified": "Non vérifié",
     "checking": "Vérification",
     "missing": "Non installé",
-    "unsupported": "Mise à jour disponible",
+    "unsupported": "Mise à jour requise",
     "sign-in": "Non connecté",
     "cannot-check": "Vérification impossible",
     "cannot-start": "Démarrage impossible",

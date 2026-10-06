@@ -10,7 +10,7 @@ export const chatAgentSwitchEs = {
   "recovering": "Mensaje guardado. Recuperando…",
   "stale": "Este chat ha cambiado. Vuelve a elegir el Agent.",
   "adjacent": "Envía un mensaje nuevo o selecciona el Agent anterior.",
-  "defaultsFailed": "Opciones guardadas; no se pudieron actualizar los valores predeterminados.",
+  "defaultsFailed": "Se conservó tu selección, pero no se pudo recordar para los chats nuevos.",
   "divider": "A partir de aquí responde {{backend}}",
   "running": "Espera a que termine la respuesta.",
   "queue": "Procesa los mensajes pendientes.",

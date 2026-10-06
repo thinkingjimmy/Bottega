@@ -10,7 +10,7 @@ export const settingsPersonalizationEs: typeof settingsPersonalizationEn = {
   title: "Personalización", sectionTitle: "Instrucciones personalizadas", description: "Edita el archivo global de instrucciones de cada Agent instalado.",
   loading: "Cargando archivos de instrucciones…", emptyTitle: "No hay ningún Agent instalado", emptyHint: "Instala un Agent en Ajustes de Backends y vuelve aquí.",
   placeholder: "Escribe instrucciones de texto sin formato para este Agent…", createHint: "El archivo aún no existe. Al guardar se creará en {{path}}.",
-  save: "Guardar instrucciones", saving: "Guardando…", copyPath: "Copiar ruta", copied: "Ruta copiada", reveal: "Mostrar en el gestor de archivos",
+  save: "Guardar", saving: "Guardando…", copyPath: "Copiar ruta", copied: "Ruta copiada", reveal: "Mostrar en el gestor de archivos",
   oversized: "El archivo supera 256 KiB; aquí no se carga ni se puede editar.",
   find: { open: "Buscar en el archivo", placeholder: "Buscar en el archivo", count: "{{current}} / {{total}}", noMatches: "Sin coincidencias", previous: "Coincidencia anterior", next: "Coincidencia siguiente", close: "Cerrar búsqueda" },
   metrics: { lines: "{{lines}} líneas", limit: "límite de {{size}}", recommendedLines: "{{lines}} líneas recomendadas", recommendedSize: "{{size}} recomendado" },

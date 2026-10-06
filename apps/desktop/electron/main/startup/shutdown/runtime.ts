@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Electron lifecycle/clipboard, live service admission owners, startup and maintenance flights, task facts, and the root's terminal close operation.
- * [OUTPUT]: Composes safeQuit, stopChatAdmission and the irreversible shutdown gate with recoverable draft editing and on-demand failure dialogs.
+ * [OUTPUT]: Composes safeQuit, stopChatAdmission and the irreversible shutdown gate; background-only cleanup is logged during exit, while task/draft failures retain protection and cancellation recovery uses an inline warning.
  * [POS]: Startup shutdown orchestration; index.ts owns services and terminal feature cleanup, while terminal-owner-sequence.ts owns durable close order.
  */
 import { app, clipboard, dialog } from "electron";
@@ -28,7 +28,7 @@ type QuitOwners = {
   bridge: Pick<BuiltinMcpBridge, "stopAdmission" | "reopenAdmission"> | null;
   foundation: Pick<FoundationRuntime, "stopAdmission" | "hosts"> | null;
   bases: Pick<BasesService, "stopAdmission" | "reopenAdmission"> | null;
-  chats: Pick<ChatsService, "stopAdmission" | "reopenAdmission"> | null;
+  chats: Pick<ChatsService, "stopAdmission" | "reopenAdmission" | "publishWarning"> | null;
   projects: Pick<ProjectsService, "stopAdmission" | "reopen"> | null;
   memory: Pick<MemoryService, "stopAdmission" | "reopen"> | null;
   maintenance: { drain(): Promise<unknown> } | null;
@@ -71,12 +71,19 @@ export function composeApplicationQuit(ports: {
       return import("../dialogs/quit").then(({ showQuitFailure }) => showQuitFailure(locale, failure, activity, canForce)); },
     activity: () => quitActivity(ports.stopOperations(), ports.owners().foundation?.hosts.custody.entries() ?? []), copyTechnicalDetails: text => clipboard.writeText(text),
     requestUserQuit: ports.requestUserQuit,
+    recoveryWarning: message => { ports.owners().chats?.publishWarning(message); },
     acquireStartHold: () => taskStartFence.acquire(),
     snapshotStopOperations: ports.stopOperations,
     stopAdmission: stopChatAdmission,
     settleWindows: () => surfaceWindowController.settleAll(),
     awaitStartup: () => settleStartup(ports.startupFlight(), 10_000),
-    quiesceAgents: async () => { const { coordinator, maintenance } = ports.owners(); await Promise.all([shutdownAllAgents(), coordinator?.drainDispatches(), maintenance?.drain()]); },
+    quiesceAgents: async () => {
+      const { coordinator, maintenance } = ports.owners();
+      await Promise.all([
+        shutdownAllAgents({ onBackgroundCleanupFailure: cause => console.warn("[shutdown] background cleanup incomplete; continuing owned shutdown", inspect(cause, { depth: null })) }),
+        coordinator?.drainDispatches(), maintenance?.drain(),
+      ]);
+    },
     closeOwners: ports.closeOwners,
     recover: async (reason) => {
       try { return await shutdownRecovery.recover(

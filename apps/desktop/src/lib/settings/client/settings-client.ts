@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared/settings-ipc, the Provider IPC refusal check (shared/providers/catalog) and preload exposed window.settings
- * [OUTPUT]: Provides settings get/set/subscriptions, Memory and Chat Home controls including the onboarding folder suggestion and the dialog-free folder retry, initial language/theme facts, backend/model catalogs, and scoped chat options with explicit session-effective reset; throws when the bridge is absent
+ * [OUTPUT]: Typed Settings/Chat preference commands, per-Agent defaults/catalogs, scoped Chat option writes, Memory and Chat Home controls; rejects a missing bridge.
  * [POS]: apps/desktop/src/lib/settings/client; getBackendDefaults answers a named built-in in its own shape and the default Agent (no id) as ChatTurnOptions, since it may be a package Provider (TASK-11 S3-d). A Provider refusal from main reads as an empty model list, or fails a required value with the bare PROVIDER_UNAVAILABLE code (TASK-11 S3-c). The main process of lib sets the IPC's only output and unifies the default model, scope, consolidation and renderer to display semantics
  */
 
@@ -164,6 +164,7 @@ export async function getBackendDefaults(backend?: AgentBackendId): Promise<Chat
   if (backend !== undefined && options.backend !== backend) throw new Error("PROVIDER_UNAVAILABLE");
   return options;
 }
-export const rememberChatDefaults = (options: AgentTurnOptions) => required("remember-chat-defaults", bridge().rememberChatDefaults(options));
+export const rememberChatDefaults = (options: ChatTurnOptions, preference?: import("../../../../shared/chat-agent/preferences").ChatPreferenceWrite) =>
+  required("remember-chat-defaults", bridge().rememberChatDefaults(options, preference));
 export const patchChatOptions = (input: import("../../../../shared/chat-agent/contracts").ChatOptionsPatch, reset = false) =>
   required("patch-chat-options", bridge().patchChatOptions(input, reset));

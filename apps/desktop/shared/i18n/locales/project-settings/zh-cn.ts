@@ -12,7 +12,7 @@ export const projectSettingsZhCN = {
   general: {
     sectionBasics: workspaceCopy.project.basics, name: workspaceCopy.project.identity, renameAction: "重命名", appearanceAria: workspaceCopy.project.appearanceLabel,
     memory: "记忆", memoryDisabled: "记忆服务未启用", memoryPaused: "记忆已暂停", memoryUnavailable: "服务不可用", memoryScoped: "本 Project 拥有独立记忆域", memoryShared: "记忆按会话或个人域共享，Project 不单独分域", memoryDelivering: "导入记忆交付中…", memoryManage: "管理记忆",
-    history: "History 导入", historyHint: "为本 Project 导入兼容的外部 Agent 历史。",
+    history: "History 导入", historyHint: "手动导入本 Project 的外部 Agent 历史，后续变化需再次手动导入。",
     appsSection: "App", appsDescription: "添加进来的 App 可以在这个 Project 的对话里使用。Pin 只把它放进 Sidebar，不改变它能看到的数据。", appsManagedByApp: "此 App Project 的能力授权在 App 页面管理。",
     placements: { pinControl: "将 {{name}} Pin 到 Sidebar", grantSummary: "{{grant}} · {{agent}}", unavailableBadge: "暂不可用", agentOn: "Agent 可代你操作", agentOff: "只有你能操作", noGrant: "还没有授权", unavailable: "这个版本还不能运行，去 Apps 页面修好后才能 Pin", empty: "这个 Project 还没有 App", emptyHint: "添加后，它会出现在这个 Project 的对话里。你来决定它能看到哪些数据。", loading: "正在加载 Apps…", failed: "Apps 加载失败。", retry: "重试", pending: "正在保存 Pin…", pinFailed: "无法保存这个 App 的 Pin。" },
     baseSection: workspaceCopy.project.baseTitle, baseEmpty: workspaceCopy.project.baseEmpty, baseCreate: workspaceCopy.project.baseCreate, baseOpen: workspaceCopy.project.baseOpen, baseSummary: workspaceCopy.project.baseSummary, baseLoading: "正在加载 Project Base",

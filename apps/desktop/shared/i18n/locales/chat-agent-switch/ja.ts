@@ -10,7 +10,7 @@ export const chatAgentSwitchJa = {
   "recovering": "メッセージを保存しました。復旧中…",
   "stale": "このチャットが変更されました。Agent を選び直してください。",
   "adjacent": "新しいメッセージを送信するか、元の Agent を選んでください。",
-  "defaultsFailed": "チャット設定は保存されましたが、既定値の更新に失敗しました。",
+  "defaultsFailed": "選択は保持されていますが、新しいチャット用に記憶できませんでした。",
   "divider": "ここからは {{backend}} が返信します",
   "running": "返信が終了すると変更できます。",
   "queue": "送信待ちメッセージを処理してください。",

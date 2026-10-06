@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Memory IPC/Settings Projection type, current sharing scope/epoch, Recall/Delivery/Rebuild original memory replacement/Health owner only read port
- * [OUTPUT]: Provides projectMemoryStatus (frozen observation scope, rebuild, shared-scope, dual warning, expectedVersion) plus recallProjection/unavailableRecallProjection constructors
+ * [OUTPUT]: Provides plugin-suspended service status through projectMemoryStatus (frozen observation scope, rebuild, shared-scope, dual warning, expectedVersion) plus recallProjection/unavailableRecallProjection constructors
  * [POS]: The main/memory/service observation projection layer; Service just delivers the fact, the renderer snapshot is assembled here
  */
 
@@ -45,7 +45,7 @@ export function projectMemoryStatus(input: {
   const compatibleMismatch = versionMismatch && input.health.value === "ready";
   return {
     enabled: Boolean(input.memory?.enabled),
-    paused: Boolean(input.memory?.paused),
+    paused: Boolean(input.memory?.enabled && (!input.memory.pluginEnabled || input.memory.paused)),
     provider: input.target?.providerId ?? input.memory?.provider ?? "",
     baseUrl: input.target?.baseUrl ?? "",
     target: input.target,

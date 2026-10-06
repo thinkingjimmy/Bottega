@@ -1,19 +1,19 @@
 /**
- * [INPUT]: Depends on shared availability facts, an optional previous Agent for draft cancellation, quota projections and bounded prefetch, localized copy, injected management and Usage navigation, and menu/tooltip primitives.
- * [OUTPUT]: Renders an availability-aware Agent picker over the Provider catalog in the user's Settings › Providers order (a package Provider is chosen only in a draft Chat; in an existing Chat it is listed dimmed as Unavailable, a package Chat offers no switch, and an unavailable entry shows its reason; disabled built-in Providers are hidden) with in-menu draft cancellation and row-anchored Usage access; refresh never changes the selected Agent.
- * Hides disabled built-in Providers while retaining the selected Chat identity and existing package availability rules.
+ * [INPUT]: Pure lib/agent/picker policy over shared availability and quota facts, draft cancellation, bounded quota demand, localized copy and injected management/Usage navigation.
+ * [OUTPUT]: Renders installed Providers in Settings order, prioritizing login and quota over update notices, with scoped quota demand, draft cancellation and row-anchored Usage access.
  * [POS]: apps/desktop/src/components/chat/composer/agents; Composer identity and availability control; the row is the only control and the menu has no footer, so nothing competes with the selected mark.
  */
 import { useCallback, useId, useRef, useState, useSyncExternalStore } from "react";
 
 
-import { DropdownMenuLabel, DropdownMenuSeparator } from "@ai-chat/ui/components/ui/dropdown-menu";
+import { DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@ai-chat/ui/components/ui/dropdown-menu";
 import { AgentPicker, type AgentPickerRow } from "@ai-chat/chat-ui/agent-picker";
 import type { AgentBackendId, BackendInfo } from "../../../../../shared/ipc/agent/agent-ipc";
 import { projectAvailability } from "../../../../../shared/agent-availability/projection";
 import type { AvailabilityState } from "../../../../../shared/agent-availability/types";
 import { isAgentBackendId, orderedProviders, providerName, providerState } from "@/lib/agent/agent-backends";
 import { useProviderCatalog, useProviderName } from "@/lib/provider-catalog/hooks";
+import { installedPickerProvider, pickerQuotaEligible, projectPickerPresentation } from "@/lib/agent/picker/presentation";
 import type { ChatAgentId } from "../../../../../shared/chat-agent/options";
 import { AVAILABILITY_STATE_KEYS, PROVIDER_UNAVAILABLE_REASON_KEYS } from "../../../../../shared/agent-availability/copy";
 import { settingsStore } from "@/lib/settings/store/settings-store";
@@ -100,15 +100,23 @@ export function ChatAgentSelector({ value, draft = false, revertTo, backends, lo
   const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.getSnapshot);
   const catalog = useProviderCatalog();
   const agentName = useProviderName();
-  /* Every catalog entry is a row, a package Provider's included: chosen only in a draft, dimmed in an existing Chat. */
   const turnedOff = useTurnedOffPlugins();
-  const entries = (appBound ? catalog.entries.filter((entry) => entry.id === value) : orderedProviders(settings, catalog))
+  const candidates = (appBound ? catalog.entries.filter((entry) => entry.id === value) : orderedProviders(settings, catalog))
     .filter(entry => !isAgentBackendId(entry.id) || !turnedOff.has(entry.id));
-  const order = entries.map((entry) => entry.id).filter(isAgentBackendId);
-  const prefetchQuota = useUsageLimitsPrefetch(Boolean(onOpenUsage), order);
-  useUsageLimitsDemand(open && Boolean(onOpenUsage), "selector", order);
+  const entries = candidates.filter(entry => installedPickerProvider(entry, backends.find(backend => backend.id === entry.id)));
+  const discovering = candidates.some(entry => entry.source === "builtin" &&
+    [undefined, "unknown"].includes(backends.find(backend => backend.id === entry.id)?.runtimeStatus));
+  const quotaOrder = entries.map(entry => entry.id).filter(isAgentBackendId)
+    .filter(id => pickerQuotaEligible(backends.find(backend => backend.id === id)) && !(id === value && customProvider));
+  const prefetchQuota = useUsageLimitsPrefetch(quotaOrder.length > 0, quotaOrder);
+  useUsageLimitsDemand(open && quotaOrder.length > 0, "selector", quotaOrder);
   const hint = useQuotaMenuHint(open, menu, (backend) => {
     const agent = quota.snapshot.agents.find((entry) => entry.backend === backend) ?? emptyAgentLimits(backend);
+    const info = backends.find(entry => entry.id === backend);
+    const state = backend === value && currentState ? currentState : projectAvailability(info, now).state;
+    if (!entries.some(entry => entry.id === backend) || !projectPickerPresentation(info, state, agent).showQuota) {
+      return { scope: "", windows: [], notes: [] };
+    }
     return quotaDetail(agent, quota.now, t, backend === value && customProvider, true);
   }, (backend) => {
     if (!onOpenUsage) return;
@@ -119,7 +127,8 @@ export function ChatAgentSelector({ value, draft = false, revertTo, backends, lo
 
   const selected = backends.find((entry) => entry.id === value);
   const projection = projectAvailability(selected, now);
-  const state = currentState ?? projection.state;
+  const selectedLimits = quota.snapshot.agents.find(entry => entry.backend === value);
+  const state = projectPickerPresentation(selected, currentState ?? projection.state, selectedLimits).state;
   const tone = TONE[state];
   const text = t(AVAILABILITY_STATE_KEYS[state]);
   const valueName = agentName(value);
@@ -132,14 +141,17 @@ export function ChatAgentSelector({ value, draft = false, revertTo, backends, lo
     const backend = backends.find((info) => info.id === id);
     const base = projectAvailability(backend, now);
     const derived = providerState(entry, backend, now, Boolean(agent) || draft || id === value);
-    const rowState: AvailabilityState = derived === "unavailable" ? derived : id === value && currentState ? currentState : base.state;
+    const limits = quota.snapshot.agents.find(entry => entry.backend === id);
+    const presentation = projectPickerPresentation(backend, derived === "unavailable" ? derived : id === value && currentState ? currentState : base.state, limits);
+    const rowState = presentation.state;
     const reverting = id === revertTo && !appBound;
     const recovery = reverting || !agent ? undefined : recoveryFor(rowState, appBound);
     const current = id === value;
-    const canSelect = derived !== "unavailable" && !pinned && !locked && !disabled && !saving && (reverting || base.policy.decision === "allow");
+    const canSelect = derived !== "unavailable" && !pinned && !locked && !disabled && !saving &&
+      (reverting || base.policy.decision === "allow" && !["sign-in", "recent-sign-in"].includes(rowState));
     const handled = recovery === "manage" ? Boolean(onManage) : recovery === "login" ? Boolean(onRepair) : recovery === "retry" ? Boolean(onRecheck) : false;
     return {
-      id, agent, entry, rowState, current, canSelect,
+      id, agent, entry, rowState, current, canSelect, limits, presentation,
       tone: TONE[rowState],
       recovery: handled ? recovery : undefined,
       /* 灰掉只意味着一件事：切不过去。当前 Agent 无论坏成什么样都不灰——它是「你在哪」。 */
@@ -149,8 +161,9 @@ export function ChatAgentSelector({ value, draft = false, revertTo, backends, lo
   });
 
   const displayRows: AgentPickerRow[] = rows.map(row => {
-    const name = providerName(row.entry), stateText = t(AVAILABILITY_STATE_KEYS[row.rowState]);
-    const label = [name, row.tone === "quiet" && row.rowState !== "custom-route" ? null : stateText, row.verb].filter(Boolean).join(" · ");
+    const name = providerName(row.entry), stateText = t(row.presentation.update === "required" ? "agentAvailability.updateForUsage" : AVAILABILITY_STATE_KEYS[row.rowState]);
+    const updateText = row.presentation.update === "available" ? t("agentAvailability.updateAvailable") : undefined;
+    const label = [name, row.tone === "quiet" && row.rowState !== "custom-route" ? null : stateText, updateText, row.verb].filter(Boolean).join(" · ");
     const inert = !row.current && !row.canSelect && !row.recovery;
     if (!row.agent) {
       /* A package Provider has no quota and no recovery verbs this period; an unavailable one says why. */
@@ -160,13 +173,14 @@ export function ChatAgentSelector({ value, draft = false, revertTo, backends, lo
         select: event => { if (row.canSelect && !row.current) { void onChange(row.id); return; } event.preventDefault(); } };
     }
     const agent = row.agent;
-    const limits = quota.snapshot.agents.find(entry => entry.backend === agent) ?? emptyAgentLimits(agent);
+    const limits = row.limits ?? emptyAgentLimits(agent);
     const isCustom = row.id === value && customProvider;
-    const line = row.rowState === "custom-route" ? stateText : row.tone === "quiet" ? <QuotaSummaryText agent={limits} now={quota.now} customProvider={isCustom} />
+    const line = row.rowState === "custom-route" ? stateText : row.presentation.showQuota ? <div className="flex flex-wrap items-center gap-x-1"><div className="text-muted-foreground"><QuotaSummaryText agent={limits} now={quota.now} customProvider={isCustom} /></div>{updateText && <span className="text-amber-700 dark:text-amber-400">{`· ${updateText}`}</span>}</div>
       : row.rowState === "usage-limit" && row.current && usageResetsAt !== undefined
         ? `${stateText} · ${t("settings.usage.limits.resets", { date: quotaResetClock(usageResetsAt, quota.now) })}` : stateText;
     return { id: row.id, name, current: row.current, choosable: row.canSelect || row.current, inert, dim: row.dim, tone: row.tone, verb: row.verb, label,
-      description: quotaDescription(limits, quota.now, t, isCustom), line, peek: hint.peek === row.id, handlers: hint.handlers(agent),
+      description: [row.presentation.showQuota ? quotaDescription(limits, quota.now, t, isCustom) : stateText, updateText].filter(Boolean).join("\n"), line,
+      peek: hint.peek === row.id, handlers: row.presentation.showQuota ? hint.handlers(agent) : undefined,
       select: event => { if (row.canSelect && !row.current) { void onChange(agent); return; } event.preventDefault(); if (row.recovery) handleRecovery(agent, row.recovery, row.rowState); },
     };
   });
@@ -174,8 +188,11 @@ export function ChatAgentSelector({ value, draft = false, revertTo, backends, lo
      checking state until the result arrives through the Setup events. */
   return <AgentPicker value={value} open={open} onOpenChange={next => { hint.dismiss(); setOpen(next); if (next) void refreshSetupIfNeeded("full").catch(() => undefined); }} triggerRef={trigger} menuRef={menu} label={label}
     busy={projection.refreshing || saving} tone={tone} prefetch={prefetchQuota} rows={displayRows} descriptionId={descriptionId}
-    tooltip={<div className="flex flex-col gap-1 text-left"><p>{tone === "quiet" ? valueName : `${valueName} · ${text}`}</p>{locked && reason && <p className="text-background/70">{reason}</p>}</div>}
-    heading={locked && <><DropdownMenuLabel className="whitespace-normal font-normal">{reason ?? t("agentAvailability.locked")}</DropdownMenuLabel><DropdownMenuSeparator /></>}
+    heading={<>{locked && <><DropdownMenuLabel className="whitespace-normal font-normal">{reason ?? t("agentAvailability.locked")}</DropdownMenuLabel><DropdownMenuSeparator /></>}
+      {displayRows.length === 0 && discovering && <DropdownMenuLabel>{t("agentAvailability.state.checking")}</DropdownMenuLabel>}
+      {displayRows.length === 0 && !discovering && <DropdownMenuItem disabled={!isAgentBackendId(value) || !onManage} onSelect={() => { if (isAgentBackendId(value)) handleRecovery(value, "manage", "missing"); }} className="flex-col items-start gap-1">
+        <span>{t("agentAvailability.noInstalledProviders")}</span>{onManage && <span className="text-xs text-muted-foreground">{t("agentAvailability.manage")}</span>}
+      </DropdownMenuItem>}</>}
     footer={onOpenUsage && hint.card} announcement={`${valueName} · ${text}`} onEscapeKeyDown={hint.onEscape}
     onCloseAutoFocus={event => { if (openingSettings.current) { event.preventDefault(); openingSettings.current = false; } }} />;
 }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node child_process/crypto and the DescendantRegistry
- * [OUTPUT]: Provides HostProcessPort (spawn — plain descendant or custody mode through the guardian — write/kill/cleanHost for processes a utility host needs; cleanHost also waits for and settles children still launching, B-02, and touches only the host life it ends, B2-03; spawn reports a custody child's launch identity and settleCustody answers its one shared settlement, B2-01) and hostChildEnvironment
+ * [OUTPUT]: Provides HostProcessPort (spawn — plain descendant or custody mode through the guardian — write/kill/cleanHost for processes a utility host needs; cleanHost also waits for and settles children still launching, B-02, and touches only the host life it ends, B2-03; spawn reports a custody child's launch identity and settleCustody answers its one shared settlement, B2-01, logging an unconfirmed outcome once with its journal reason) and hostChildEnvironment
  * [POS]: The only way a utility host gets a child process: main starts it detached (its own group), records PGID + birth durably before acknowledging, and relays stdio as messages; the bridge never holds a process handle
  */
 import type { AgentTurnCustodyDependency } from "../../../../shared/apps/model/app-lifecycle";
@@ -100,7 +100,12 @@ export class HostProcessPort {
   private settle(processId: string) {
     let settling = this.settlements.get(processId);
     if (!settling) {
-      settling = this.custody.settle(processId);
+      settling = this.custody.settle(processId).then(entry => {
+        if (!entry || !["released", "aborted"].includes(entry.phase)) {
+          console.warn("[host] custody cleanup unconfirmed", { processId, phase: entry?.phase ?? "missing", reason: entry?.reason ?? "unknown" });
+        }
+        return entry;
+      });
       this.settlements.set(processId, settling);
       if (this.settlements.size > 256) this.settlements.delete(this.settlements.keys().next().value!);
     }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on component-catalog.mjs, apps/desktop/runtime-dependencies.json (package slice membership and appGui set), the installed production dependency graph and lockfile, package/license bytes, explicit compiler/import-policy/snapshot/query/preferences/workspace/export/Workbench source slices, signed components, Starters, legacy GUI SDK bytes, and external release/platform public keys
- * [OUTPUT]: Generates and checks the component catalog before fixed Sketch resources and exact-source toolchain metadata, including legacy GUI SDK custody, compact slice file facts and shared transport, Windows policy, and Linux trust/locator/installer/payload identities
+ * [OUTPUT]: Generates and checks component catalog, Sketch resources and exact-source toolchain metadata, including native esbuild resolution, legacy GUI SDK custody, compact source facts, transport and platform sandbox identities
  * [POS]: apps/desktop/scripts/generation; App GUI release metadata authority; receipts consume generated digests instead of hand-maintained placeholders; `--check` runs first in the desktop `typecheck`, so a drifting source change fails there
  */
 
@@ -66,6 +66,7 @@ const gateFiles = {
     "electron/main/apps/gui-build/native/linux/profile.ts",
     "electron/main/apps/gui-build/native/linux/launch.ts",
     "electron/main/apps/gui-build/native/probe-control.ts",
+    "electron/main/apps/gui-build/native/esbuild.ts",
     "electron/main/apps/gui-build/composition.ts",
     "resources/app-gui-toolchain/native/linux-x64/trust-manifest.json",
     "resources/app-gui-toolchain/native/linux-x64/bwrap",

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Agent custody journals, App ownership probes, the Memory-facing Chat store, native-only Chat history segments, Memory owners, Project recovery, Settings, the lifecycle RecoveryReport, and the platform capability matrix
+ * [INPUT]: Depends on Agent custody journals, App ownership probes, the Memory-facing Chat store, native-only Chat history segments, persisted plugin/service reconciliation through Memory owners, Project recovery, Settings, the lifecycle RecoveryReport, and the platform capability matrix
  * [OUTPUT]: Provides openStartupAdmission (turns admitted at once, held at the dispatch gate; Memory's startup deferred), recoverChatCreations (the one assembly index.ts calls: Chat Home creations and adopted continuations decided per record on the journals as they are then, a Chat still being created counting as live, R01), startup recovery for a previous life's agent-turn custody (the one-time convergence kept for upgrades: released or aborted entries let their request's App references go, quarantined ones keep them), custodyDependencyPorts (the App service's answers for dependencies, shared with host custody, ruling (a)) and paged Memory history plus lifecycle reconciliation reporting Agent custody's guardian runs on the bundled Node (bundledGuardian, TASK-35).
  * [POS]: The startup recovery composition boundary; index.ts retains lifecycle order while this module owns recovery-specific wiring
  */
@@ -142,7 +142,9 @@ export async function initializeMemoryRuntime({
     settings.get().memory
   );
   if (platformSupport.capabilities.memory) {
-    await settingsOwner.retryApply();
+    if (settings.get().memory.enabled || settings.get().memory.applyStatus) {
+      await settingsOwner.reapply(settings.get().memory.provider);
+    }
     await service.prepareRebuildRecovery();
     await recoverOrDefer(async () => { await projects.recoverMemoryRebinds(); });
   }

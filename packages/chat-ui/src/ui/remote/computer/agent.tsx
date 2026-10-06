@@ -30,5 +30,5 @@ export function RemoteAgentSelector({ target, value, copy, disabled, onSelect, l
   });
   return <div className="chat-remote-selector" data-remote-agent-selector><AgentPicker value={(value || "codex") as RemoteTarget["agents"][number]["backend"]}
     open={open} onOpenChange={setOpen} label={`${copy.agent}: ${label}`} disabled={disabled || !options.length} tone={selected && !selected.available ? "attention" : "quiet"}
-    tooltip={<p>{label}</p>} rows={rows} descriptionId={descriptionId} announcement={options.length ? label : undefined} /></div>;
+    rows={rows} descriptionId={descriptionId} announcement={options.length ? label : undefined} /></div>;
 }

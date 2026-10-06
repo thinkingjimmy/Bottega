@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the workbench build flag, workbench-copy, the plugins bridge and the plugin list hook with its text resolver.
  * [OUTPUT]: Provides useWorkbenchSettingsLabels — the sidebar labels for Agent configs and the Plugins group (its "All plugins" entry and
- *           one entry per turned-on plugin that has settings, plus Memory setup/recovery; each opens that plugin's settings page), or null when the flag is off.
+ *           one entry per turned-on plugin that has settings; each opens that plugin's settings page), or null when the flag is off.
  * [POS]: Keeps workbench-copy out of the sidebar's first-load chunk: with the flag off the hook is a constant null and the
  *        catalog import is dropped at build time (OPT-30).
  */
@@ -15,7 +15,7 @@ export type WorkbenchSettingsLabels = {
   agentConfigs: string;
   pluginGroup: string;
   plugins: string;
-  /** Settings entries, including Memory while off so setup and recovery remain reachable. */
+  /** Settings entries for enabled plugins with settings; introductions remain in the catalog. */
   pluginItems: ReadonlyArray<{ id: string; label: string; icon: string | null }>;
 };
 

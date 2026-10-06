@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the UI locale and confirmed remote command, target and preparation facts.
- * [OUTPUT]: Provides canonical Agent names and five-language remote composer copy, including ruling 12's Stop waiting, its warning and the local queue lines, a guidance message that will send after the running turn, a guidance message refused because its turn had ended (with its send-as-new action and the refusal when its files are not all on this device), references too large for one message, pending Project confirmation, plan (entitlement/quota) refusals, owning-computer binding guidance, the reconnect-and-resend line and its failure, the offline line per last-seen reason with its moment, and the read-only card's titles, sentences and actions (sentenceGap joins its sentences per language; lang formats moments).
+ * [OUTPUT]: Provides canonical Agent names and five-language remote composer copy, including ruling 12's Stop waiting, its warning and the local queue lines, a guidance message that will send after the running turn, a guidance message refused because its turn had ended (with its send-as-new action and the refusal when its files are not all on this device), references too large for one message, pending Project confirmation, plan (entitlement/quota) refusals, owning-computer binding guidance, the reconnect-and-resend line and its failure, the offline line per last-seen reason with its moment, and the read-only card's titles, sentences and actions, including the sync-disconnected cover (disconnectedTitle, disconnectedDescription; sentenceGap joins its sentences per language; lang formats moments).
  * [POS]: packages/chat-ui/src/i18n/messages; Shared remote interaction vocabulary; a chat names the computer that owns it, and unknown execution is never described as stopped.
  */
 import { interactionCopy } from "../copy";
@@ -13,6 +13,7 @@ const en = {
   projectPending: "Waiting for the execution computer to confirm the project folder.", projectUnbound: "Open Bottega on the selected execution computer and bind the project folder.", bindProject: "Bind project folder",
   preparing: "Preparing the computer…", preparationFailed: "The computer could not finish preparation. Your chat and draft are kept.", retryPreparation: "Retry preparation",
   disabled: "Remote control is not available in this environment yet.", appReadonly: "App conversations can only be controlled on their own computer.", archived: "Restore this chat before sending.", disconnected: "Connect to sync before sending.",
+  disconnectedTitle: "Sync isn’t connected", disconnectedDescription: "Sign in and finish sync on the computer. Then you can control it from the web or the phone.",
   draft: "Message", placeholder: "Write a message…", send: "Send", stop: "Stop", steer: "Send guidance",
   pending: "Waiting for computer", "awaiting-preparation": "Sent", delivered: "Sent", claimed: "Received by computer", accepted: "Queued on computer", running: "Running", done: "Completed", steerTransferred: "Will send after this turn ends", cancelled: "Cancelled", error: "Execution failed", expired: "Expired before acceptance", rejected: "Rejected",
   awaitingReport: "Waiting for {name} to report back", stopWaiting: "Stop waiting", stopWaitingWarning: "The original command may already have run on {name}.", stoppedWaiting: "Stopped waiting. {name} hasn’t reported back yet.", queuedLocal: "Sends after {name} reports back", localQueuePaused: "Sending paused: {reason}", answerWaits: "Available after {name} reports back",
@@ -40,6 +41,7 @@ const copies: Record<string, RemoteCopy> = {
     projectPending: "正在等待执行电脑确认项目文件夹。", projectUnbound: "请在所选执行电脑的 Bottega 中绑定项目文件夹。", bindProject: "绑定项目路径",
     preparing: "正在准备电脑…", preparationFailed: "电脑准备失败，对话和草稿已保留。", retryPreparation: "重试准备",
     disabled: "远程控制尚未在此环境开放", appReadonly: "App 专用会话只能在所属电脑上操作。", archived: "请先恢复此对话后发送。", disconnected: "请连接同步后发送。",
+    disconnectedTitle: "尚未连接同步", disconnectedDescription: "在电脑上登录并完成同步后，就可以用网页或手机远程控制这台电脑。",
     draft: "消息", placeholder: "输入消息…", send: "发送", stop: "停止", steer: "发送引导",
     pending: "等待电脑接收", "awaiting-preparation": "已发送", delivered: "已发送", claimed: "电脑已接收", accepted: "已在电脑排队", running: "运行中", done: "已完成", steerTransferred: "将在本轮结束后发送", cancelled: "已取消", error: "执行失败", expired: "接纳前已过期", rejected: "已拒绝",
     awaitingReport: "等待{name}回报", stopWaiting: "不再等待", stopWaitingWarning: "原命令可能已经在{name}上执行了。", stoppedWaiting: "已不再等待，{name}尚未回报。", queuedLocal: "等{name}回报后发送", localQueuePaused: "已暂停发送：{reason}", answerWaits: "{name}回报后可用",
@@ -64,6 +66,7 @@ const copies: Record<string, RemoteCopy> = {
     projectPending: "実行用パソコンによるプロジェクトフォルダの確認を待っています。", projectUnbound: "選択した実行用パソコンの Bottega でプロジェクトフォルダを設定してください。", bindProject: "プロジェクトのフォルダを設定",
     preparing: "パソコンを準備中…", preparationFailed: "準備できませんでした。会話と下書きは保持されています。", retryPreparation: "準備を再試行",
     disabled: "リモート操作は有効になっていません。", appReadonly: "App 専用の会話は元のパソコンで操作してください。", archived: "送信するには会話を復元してください。", disconnected: "同期に接続してから送信してください。",
+    disconnectedTitle: "同期に接続していません", disconnectedDescription: "パソコンでログインして同期を完了すると、ウェブまたはスマホからこのパソコンをリモート操作できます。",
     draft: "メッセージ", placeholder: "メッセージを入力…", send: "送信", stop: "停止", steer: "指示を送信",
     "awaiting-preparation": "送信済み", delivered: "送信済み", pending: "パソコンの受信待ち", claimed: "パソコンが受信済み", accepted: "パソコンで待機中", running: "実行中", done: "完了", steerTransferred: "このターンの終了後に送信します", cancelled: "キャンセル済み", error: "実行に失敗", expired: "受付前に期限切れ", rejected: "拒否されました",
     awaitingReport: "{name}からの報告を待っています", stopWaiting: "待つのをやめる", stopWaitingWarning: "元のコマンドは{name}ですでに実行されている可能性があります。", stoppedWaiting: "待機をやめました。{name}からの報告はまだありません。", queuedLocal: "{name}からの報告後に送信", localQueuePaused: "送信を一時停止しました：{reason}", answerWaits: "{name}からの報告後に使えます",
@@ -88,6 +91,7 @@ const copies: Record<string, RemoteCopy> = {
     projectPending: "En attente de confirmation du dossier du projet par l’ordinateur d’exécution.", projectUnbound: "Ouvrez Bottega sur l’ordinateur d’exécution sélectionné et associez le dossier du projet.", bindProject: "Associer le dossier du projet",
     preparing: "Préparation de l’ordinateur…", preparationFailed: "La préparation a échoué. Conversation et brouillon conservés.", retryPreparation: "Réessayer la préparation",
     disabled: "Le contrôle à distance n’est pas activé.", appReadonly: "Les conversations App se contrôlent sur leur propre ordinateur.", archived: "Restaurez la conversation avant d’envoyer.", disconnected: "Connectez la synchronisation avant d’envoyer.",
+    disconnectedTitle: "La synchronisation n’est pas connectée", disconnectedDescription: "Connectez-vous et terminez la synchronisation sur l’ordinateur. Vous pourrez ensuite le contrôler depuis le web ou le téléphone.",
     draft: "Message", placeholder: "Écrire un message…", send: "Envoyer", stop: "Arrêter", steer: "Envoyer une instruction",
     "awaiting-preparation": "Envoyé", delivered: "Envoyé", pending: "En attente de l’ordinateur", claimed: "Reçu par l’ordinateur", accepted: "En attente d’exécution", running: "En cours", done: "Terminé", steerTransferred: "Sera envoyé à la fin de ce tour", cancelled: "Annulé", error: "Échec de l’exécution", expired: "Expiré avant acceptation", rejected: "Refusé",
     awaitingReport: "En attente du retour de {name}", stopWaiting: "Ne plus attendre", stopWaitingWarning: "La commande d’origine a peut-être déjà été exécutée sur {name}.", stoppedWaiting: "Attente arrêtée. {name} n’a pas encore répondu.", queuedLocal: "Envoyé après le retour de {name}", localQueuePaused: "Envoi suspendu : {reason}", answerWaits: "Disponible après le retour de {name}",
@@ -112,6 +116,7 @@ const copies: Record<string, RemoteCopy> = {
     projectPending: "Esperando a que el ordenador de ejecución confirme la carpeta del proyecto.", projectUnbound: "Abre Bottega en el ordenador de ejecución seleccionado y vincula la carpeta del proyecto.", bindProject: "Vincular carpeta del proyecto",
     preparing: "Preparando el ordenador…", preparationFailed: "La preparación falló. La conversación y el borrador se conservan.", retryPreparation: "Reintentar preparación",
     disabled: "El control remoto no está activado.", appReadonly: "Las conversaciones de App se controlan en su propio ordenador.", archived: "Restaura la conversación antes de enviar.", disconnected: "Conecta la sincronización antes de enviar.",
+    disconnectedTitle: "La sincronización no está conectada", disconnectedDescription: "Inicia sesión y completa la sincronización en el ordenador. Después podrás controlarlo desde la web o el teléfono.",
     draft: "Mensaje", placeholder: "Escribe un mensaje…", send: "Enviar", stop: "Detener", steer: "Enviar indicaciones",
     "awaiting-preparation": "Enviado", delivered: "Enviado", pending: "Esperando al ordenador", claimed: "Recibido por el ordenador", accepted: "En cola en el ordenador", running: "En ejecución", done: "Completado", steerTransferred: "Se enviará cuando termine este turno", cancelled: "Cancelado", error: "La ejecución falló", expired: "Caducó antes de aceptarse", rejected: "Rechazado",
     awaitingReport: "Esperando la respuesta de {name}", stopWaiting: "Dejar de esperar", stopWaitingWarning: "Es posible que el comando original ya se haya ejecutado en {name}.", stoppedWaiting: "Se dejó de esperar. {name} aún no ha respondido.", queuedLocal: "Se enviará cuando {name} responda", localQueuePaused: "Envío en pausa: {reason}", answerWaits: "Disponible cuando {name} responda",

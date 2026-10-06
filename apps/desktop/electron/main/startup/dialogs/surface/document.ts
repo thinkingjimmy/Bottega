@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Escaped presentation models, a window-specific action token and nonce, and bundled styles.
- * [OUTPUT]: Offline dialog HTML and model markup; candidate paths are text, never executable content.
+ * [OUTPUT]: Offline dialog HTML and model markup with explicit keyboard/pointer focus modality; candidate paths remain plain text.
  * [POS]: Sandboxed presentation leaf; the minimal preload carries only allowlisted intents to its owning main window.
  */
 import type { DesktopDialogButton, DesktopDialogModel } from "./types";
@@ -36,6 +36,8 @@ export function dialogDocument(input: { locale: string; name: string; nonce: str
       const send = (action, selection) => {
         window.desktopDialog.send({ token:${JSON.stringify(input.token)}, revision:Number(document.querySelector('main').dataset.revision), action, selection });
       };
+      // A new native window has no input history, so Chromium treats its default focus as keyboard focus.
+      document.addEventListener('pointerdown', () => { delete document.body.dataset.keyboardNavigation; });
       document.addEventListener('click', event => {
         const button = event.target.closest('button[data-action]');
         if (!button || button.disabled) return;
@@ -47,6 +49,7 @@ export function dialogDocument(input: { locale: string; name: string; nonce: str
         send('select', event.target.value);
       });
       document.addEventListener('keydown', event => {
+        if (!event.altKey && !event.ctrlKey && !event.metaKey) document.body.dataset.keyboardNavigation = 'true';
         if (event.key !== 'Escape') return;
         const retry = document.querySelector('.retry');
         if (retry && getComputedStyle(retry.querySelector('.tooltip')).display !== 'none') { retry.classList.add('dismissed'); return; }

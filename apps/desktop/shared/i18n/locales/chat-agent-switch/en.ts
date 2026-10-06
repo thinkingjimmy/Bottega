@@ -10,7 +10,7 @@ export const chatAgentSwitchEn = {
   "recovering": "Message saved. Recovering…",
   "stale": "This Chat changed. Choose the target Agent again.",
   "adjacent": "Send a new message or select the previous Agent first.",
-  "defaultsFailed": "Chat options saved; updating global defaults failed.",
+  "defaultsFailed": "Your selection was kept, but could not be remembered for new chats.",
   "divider": "Replies from here are by {{backend}}",
   "running": "Reply must finish before switching.",
   "queue": "Handle queued messages before switching.",

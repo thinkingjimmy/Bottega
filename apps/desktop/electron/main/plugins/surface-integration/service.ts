@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on plugin identity/compiler/runtime, the Surface gateway, authored recovery, package registry and record service.
- * [OUTPUT]: Provides PluginSurfaceIntegration for authored and record package catalogs, bounded admission, shared file delivery and lifecycle invalidation.
+ * [OUTPUT]: Provides PluginSurfaceIntegration for authored and record package catalogs, retryable official initialization, bounded admission, shared file delivery and lifecycle invalidation.
  * [POS]: Startup composition for the shared Sketch and package UI Surface transport.
  */
 import { readFile } from 'node:fs/promises';
@@ -28,6 +28,7 @@ import {pluginCatalog,admitPluginCatalog} from './catalog';
 import type {BrowserWindow} from 'electron';
 import { RecordPluginService } from '../records/service';
 import { registerRecordPlugins } from '../records/ipc';
+import { PluginInitializer } from './initialization';
 
 const grantsSchema=z.record(z.string(),z.array(z.string()).max(32));
 export class PluginSurfaceIntegration {
@@ -43,9 +44,9 @@ export class PluginSurfaceIntegration {
   private readonly stop=new AbortController();
   private releaseCatalog:(()=>void)|null=null;
   private releaseChanges:(()=>void)|null=null;
-  private seed:Promise<void>|null=null;
-  private seedError='PLUGIN_PREPARING';
   private readonly listeners=new Set<()=>void>();
+  private readonly seed=new PluginInitializer(()=>this.seedSketch(),()=>{for(const listener of this.listeners)listener();});
+  private get seedError(){return this.seed.error??'PLUGIN_PREPARING';}
   readonly registrar={register:(window:BrowserWindow,url:string)=>{registerPluginSurfaces(this,this.ports.apps,window,url);if(this.records)registerRecordPlugins(this.records,url);}};
   readonly cloudSource={list:()=>this.catalog().map(value=>({id:value.id})),intent:(id:string)=>id.startsWith('host:')&&this.records?this.records.intent(id):this.runtime.intent(id),catalog:()=>this.catalog(),onChanged:(fn:()=>void)=>this.onChanged(fn)};
   constructor(private readonly ports:{userData:string;apps:AppsService;chats:ChatStore;projects:ProjectsService;accountId():string;deviceId:string;
@@ -83,7 +84,13 @@ export class PluginSurfaceIntegration {
     }
   }
   onChanged(listener:()=>void){this.listeners.add(listener);const off=this.runtime.onChanged(listener);return()=>{this.listeners.delete(listener);off();};}
-  startSeed(){this.seed=this.seedSketch().catch(cause=>{this.seedError=cause instanceof Error?cause.message:String(cause);}).finally(()=>{for(const listener of this.listeners)listener();});}
+  startSeed(){void this.retryInitialization('sketch').catch(()=>undefined);}
+  async retryInitialization(id:string){
+    if(id!=='sketch')throw new Error('plugin-not-found');
+    this.stop.signal.throwIfAborted();
+    if(this.runtime.descriptor(id))return;
+    await this.seed.start();
+  }
   async seedSketch(){
     if(this.runtime.descriptor('sketch'))return;
     const {ensureOfficialSketchSource}=await import('../sketch/source');
@@ -96,11 +103,14 @@ export class PluginSurfaceIntegration {
     if(incarnation?incarnation!==owner.incarnationId:owner.incarnationId!==''||!owner.chatId.startsWith('c'))throw new Error('PLUGIN_DRAFT_EXPIRED');
   }
   list():readonly PluginComposerEntry[]{return this.catalog().filter(item=>!item.records).map(item=>({id:item.id,name:item.composer.title,icon:item.composer.icon,enabled:item.enabled,
-    ...(item.error?{reason:item.error}:{}),activeGenerationId:item.generationId,sourceFormat:item.sourceFormat,operations:this.active(item.id)?.manifest.operations??[]}));}
+    ...(item.error?{reason:item.error}:{}),...(item.id==='sketch'&&!this.runtime.descriptor(item.id)?{initialization:this.seed.state==='failed'?'failed' as const:'preparing' as const}:{}),
+    activeGenerationId:item.generationId,sourceFormat:item.sourceFormat,operations:this.active(item.id)?.manifest.operations??[]}));}
   private active(id:string){const record=this.runtime.descriptor(id);return record?.generations.find(generation=>generation.generationId===record.activeGenerationId);}
   catalog():RemotePluginCatalog{return [...pluginCatalog(this.runtime.list(),this.seedError),...this.records?.catalog()??[]];}
   private admit(manifest:z.infer<typeof pluginGuiManifestSchema>){admitPluginCatalog(this.catalog(),manifest);}
-  history(id:string):GuiHistory{const record=this.runtime.descriptor(id);if(!record)throw new Error('plugin-not-found');
+  history(id:string):GuiHistory{const record=this.runtime.descriptor(id);
+    if(!record&&id==='sketch')return {activeGenerationId:null,error:this.seed.error,generations:[]};
+    if(!record)throw new Error('plugin-not-found');
     return {activeGenerationId:record.activeGenerationId,error:record.error,generations:this.runtime.history(id).map(generation=>({generationId:generation.generationId,
       createdAt:generation.createdAt,available:generation.available,version:generation.manifest.version,active:generation.generationId===record.activeGenerationId,
       previous:generation.generationId===record.previousGenerationId}))};}
@@ -126,7 +136,7 @@ export class PluginSurfaceIntegration {
     icon:item.composer.icon,provides:[],requires:[],turnOn:{mode:'direct'},turnOff:{allowed:true},settings:[],
     capabilities:(this.active(item.id)?.manifest.operations??[]).map(operation=>({label:{text:operation},id:operation}))},
     enabled:()=>this.runtime.descriptor(item.id)?.enabled===true,setEnabled:async enabled=>{await this.runtime.setEnabled(item.id,enabled);},
-    unsupported:()=>this.runtime.descriptor(item.id)?null:{text:this.seedError},
+    unsupported:()=>this.runtime.descriptor(item.id)?null:{key:this.seed.state==='failed'?'guiHistory.initializationFailed':'guiHistory.initializing'},
     health:async()=>{const error=this.runtime.descriptor(item.id)?.error??item.error;return {level:error?'error':'ok',summary:error?{text:error}:{key:'plugins.health.ready'},facts:[],checkedAt:Date.now()};}}));}
   authoring():PluginAuthoringRuntime{return {
     findByChat:chatId=>this.runtime.findByChat(chatId),
@@ -140,5 +150,5 @@ export class PluginSurfaceIntegration {
     history:async id=>this.history(id),
     activate:input=>this.runtime.activate(input.pluginId,input.generationId,{expectedActiveGenerationId:input.expectedActiveGenerationId,signal:input.signal}),
   };}
-  async close(){this.remote.close();this.stop.abort();for(const release of this.releaseRecords)release();await this.seed;this.releaseChanges?.();this.releaseCatalog?.();await this.runtime.dispose();}
+  async close(){this.remote.close();this.stop.abort();for(const release of this.releaseRecords)release();await this.seed.wait();this.releaseChanges?.();this.releaseCatalog?.();await this.runtime.dispose();}
 }

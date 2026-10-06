@@ -33,7 +33,7 @@ export function PluginControl({ plugin, workbench, switching, onSetup }: { plugi
   }
   if (!plugin.enabled && plugin.turnOn.mode === "setup") {
     return <SettingsButton variant="outline" disabled={plugin.availability.state === "unsupported"} onClick={() => onSetup(plugin)}>
-      {plugin.turnOn.setup === "memory-consent" ? copy.setupMemory : copy.setupDock}</SettingsButton>;
+      {copy.setupDock}</SettingsButton>;
   }
   if (switching.state.notes[plugin.id] === "reinstall") return null;
   const pending = switching.state.pending?.id === plugin.id ? switching.state.pending : null;

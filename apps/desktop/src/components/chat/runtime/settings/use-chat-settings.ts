@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on canonical Chat options, per-Chat Agent drafts, workspace-scoped model catalogs, Setup invalidation events, the narrow defaults command, the shared Provider warm-up hint, and the startup-marks sink
- * [OUTPUT]: Provides revision-fenced options (the Chat's own, a package Provider's included, plus `builtinTurnOptions`, the built-in view the permission/model/effort controls read; null for a package Provider, which lists no models this period) and pending Agent controls, parallel catalog/default reads, scope-fenced catalog refreshes that stand down for a Project with no folder on this computer, one-shot quiet reconciliation of a persisted model the loaded catalog no longer offers, read-only/archived save copy for bare machine codes, and the models-ready milestone
+ * [INPUT]: Canonical Chat/Agent drafts, shared preference policy, scoped model catalogs, Settings IPC, window role, warm-up and Setup invalidation events.
+ * [OUTPUT]: Revision-fenced Chat options, complete draft preference learning, captured accepted-use callbacks, live first-model defaults and conditional quiet repair.
  * [POS]: apps/desktop/src/components/chat/runtime/settings; Composer settings owner; canonical commit and default learning are separate operations
  */
 
@@ -22,6 +22,8 @@ import { useEffectiveLocale } from "@/lib/appearance/i18n-locale";
 import { markStartup } from "@/lib/platform/startup-marks";
 import { onSetupEvent } from "@/lib/settings/setup/setup-client";
 import { hintProviderWarmup } from "@/lib/agent/provider-warmup";
+import { windowContext } from "@/lib/platform/window-surfaces-client";
+import { catalogChatOptions, createChatPreferenceIntents, isFactoryChatOptions } from "../../../../../shared/chat-agent/preferences";
 import { translate } from "../../../../../shared/i18n/runtime";
 import { usePendingAgent } from "../agent-switch/use-pending-agent";
 
@@ -37,6 +39,7 @@ function saveFailureCopy(locale: AppLocale, cause: unknown, canonical: ChatRunti
 
 /* The draft's own object when it is a built-in's (never a re-parsed copy): the controls edit exactly what the draft holds. */
 const isBuiltinTurnOptions = (options: ChatTurnOptions): options is AgentTurnOptions => builtinAgent(options.backend) !== null;
+const preferenceIntents = createChatPreferenceIntents();
 
 export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWorkspaceScope | null,
   backends: BackendInfo[], retryBackends: () => Promise<void>, draftBackend?: AgentBackendId, workspaceScopeKey = "",
@@ -72,22 +75,39 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
   const [modelsError, setModelsError] = useState<AgentSurfaceFailure | null>(null);
   const modelGeneration = useRef(0);
   const reconciledModel = useRef("");
+  const explicitModelChoice = useRef(new Set<string>());
   const activeChat = useRef(chatId);
   const activeModelKey = useRef(modelKey);
   const modelScopeRef = useRef(modelScope);
   useLayoutEffect(() => { activeChat.current = chatId; activeModelKey.current = modelKey; modelScopeRef.current = modelScope; }, [chatId, modelKey, modelScope]);
+  const rememberOptions = useCallback(async (options: ChatTurnOptions, intent: number | null, quiet = false, expectedModel?: string, agentOnly = false) => {
+    if (intent === null && expectedModel === undefined) return;
+    if (windowContext().role !== "main" || intent !== null && !preferenceIntents.isLatestForBackend(options.backend, intent)) return;
+    try {
+      await rememberChatDefaults(options, { preferForNewChat: intent !== null && preferenceIntents.isLatest(intent),
+        agentOnly,
+        ...(expectedModel !== undefined ? { expectedModel } : {}) });
+    } catch {
+      if (!quiet && activeChat.current === chatId) setSettingsError(translate(locale, "chat.agentSwitch.defaultsFailed"));
+    }
+  }, [chatId, locale]);
   /* `quiet` 属于对账这类没人按过按钮的写入：回滚照做，但不许冒出一条用户
      没发起过的报错。用户自己的保存永远走 quiet=false。 */
   const writeTurnOptions = useCallback(async (next: AgentTurnOptions, reset: boolean, quiet: boolean) => {
     const captured = readAgentDraft(chatId);
     if (captured.adoption || captured.pending?.submitting) throw new Error("AGENT_SWITCH_SUBMITTING");
     if (captured.options.backend !== next.backend) throw new Error("AGENT_SELECTION_REQUIRED");
+    const intent = quiet ? null : preferenceIntents.begin(next.backend);
+    if (!quiet) explicitModelChoice.current.add(`${chatId}:${next.backend}`);
     updateAgentDraft(chatId, current => ({ ...current, options: next }));
     if (!quiet) {
       setSettingsError("");
       hintProviderWarmup(next.backend);
     }
-    if (captured.pending || !captured.canonical) return;
+    if (captured.pending || !captured.canonical) {
+      await rememberOptions(next, intent, quiet, quiet ? captured.options.model : undefined);
+      return;
+    }
     const canonical = captured.canonical;
     setSettingsSaving(true);
     try {
@@ -97,9 +117,7 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
       const saved = await patchChatOptions({ chatId, expectedAgent: canonical.agent,
         expectedAgentRevision: canonical.agentRevision, expectedChatRecordRevision: canonical.chatRecordRevision, patch }, reset);
       receiveCanonicalAgent(chatId, { ...canonical, ...saved });
-      void rememberChatDefaults(next).catch(() => {
-        if (!quiet && activeChat.current === chatId) setSettingsError(translate(locale, "chat.agentSwitch.defaultsFailed"));
-      });
+      await rememberOptions(next, intent, quiet, quiet ? captured.options.model : undefined);
     } catch (cause) {
       updateAgentDraft(chatId, current => current.generation === captured.generation ? { ...current, options: captured.options } : current);
       if (quiet) console.debug("[chat:options] quiet write rejected", failureCode(cause) || errorMessage(cause));
@@ -108,7 +126,7 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
     } finally {
       if (activeChat.current === chatId) setSettingsSaving(false);
     }
-  }, [chatId, locale]);
+  }, [chatId, locale, rememberOptions]);
   const updateTurnOptions = useCallback((next: AgentTurnOptions, reset = false) =>
     writeTurnOptions(next, reset, false), [writeTurnOptions]);
   /* ── 目录里没有的模型必须当场换掉 ───────────────────────────────
@@ -124,11 +142,13 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
     if (modelOptions === "none" || catalog.length === 0) return;
     const draft = readAgentDraft(chatId);
     const options = builtinOptions(draft.options);
-    if (!options) return;
+    if (!options || draft.loading || !draft.initialized) return;
     const slug = "model" in options ? options.model : undefined;
-    if (!slug || options.backend !== backend) return;
-    if (catalog.some(entry => entry.slug === slug)) return;
+    if (options.backend !== backend) return;
     const canonical = draft.canonical;
+    const remembered = settingsStore.getSnapshot().settings?.defaultChatOptionsByBackend[options.backend]?.model;
+    const initial = !canonical && !remembered && isFactoryChatOptions(options) && !explicitModelChoice.current.has(`${chatId}:${backend}`);
+    if (!initial && (!slug || catalog.some(entry => entry.slug === slug))) return;
     if (draft.pending || draft.adoption) return;
     /* 判据比 switchLocked 更严，两者并不同义：switchLocked 放行
        external-readonly，因为导入的 Chat 允许走显式切换流程；而这里是替它
@@ -140,7 +160,7 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
     const target = catalog.find(entry => entry.isDefault) ?? catalog[0]!;
     /* 目录可以不给某个模型报 Effort，而 Codex 的选项契约要求它——换出来的
        形状自己过一遍契约，换不出合法选项就宁可不动。 */
-    const next = turnOptionsSchema.safeParse(optionsForListModel(options, target));
+    const next = turnOptionsSchema.safeParse(initial ? catalogChatOptions(options, target) : optionsForListModel(options, target));
     if (!next.success) return;
     /* 一份目录对一个坏 slug 只替一次：替成功后判据自然不再成立，替失败
        （CAS 撞车、只读拒绝）也不许变成每次刷新都重放的循环。 */
@@ -164,8 +184,8 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
     /* A package Provider's model list is not served this period (settings:listModels answers unknown-provider): an empty list,
        never an error, and its options carry no model. */
     const listed = builtinAgent(backend);
-    if (!listed) return Promise.resolve();
-    if (!workspace || folderless) return Promise.resolve();
+    if (!listed) return Promise.resolve([] as BackendModelInfo[]);
+    if (!workspace || folderless) return Promise.resolve([] as BackendModelInfo[]);
     const request = ++modelGeneration.current;
     const current = () => request === modelGeneration.current && activeModelKey.current === modelKey;
     return listModels(listed, workspace).then(result => {
@@ -175,12 +195,24 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
          markStartup keeps only that first report. */
       markStartup("models-ready");
       reconcileRef.current(result);
+      return result;
     }).catch(cause => {
       if (!current()) return;
       setModelsOwner(modelKey); setModels([]); setModelsError(rendererAgentSurfaceFailure("service-unavailable", backendLabel(listed), cause, listed));
+      return [] as BackendModelInfo[];
     }).finally(() => { if (current()) setModelsLoading(false); });
   }, [backend, folderless, modelKey]);
   const retryModels = useCallback(() => { setModelsLoading(true); return loadModels(); }, [loadModels]);
+  const ensureInitialModel = useCallback(async () => {
+    const draft = readAgentDraft(chatId);
+    if (draft.canonical || draft.pending || !builtinOptions(draft.options) || modelOptions === "none" || folderless || !modelScopeRef.current) return;
+    const catalog = modelsOwner === modelKey && !modelsLoading && models.length ? models : await loadModels();
+    if (!catalog?.length) throw new Error(translate(locale, "chat.composer.modelSelector.noModels"));
+    reconcileRef.current(catalog);
+  }, [chatId, folderless, loadModels, locale, modelKey, modelOptions, models, modelsLoading, modelsOwner]);
+  useEffect(() => {
+    if (!state.loading && modelsOwner === modelKey && !modelsLoading) reconcileRef.current(models);
+  }, [state.loading, modelsOwner, modelKey, modelsLoading, models]);
   useEffect(() => {
     if (!state.initialized) return;
     void loadModels();
@@ -190,14 +222,32 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
     return () => { modelGeneration.current += 1; unwatch(); };
   }, [backend, loadModels, state.initialized]);
   const selectBackend = useCallback(async (backend: ChatAgentId) => {
-    try { setSettingsError(""); await pendingSelect(backend); }
+    const intent = preferenceIntents.begin(backend);
+    try {
+      setSettingsError("");
+      await pendingSelect(backend);
+      const draft = readAgentDraft(chatId);
+      if (activeChat.current === chatId && draft.options.backend === backend && !draft.loading) {
+        await rememberOptions(draft.options, intent, false, undefined, true);
+      }
+    }
     catch (cause) {
       const reason = errorMessage(cause);
       const code = reason.startsWith("AGENT_SWITCH_BLOCKED:") ? reason.slice("AGENT_SWITCH_BLOCKED:".length) : null;
       setSettingsError(code ? translate(locale, `chat.agentSwitch.${code}`) : translate(locale, "chat.agentSwitch.selectionFailed", { message: reason }));
       throw cause;
     }
-  }, [pendingSelect, locale]);
+  }, [chatId, pendingSelect, locale, rememberOptions]);
+  const capturePreferenceUse = useCallback((options: ChatTurnOptions) => {
+    const draft = readAgentDraft(chatId).options;
+    const current = builtinOptions(draft), used = builtinOptions(options);
+    if (activeChat.current !== chatId || draft.backend !== options.backend || draft.model !== options.model
+      || current?.reasoningEffort !== used?.reasoningEffort
+      || (current && "serviceTier" in current ? current.serviceTier : undefined) !== (used && "serviceTier" in used ? used.serviceTier : undefined)) return;
+    const choice = structuredClone(draft), intent = preferenceIntents.begin(draft.backend);
+    return () => { void rememberOptions(choice, intent, true); };
+  }, [chatId, rememberOptions]);
+  const rememberUsedOptions = useCallback((options: ChatTurnOptions) => capturePreferenceUse(options)?.(), [capturePreferenceUse]);
   const lockBackend = useCallback(async (_backend: string) => {
     const record = await pendingRefresh();
     return record?.options ?? readAgentDraft(chatId).options;
@@ -219,7 +269,7 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
     /* Why the catalog is empty, said once where the person is looking for models. The row's own
        "Choose folder…" is where they act; this only answers the question the empty menu raises. */
     modelsEmpty: folderless ? translate(locale, "projects.unbound.turnRefused") : null, retryBackends, retryModels, initFailure,
-    selectBackend, lockBackend, updateTurnOptions,
+    selectBackend, lockBackend, updateTurnOptions, rememberUsedOptions, capturePreferenceUse, ensureInitialModel,
   }), [turnOptions, builtinTurnOptions, state, pendingUndo, pendingError, locale, folderless, modelKey, modelsOwner, backends, settingsSaving, settingsError, models,
-    modelsLoading, modelsError, retryBackends, retryModels, initFailure, selectBackend, lockBackend, updateTurnOptions]);
+    modelsLoading, modelsError, retryBackends, retryModels, initFailure, selectBackend, lockBackend, updateTurnOptions, rememberUsedOptions, capturePreferenceUse, ensureInitialModel]);
 }

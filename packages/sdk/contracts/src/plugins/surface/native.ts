@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Opaque source envelopes and declared plugin Surface operations.
- * [OUTPUT]: Native plugin Surface descriptors, window-bound lease validation, generation history and trusted product-window bridge contracts.
+ * [OUTPUT]: Native plugin Surface descriptors, initialization states/retry, window-bound lease validation, generation history and trusted product-window bridge contracts.
  * [POS]: Trusted renderer-to-main boundary; plugin frames receive only their session RPC capability.
  */
 import type { PluginSource } from './source';
@@ -9,7 +9,7 @@ export type PluginSourceFormat = Readonly<{ id:string; version:number; readableV
 export type PluginDraftOwner = Readonly<{ chatId:string; incarnationId:string }>;
 export type PluginRecoveryScope = PluginDraftOwner & Readonly<{ pluginId:string; ownerDeviceId?:string; attachmentId?:string }>;
 export type PluginComposerEntry = Readonly<{ id:string; name:string; icon:string; enabled:boolean; reason?:string;
-  activeGenerationId:string|null; sourceFormat:PluginSourceFormat; operations:readonly PluginSurfaceOperation[] }>;
+  initialization?:'preparing'|'failed'; activeGenerationId:string|null; sourceFormat:PluginSourceFormat; operations:readonly PluginSurfaceOperation[] }>;
 export type PluginSurfaceDescriptor = Readonly<{ id:string; pluginId:string; generationId:string; url:string; origin:string;
   expiresAt:number; readyNonce:string; sourceFormat:PluginSourceFormat; operations:readonly PluginSurfaceOperation[]; sandbox:'allow-scripts' }>;
 export type GuiGeneration = Readonly<{ generationId:string; createdAt:number; active:boolean; previous:boolean; available:boolean; version:string }>;
@@ -22,6 +22,7 @@ export interface PluginSurfacesBridge {
   release(id:string):Promise<void>;
   onChanged(listener:()=>void):()=>void;
   history(pluginId:string):Promise<GuiHistory>;
+  retryInitialization(pluginId:string):Promise<void>;
   activate(pluginId:string,generationId:string,expectedActiveGenerationId:string):Promise<void>;
   newPlugin(draftChatId:string):Promise<{chatId:string;projectId:string}>;
   edit(pluginId:string,draftChatId:string|null):Promise<{chatId:string;projectId?:string}|null>;
@@ -29,7 +30,7 @@ export interface PluginSurfacesBridge {
   recovery:{read(scope:PluginRecoveryScope):Promise<PluginSource|null>;write(scope:PluginRecoveryScope,source:PluginSource):Promise<void>;remove(scope:PluginRecoveryScope):Promise<void>};
 }
 export const PLUGIN_SURFACES_CHANNEL = Object.freeze({list:'plugin-surfaces:list',openRemote:'plugin-surfaces:open-remote',open:'plugin-surfaces:open',validate:'plugin-surfaces:validate',release:'plugin-surfaces:release',
- changed:'plugin-surfaces:changed',history:'plugin-surfaces:history',activate:'plugin-surfaces:activate',newPlugin:'plugin-surfaces:new',edit:'plugin-surfaces:edit',installLocal:'plugin-surfaces:install-local',
+ changed:'plugin-surfaces:changed',history:'plugin-surfaces:history',retryInitialization:'plugin-surfaces:retry-initialization',activate:'plugin-surfaces:activate',newPlugin:'plugin-surfaces:new',edit:'plugin-surfaces:edit',installLocal:'plugin-surfaces:install-local',
  recoveryRead:'plugin-surfaces:recovery-read',recoveryWrite:'plugin-surfaces:recovery-write',recoveryRemove:'plugin-surfaces:recovery-remove'} as const);
 export type GuiOwner=Readonly<{kind:'app'|'plugin';id:string}>;
 export interface GuiGenerationsBridge { history(owner:GuiOwner):Promise<GuiHistory>;activate(owner:GuiOwner,generationId:string,expected:string):Promise<void> }

@@ -142,9 +142,6 @@ export function useProjectSection({
             key={project.id}
             project={project}
             chats={chatsOf(project.id)}
-            historyState={history.snapshot.projects.find(
-              (state) => state.projectId === project.id,
-            )}
           />
         ))}
         {/* A pinned Project its owner has retired keeps its place at the end of the group: inert, named, and

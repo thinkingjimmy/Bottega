@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs list, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -128,6 +128,7 @@ export const cloudCopy = {
     "pendingDescription": "设置同步密码后，这台电脑才会开始同步。",
     "resume": "继续",
     "signedInAs": "当前登录账号：{{email}}",
+    "signedInAccount": "当前登录账号",
     "checkCode": "允许登录前，请确认它与浏览器中显示的验证码一致。",
     "enterPassword": "输入同步密码",
     "enterPasswordDescription": "这台电脑将加入你在其他设备上创建的加密空间。Bottega 无法找回该密码。",
@@ -141,9 +142,8 @@ export const cloudCopy = {
   },
   "whatSyncs": {
     "title": "同步内容",
-    "description": "使用只有你知道的同步密码进行端到端加密。",
-    "after": "登录后同步",
-    "afterPassword": "设置同步密码后",
+    "lead": "登录后才会同步。每一项都用只有你知道的同步密码端到端加密。",
+    "leadPassword": "设置同步密码后才会同步。每一项都用只有你知道的同步密码端到端加密。",
     "chats": "Chat 与 Project",
     "chatsDescription": "对话、对话中的文件以及你的 Project",
     "data": "Base 与 App",
@@ -284,7 +284,7 @@ export const cloudCopy = {
   "revokeDescription": "此设备将无法访问你的云端账号。已下载的内容仍保留在设备上。",
   "localDescription": "你可以免费使用本地功能。登录后，只有明确确认首次同步，才会上传内容。",
   "notSignedIn": "未登录",
-  "signedOutDescription": "Bottega 在这台电脑上可免费完整使用。登录后，你的工作可以在多台设备间保持同步。确认首次同步之前，不会上传任何内容。",
+  "signedOutDescription": "登录后，可以用网页或手机远程控制这台电脑。确认首次同步之前，不会上传任何内容。",
   "tryNow": "立即重试",
   "tryAgain": "重试",
   "sync": "同步",

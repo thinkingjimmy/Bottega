@@ -4,6 +4,19 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-10-06 — v0.2.1
+
+[Download 0.2.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.1) for macOS on Apple silicon, or [open Bottega Web](https://app.getbottega.app).
+
+- **A shorter first launch.** Choose your content folder and an Agent, then start. Skills and Memory can be configured later. Agent detection checks other valid CLI installations when an earlier PATH entry is broken, and finds the CLI bundled with the Codex desktop app on macOS.
+- **History imports on your terms.** Import Project history from Settings when you need it. Only installed Agents take part. Adding a Project can offer the initial import; reopening it does not scan or import again.
+- **Agent choices that stay with you.** Remember Agent preferences and use clearer composer menus. Project settings keep a consistent page layout and smoother tab changes.
+- **Memory controls that agree.** Plugin visibility and Memory service authorization have separate controls. Changes retain the saved backend choice and data and reconcile the required consent.
+- **More reliable sketches.** Recover from native compiler and initialization failures and retry without losing the confirmed sketch.
+- **Clearer sync and login.** Read the sync-password consequence once, check the requesting computer, account and code before approving desktop login, and see how to reconnect when a remote composer has no sync connection.
+
+This patch keeps **protocol 14**, existing cloud content and sync passwords. Upgrade from 0.2.0 by quitting Bottega and replacing the app manually. The packages use ad-hoc signatures and have no Apple notarization. This prerelease is excluded from GitHub Latest. Idle CPU remains under review; detailed device walkthroughs and formal signing remain pending. See the [installation and upgrade guide](../getting-started/README.md#upgrading-to-021).
+
 ## 2026-10-04 — v0.2.0
 
 **macOS Apple silicon + Web.** [Download 0.2.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.0) or open [Bottega Web](https://app.getbottega.app). This version is a prerelease with manual updates. The macOS installers use ad-hoc signatures and are not notarized while Apple Developer enrollment is pending. Windows, Linux, and Android distribution are scheduled separately.

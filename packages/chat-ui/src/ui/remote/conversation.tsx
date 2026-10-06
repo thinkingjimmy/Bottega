@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the six Chat facades, confirmed heads and project readiness, shared preparation rejection proof, the account-level computer subscription, remote target/receipt hooks, the owning computer's published model catalog and transcript controls.
- * [OUTPUT]: Provides early intent submission and remote messaging (ruling 12: while a command waits for its computer, new messages are held and drained in order, answers to its turn stay locked with a named data-composer-lock, and Stop waiting unlocks locally) and the one automatic resend of a command refused for a changed connection once its computer is online again (TASK-20 D10), where every state lives on its control — icon Agent chip, model choice, a Send button that is the required action (prepare, retry preparation, bind) and greys in place with the owning computer's sentence when that computer goes down, a byte budget on the Send row, outcome toasts, and the read-only card in place of the composer for archived, remote-off and imported-not-yet-continued chats and for native chats whose owning computer has left the account; a guidance message refused because its turn had ended can go out once as a new message with the same uploaded files; plus immutable unknown attempts (checkpoint-recovered ones are adopted and looked up by their original commandId, never resent as new messages), a page or viewport-filling layout mode and one footer slot beneath the conversation.; gives the transcript its owner computer (stable per owner) so a failed Agent turn is said on the message
+ * [OUTPUT]: Provides early intent submission and remote messaging (ruling 12: while a command waits for its computer, new messages are held and drained in order, answers to its turn stay locked with a named data-composer-lock, and Stop waiting unlocks locally) and the one automatic resend of a command refused for a changed connection once its computer is online again (TASK-20 D10), where every state lives on its control — icon Agent chip, model choice, a Send button that is the required action (prepare, retry preparation, bind) and greys in place with the owning computer's sentence when that computer goes down, a byte budget on the Send row, outcome toasts, and the read-only card in place of the composer for archived, remote-off, sync-disconnected and imported-not-yet-continued chats and for native chats whose owning computer has left the account; a guidance message refused because its turn had ended can go out once as a new message with the same uploaded files; plus immutable unknown attempts (checkpoint-recovered ones are adopted and looked up by their original commandId, never resent as new messages), a page or viewport-filling layout mode and one footer slot beneath the conversation.; gives the transcript its owner computer (stable per owner) so a failed Agent turn is said on the message
  * [POS]: Shared Web and desktop mirror composition; optional host layout places sibling panels under one draft callback owner, and native drafts keep their original storage owner.
  */
 import { ChatConversation, type ConversationRegions } from "../page/conversation";
@@ -10,7 +10,7 @@ import { ComposerDock, ComposerForm, ComposerToolbar, ComposerActions } from "..
 import { PromptInputSubmit, PromptInputTools } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { AgentBackendIcon } from "@ai-chat/ui/components/identity/agent";
-import { Archive, RefreshCw } from "lucide-react";
+import { Archive, Cloud, RefreshCw } from "lucide-react";
 import { utf8Length } from "@ai-chat/cloud-protocol/chats/content/parts";
 import { artifactFollowUpBlock } from "@ai-chat/cloud-protocol/artifacts/frame-security";
 import { REMOTE_LIMITS, isRemoteTurnPayload } from "@ai-chat/cloud-protocol/remote/model";
@@ -394,7 +394,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
   const interactionControls = { recoveryEnabled: platform.capabilities.recovery, entries: commands.entries, copy, locale, backendName: agent, computer: owner?.name ?? null, submit, draftChanged, disabled: !authorized || !usable };
   /* The computer that owns this chat has no chip to sit on any more. When it cannot take the next message — a failed
      preparation, or Project facts still pending or unbound — the composer says so above the editor, with any recovery it has. */
-  const computerNotice = gate ? null : blockedReason ?? (block ? [block.reason, ...(block.hint ? [block.hint] : [])].join(copy.sentenceGap) : null);
+  const computerNotice = gate || blockedReason ? null : (block ? [block.reason, ...(block.hint ? [block.hint] : [])].join(copy.sentenceGap) : null);
   const composerNotice = outcome
     ? <div className="chat-remote-hint" role="alert" data-computer-notice><p>{outcome.message}</p>
         <Button type="button" variant="outline" disabled={preparing} onClick={() => { if (outcome.retry === "preparation") void retryPreparation(); else refresh(); }}>
@@ -439,6 +439,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
         : gate ? <RemoteUnavailable icon={cardIcon(importedReadonly ? <AgentBackendIcon backend={head.chat.agent} className={preparing ? "size-3.5" : "mt-0.5 size-5 shrink-0 text-muted-foreground"} />
             : <PlatformGlyph kind={target?.platform ?? "none"} className={preparing ? "size-3.5" : "mt-0.5 size-5 shrink-0 text-muted-foreground"} />)} title={copy.readOnly} description={gate.description}
           actions={cardActions} />
+        : blockedReason ? <RemoteUnavailable icon={<Cloud aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disconnectedTitle} description={copy.disconnectedDescription} />
         : <ComposerForm className="chat-remote-form" data-composer-lock={uncertain ? "awaiting-delivery" : reportWaiting ? "answer-waits" : undefined} onSubmit={event => { event.preventDefault(); act(); }} {...controls.events}>
         {controls.files}
         {referenceMismatch && <p role="alert" className="chat-remote-hint">{input.referenceChanged}</p>}

@@ -62,7 +62,7 @@ export function PluginGrid({ plugins, workbench, locale, state, onOpen, onToggle
     ? GROUPS.map(([group, title]) => ({ key: group, title: copy[title], items: visible.filter(plugin => groupOf(plugin) === group) })).filter(section => section.items.length)
     : [{ key: "all", title: null, items: visible }];
   const card = (plugin: PluginView) => (
-    <PluginCard key={plugin.id} plugin={plugin} workbench={workbench} locale={locale} state={state} onOpen={onOpen} onToggle={onToggle} onSetup={onSetup} />
+    <PluginCard key={plugin.id} plugin={plugin} workbench={workbench} state={state} onOpen={onOpen} onToggle={onToggle} onSetup={onSetup} />
   );
   return (
     <div className="flex flex-col gap-4">

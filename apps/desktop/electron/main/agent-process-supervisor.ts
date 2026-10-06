@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the Provider id (a built-in or an available package Provider), ChildProcess, process-group and the task start fence (woken when the last safety lock of a backend is released)
  * [OUTPUT]: Provides atomic quota exclusion (with its blockers named for the main log, startup recovery among them, and a deferred read woken whenever starts become possible again) that neither a queued background refresh nor a credential-safe probe can starve, credential reservations, chat-priority cancellation, parked quota channels that block nothing but are closed before a turn is admitted, quota-preserving background admission and per-backend admission with a 4-slot semaphore (2 reserved for interactive), bounded FIFO background queueing, safety-lock hold/release, birth-recorded auxiliary-process tracking whose shutdown never signals a reused PID, and coordinated shutdown A Provider turned off in Plugins & Apps is refused at admission (`plugin-disabled`).
- * `agentShutdownProcesses` reports birth-qualified outstanding process identities for quit feedback.
+ * `agentShutdownProcesses` reports birth-qualified outstanding process identities for quit feedback; shutdown waits for quota/channel settlement before judging cleanup locks.
  * [POS]: The sole owner of Agent child-process admission in Electron main; callers acquire a lease before spawning and report a CleanupResult after teardown
  */
 
@@ -381,7 +381,9 @@ export async function shutdownAgentBackendProcesses(
   clean: (pid: number) => Promise<CleanupResult> = cleanProcessGroup
 ) {
   const state = domain(backend);
+  const quotaSettlements = [state.quota?.settled, state.channel?.settled];
   stopAgentProcessAdmission(backend);
+  await Promise.allSettled(quotaSettlements);
   const entries = [...state.auxiliary.entries()];
   const cleanup = await Promise.allSettled(
     entries.map(async ([token, { child, birthIdentity }]) => {

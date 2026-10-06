@@ -36,7 +36,7 @@ export function UnlockEncryptionButton({ state, disabled }: { state: SyncEncrypt
     <Dialog open={open} onOpenChange={value => { if (!value) cancel(); }}><DialogContent>
       <DialogHeader><DialogTitle>{copy.title}</DialogTitle><DialogDescription>{copy.description}</DialogDescription></DialogHeader>
       <form ref={form} onSubmit={submit} className="space-y-5">
-        <EncryptionFields creating={false} disabled={busy} errors={validation.errors} onEdit={validation.editField} />
+        <EncryptionFields mode="unlock" disabled={busy} errors={validation.errors} onEdit={validation.editField} />
         <DialogFooter><Button type="button" variant="outline" onClick={cancel}>{copy.cancel}</Button>
           <Button type="submit" disabled={busy || !state.canUnlock}>{busy ? copy.unlocking : copy.unlock}</Button></DialogFooter>
       </form>

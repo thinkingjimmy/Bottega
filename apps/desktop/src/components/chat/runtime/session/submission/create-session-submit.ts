@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Chat/Project/Setup ports, the native CommandSink, coordinator outcome clients, frozen submission payloads and view/abort fences.
- * [OUTPUT]: Provides workspace-fenced manual submission (file grants renewed per send, F-33; failures in five-language copy, F-46 ①) and native-only tail revision with canonical Agent checks, availability and explicit authentication retry, keeping ambiguous switches in their original composer.
+ * [OUTPUT]: Workspace-fenced manual submission and revision, captured accepted-use preferences that survive navigation, preserved ambiguous drafts and existing admission/custody gates.
  * [POS]: apps/desktop/src/components/chat/runtime/session/submission; The limit of the submission of chat/runtime/session transactions; The main custody is not cancelled due to view switching, and the delayed return can only be written back to the still matched renderer generation
  */
 import { lastCanonicalSeq } from "@/lib/native-transcript/window";
@@ -88,7 +88,7 @@ type SettingsPort = Pick<
   | "settingsLoading"
   | "settingsSaving"
   | "turnOptions"
->;
+> & Partial<Pick<ReturnType<typeof useChatSettings>, "rememberUsedOptions" | "capturePreferenceUse" | "ensureInitialModel">>;
 
 export type SessionSubmitInput = {
   snapshot: {
@@ -648,6 +648,7 @@ export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
     const signal = options.signal ?? new AbortController().signal;
     let envelope: ManualTurnSubmission;
     try {
+      if (input.services.settings.ensureInitialModel) await awaitSubmissionStep(signal, input.services.settings.ensureInitialModel);
       envelope = await ports.assembleSubmission(message, options);
     } catch (cause) {
       throwIfSubmissionAborted(signal);
@@ -677,6 +678,7 @@ export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
         await input.services.settings.lockBackend(record.agent);
       }
     };
+    const rememberUse = input.services.settings.capturePreferenceUse?.(envelope.turn.turnOptions);
     const result = await awaitSubmissionStep(signal, () =>
       ports.admitSubmission(envelope)
     );
@@ -734,6 +736,8 @@ export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
       await flushAcks();
       throw reportedFailure(new Error(reason));
     }
+    if (rememberUse) rememberUse();
+    else if (input.lifecycle.isCurrent()) input.services.settings.rememberUsedOptions?.(envelope.turn.turnOptions);
     if (receipt.phase === "settled" || receipt.phase === "failed") {
       await flushAcks();
       return;

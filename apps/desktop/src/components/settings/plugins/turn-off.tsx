@@ -5,7 +5,7 @@
  *           by code through Electron's IPC wrapper (busy waits until the catalog changes, changed files keep it off) — and its dialog.
  * [POS]: Shared by the plugins page and the detail page, so both switch exactly alike (T-P3: every switch confirms with its impact).
  */
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { formatWorkbench, pluralWorkbench, type WorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
@@ -29,6 +29,7 @@ export function usePluginSwitch({ bridge, workbench, locale, computerName, plugi
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [notes, setNotes] = useState<CardState["notes"]>({});
   const [failed, setFailed] = useState<string | null>(null);
+  const changing = useRef(false);
   // A catalog change is the end of whatever kept a plugin busy: its switch opens again (nothing retries on its own).
   const [previous, setPrevious] = useState(plugins);
   if (previous !== plugins) {
@@ -37,7 +38,8 @@ export function usePluginSwitch({ bridge, workbench, locale, computerName, plugi
   }
   const nameOf = (plugin: PluginView) => pluginText(plugin.name, workbench);
   const change = async (plugin: PluginView, enabled: boolean) => {
-    if (pending) return;
+    if (changing.current || !bridge) return;
+    changing.current = true;
     setPending({ id: plugin.id, enabled }); setFailed(null);
     try { await bridge?.setEnabled(plugin.id, enabled); setConfirm(null); }
     catch (error) {
@@ -46,7 +48,7 @@ export function usePluginSwitch({ bridge, workbench, locale, computerName, plugi
       if (code === "plugin-busy" || code === "plugin-reinstall-required") setNotes(current => ({ ...current, [plugin.id]: code === "plugin-busy" ? "busy" : "reinstall" }));
       else setFailed(formatWorkbench(copy.switchFailed, { name: nameOf(plugin) }));
     }
-    finally { setPending(null); }
+    finally { changing.current = false; setPending(null); }
   };
   const toggle = async (plugin: PluginView, enabled: boolean) => {
     if (enabled) return change(plugin, true);

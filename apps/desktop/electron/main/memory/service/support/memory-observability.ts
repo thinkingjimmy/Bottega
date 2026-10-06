@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Policy/Delivery/RecallStats, MemoryAuthority/Network, the active backend descriptor, turn receipts and Chat headings
- * [OUTPUT]: Provides currentMemoryStatus/currentMemorySupply projections, performMemoryRecall (deadline-raced recall execution), prepareMemoryContribution (leases a prompt contribution), and recordSettledRecall — all pure functions over injected state
+ * [OUTPUT]: Provides currentMemoryStatus/currentMemorySupply projections retaining inventory during plugin suspension, performMemoryRecall (deadline-raced recall execution), prepareMemoryContribution (leases a prompt contribution), and recordSettledRecall — all pure functions over injected state
  * [POS]: The coordinated boundaries of the main/memory/service/support observation; MemoryService only has owner and lifecycle, no statistics/recall algorithms
  */
 
@@ -67,7 +67,7 @@ export function currentMemoryStatus(input: {
      供给明细则返回 disabled（账本真相源没起来，宁可不答）。 */
   const consent = policy.initialized
     ? input.policy.activeConsent(policy) ?? (
-        input.memory?.enabled && input.memory.paused
+        input.memory?.enabled && (!input.memory.pluginEnabled || input.memory.paused)
           ? input.policy.latestLiveConsent(policy)
           : null
       )

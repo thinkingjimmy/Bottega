@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Common main-owned App/plugin history, current active CAS identity and five-language workbench copy.
- * [OUTPUT]: GuiHistoryList and PluginHistoryList show available generations and explicit activation/pending failures.
+ * [OUTPUT]: GuiHistoryList and PluginHistoryList show available generations, initialization/retry and explicit activation/pending failures.
  * [POS]: Shared version list consumed by App settings and plugin details.
  */
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {useWorkbenchCopy} from '@ai-chat/ui/lib/workbench-copy';
-import type {GuiGenerationsBridge,GuiHistory,GuiOwner} from '@bottega/contracts/plugins/surface/native';
+import type {GuiGenerationsBridge,GuiHistory,GuiOwner,PluginComposerEntry} from '@bottega/contracts/plugins/surface/native';
 import "@/lib/apps/plugins-client";
 type HistoryProps = {owner:GuiOwner;locale:string;bridge?:GuiGenerationsBridge};
 export function GuiHistoryList(props:HistoryProps){
@@ -13,12 +13,12 @@ export function GuiHistoryList(props:HistoryProps){
 }
 function GuiHistoryEntries({owner,locale,bridge=window.guiGenerations}:HistoryProps){
   const workbench=useWorkbenchCopy(locale),copy=workbench.guiHistory,[history,setHistory]=useState<GuiHistory|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[revision,refresh]=useState(0);
-  const scope=`${owner.kind}:${owner.id}`,live=useRef(true),lock=useRef(false);
+  const {kind,id}=owner,live=useRef(true),lock=useRef(false);
   useLayoutEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
   useEffect(()=>{let active=true;if(!bridge)return;
-    void bridge.history(owner).then(value=>{if(active){setHistory(value);setError('');}},cause=>{if(active)setError(cause instanceof Error?cause.message:copy.loadFailed);});
+    void bridge.history({kind,id}).then(value=>{if(active){setHistory(value);setError('');}},cause=>{if(active)setError(cause instanceof Error?cause.message:copy.loadFailed);});
     return()=>{active=false;};
-  },[bridge,scope,revision,copy.loadFailed]);
+  },[bridge,kind,id,revision,copy.loadFailed]);
   if(!bridge)return null;
   const activate=async(generationId:string)=>{
     if(lock.current||!history?.activeGenerationId)return;const expected=history.activeGenerationId;lock.current=true;setBusy(true);setError('');
@@ -38,9 +38,40 @@ function GuiHistoryEntries({owner,locale,bridge=window.guiGenerations}:HistoryPr
     {history?.pendingGenerationId&&<p className="text-muted-foreground text-xs">{copy.pending}</p>}
   </section>;
 }
-export function PluginHistoryList({id,locale,onEdit}:{id:string;locale:string;onEdit?():void}){
-  const [availability,setAvailable]=useState({id,available:false});
+type PluginHistoryProps={id:string;locale:string;onEdit?():void};
+export function PluginHistoryList(props:PluginHistoryProps){
+  return <PluginHistory key={props.id} {...props}/>;
+}
+function PluginHistory({id,locale,onEdit}:PluginHistoryProps){
+  const [item,setItem]=useState<PluginComposerEntry|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const live=useRef(true),lock=useRef(false);
   const copy=useWorkbenchCopy(locale).guiHistory;
-  useEffect(()=>{let active=true;const update=()=>{void window.pluginSurfaces?.list().then(items=>{if(active)setAvailable({id,available:items.some(item=>item.id===id)});}).catch(()=>{if(active)setAvailable({id,available:false});});};update();const off=window.pluginSurfaces?.onChanged(update);return()=>{active=false;off?.();};},[id]);
-  return availability.id===id&&availability.available?<><GuiHistoryList owner={{kind:'plugin',id}} locale={locale}/>{onEdit&&<button type="button" className="self-start rounded-md border px-3 py-2 text-sm hover:bg-muted" onClick={onEdit}>{copy.edit}</button>}</>:null;
+  useLayoutEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
+  useEffect(()=>{
+    let active=true,revision=0;
+    const update=()=>{const request=++revision;
+      void window.pluginSurfaces?.list().then(items=>{if(active&&request===revision)setItem(items.find(entry=>entry.id===id)??null);})
+        .catch(()=>{if(active&&request===revision)setError(copy.loadFailed);});
+    };
+    update();const off=window.pluginSurfaces?.onChanged(update);
+    return()=>{active=false;off?.();};
+  },[id,copy.loadFailed]);
+  const retry=async()=>{
+    const bridge=window.pluginSurfaces;
+    if(lock.current||!bridge)return;
+    lock.current=true;setBusy(true);setError('');
+    try{await bridge.retryInitialization(id);}
+    catch(cause){if(live.current)setError(cause instanceof Error?cause.message:copy.initializationFailed);}
+    finally{if(live.current){lock.current=false;setBusy(false);}}
+  };
+  if(item?.initialization){
+    const preparing=busy||item.initialization==='preparing';
+    return <section className="flex flex-col gap-3" aria-label={copy.title} data-plugin-initialization="" aria-busy={preparing}>
+      <h2 className="font-semibold text-sm">{copy.title}</h2>
+      <p role="status" className="text-muted-foreground text-sm">{preparing?copy.initializing:copy.initializationFailed}</p>
+      {!preparing&&(item.reason||error)&&<details className="text-muted-foreground text-xs"><summary className="cursor-pointer">{copy.initializationDetails}</summary><p className="mt-2 whitespace-pre-wrap break-words">{item.reason||error}</p></details>}
+      <button type="button" disabled={preparing} className="self-start rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50" onClick={()=>void retry()}>{copy.retryInitialization}</button>
+    </section>;
+  }
+  return item?.activeGenerationId?<><GuiHistoryList owner={{kind:'plugin',id}} locale={locale}/>{onEdit&&<button type="button" className="self-start rounded-md border px-3 py-2 text-sm hover:bg-muted" onClick={onEdit}>{copy.edit}</button>}</>:null;
 }

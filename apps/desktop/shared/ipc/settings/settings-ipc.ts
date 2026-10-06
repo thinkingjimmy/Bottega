@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on the Provider id and IPC refusal types, the shared/agent-ipc backend, workspace scope, model and turn-by-turn combined type
+ * [INPUT]: Provider identities/refusals, validated Chat preferences, backend/workspace/model types and fixed-purpose Settings capabilities.
  * [OUTPUT]: Provides settings v11 with the recorded Agent Install later mark, local archive-confetti and Lab Agent-connections preferences, the single-backend title Agent, main-owned presence writes, revision envelopes, Memory/Chat Home APIs including the onboarding folder suggestion (LibrarySuggestion), the dialog-free folder retry, folder move and whole-profile erase, and model/session options
  * [POS]: apps/desktop/shared/ipc/settings; defaultBackend may be a package Provider while it is available (TASK-11 S3-d); providerOrder is the full stored Provider order and the patch takes any well-formed Provider id for the two choices; id-taking bridge calls may answer a ProviderIpcRefusal (TASK-11 S3-c). Single source of truth for shared multi-process settings; main, preload, and renderer exchange only what this contract defines
- * Local workflow Memory reads default off and are excluded from generic renderer patches.
+ * Memory plugin availability and workflow reads default off; service authorization remains independent and owner-controlled.
  */
 
 import type { ChatTurnOptions } from "../../chat-agent/options";
+import type { ChatPreferenceWrite } from "../../chat-agent/preferences";
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
 import type { ProviderIpcRefusal } from "../../providers/catalog-ipc";
 import type {
@@ -93,9 +94,13 @@ export type AppSettings = {
   titleAgent: ProviderId;
   titleModelByBackend: Partial<Record<ProviderId, string | null>>;
   defaultChatOptionsByBackend: DefaultChatOptionsByBackend;
-  /** New Chats start on this Agent; switching inside a Chat never moves it. A package Provider while it is available (TASK-11 S3-d),
+  /** Fallback when no last-used Chat Agent is remembered. A package Provider while it is available (TASK-11 S3-d),
       else the effective built-in; it never leaves this computer. */
   defaultBackend: ProviderId;
+  /** Local explicit/use preference; New Chat checks the live catalog before using it. */
+  lastChatBackend?: ProviderId | null;
+  /** Distinguishes learned options from the former copied factory presets. */
+  chatPreferenceVersion?: 1;
   /** The user's order of every Provider as stored (TASK-11 S3-c): a package or gone Provider keeps its place, and every runnable built-in is
       present. A picker reads the runnable ones; anything that leaves this computer narrows it to built-ins first. */
   providerOrder: ProviderId[];
@@ -125,6 +130,8 @@ export const MEMORY_SHARING_MODES = ["chat", "group", "personal"] as const;
 export type MemorySharingMode = (typeof MEMORY_SHARING_MODES)[number];
 
 export type MemorySettings = {
+  /** Plugin availability is independent of the retained service and consent preferences. */
+  pluginEnabled: boolean;
   /** 用户的长期启用意图；真正执行仍要求当前 instance 上存在有效 Consent。 */
   enabled: boolean;
   /** pause 是已启用域的可恢复撤销，不与「从未启用」混成一个布尔值。 */
@@ -255,9 +262,9 @@ export type SettingsBridgeApi = {
     backend: ProviderId,
     scope: AgentWorkspaceScope
   ) => Promise<BackendModelInfo[] | ProviderIpcRefusal>;
-  /** A built-in's defaults; with no id, the default Agent's, which may be a package Provider's only options (TASK-11 S3-d). */
+  /** Per-Agent options; no id uses the last-used Agent, falling back to the configured default. */
   getBackendDefaults: (backend?: AgentBackendId) => Promise<ChatTurnOptions | ProviderIpcRefusal>;
-  rememberChatDefaults: (options: AgentTurnOptions) => Promise<SettingsEnvelope | ProviderIpcRefusal>;
+  rememberChatDefaults: (options: ChatTurnOptions, preference?: ChatPreferenceWrite) => Promise<SettingsEnvelope | ProviderIpcRefusal>;
   patchChatOptions: (input: import("../../chat-agent/contracts").ChatOptionsPatch, resetSessionEffective?: boolean) => Promise<{
     agent: AgentBackendId; agentRevision: number; chatRecordRevision: number; options: AgentTurnOptions;
   } | ProviderIpcRefusal>;

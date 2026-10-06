@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on adapter identities/fingerprints and shared history source keys
- * [OUTPUT]: Provides deterministic file-state, ownership, revision, claim, and public-summary projections
+ * [OUTPUT]: Provides deterministic file-state, ownership, revision, claim, manual-import candidates, and public-summary projections
  * [POS]: Pure history-index policy shared by detection, publication, routing, and tests
  */
 
@@ -28,6 +28,20 @@ export function historiesChanged(previous: AdapterEntry[], next: AdapterEntry[])
   return before.size !== after.size || [...after].some(
     ([path, fingerprint]) => historyFileState(before.get(path), fingerprint) !== "unchanged"
   );
+}
+
+/** Only new or changed read-only histories can be imported; continued Chats own their content. */
+export function historyImportCandidates(scans: AdapterScan[], previous: AdapterEntry[], lifecycle: (entry: AdapterEntry) => "external-readonly" | "managed" | "missing") {
+  const before = new Map(previous.map((entry) => [entry.opaqueId, entry]));
+  return scans.map((scan) => ({
+    ...scan,
+    entries: scan.entries.filter((entry) => {
+      const state = lifecycle(entry);
+      if (state === "managed") return false;
+      const prior = before.get(entry.opaqueId);
+      return state === "missing" || !prior || prior.projectId !== entry.projectId || prior.historyRevision !== entry.historyRevision;
+    }),
+  }));
 }
 
 export function deepestOwner(cwd: string, projects: Array<{ id: string; dir: string }>) {

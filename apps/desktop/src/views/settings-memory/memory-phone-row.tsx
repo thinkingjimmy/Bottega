@@ -22,7 +22,8 @@ export function MemoryPhoneSection({ checked }: { checked: boolean }) {
   const [workflowFailed, setWorkflowFailed] = useState(false);
   const bridge = pluginsBridge(), workflowChecked = settings?.memoryWorkflowRoles === true;
   const workflowReason = settings?.memory.sharingMode === "personal" ? t("memory.workflow.personal")
-    : !settings?.memory.enabled || settings.memory.paused ? t("memory.workflow.requiresActive") : null;
+    : !settings?.memory.pluginEnabled ? t("memory.plugin.serviceDisabled")
+    : !settings.memory.enabled || settings.memory.paused ? t("memory.workflow.requiresActive") : null;
   const save = async (memoryPhoneFacade: boolean) => {
     if (pending.current) return;
     pending.current = true; setSaving(true); setRetryValue(null);

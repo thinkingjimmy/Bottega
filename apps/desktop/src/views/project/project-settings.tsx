@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on router, canonical Projects/Chats/Setup providers, the exact-Project Tools controller, useMcpServersPort, shared built-in support projection, Project tab sections, SettingsPage, and i18n
- * [OUTPUT]: Provides guarded Project Settings with four primary tabs, nested Skills/Extensions settings, and live-runtime-reprojected Project Tool scope ports that preserve global inheritance
+ * [INPUT]: Depends on router, Projects/Chats/Setup providers, Project Tools/MCP controllers, shared support projection, Project sections, persistent SettingsPage, tab-motion primitives, and i18n
+ * [OUTPUT]: Provides full-width Project Settings with a persistent heading, animated primary navigation, lazily retained panels, nested Skills/Extensions settings, and exact-Project Tool scope ports
  * [POS]: apps/desktop/src/views/project; The sole `/projects/:projectId/settings` route; keeps the application Sidebar in Library context
  */
 
@@ -39,10 +39,9 @@ import {
 } from "../../../shared/tools/tool-support";
 import {
   Tabs,
-  TabsContent,
-  TabsList,
   TabsTrigger,
 } from "@ai-chat/ui/components/ui/tabs";
+import { AnimatedTabsList, RetainedTabsContent } from "@ai-chat/ui/components/ui/navigation/tabs-motion";
 
 /* Workflows sits after General (Q28) and exists only in builds with the workbench flag. */
 const PROJECT_TABS = [
@@ -79,7 +78,7 @@ export function ProjectSettingsView() {
 
   if (loading) {
     return (
-      <SettingsPage title={<span aria-hidden className="inline-block h-4 w-40 animate-pulse rounded-md bg-muted motion-reduce:animate-none" />}>
+      <SettingsPage width="full" title={<span aria-hidden className="inline-block h-4 w-40 animate-pulse rounded-md bg-muted motion-reduce:animate-none" />}>
         <SettingsCanvas><div className="h-20 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" /></SettingsCanvas>
       </SettingsPage>
     );
@@ -89,43 +88,48 @@ export function ProjectSettingsView() {
   const projectChats = chats.filter(
     (chat) => chat.projectId === project.id && !chat.effectiveArchived
   );
-  // The active tab's canvas owns both the content heading and its navigation rail.
+  // Navigation stays outside panel lifetimes and nested tab contexts.
   return (
     <Tabs
+      key={project.id}
       className="flex h-full min-h-0 flex-col gap-0"
       value={tab}
       onValueChange={(value) => setSearchParams({ tab: value }, { replace: false })}
     >
       <SettingsPage
+        width="full"
+        headingPlacement="page"
         backHref={draftRoute(project.id)}
         rail={
-          <TabsList className="w-fit pl-3 pr-6 group-data-horizontal/tabs:h-10" variant="line">
-            {PROJECT_TABS.map((value) => (
-              <TabsTrigger className="cursor-pointer px-3" key={value} value={value}>
-                {value === "workflows" && workbench ? workbench.projectWorkflows.tab : t(`projectSettings.tabs.${value}`)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="mx-3 overflow-x-auto">
+            <AnimatedTabsList value={tab} className="flex w-max min-w-full justify-start border-b border-border group-data-horizontal/tabs:h-10">
+              {PROJECT_TABS.map((value) => (
+                <TabsTrigger className="flex-none cursor-pointer px-3" key={value} value={value}>
+                  {value === "workflows" && workbench ? workbench.projectWorkflows.tab : t(`projectSettings.tabs.${value}`)}
+                </TabsTrigger>
+              ))}
+            </AnimatedTabsList>
+          </div>
         }
         title={t("projectSettings.title", { name: project.name })}
       >
-        <TabsContent className="h-full" value="general">
+        <RetainedTabsContent className="h-full" value="general" active={tab === "general"}>
           <ProjectGeneralSection key={project.id} chats={projectChats} project={project} />
-        </TabsContent>
+        </RetainedTabsContent>
         {ProjectWorkflowsSection && (
-          <TabsContent className="h-full" value="workflows">
+          <RetainedTabsContent className="h-full" value="workflows" active={tab === "workflows"}>
             <ProjectWorkflowsSection key={project.id} project={project} />
-          </TabsContent>
+          </RetainedTabsContent>
         )}
-        <TabsContent className="h-full" value="personalization">
+        <RetainedTabsContent className="h-full" value="personalization" active={tab === "personalization"}>
           <ProjectInstructionsSection key={project.id} project={project} />
-        </TabsContent>
-        <TabsContent className="h-full" value="skills">
+        </RetainedTabsContent>
+        <RetainedTabsContent className="h-full" value="skills" active={tab === "skills"}>
           <ProjectSkillsSettings key={project.id} project={project} />
-        </TabsContent>
-        <TabsContent className="h-full" value="tools">
+        </RetainedTabsContent>
+        <RetainedTabsContent className="h-full" value="tools" active={tab === "tools"}>
           <ProjectToolsSettings key={project.id} project={project} />
-        </TabsContent>
+        </RetainedTabsContent>
       </SettingsPage>
     </Tabs>
   );

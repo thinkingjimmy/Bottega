@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The sequencing type of shared Agent/Settings only
- * [OUTPUT]: Foreign-history contracts retaining structured completion and chat-scoped continuation receipts with durable manual intent identity, including failed outcomes.
+ * [OUTPUT]: Explicit Provider-scoped Project history preview/import contracts and chat-scoped continuation receipts with durable manual intent identity, including failed outcomes
  * [POS]: apps/desktop/shared/ipc/content; The single source of truth for the shared history-import wire; the renderer never receives a source file path and cannot forge a SessionRef
  */
 
@@ -208,7 +208,13 @@ export type ProjectHistoryCommitResult = Readonly<{
   memoryPreview: HistoryMemoryPreview | null;
 }>;
 
-type ProjectHistoryRefreshResult = Readonly<{
+export type ProjectHistoryImportPreview = Readonly<{
+  projectId: string;
+  membershipRevision: number;
+  counts: HistorySourceCount[];
+}>;
+
+type ProjectHistoryImportResult = Readonly<{
   project: ProjectHistoryImportState;
   memoryPreview: HistoryMemoryPreview | null;
 }>;
@@ -222,8 +228,8 @@ export const HISTORY_IMPORT_CHANNEL = {
   prepareProject: "history-import:project:prepare",
   countProject: "history-import:project:counts",
   commitProject: "history-import:project:commit",
-  setProjectEnabled: "history-import:project:set-enabled",
-  refreshProject: "history-import:project:refresh",
+  prepareImport: "history-import:project:prepare-import",
+  importProject: "history-import:project:import",
   adopt: "history-import:adopt",
   memoryEligibility: "history-import:memory:eligibility",
   memoryPreview: "history-import:memory:preview",
@@ -234,15 +240,20 @@ export const HISTORY_IMPORT_CHANNEL = {
 
 export type HistoryImportBridgeApi = {
   snapshot(): Promise<HistoryImportSnapshot>;
-  prepareProject(): Promise<PreparedProjectHistoryImport | null>;
+  prepareProject(sourceKinds: HistorySourceKind[]): Promise<PreparedProjectHistoryImport | null>;
   countProject(token: string): Promise<HistorySourceCount[]>;
   commitProject(input: {
     token: string;
     importHistory: boolean;
     previewMemory: boolean;
   }): Promise<ProjectHistoryCommitResult>;
-  setProjectEnabled(projectId: string, enabled: boolean): Promise<void>;
-  refreshProject(projectId: string): Promise<ProjectHistoryRefreshResult>;
+  prepareImport(input: { projectId: string; sourceKinds: HistorySourceKind[] }): Promise<ProjectHistoryImportPreview>;
+  importProject(input: {
+    projectId: string;
+    membershipRevision: number;
+    previewMemory: boolean;
+    sourceKinds: HistorySourceKind[];
+  }): Promise<ProjectHistoryImportResult>;
   adopt(input: PrepareHistoryAdoptionInput): Promise<HistoryAdoptionReceipt>;
   memoryEligibility(input: {
     surface: "project" | "settings";
@@ -260,4 +271,9 @@ export type HistoryImportBridgeApi = {
 
 export function sessionAliases(key: ExternalSessionKey) {
   return new Set([key.canonicalNativeId, key.resumeAlias, ...key.aliases]);
+}
+
+/** Missing source receipts are an unavailable scan, never proof that history is empty. */
+export function historyScanIsEmpty(counts: readonly HistorySourceCount[], sourceKinds: readonly HistorySourceKind[] = HISTORY_SOURCE_KINDS) {
+  return sourceKinds.every((kind) => counts.find((item) => item.sourceKind === kind)?.count === 0);
 }

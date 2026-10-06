@@ -192,7 +192,7 @@ export async function fetchNodeRuntime(options = {}) {
 const DEV_MANIFEST = fileURLToPath(new URL("../../runtime-manifest.dev.json", import.meta.url));
 const ONLINE = `${SCRIPT} --dev-manifest`;
 /**
- * `--offline`, for build:e2e and dev: the dev manifest comes only from a cache that verifies now; nothing is fetched.
+ * `--offline`, for build:e2e: the dev manifest comes only from a cache that verifies now; nothing is fetched.
  * Any cache problem is one line that ends with the online command, and the manifest is left as it was.
  */
 export async function writeOfflineManifest({ manifest, ...options }) {

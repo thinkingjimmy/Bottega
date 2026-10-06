@@ -296,8 +296,6 @@ export const copy = {
         effortUnavailable: "当前模型不支持调整 Effort",
         noModels: "未发现可用模型",
         backendDefaultModel: "后端默认模型",
-        speedDescription:
-          "在支持的 Opus 5/4.8 模型上约快 2.5 倍。会消耗更多 usage credits，但不计入订阅速率限制池。",
         speedReason: {
           modelUnsupported: "当前模型不提供 Fast",
           backendOff: "后端在本会话中关闭了 Fast",

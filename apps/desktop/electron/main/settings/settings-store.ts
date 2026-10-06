@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node fs/path, zod, shared Agent/Settings IPC, Memory registry, durable persistence, and SerialQueue; the provider catalog's default provider and host traits (whether a max effort is per Chat)
- * [OUTPUT]: Provides SettingsStore v11 (Provider fields kept in their stored form via settings/provider-fields: an unknown Provider survives load and unrelated writes; AppSettings carries the full stored order and runnable choices, and a write takes any well-formed id for the three choices; useProviderCatalog re-reads them through the live catalog, so a package default reads back as itself while available, TASK-11 S3-d) with additive Agent-setup-deferred and archive-confetti defaults (the retired Lab connections switch is dropped on read), the single-backend title Agent that reads a retired or invalid value as the first backend, the explicit default Agent and normalized picker order (retiring lastSelectedBackend on read), backend/presence/appearance preferences, Memory control, and fail-closed recovery; Chat options belong to SQLite
+ * [INPUT]: Node fs/path, zod, shared preference policy, Agent/Settings IPC, the live Provider catalog, durable persistence and SerialQueue.
+ * [OUTPUT]: SettingsStore v11 with atomic recent-Chat preferences, complete per-Agent model options, conditional/no-op learning, configured-default fallback and stored Provider preservation.
  * [POS]: apps/desktop/electron/main/settings; The canonical multi-backend settings owner in Electron main
  * Persists local workflow Memory opt-in with a default of false.
  */
@@ -36,9 +36,9 @@ import {
   MEMORY_PROVIDER_IDS,
 } from "../memory/providers/registry";
 import { SerialQueue } from "../persistence/serial-queue";
-import { backendDefaults, DEFAULT_CHAT_OPTIONS_BY_BACKEND, defaultsSchema, turnOptionsSchema, type ChatAgentId, type ChatTurnOptions } from "../../../shared/chat-agent/options";
+import { backendDefaults, defaultsSchema, chatTurnOptionsSchema, type ChatAgentId, type ChatTurnOptions } from "../../../shared/chat-agent/options";
+import { chatPreferenceWriteSchema, isFactoryChatOptions, learnChatPreferences, newChatBackend } from "../../../shared/chat-agent/preferences";
 import { DEFAULT_PROVIDER_ID } from "../../../shared/providers/catalog";
-import { providerTraits } from "../../../shared/providers/traits";
 import { builtinProviderCatalog, type ProviderCatalog } from "../../../shared/providers/catalog";
 import { mergeProviderMaps, patchProviderChoices, PROVIDER_ORDER_LIMIT, projectProviderFields, readProviderFields, type ProjectedProviderFields, type ProviderChoicesPatch, type StoredProviderFields } from "./provider-fields";
 export { DEFAULT_CHAT_OPTIONS_BY_BACKEND } from "../../../shared/chat-agent/options";
@@ -64,8 +64,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   language: "auto",
   titleAgent: DEFAULT_TITLE_AGENT,
   titleModelByBackend: { codex: null },
-  defaultChatOptionsByBackend: DEFAULT_CHAT_OPTIONS_BY_BACKEND,
+  defaultChatOptionsByBackend: {},
   defaultBackend: DEFAULT_PROVIDER_ID,
+  lastChatBackend: null,
+  chatPreferenceVersion: 1,
   providerOrder: [...AGENT_BACKEND_ORDER],
   agentSetupDeferred: false,
   computerNameHintSeen: false,
@@ -74,6 +76,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   skillsOnboarding: "pending",
   keyboardShortcuts: {},
   memory: {
+    pluginEnabled: false,
     enabled: false,
     paused: false,
     provider: DEFAULT_MEMORY_PROVIDER_ID,
@@ -96,6 +99,7 @@ const memoryProviderIdSchema = z
 
 const memorySchema = z
   .object({
+    pluginEnabled: z.boolean().default(false),
     enabled: z.boolean(),
     paused: z.boolean(),
     provider: memoryProviderIdSchema,
@@ -156,6 +160,8 @@ const settingsSchema = z
     /* Additive defaults keep existing strict settings files readable. */
     /* Projected by settings/provider-fields: a listed package Provider reads back as itself (TASK-11 S3-d). */
     defaultBackend: providerIdSchema.catch(DEFAULT_PROVIDER_ID),
+    lastChatBackend: providerIdSchema.nullable().optional().default(null),
+    chatPreferenceVersion: z.literal(1).default(1),
     /* The full stored order (S3-c); it is always projected by settings/provider-fields before it reaches this schema. */
     providerOrder: z.array(providerIdSchema).max(PROVIDER_ORDER_LIMIT),
     /* Additive default keeps existing strict settings files readable. */
@@ -199,26 +205,22 @@ const providerView = (settings: AppSettings): ProjectedProviderFields => ({ titl
   titleModelByBackend: settings.titleModelByBackend, defaultChatOptionsByBackend: settings.defaultChatOptionsByBackend,
   defaultBackend: settings.defaultBackend, providerOrder: settings.providerOrder });
 
-/* A provider whose "max" effort holds for its own Chat only (host trait) starts the next Chat from the provider default. */
-function optionsForNextConversation(options: AgentTurnOptions) {
-  if (!providerTraits(options.backend).maxEffortPerChat || options.reasoningEffort !== "max") {
-    return options;
-  }
-  const defaults = { ...options };
-  delete defaults.reasoningEffort;
-  return defaults;
-}
-
 function parseFile(value: unknown, catalog: ProviderCatalog): { file: SettingsFile; stored: StoredProviderFields } {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("settings.json must be an object");
   const { chatOptionsByScope: _retired, ...file } = value as Record<string, unknown>;
   if (!file.settings || typeof file.settings !== "object" || Array.isArray(file.settings)) throw new Error("settings.json has no settings object");
-  /* The implicit last-used Agent was replaced by the explicit defaultBackend; the Lab connections switch went with Lab connections
-     (TASK-11 flip): an old file keeps loading without either. */
+  /* Retired fields are discarded; current last-use preferences have their own marker and narrow write command. */
   const { lastSelectedBackend: _lastUsed, agentConnectionsEnabled: _lab, ...settings } = file.settings as Record<string, unknown>;
   const providerFields = Object.fromEntries(PROVIDER_KEYS.map((key) => [key, settings[key]]));
   for (const key of PROVIDER_KEYS) delete settings[key];
   const stored = readProviderFields(providerFields, warnSettings);
+  if (settings.chatPreferenceVersion === undefined && settings.lastChatBackend == null) {
+    const view = projectProviderFields(stored, catalog, warnSettings);
+    for (const backend of AGENT_BACKEND_ORDER) {
+      const options = view.defaultChatOptionsByBackend[backend];
+      if (options && isFactoryChatOptions(options)) delete stored.defaultChatOptionsByBackend[backend];
+    }
+  }
   const rest = restFileSchema.parse({ ...file, settings });
   return { file: { ...rest, settings: { ...rest.settings, ...projectProviderFields(stored, catalog, warnSettings) } }, stored };
 }
@@ -338,6 +340,7 @@ export class SettingsStore {
       const settings = settingsSchema.parse({
         ...this.state.settings,
         ...rest,
+        ...(defaultBackend !== undefined ? { lastChatBackend: null } : {}),
         titleAgent: choices.titleAgent,
         defaultBackend: choices.defaultBackend,
         providerOrder: choices.providerOrder,
@@ -359,26 +362,28 @@ export class SettingsStore {
   getBackendDefaults(): ChatTurnOptions;
   getBackendDefaults(backend: AgentBackendId): AgentTurnOptions;
   getBackendDefaults(backend: ChatAgentId): ChatTurnOptions;
-  /** A built-in's user or factory defaults; a package Provider (the default Agent may be one, S3-d) starts from the only options it admits. */
-  getBackendDefaults(backend: ChatAgentId = this.state.settings.defaultBackend): ChatTurnOptions {
-    return backendDefaults(this.state.settings.defaultChatOptionsByBackend, backend);
+  /** New Chat restores the last-used Agent and its options; explicit reads remain per-Agent. */
+  getBackendDefaults(backend?: ChatAgentId): ChatTurnOptions {
+    const selected = backend ?? newChatBackend(this.state.settings, id => this.catalog.get(id).known);
+    return backendDefaults(this.state.settings.defaultChatOptionsByBackend, selected);
   }
 
   /** Parses its input: the registrar hands the renderer's value over uncast. */
-  rememberChatDefaults(value: unknown) {
+  rememberChatDefaults(value: unknown, preference?: unknown) {
     return this.queue.enqueue(async () => {
-      const options = turnOptionsSchema.parse(value);
+      const options = chatTurnOptionsSchema.parse(value);
+      const write = chatPreferenceWriteSchema.parse(preference);
+      if (!this.catalog.get(options.backend).known) throw new Error("PROVIDER_UNAVAILABLE");
       if (options.permissionMode === "full-access" && this.state.settings.fullAccessAcknowledgedAt === null) {
         throw new Error("FULL_ACCESS_ACK_REQUIRED");
       }
+      const learned = learnChatPreferences(this.state.settings, options, write);
+      if (!learned) return this.envelope();
       await this.commit({
         ...this.state,
         settings: {
           ...this.state.settings,
-          defaultChatOptionsByBackend: {
-            ...this.state.settings.defaultChatOptionsByBackend,
-            [options.backend]: optionsForNextConversation(options),
-          },
+          ...learned,
         },
       });
       return this.envelope();

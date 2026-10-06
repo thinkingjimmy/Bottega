@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on bounded Zod diagnostics, approved binding, the four Store outboxes, artifact publication and formal entity/file publishers.
+ * [INPUT]: Depends on bounded Zod and Convex error-code diagnostics, approved binding, the four Store outboxes, artifact publication and formal entity/file publishers.
  * [OUTPUT]: Claims this folder for this computer before offering a byte and stops the run for good when the server says it belongs to another, delivers deletions before uploads, runs the first Chat upload cheapest-first behind the Base-owning identities the Bases phase requires, sums the plaintext this pass delivers and every file transfer it starts into one uploaded figure, publishes a named Chat's metadata on its own fast lane, sends a Base's queued work as soon as a local commit queues it, completes recovered native body/import/Home publication through convergence and isolates entity failures within bounded lanes. U06-d: each App's build status is published as it changes and again after its surface in every pass.
  * [POS]: Main synchronization composition; an entity remains pending until every required content component is confirmed, and the byte figures belong to the initial upload alone. A pass holds at most one outbox window (2,000 rows, A-14) and counts the rest as pending.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ZodError } from "zod";
+import { ConvexError } from "convex/values";
 import { DesktopSkillsSync } from "../skills/service";
 import { DesktopChatConvergence } from "../convergence/service";
 import type { RecoverySave } from "../../chat/recovery/save";
@@ -307,8 +308,10 @@ export class DesktopSyncRun {
         issues: failures.all.flatMap(failure => failure instanceof ZodError ? failure.issues.map(({ code, path }) => ({ code, path })) : []).slice(0, 12),
         sites: failures.all.slice(0, 4).map(failure => failure.stack?.split("\n").filter(line => /^\s*at /.test(line)).slice(0, 4)),
         serverCodes: failures.all.map(failure => failure.message.match(/\b[A-Z][A-Z0-9_-]{5,80}\b/g)?.slice(0, 8)),
-        codes: [...new Set(failures.all.map(failure =>
-          /^[A-Za-z0-9_-]{1,80}$/.test(failure.message) ? failure.message : "unclassified"))].slice(0, 16),
+        codes: [...new Set(failures.all.map(failure => {
+          const code = failure instanceof ConvexError && typeof failure.data === "string" ? failure.data : failure.message;
+          return /^[A-Za-z0-9_-]{1,80}$/.test(code) ? code : "unclassified";
+        }))].slice(0, 16),
       });
       if (!this.closed && !this.refused && value !== this.failureDigest) this.input.changed({ status: "error", error: "upload-failed" });
       this.failureDigest = value; this.retry.failed(); throw error;

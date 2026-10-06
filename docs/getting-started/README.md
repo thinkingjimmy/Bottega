@@ -36,7 +36,7 @@ If the local Chat database cannot be opened, startup offers recovery actions, in
 
 ### Fresh install
 
-Setup has one path and never mentions an account: choose your Bottega folder, set up an Agent (or press **Install later**), then optionally add Skills and long-term memory. Choose an empty folder to start clean, or a folder this computer used before to reopen its contents. Every installation, including an upgrade from an earlier release, goes through this step. Signing in comes later, from Settings, and is described under [Cloud Sync and Cloud Web](#cloud-sync-and-cloud-web).
+Setup has one path and never mentions an account: choose your Bottega folder, then set up an Agent (or press **Install later**). Configure Skills and long-term Memory later in Settings. Choose an empty folder to start clean, or a folder this computer used before to reopen its contents. Every installation, including an upgrade from an earlier release, goes through this step. Signing in comes later, from Settings, and is described under [Cloud Sync and Cloud Web](#cloud-sync-and-cloud-web).
 
 ## Why Bottega
 
@@ -61,11 +61,11 @@ Authenticate with the CLI provider before starting Bottega. Bottega never asks f
 
 ## Download and install
 
-[Download 0.2.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.0) for **macOS on Apple silicon**. It is a prerelease and is excluded from GitHub Latest. Windows, Linux, and Android distribution are scheduled separately. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
+[Download 0.2.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.1) for **macOS on Apple silicon**. It is a prerelease and is excluded from GitHub Latest. Windows, Linux, and Android distribution are scheduled separately. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| macOS (Apple silicon) | `Bottega-0.2.0-arm64.dmg` or `Bottega-0.2.0-arm64-mac.zip` | Manual installation and updates. |
+| macOS (Apple silicon) | `Bottega-0.2.1-arm64.dmg` or `Bottega-0.2.1-arm64-mac.zip` | Manual installation and updates. |
 
 Apple Developer enrollment is pending. These packages use **ad-hoc signatures**, with **no Developer ID signature or Apple notarization**. Automatic updates are disabled: download each new version from the Releases page and replace the installed app manually.
 
@@ -73,7 +73,7 @@ Apple Developer enrollment is pending. These packages use **ad-hoc signatures**,
 2. Download the DMG or ZIP and `release-manifest.json` from the same release. Run the command below and manually compare its output with the matching installer's `sha256` in the manifest. Use the ZIP filename instead if you downloaded the ZIP:
 
 ```bash
-shasum -a 256 Bottega-0.2.0-arm64.dmg
+shasum -a 256 Bottega-0.2.1-arm64.dmg
 ```
 
 3. Open the DMG and drag Bottega into `Applications`, or extract the ZIP and copy the app there.
@@ -110,6 +110,14 @@ A signed-in computer publishes its sidebar — its Projects and its Chats — to
 **While a computer is asleep or offline.** Its Chats stay readable, and renaming, archiving, reordering, editing a Base row, and writing an App record all still work — that computer reconciles them when it wakes. What needs it awake is execution: sending, Stop, approving, answering, steering, and deleting a Chat are greyed in place with a sentence saying why, your draft stays in the editor, and they recover on their own within about half a minute of the computer waking. A laptop is treated as offline about 90 seconds after its lid closes.
 
 Bottega keeps a service-level switch that can turn remote control off for everyone if it has to. While it is off, browser Chats are read only; reading a transcript and watching a running turn still work.
+
+<a id="upgrading-to-021"></a>
+
+## Upgrading to 0.2.1
+
+Quit Bottega completely, including background activity, back up your content folder and application data, then replace the app with the 0.2.1 download. Updates remain manual for this prerelease.
+
+This patch keeps protocol 14 and retains existing cloud content and sync passwords. A 0.2.0 installation can reconnect without resetting its account or data. The first-launch flow has two steps; configure Skills and Memory from Settings. Use the Project settings import action when you need new Agent history.
 
 <a id="upgrading-to-020"></a>
 

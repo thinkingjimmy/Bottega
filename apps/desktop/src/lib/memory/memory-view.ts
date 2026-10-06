@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared Memory health/runtime/status contracts, MemorySettings sharing modes, and a host-supplied catalog translator
+ * [INPUT]: Depends on shared Memory health/runtime/status contracts, MemorySettings plugin availability and sharing modes, and a host-supplied catalog translator
  * [OUTPUT]: Provides catalog-only Memory presentation derivations, including the Project-level six-tier conclusion used by Project Settings
  * [POS]: apps/desktop/src/lib/memory; Pure Memory presentation derivations shared by global Memory Settings and Project Settings; user copy never falls back to embedded prose
  */
@@ -30,12 +30,12 @@ export type ProjectMemoryConclusion = Readonly<{
 
 /** Health outranks scope: a broken service must never be presented as a healthy domain. */
 export function projectMemoryConclusion(input: {
-  memorySettings: Pick<MemorySettings, "enabled" | "paused" | "sharingMode"> | null;
+  memorySettings: Pick<MemorySettings, "pluginEnabled" | "enabled" | "paused" | "sharingMode"> | null;
   serviceStatus: Pick<MemoryStatusSnapshot, "health"> | null;
   delivering: boolean;
 }): ProjectMemoryConclusion {
   const { memorySettings, serviceStatus, delivering } = input;
-  if (!memorySettings?.enabled) {
+  if (!memorySettings?.pluginEnabled || !memorySettings.enabled) {
     return { copyKey: "projectSettings.general.memoryDisabled", delivering };
   }
   if (memorySettings.paused) {

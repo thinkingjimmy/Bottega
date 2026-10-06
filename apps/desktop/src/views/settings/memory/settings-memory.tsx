@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, shared Memory/AppSettings contracts with MEMORY_SHARING_MODES, app Intl locale, view-local frame/consent/history-import/setup modules, settings/memory components, memoryMasterRow, and memory-store authority flows
- * [OUTPUT]: Provides MemorySettingsView for standalone or direct plugin reuse: a not-set-up face in the ordinary Settings grammar (one stage-aware row that opens the provider-bound, backtrackable setup dialog, plus the before-you-start notes), a settled master switch beside the content H1, engine roster, sharing scope, the phone status/control and workflow-read switches, activity, and attention surfaces; the activity header hosts both corpus actions — history import fills those numbers, rebuild clears them
+ * [OUTPUT]: Provides MemorySettingsView with a separate service switch in Long-term memory, first-run setup, engine management, sharing, access and activity; the frame owns plugin availability independently.
  * [POS]: apps/desktop/src/views/settings/memory; Memory plugin custom settings and feature-off standalone product console; this layer declares user intent and dialog orchestration while all durable facts come from main-owned snapshots
  */
 
@@ -56,7 +56,6 @@ import type {
 } from "../../../../shared/ipc/content/memory-ipc";
 import { MEMORY_SHARING_MODES } from "../../../../shared/ipc/settings/settings-ipc";
 import { useHistoryMemoryImport } from "../../settings-memory/history-import-action";
-import { useMemoryPluginSetup } from "../../settings-memory/use-plugin-setup";
 import { MemoryPhoneSection } from "../../settings-memory/memory-phone-row";
 import { MemoryNotSetUp } from "../../settings-memory/setup/memory-not-set-up";
 import { useMemoryConsent } from "../../settings-memory/use-memory-consent";
@@ -79,7 +78,6 @@ export function MemorySettingsView(page: MemoryPageOptions = {}) {
   } =
     useSyncExternalStore(memoryStore.subscribe, memoryStore.getSnapshot);
   const consent = useMemoryConsent(settings);
-  useMemoryPluginSetup(page, settings, runtimes, loading, consent.openProvider);
   /* 哪一档引擎的抽屉摊开着。要不要强制摊开由 memoryServiceNeedsAttention
      说了算，两者 or 在一起——于是不存在「用户收起了一件坏掉的东西」。 */
   const [openEngineId, setOpenEngineId] = useState<string | null>(null);
@@ -150,6 +148,7 @@ export function MemorySettingsView(page: MemoryPageOptions = {}) {
     );
   }
   const runtime = runtimes[descriptor.id] ?? null;
+  const applyStatus = settings.memory.applyStatus ?? status.applyStatus;
   const gateOpen = Boolean(
     runtime?.installed && runtime.phase === "idle" && runtime.serviceReachable
   );
@@ -158,7 +157,7 @@ export function MemorySettingsView(page: MemoryPageOptions = {}) {
   const selectable = (id: string) => {
     const snapshot = runtimes[id] ?? null;
     return Boolean(
-      snapshot?.installed &&
+      settings.memory.pluginEnabled && snapshot?.installed &&
         snapshot.phase === "idle" &&
         snapshot.serviceReachable
     );
@@ -214,6 +213,7 @@ export function MemorySettingsView(page: MemoryPageOptions = {}) {
   };
 
   const setEnabled = () => {
+    if (!settings.memory.pluginEnabled) return;
     if (settings.memory.enabled) {
       if (!settings.memory.paused) {
         setPauseConfirmOpen(true);
@@ -237,9 +237,9 @@ export function MemorySettingsView(page: MemoryPageOptions = {}) {
     gateOpen
   );
   const sharingAvailable = Boolean(
-    settings.memory.enabled && status.target?.canEnable && gateOpen && !loading
+    settings.memory.pluginEnabled && settings.memory.enabled && status.target?.canEnable && gateOpen && !loading
   );
-  const sharingDisabledReason = !settings.memory.enabled
+  const sharingDisabledReason = !settings.memory.pluginEnabled ? t("memory.plugin.serviceDisabled") : !settings.memory.enabled
     ? t("memory.sharing.disabledMemory")
     : status.target?.blockedReason || t("memory.sharing.disabledTarget");
 
@@ -314,6 +314,24 @@ export function MemorySettingsView(page: MemoryPageOptions = {}) {
 
   return (
     <MemorySettingsFrame {...page}
+      notice={applyStatus?.state === "failed" ? (
+        <div
+          role="alert"
+          className={cn(
+            "rounded-lg px-4 py-3 text-xs ring-1",
+            TONE_SURFACE.danger
+          )}
+        >
+          <p className={cn("font-medium", TONE_TEXT.danger)}>
+            {t("memory.page.applyFailedTitle")}
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            {applyStatus.message ??
+              t("memory.page.applyFailedFallback")}
+            · {t("memory.page.applyRetrying")}
+          </p>
+        </div>
+      ) : undefined}
       actions={<>
         <SettingsIconButton
           variant="ghost"
@@ -323,8 +341,6 @@ export function MemorySettingsView(page: MemoryPageOptions = {}) {
         >
           <RefreshCw className={loading ? "motion-safe:animate-spin" : ""} />
         </SettingsIconButton>
-        {setupDone && <SettingsSwitch id="memory-enabled" label={master.switchLabel} checked={master.switchChecked}
-          disabled={loading || master.switchDisabled} onToggle={setEnabled} />}
       </>}
     >
       {!setupDone ? (
@@ -357,35 +373,16 @@ export function MemorySettingsView(page: MemoryPageOptions = {}) {
           {/* 纵向秩序 = 决定的顺序：要不要记 → 用哪个引擎、怎么管它
              → 记的东西谁能召回 → 它在干什么。 */}
           <div className="space-y-8">
-            {/* 一级：整页唯一的产品级开关。它只说记不记——用哪个引擎是
-                下面那一段自己的事，同一批引擎不在一页里列两遍。 */}
+            {/* Service intent remains visible when plugin availability suspends its execution. */}
             <SettingsSection
               title={t("memory.page.title")}
-              description={<>{master.detail ?? t("memory.page.description")}
+              action={<SettingsSwitch id="memory-enabled" label={master.switchLabel} checked={master.switchChecked}
+                disabled={!settings.memory.pluginEnabled || loading || master.switchDisabled} onToggle={setEnabled} />}
+              description={<>{!settings.memory.pluginEnabled ? t("memory.plugin.serviceDisabled") : master.detail ?? t("memory.page.description")}
                 <span className="mt-1 block">{t("memory.plugin.nativeDistinction")}</span></>}
               alert={settingsError || error || status.warning}
-            >
-              {/* apply 失败不是一次性 toast：磁盘新、runtime 旧的窗口必须
-                  一直可见，直到前向重试把它收敛掉。 */}
-              {status.applyStatus?.state === "failed" && (
-                <div
-                  role="alert"
-                  className={cn(
-                    "rounded-lg px-4 py-3 text-xs ring-1",
-                    TONE_SURFACE.danger
-                  )}
-                >
-                  <p className={cn("font-medium", TONE_TEXT.danger)}>
-                    {t("memory.page.applyFailedTitle")}
-                  </p>
-                  <p className="mt-1 text-muted-foreground">
-                    {status.applyStatus.message ??
-                      t("memory.page.applyFailedFallback")}
-                    · {t("memory.page.applyRetrying")}
-                  </p>
-                </div>
-              )}
-            </SettingsSection>
+              children={null}
+            />
 
             {/* 二级：引擎册。选哪个在用、升级、配置、装另一个，全在这一处。 */}
             <SettingsSection
@@ -580,7 +577,7 @@ export function MemorySettingsView(page: MemoryPageOptions = {}) {
         preview={consent.preview}
         includeHistory={consent.includeHistory}
         onIncludeHistoryChange={consent.setIncludeHistory}
-        historyDisabled={settings.memory.paused}
+        historyDisabled={!settings.memory.pluginEnabled || settings.memory.paused}
         busy={consent.busy}
         error={consent.error}
         onAccept={() => {

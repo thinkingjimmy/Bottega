@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on Project/Chat projections, providers/stores, shared identity/appearance/grants/lifecycle and archive-success feedback, restore client, routing, and i18n
- * [OUTPUT]: Provides ProjectGeneralSection with basics, unified contextual App authorization/placement management, Base entry (Create Base makes the Project Base explicitly), and lifecycle controls
+ * [OUTPUT]: Provides ProjectGeneralSection with basics, explicit History import, contextual App authorization/placement management, Base entry, and lifecycle controls
  * [POS]: Project Settings General tab; composes existing owners without creating a second Project state model
  */
 
@@ -34,7 +34,6 @@ import {
   SettingsRow,
   SettingsSection,
   SettingsSurface,
-  SettingsSwitch,
 } from "@/components/settings/settings-layout";
 import { settingsStore } from "@/lib/settings/store/settings-store";
 import { memoryStore } from "@/lib/memory/memory-store";
@@ -156,12 +155,14 @@ export function ProjectGeneralSection({
                 label={t("projectSettings.general.history")}
                 description={t("projectSettings.general.historyHint")}
                 control={
-                  <SettingsSwitch
-                    checked={Boolean(historyState?.enabled)}
+                  <SettingsButton
+                    disabled={history.importingProjectId !== null || Boolean(historyState?.refreshing)}
                     id="project-history-import"
-                    label={t("projectSettings.general.history")}
-                    onToggle={(enabled) => void history.setEnabled(project.id, enabled)}
-                  />
+                    onClick={() => void history.importProject(project)}
+                    variant="outline"
+                  >
+                    {t("history.addWithHistory")}
+                  </SettingsButton>
                 }
               />
             )}

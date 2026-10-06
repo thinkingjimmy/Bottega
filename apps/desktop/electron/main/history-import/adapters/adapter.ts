@@ -25,9 +25,8 @@ import type {
 /* 解析器输出的形状变了就必须换版本：v1 会把 world_state 这类运行时记录
    物化成一条 assistant 正文，v2 只收消息，v3 还把一个 turn 折成一条 assistant
    （中间陈述进 process、计划正文拆出标签、产品信封剥离、过程流按真实时序）。
-   版本号是 fingerprint 的一部分，指纹一变，启动检测就把 Project 判为「有
-   变更」；真正以新代际重导发生在用户点侧栏那枚刷新图标之后——与源文件变更
-   走的是同一道确认流程，我们不替他重写已经导入的历史。
+   版本号是 fingerprint 的一部分；只有用户在 Settings 明确导入时，才按新
+   指纹生成新代际。启动不扫描外部历史，也不重放已经保存的历史。
 
    v2 → v3 不是因为形状又变了一次，而是因为 v2 这个号在开发机上被用脏了：
    折叠/plan/信封/时序四次修改都发生在 v2 的号底下，同一个 sourceKey 上因此
@@ -36,7 +35,7 @@ import type {
 
    v3 → v4：剥离的内容变了——产品的第二块信封 <memory_context …> 此前原样
    躺在用户第一句话之前，v3 产出的正文因此都带着它。标题走 begin 路径的
-   改名在启动重放里自愈，正文只能靠新代际重导。 */
+   改名与正文都在用户明确导入时按新代际更新。 */
 /* v5 retires generations attributed through the former parent/sibling containment rule.
  * The existing explicit refresh creates a new generation without changing the source Chat identity. */
 export const HISTORY_PARSER_VERSION = 5;

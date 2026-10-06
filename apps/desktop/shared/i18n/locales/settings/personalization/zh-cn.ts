@@ -10,7 +10,7 @@ export const settingsPersonalizationZhCN: typeof settingsPersonalizationEn = {
   title: "个性化", sectionTitle: "自定义指令", description: "直接编辑每个已安装 Agent 使用的全局指令文件。",
   loading: "正在读取指令文件…", emptyTitle: "尚未安装 Agent", emptyHint: "请先在后端设置中安装 Agent，再返回这里。",
   placeholder: "为这个 Agent 编写纯文本指令…", createHint: "文件尚不存在；保存后会创建于 {{path}}。",
-  save: "保存指令", saving: "正在保存…", copyPath: "复制路径", copied: "路径已复制", reveal: "在文件管理器中显示",
+  save: "保存", saving: "正在保存…", copyPath: "复制路径", copied: "路径已复制", reveal: "在文件管理器中显示",
   oversized: "文件大于 256 KiB，因此不会在这里加载或编辑。",
   find: { open: "在文件中查找", placeholder: "在文件中查找", count: "{{current}} / {{total}}", noMatches: "无匹配", previous: "上一个匹配", next: "下一个匹配", close: "关闭查找" },
   metrics: { lines: "{{lines}} 行", limit: "上限 {{size}}", recommendedLines: "建议不超过 {{lines}} 行", recommendedSize: "建议不超过 {{size}}" },

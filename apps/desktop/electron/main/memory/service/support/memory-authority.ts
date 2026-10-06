@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the Policy store, Delivery store, active target/provider/controlGeneration state, the managed runtime registry, and a health-refresh callback
- * [OUTPUT]: Provides MemoryAuthorityGuard: trustedProviderReady (health-gated proof for a frozen turn), validateFrozen/validateContext capability checks, an identity verifier, and executionEnabled
+ * [OUTPUT]: Provides MemoryAuthorityGuard: trustedProviderReady (health-gated proof for a frozen turn), validateFrozen/validateContext capability checks, an identity verifier, and plugin/service/consent/readiness-gated executionEnabled
  * [POS]: The authorization guard of main/memory/service/support; centralizes identity, capability, and execution-gate checks so MemoryService's façade doesn't duplicate this security logic
  */
 
@@ -129,19 +129,18 @@ export class MemoryAuthorityGuard {
   }
 
   executionEnabled() {
+    if (!this.dependencies.accepting() || !this.dependencies.ownersAvailable()) return false;
     const { memory, provider, target } = this.snapshot();
     const instanceId = target?.providerDataInstanceId;
     const instance = instanceId
       ? this.dependencies.delivery.snapshot().providerInstances[instanceId]
       : null;
     return Boolean(
-      this.dependencies.accepting() &&
-        this.dependencies.ownersAvailable() &&
-        memory?.enabled &&
+      memory?.pluginEnabled && memory.enabled &&
         !memory.paused &&
         this.dependencies.policy.activeConsent() &&
         provider &&
-        target &&
+        target?.canEnable &&
         !this.dependencies.rebuildBlocked(target.providerId) &&
         instanceId &&
         !instance?.quiesced &&

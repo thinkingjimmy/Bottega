@@ -2,6 +2,7 @@
  * [INPUT]: Depends on the English Catalog shape and Japanese feature catalogs, including Agent and Chat-storage failures, Apps, Chat, and Settings, with shared cloud account/approval and isolated composer copy.
  * [OUTPUT]: Provides the complete Japanese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery General appearance provides theme, language and archive confetti.
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
+ * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
  * [POS]: Japanese desktop locale; compile-time structure must match English exactly
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/ja";
@@ -298,7 +299,6 @@ currentModelUnavailable: "{{model}}（現在利用不可）"
       modelSelector: { ...composerCopy.chat.composer.modelSelector },
     },
     resumeFailure: composerCopy.resumeFailure,
-    checkAgain: "再確認",
     workedFor: "処理時間 {{duration}}",
     sectionImagesDisclosure:
       "{{backend}} に Section ごと最大 {{count}} 枚の画像（このターン全体で {{megabytes}} MB）を送信します。",

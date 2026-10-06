@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Host-computed list-model state and shared menu presentation primitives.
- * [OUTPUT]: Provides the on-demand list-only menu — a flat model list with effort and speed — without moving native commit rules.
+ * [OUTPUT]: Provides the on-demand list-only menu with model, effort and speed choices plus effective-speed fallback status.
  * [POS]: The lazy content behind list.tsx's trigger in the composer models surface; the trigger itself stays in the eager composer.
  */
 
@@ -224,9 +224,6 @@ export default function ModelMenu({ state }: { state: ModelMenuState }) {
                     />
                   ))}
                 </DropdownMenuRadioGroup>
-                <p className="px-2 py-1 text-xs text-muted-foreground">
-                  {t("chat.composer.modelSelector.speedDescription")}
-                </p>
                 {speedReason && (
                   <p role="status" className="px-2 pb-1 text-xs text-muted-foreground">
                     <span className="font-medium text-foreground">{speedText}</span>

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Policy consent snapshot, core capability fence, active Settings/target/provider state, and a frozen turn context with optional TrustedProviderProof
+ * [INPUT]: Depends on Policy consent snapshot, core capability fence, independent plugin/service Settings and active target/provider state, and a frozen turn context with optional TrustedProviderProof
  * [OUTPUT]: Provides reconcileRuntimeDestination (drives runtime toward the active consent's target), effectiveConsentDestination, and validateFrozenAuthority/validateCurrentContext for live and rebuild capture
  * [POS]: The main/memory/orchestration authority gate; MemoryService only calls through this façade instead of re-deriving consent and capability-fence checks itself
  */
@@ -96,7 +96,7 @@ export async function reconcileRuntimeDestination(
     effectiveAt: Date.now(),
     silent: preview.change === "model",
     purpose:
-      memory.paused || snapshot.state.pausedAt !== null
+      !memory.pluginEnabled || memory.paused || snapshot.state.pausedAt !== null
         ? "configuration"
         : "live",
   });
@@ -198,7 +198,7 @@ export function validateCurrentContext(
       active.memory?.sharingMode === context.sharingMode
   );
   return frozenContextMatches(context, {
-    enabled: Boolean(active.memory?.enabled && sharingMatches),
+    enabled: Boolean(active.memory?.pluginEnabled && active.memory.enabled && sharingMatches),
     accepting,
     paused: Boolean(
       active.memory?.paused || snapshot.state.pausedAt !== null

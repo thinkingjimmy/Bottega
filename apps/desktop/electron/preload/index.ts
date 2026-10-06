@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, role-scoped plugin bridge installers, shared renderer IPC contracts, and the build-gated cloud account lifecycle.
  * Announces surface readiness only after the renderer command listener is installed.
- * [OUTPUT]: Exposes renderer bridges including pathless native local-package selection, the main-window macOS Settings → Dock bridge, the main-window Agent-configuration, Plugins & Apps, workflow and Provider catalog bridges, nested quota snapshot/demand access, the fire-and-forget Agent connection warm intent, fixed-purpose background display selection and panel/Agent management, explicit manual/adopt retry intents, the main-window-only frozen startup snapshot, scoped plugin surfaces and GUI history in both product window roles, and the launch-flagged startup trace mark channel; rejects extra navigation arguments. Exposes the typed App impact and enablement bridge.
+ * [OUTPUT]: Exposes explicit Project history preview/import commands and renderer bridges including pathless native local-package selection, the main-window macOS Settings → Dock bridge, the main-window Agent-configuration, Plugins & Apps, workflow and Provider catalog bridges, nested quota snapshot/demand access, the fire-and-forget Agent connection warm intent, fixed-purpose background display selection and panel/Agent management, explicit manual/adopt retry intents, the main-window-only frozen startup snapshot, scoped plugin surfaces and GUI history in both product window roles, and the launch-flagged startup trace mark channel; rejects extra navigation arguments. Exposes the typed App impact and enablement bridge.
  * [POS]: All-frame preload security boundary; OOPIF/srcdoc frames receive RTC denial but no Electron, Node, IPC, path, secret, or product bridge. Memory and Extensions single-input methods share a fixed-arity invoke factory.
  */
 
@@ -614,13 +614,13 @@ contextBridge.exposeInMainWorld("projects", {
 
 contextBridge.exposeInMainWorld("historyImport", {
   snapshot: () => ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.snapshot),
-  prepareProject: () => ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.prepareProject),
+  prepareProject: (sourceKinds) => ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.prepareProject, sourceKinds),
   countProject: (token) => ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.countProject, token),
   commitProject: (input) => ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.commitProject, input),
-  setProjectEnabled: (projectId, enabled) =>
-    ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.setProjectEnabled, projectId, enabled),
-  refreshProject: (projectId) =>
-    ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.refreshProject, projectId),
+  prepareImport: (input) =>
+    ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.prepareImport, input),
+  importProject: (input) =>
+    ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.importProject, input),
   adopt: (input) => ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.adopt, input),
   memoryEligibility: (input) =>
     ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.memoryEligibility, input),

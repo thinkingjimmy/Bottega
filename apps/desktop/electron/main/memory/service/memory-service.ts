@@ -2,7 +2,7 @@
  * [INPUT]: Depends on Policy v4/Delivery, runtime-owned instance, platform capabilities, paged native-history Consent/rebuild controllers, service/support, and build/authorise/observe/run coordination
  * [OUTPUT]: Provides a platform-gated admission/recall/capture façade (plus `onStatus` for main-side observers such as the phone Memory facade) with native-segment history, independent Provider/statistical alerts, O(1) metadata, preview/Consent, pause/resume, delete, and rebuild recovery
  * [POS]: The main/memory/service chat façade and composition root; policy/delivery/recall-stats stores and the orchestration controllers each own their own truth, provider recall/capture failures surface here as an attention warning that triggers recovery and republish
- * Workflow recall shares live authority and a separate opt-in generation; workflow capture remains prohibited.
+ * Plugin availability fences live traffic independently of service preferences; workflow capture remains prohibited.
  */
 
 import { randomUUID } from "node:crypto";
@@ -52,6 +52,7 @@ import { MemoryWorkerLoop } from "../runtime/worker-loop";
 import { MemoryAuthorityGuard } from "./support/memory-authority";
 import type { MemoryServiceOptions } from "./support/memory-service-options";
 import { authorizeMemoryRebuild } from "./support/rebuild-authorization";
+import { reconcilePluginConsent } from "./support/plugin-consent";
 import { MemoryMaintenanceController } from "./support/memory-maintenance";
 import {
   MemoryForeignHistoryController,
@@ -119,7 +120,7 @@ export class MemoryService {
       policy: this.policy,
       intent: () => ({
         revision: this.controlGeneration,
-        enabled: this.memory?.enabled ?? false,
+        enabled: Boolean(this.memory?.pluginEnabled && this.memory.enabled),
         paused: this.memory?.paused ?? false,
         sharingMode: this.memory?.sharingMode ?? "chat",
         workflow: this.authority.workflowSnapshot(),
@@ -340,16 +341,16 @@ export class MemoryService {
       target.providerDataInstanceId !== this.target?.providerDataInstanceId ||
       target.baseUrl !== this.target?.baseUrl ||
       memory.enabled !== this.memory?.enabled ||
+      memory.pluginEnabled !== this.memory?.pluginEnabled ||
       memory.paused !== this.memory?.paused ||
       memory.sharingMode !== this.memory?.sharingMode;
-    const pausing = memory.paused && this.memory?.paused === false;
+    const pausing = (!memory.pluginEnabled || memory.paused) && Boolean(this.memory?.pluginEnabled && !this.memory.paused);
     this.target = target;
     this.memory = memory;
     if (changed) {
       this.controlGeneration += 1;
-      this.network.abortAll();
-      /* 因暂停剥离的 contribution 按 §9.5 记 skipped(paused)，
-         不得让后续 consume 误报 stale-capability。 */
+      if (!this.rebuildActive()) this.network.abortAll();
+      // Both switches revoke live contributions while preserving independent rebuild authority.
       this.revokeFreshLeases(
         pausing ? { kind: "skipped", reason: "paused" } : undefined
       );
@@ -359,6 +360,8 @@ export class MemoryService {
       await this.initializeOwners();
       await this.enforceActivationCleanup();
     }
+    await reconcilePluginConsent({ memory, target, policy: this.policy, control: this.pauseControl,
+      destination: () => this.destination(memory.provider) });
     this.publish();
     this.syncWorker();
     if (this.authority.executionEnabled()) void this.refreshHealth(true);
@@ -406,7 +409,7 @@ export class MemoryService {
   supplyStreams() {
     return currentMemorySupply({
       enabled: Boolean(this.memory?.enabled),
-      paused: Boolean(this.memory?.paused),
+      paused: Boolean(this.memory && (!this.memory.pluginEnabled || this.memory.paused)),
       initialized: this.ownersInitialized,
       policy: this.policy,
       delivery: this.delivery,
@@ -584,7 +587,7 @@ export class MemoryService {
   }
 
   rebuildActive() {
-    return this.rebuild.active();
+    return this.ownersInitialized && this.rebuild.active();
   }
   async prepareRebuildRecovery() {
     this.assertPlatformAvailable();
@@ -744,9 +747,9 @@ export class MemoryService {
     this.warning =
       "记忆库有待完成的清理，长期记忆暂不可用；请在设置中执行「重建记忆」";
   }
-  /* Every tick step is gated by executionEnabled(), which needs Memory on and unpaused, so the loop only runs then (C-29). */
+  /* The loop and each tick share the same plugin, service, consent and runtime gate. */
   private syncWorker() {
-    if (this.accepting && this.memory?.enabled && !this.memory.paused) this.worker.start();
+    if (this.authority.executionEnabled()) this.worker.start();
     else this.worker.stop();
   }
   private async tick() {

@@ -2,15 +2,15 @@
  * [INPUT]: Depends on React and the main window's plugins bridge.
  * [OUTPUT]: Provides usePluginList — the catalog's plugin views, reloaded on every `plugins:changed` (null while loading, [] when it
  *           could not be read) — usePluginDetail for one plugin's detail with its own reload, and hasSettingsPage (whether the Settings
- *           sidebar lists a plugin, so its settings page exists). Only the newest requested read may update either projection.
+ *           sidebar lists an enabled plugin with settings). Only the newest requested read may update either projection.
  * [POS]: All plugins, the plugin pages and the Settings sidebar's Plugins group read the catalog through these hooks, so a switch in one
  *        place is seen everywhere without a second source.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { PluginDetail, PluginView, PluginsBridge } from "@ai-chat/cloud-protocol/contracts/plugins/catalog";
 
-/** A turned-on plugin with settings gets a sidebar entry; Memory keeps its entry while off so setup and recovery stay reachable. */
-export const hasSettingsPage = (plugin: Pick<PluginView, "id" | "enabled" | "hasSettings">) => plugin.hasSettings && (plugin.enabled || plugin.id === "memory");
+/** Only enabled plugins with settings appear in the sidebar; introductions remain accessible from the catalog. */
+export const hasSettingsPage = (plugin: Pick<PluginView, "enabled" | "hasSettings">) => plugin.hasSettings && plugin.enabled;
 
 export function usePluginList(bridge: PluginsBridge | null) {
   const [plugins, setPlugins] = useState<PluginView[] | null>(null);

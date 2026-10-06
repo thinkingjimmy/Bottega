@@ -3,6 +3,7 @@
  * [OUTPUT]: Owns 60-second runtime and five-minute full checks, cancellation-preserved evidence, independent startup facts, scoped purpose eligibility and a read-only per-CLI account fingerprint, for any Provider id its resolver runs (a built-in or an available package Provider; an id it does not is refused by name and stores nothing): discovery bounded by the flight's own deadline, the version run on the backend's declared arguments, the list over the resolver's ids and forget for a package Provider that stopped being available.
  * [POS]: The only owner of the backends running time and discovery/auth subprocess; Chat, Section, Settings and Background tasks cannot detect CLI on their own
  * Warm installed/unsupported snapshots revalidate executable identity; discovered versions carry versionIdentity.
+ * Full checks authenticate installed and unsupported versions independently; unsupported versions remain blocked for execution and quota reads.
  */
 
 import { inspectRuntimeCandidate, optionalRuntimeIdentity } from "./runtime-inspection";
@@ -164,7 +165,7 @@ export class BackendRuntimeRegistry {
       await waitForSignal(ready, signal);
       // A fresh runtime flight never owns or waits for authentication resources.
       const snapshot = await waitForSignal(discovery, signal);
-      if (snapshot.runtimeStatus !== "installed") {
+      if (snapshot.runtimeStatus !== "installed" && snapshot.runtimeStatus !== "unsupported") {
         this.evidence.confirm(backend, probe, snapshot.generation, "error");
         const stored = this.snapshots.get(backend);
         if (stored) this.publish(backend, snapshot.generation, stored);
@@ -203,10 +204,10 @@ export class BackendRuntimeRegistry {
         if (!this.evidence.confirm(backend, probe, snapshot.generation, auth.status, target.scopeKey,
           { ...auth, ...(route === "custom" ? { route } : {}) })) return this.snapshot(backend);
         const latest = this.snapshots.get(backend)!;
-        if (latest.snapshot.runtimeStatus !== "installed") return latest.snapshot;
+        if (latest.snapshot.runtimeStatus !== "installed" && latest.snapshot.runtimeStatus !== "unsupported") return latest.snapshot;
         if (auth.status === "authenticated") this.accountFingerprints.set(backend, auth.accountFingerprint ?? null);
         else if (auth.status === "unauthenticated") this.accountFingerprints.set(backend, null);
-        this.publish(backend, snapshot.generation, { ...latest, snapshot: { ...latest.snapshot, authStatus: auth.status, reason: auth.reason ?? (this.evidence.facts(backend).runtimeCheck?.phase === "error" ? latest.snapshot.reason : undefined) } });
+        this.publish(backend, snapshot.generation, { ...latest, snapshot: { ...latest.snapshot, authStatus: auth.status, reason: auth.reason ?? (latest.snapshot.runtimeStatus === "unsupported" || this.evidence.facts(backend).runtimeCheck?.phase === "error" ? latest.snapshot.reason : undefined) } });
       } finally { lease?.release(); }
     } catch (cause) {
       const flight = this.authFlights.get(backend);
@@ -291,12 +292,12 @@ export class BackendRuntimeRegistry {
       this.invalidate(backend);
       return this.resolve(backend);
     }
-    if (stored.runtimeStatus === "unsupported") return stored;
     const environmentIdentity = await runtimeEnvironmentIdentity(backend, stored.runtime);
     if (this.environmentIdentities.get(backend) !== environmentIdentity) {
       this.invalidate(backend);
       return this.resolve(backend);
     }
+    if (stored.runtimeStatus === "unsupported") return stored;
     if (!descriptor.confirmRuntime) return stored;
     let confirmation: RuntimeConfirmation;
     try {
@@ -581,7 +582,7 @@ export class BackendRuntimeRegistry {
         unsupported ??= inspected;
         continue;
       }
-      return this.finishInstalled(
+      return this.finishPresent(
         backend,
         generation,
         inspected,
@@ -590,23 +591,7 @@ export class BackendRuntimeRegistry {
     }
     const diagnosticSummary = summarizeCandidateDiagnostics(diagnostics);
     if (unsupported) {
-      if (this.generation(backend) !== generation) return this.resolve(backend);
-      this.evidence.update(backend, { capabilityKnowledge: "known", runtimeIssue: "unsupported",
-        runtimeCheck: { phase: "complete", startedAt: this.evidence.now(), checkedAt: this.evidence.now(), expiresAt: this.evidence.now() + RUNTIME_TTL_MS } });
-      const snapshot: PresentSnapshot = {
-        runtimeStatus: "unsupported",
-        runtime: unsupported.runtime,
-        capabilities: unsupported.capabilities,
-        authStatus: "unknown",
-        generation,
-        reason: `${unsupported.reason}。${diagnosticSummary}`,
-      };
-      return this.publish(backend, generation, {
-        snapshot,
-        identity: unsupported.identity,
-      })
-        ? snapshot
-        : this.resolve(backend);
+      return this.finishPresent(backend, generation, unsupported, signal, `${unsupported.reason}。${diagnosticSummary}`);
     }
     return this.finishMissing(
       backend,
@@ -619,11 +604,12 @@ export class BackendRuntimeRegistry {
     );
   }
 
-  private async finishInstalled(
+  private async finishPresent(
     backend: ProviderId,
     generation: number,
-    candidate: Extract<InspectedCandidate, { kind: "installed" }>,
-    signal: AbortSignal
+    candidate: Extract<InspectedCandidate, { kind: "installed" | "unsupported" }>,
+    signal: AbortSignal,
+    reason?: string
   ) {
     const { runtime, capabilities, identity } = candidate;
     signal.throwIfAborted();
@@ -651,11 +637,11 @@ export class BackendRuntimeRegistry {
       }
     }
     this.environmentIdentities.set(backend, environmentIdentity);
-    this.evidence.update(backend, { capabilityKnowledge: "known", runtimeIssue: undefined,
+    this.evidence.update(backend, { capabilityKnowledge: "known", runtimeIssue: candidate.kind === "unsupported" ? "unsupported" : undefined,
       runtimeCheck: { phase: "complete", startedAt: this.evidence.now(), checkedAt: this.evidence.now(), expiresAt: this.evidence.now() + RUNTIME_TTL_MS } });
     const snapshot: PresentSnapshot = {
-      runtimeStatus: "installed", runtime, capabilities,
-      reason: previous?.snapshot.generation === generation ? previous.snapshot.reason : undefined,
+      runtimeStatus: candidate.kind, runtime, capabilities,
+      reason: reason ?? (previous?.snapshot.generation === generation ? previous.snapshot.reason : undefined),
       authStatus: previous?.snapshot.generation === generation ? previous.snapshot.authStatus :
         this.authFlights.has(backend) && !this.authFlights.get(backend)!.controller.signal.aborted ? "checking" : "unknown", generation,
     };

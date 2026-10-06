@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs list, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -128,6 +128,7 @@ export const cloudCopy = {
     "pendingDescription": "Define tu contraseña de sincronización para empezar a sincronizar este ordenador.",
     "resume": "Continuar",
     "signedInAs": "Has iniciado sesión como {{email}}.",
+    "signedInAccount": "Cuenta conectada",
     "checkCode": "Comprueba que coincide con el código de tu navegador antes de permitir el acceso.",
     "enterPassword": "Introduce tu contraseña de sincronización",
     "enterPasswordDescription": "Este ordenador se une al espacio cifrado que configuraste en otro dispositivo. Bottega no puede recuperar la contraseña.",
@@ -141,9 +142,8 @@ export const cloudCopy = {
   },
   "whatSyncs": {
     "title": "Qué se sincroniza",
-    "description": "Cifrado de extremo a extremo con una contraseña de sincronización que solo tú conoces.",
-    "after": "Al iniciar sesión",
-    "afterPassword": "Tras definir la contraseña de sincronización",
+    "lead": "La sincronización empieza al iniciar sesión. Cada elemento se cifra de extremo a extremo con una contraseña de sincronización que solo tú conoces.",
+    "leadPassword": "La sincronización empieza cuando definas la contraseña de sincronización. Cada elemento se cifra de extremo a extremo con una contraseña que solo tú conoces.",
     "chats": "Chats y Projects",
     "chatsDescription": "Las conversaciones, sus archivos y tus Projects",
     "data": "Bases y Apps",
@@ -284,7 +284,7 @@ export const cloudCopy = {
   "revokeDescription": "Este dispositivo perderá el acceso a tu cuenta en la nube. El contenido descargado permanecerá en el dispositivo.",
   "localDescription": "Usa Bottega gratis de forma local. Iniciar sesión no sube contenido hasta que confirmes la primera sincronización.",
   "notSignedIn": "Sin iniciar sesión",
-  "signedOutDescription": "Bottega funciona por completo y gratis en este ordenador. Inicia sesión para mantener tu trabajo sincronizado entre tus dispositivos. No se sube nada hasta que confirmes la primera sincronización.",
+  "signedOutDescription": "Al iniciar sesión, puedes controlar este ordenador a distancia desde la web o la app móvil. No se sube nada hasta que confirmes la primera sincronización.",
   "tryNow": "Reintentar ahora",
   "tryAgain": "Reintentar",
   "sync": "Sincronización",

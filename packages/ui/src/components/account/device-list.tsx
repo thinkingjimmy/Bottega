@@ -1,9 +1,9 @@
 /**
- * [INPUT]: Public device facts, localized labels and host-owned rename/revoke/refresh capabilities.
- * [OUTPUT]: One shared device list with a kind icon (computer, browser, phone), presence, platform, version (Bottega app, Web session or mobile app), stable editing and confirmation.
+ * [INPUT]: Public device facts, localized labels, host-owned rename/revoke/refresh capabilities and optional per-device actions.
+ * [OUTPUT]: One shared device list with identity, presence, platform, version, stable editing, confirmation and host actions beside rename/revoke.
  * [POS]: Pure account presentation; the host owns current-session key cleanup and transport authority.
  */
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { GlobeIcon, LaptopIcon, SmartphoneIcon } from "lucide-react";
 import { Button } from "../ui/controls/button";
 import { Input } from "../ui/controls/input";
@@ -28,6 +28,7 @@ export interface DeviceListProps {
   onRename(device: AccountDevice, name: string): Promise<unknown>;
   onRevoke(device: AccountDevice): Promise<unknown>;
   onRefresh?(): void;
+  renderActions?(device: AccountDevice): ReactNode;
 }
 export function DeviceList(props: DeviceListProps) {
   return <div>{props.capabilities.refresh && props.onRefresh && <SettingsButton variant="ghost" disabled={props.disabled} onClick={props.onRefresh}>{props.copy("refresh")}</SettingsButton>}
@@ -58,7 +59,8 @@ function DeviceRow({ device, ...props }: DeviceListProps & { device: AccountDevi
       badge={device.current && <SettingsBadge>{t("cloud.current")}</SettingsBadge>}
       control={device.state === "active" && <div className="flex flex-wrap gap-1">
         {capabilities.rename && <SettingsButton variant="ghost" disabled={disabled || busy} onClick={() => { setName(device.name); setFailed(false); setEditing(true); }}>{t("cloud.rename")}</SettingsButton>}
-        {capabilities.revoke(device) && <SettingsButton disabled={disabled || busy} variant="ghost" onClick={() => { setFailed(false); setRevoke(true); }}>{t("cloud.revoke")}</SettingsButton>}</div>} />
+        {capabilities.revoke(device) && <SettingsButton disabled={disabled || busy} variant="ghost" onClick={() => { setFailed(false); setRevoke(true); }}>{t("cloud.revoke")}</SettingsButton>}
+        {props.renderActions?.(device)}</div>} />
     {editing && <form className="flex flex-wrap items-end gap-2 px-4 pb-4" onSubmit={event => { event.preventDefault(); run("rename"); }}>
       <div className="min-w-0 flex-1 space-y-2"><label htmlFor={inputId} className="text-sm">{t("cloud.deviceName")}</label>
         <Input id={inputId} value={name} onChange={event => setName(event.target.value)} required maxLength={40} autoFocus className="text-base" disabled={busy} /></div>

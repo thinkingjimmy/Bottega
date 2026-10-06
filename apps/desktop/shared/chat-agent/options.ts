@@ -5,6 +5,7 @@
  *           Provider's turn options take) and chatTurnOptionsSchema / ChatTurnOptions (a built-in id only in its built-in shape)
  * [POS]: Shared Chat option authority; persistence remains owned by SQLite and Settings. The cloud-protocol schemas it re-exports stay
  *        closed: a package Provider's Chat never leaves this computer this period
+ * Factory-shaped New Chat drafts are aligned with live model catalogs; factory constants are not persisted as learned choices.
  */
 
 import { AGENT_BACKEND_ORDER, type AgentBackendId, type AgentTurnOptions, type CodexTurnOptions } from "../ipc/agent/agent-ipc";

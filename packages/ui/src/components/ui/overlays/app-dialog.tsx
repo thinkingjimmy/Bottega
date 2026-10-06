@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React focus control, shared Dialog/Button/SlimScroller primitives, host UI text, and class merging
- * [OUTPUT]: Provides AppDialogContent, AppDialogBody, StepDialogContent — the one shell for step-by-step setup (progress label and segments, title, description, scrolling body, a footer band with Back on the left and Cancel/primary on the right, and deliberately no close button) — — the sole scroller, and therefore the sole clipping box, so it carries the headroom its children's rings and shadows are painted into — DialogChoice, the two-line option row for dialogs that pose a choice rather than a confirmation (bordered when it holds a selected value, plain when it is simply pressed; an optional leading icon slot houses the busy spinner so the row never shifts), and ConfirmationDialog with explicit initial/return focus and dismiss policies plus responsive cancel, secondary, destructive, and primary actions whose busy spinner lands on the button that was actually pressed
+ * [OUTPUT]: Provides AppDialogContent, AppDialogBody, StepDialogContent — the one shell for step-by-step setup (progress label and segments that mark the current step, an optional account row under the title, description, scrolling body, a footer band with Back on the left and Cancel/primary on the right, and deliberately no close button) — — the sole scroller, and therefore the sole clipping box, so it carries the headroom its children's rings and shadows are painted into — DialogChoice, the two-line option row for dialogs that pose a choice rather than a confirmation (bordered when it holds a selected value, plain when it is simply pressed; an optional leading icon slot houses the busy spinner so the row never shifts), and ConfirmationDialog with explicit initial/return focus and dismiss policies plus responsive cancel, secondary, destructive, and primary actions whose busy spinner lands on the button that was actually pressed
  * [POS]: packages/ui/src/components/ui/overlays; The shared accessible dialog shell and confirmation surface for packages/ui consumers
  */
 
@@ -123,10 +123,35 @@ export type StepDialogProgress = {
   label: string;
 };
 
+export type StepDialogAccount = {
+  /** Short label; the address is `value`, not interpolated into a sentence. */
+  label: ReactNode;
+  value: ReactNode;
+};
+
+type StepSegment = "done" | "current" | "upcoming";
+
+/** The current step is never painted done, so the last step is a short done bar plus a longer current bar. */
+function stepSegments(progress: StepDialogProgress): StepSegment[] {
+  return Array.from({ length: progress.total }, (_, index) => {
+    const step = index + 1;
+    if (step < progress.index) return "done";
+    if (step === progress.index) return "current";
+    return "upcoming";
+  });
+}
+
+function segmentClass(segment: StepSegment): string {
+  if (segment === "current") return "h-[3px] w-7 rounded-[2px] bg-foreground";
+  if (segment === "done") return "h-[3px] w-4 rounded-[2px] bg-foreground";
+  return "h-[3px] w-4 rounded-[2px] bg-border";
+}
+
 export function StepDialogContent({
   progress,
   title,
   description,
+  account,
   back,
   actions,
   children,
@@ -137,6 +162,8 @@ export function StepDialogContent({
   progress?: StepDialogProgress | null;
   title: ReactNode;
   description?: ReactNode;
+  /** Who this step commits, shown under the title. */
+  account?: StepDialogAccount;
   /** Left side of the footer, usually Back; omit on the first step. */
   back?: ReactNode;
   /** Right side of the footer: Cancel (required — it is the way out) then the primary action. */
@@ -157,20 +184,20 @@ export function StepDialogContent({
         {progress && progress.total > 1 && (
           <div className="flex items-center justify-between gap-4">
             <p className="text-muted-foreground text-xs">{progress.label}</p>
-            <span aria-hidden="true" className="flex gap-1">
-              {Array.from({ length: progress.total }, (_, index) => (
-                <span
-                  key={index}
-                  className={cn(
-                    "h-[3px] w-4 rounded-[2px]",
-                    index < progress.index ? "bg-foreground" : "bg-border"
-                  )}
-                />
+            <span aria-hidden="true" className="flex items-center gap-1">
+              {stepSegments(progress).map((segment, index) => (
+                <span key={index} data-segment={segment} className={segmentClass(segment)} />
               ))}
             </span>
           </div>
         )}
         <DialogTitle className="font-semibold text-lg">{title}</DialogTitle>
+        {account ? (
+          <p className="flex flex-wrap items-baseline gap-x-2 pt-1 text-[13px]/[1.45]">
+            <span className="text-muted-foreground">{account.label}</span>
+            <span className="font-medium text-foreground">{account.value}</span>
+          </p>
+        ) : null}
         {description ? (
           <DialogDescription className="text-muted-foreground text-xs leading-relaxed">
             {description}

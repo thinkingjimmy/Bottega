@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Owned startup holds, synchronous operation permissions, and existing shutdown/recovery ports.
  * [OUTPUT]: Provides safeQuitCoordinator with ready/aborted/failed results, `quitting` (in flight or completed), a bounded wait for an in-flight startup before agents quiesce and owners close, and an authorization boundary before global shutdown, a user-confirmed forced quit when Agents cannot be confirmed stopped; settleStartup.
- * Carries exact failure stage, confirmed draft persistence and unconfirmed window names; Agent force quit is offered only after quiescence fails.
+ * Carries exact failure stage, confirmed draft persistence and unconfirmed window names; Agent force quit is offered only after quiescence fails. System shutdown is noninteractive; failed recovery after cancellation uses a notice instead of a second dialog.
  * [POS]: Single process-wide safe-quit owner shared by user quit, update installation, and system shutdown.
  */
 
@@ -24,7 +24,7 @@ export type SafeQuitPorts = {
   report(reason: SafeQuitReason, phase: "reversible" | "terminal", cause: unknown): void;
   /** A user quit whose Agents could not be confirmed stopped may still leave: the person decides, and true skips recovery. */
   confirmForce?(failure: QuitFailure): Promise<boolean>;
-  notify(recovered: boolean, failure: QuitFailure): void | Promise<void>;
+  notify(recovered: boolean, failure: QuitFailure, presentation: "dialog" | "notice"): void | Promise<void>;
   quit(): void;
 };
 
@@ -93,8 +93,7 @@ export class SafeQuitCoordinator {
       this.ports.report(reason, "reversible", new Error(`${stage}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause }));
       const failure: QuitFailure = { stage, cause, draftsSaved,
         unconfirmedWindows: cause instanceof DraftSettlementError ? cause.windows.map(window => window.title) : [] };
-      /* A cleanup failure earlier in the session leaves a safety lock that every later quit reports again, so without this a quit
-         could never succeed. The owners still close (ledgers flushed); the watchdog ends any tracked auxiliary group main leaves. */
+      // Only saved drafts may cross the explicit force-quit boundary after task shutdown fails.
       const forceOffered = frozen && stage === "quiesce-agents" && reason === "quit" && Boolean(this.ports.confirmForce);
       if (forceOffered && await this.ports.confirmForce!(failure).catch(() => false)) return this.close(reason);
       let recovered = !frozen && !releaseAttempted;
@@ -106,8 +105,8 @@ export class SafeQuitCoordinator {
         this.ports.report(reason, "reversible", recoveryCause);
       }
       if (!recovered && frozen) this.ports.stopAdmission();
-      if (!forceOffered || !recovered) {
-        try { await this.ports.notify(recovered, failure); }
+      if (reason !== "system" && (!forceOffered || !recovered)) {
+        try { await this.ports.notify(recovered, failure, forceOffered ? "notice" : "dialog"); }
         catch (notificationCause) { this.ports.report(reason, "reversible", notificationCause); }
       }
       return "failed";

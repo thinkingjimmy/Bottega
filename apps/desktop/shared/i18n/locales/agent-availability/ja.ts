@@ -1,9 +1,12 @@
 /**
  * [INPUT]: Depends on the shared availability state vocabulary.
- * [OUTPUT]: Provides localized Agent availability and recovery copy.
+ * [OUTPUT]: Localized availability, login recovery, installed-provider empty states and separate required/optional update copy.
  * [POS]: Availability locale leaf.
  */
 export const agentAvailabilityJa = {
+  "updateAvailable": "更新があります",
+  "updateForUsage": "更新して使用量を取得",
+  "noInstalledProviders": "インストール済みの Provider はありません",
   "state": {
     "recent-sign-in": "直近のリクエストでログインが必要",
     "connection": "接続の問題",
@@ -14,7 +17,7 @@ export const agentAvailabilityJa = {
     "unverified": "未確認",
     "checking": "確認中",
     "missing": "未インストール",
-    "unsupported": "更新があります",
+    "unsupported": "更新が必要",
     "sign-in": "未ログイン",
     "cannot-check": "確認できません",
     "cannot-start": "起動できません",

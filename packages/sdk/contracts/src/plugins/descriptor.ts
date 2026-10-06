@@ -12,7 +12,7 @@ import { localizedTextSchema } from "./text";
 
 export const PLUGIN_KINDS = ["feature", "provider"] as const;
 export const PLUGIN_SOURCES = ["builtin", "package", "agent-native"] as const;
-export const TURN_ON_SETUPS = ["memory-consent", "dock-setup"] as const;
+export const TURN_ON_SETUPS = ["dock-setup"] as const;
 export const TURN_OFF_REASONS = ["always-on", "managed-by-agent", "project-scoped"] as const;
 export type PluginKind = (typeof PLUGIN_KINDS)[number];
 export type PluginSource = (typeof PLUGIN_SOURCES)[number];

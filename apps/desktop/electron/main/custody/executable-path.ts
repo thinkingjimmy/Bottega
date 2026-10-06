@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on explicit platform, PATH/PATHEXT values and filesystem executable facts
- * [OUTPUT]: Provides validated executable entry paths preserving symlinks for spawn-time identity checks, and platform environment projection
+ * [OUTPUT]: Provides ordered executable enumeration, first-match lookup preserving symlinks for spawn-time identity checks, and platform environment projection
  * [POS]: Shared runtime discovery leaf; finding a path supplies no execution or sandbox authority
  */
 
@@ -25,16 +25,20 @@ export function executableCandidates(command: string, env: NodeJS.ProcessEnv, pl
   return roots.flatMap((root) => extensions.map((extension) => root ? paths.join(root, command + extension) : command + extension));
 }
 
-export async function findExecutable(command: string, env: NodeJS.ProcessEnv = process.env, signal?: AbortSignal) {
-  for (const candidate of executableCandidates(command, env)) {
+export async function* findExecutables(command: string, env: NodeJS.ProcessEnv = process.env, signal?: AbortSignal) {
+  for (const candidate of new Set(executableCandidates(command, env))) {
     signal?.throwIfAborted();
     try {
       const path = await realpath(candidate);
       if (!(await stat(path)).isFile()) continue;
       await access(path, process.platform === "win32" ? constants.F_OK : constants.X_OK);
-      return candidate;
+      yield candidate;
     } catch { signal?.throwIfAborted(); }
   }
+}
+
+export async function findExecutable(command: string, env: NodeJS.ProcessEnv = process.env, signal?: AbortSignal) {
+  for await (const candidate of findExecutables(command, env, signal)) return candidate;
   return undefined;
 }
 

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Native clipboard/shell, current error diagnostics, localized copy and the owned desktop surface.
- * [OUTPUT]: Direct Copy/Report actions with honest inline acknowledgement and no diagnostic viewer or automatic submission.
+ * [OUTPUT]: Equally styled Copy error details / Report actions with honest inline acknowledgement and no diagnostic viewer or automatic submission.
  * [POS]: Reused by startup and quit error windows; timers and late results belong to one window only.
  */
 import { clipboard, shell } from "electron";
@@ -12,7 +12,7 @@ import type { DesktopDialogButton } from "./types";
 
 export const supportActions = (locale: AppLocale): DesktopDialogButton[] => [
   { id:"copy", label:translate(locale, "settings.native.copyTechnicalDetails"), quiet:true },
-  { id:"report", label:desktopCopy(locale, "report") },
+  { id:"report", label:desktopCopy(locale, "report"), quiet:true },
 ];
 
 export function dialogFeedback(surface: DesktopDialog, locale: AppLocale, diagnostics: () => string) {

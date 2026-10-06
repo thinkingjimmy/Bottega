@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node:crypto, the managed runtime registry/coordinator, and service-supplied active/consent-destination/quiesce/reopen/rebuild callbacks
- * [OUTPUT]: Provides MemoryLifecycleOrchestrator: per-provider serial reservation, time-boxed destructive-operation authority tokens, read-only version-catalog listing via the coordinator, config preview/write/issue-resolution, and switch/repair/rebuild runs
+ * [OUTPUT]: Provides MemoryLifecycleOrchestrator: per-provider reservation, destructive authority, config reconciliation and switch/repair/rebuild; absent engines remain retryable without being classified as destination drift.
  * [POS]: The destructive-lifecycle center of main/memory/runtime/control; the coordinator owns runtime truth, Settings/Delivery must go through this orchestrator's reservation to touch it
  */
 
@@ -312,7 +312,8 @@ export class MemoryLifecycleOrchestrator {
         .refreshReachability();
       const active = this.dependencies.activeMemory();
       let destinationFailure: unknown = null;
-      if (active.enabled && active.provider === providerId) {
+      // An absent engine has no destination to compare; target/readiness gates already prevent execution.
+      if (active.enabled && active.provider === providerId && snapshot.installed) {
         try {
           const actual = await this.dependencies.runtimes
             .require(providerId)

@@ -10,7 +10,7 @@ export const chatAgentSwitchZhCN = {
   "recovering": "消息已提交，正在恢复…",
   "stale": "此聊天已发生变化，请重新选择目标 Agent。",
   "adjacent": "请先发送新消息或选回原 Agent。",
-  "defaultsFailed": "聊天配置已保存，但更新全局默认值失败。",
+  "defaultsFailed": "选择已保留，但没能记住新聊天的默认选项。",
   "divider": "从此处开始由 {{backend}} 回复",
   "running": "回复结束后可切换。",
   "queue": "处理待发送消息后可切换。",

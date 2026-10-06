@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Host-computed model state and shared menu presentation primitives.
- * [OUTPUT]: Provides the on-demand full model menu — models, reasoning effort and speed — without moving native commit rules.
+ * [OUTPUT]: Provides the on-demand full model menu with model, effort and speed choices plus effective-speed fallback status.
  * [POS]: The lazy content behind selector.tsx's trigger in the composer models surface; the trigger itself stays in the eager composer.
  */
 
@@ -230,16 +230,11 @@ export default function ModelMenu({ state }: { state: ModelMenuState }) {
                       />
                     ))}
                 </SlimScroller>
-                {view === "speed" && (
-                  <div className="mt-2 space-y-1 border-t pt-2 text-xs text-muted-foreground">
-                    <p>{t("chat.composer.modelSelector.speedDescription")}</p>
-                    {speedDiverged && (
-                      <p role="status">
-                        <span className="font-medium text-foreground">{speedSummary}</span>
-                        {speedReason && ` · ${speedReason}`}
-                      </p>
-                    )}
-                  </div>
+                {view === "speed" && speedDiverged && (
+                  <p role="status" className="mt-2 border-t pt-2 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">{speedSummary}</span>
+                    {speedReason && ` · ${speedReason}`}
+                  </p>
                 )}
               </div>
             )}

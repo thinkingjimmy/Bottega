@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the lazy Memory settings page, its existing frame, Memory catalog loading and the renderer locale.
- * [OUTPUT]: Provides MemoryPluginPage, the plugin entry into the unchanged Memory settings controls and dialogs.
- * [POS]: T-M3 host adapter; loads the existing page and copy together without adding a second master switch or backend form.
+ * [OUTPUT]: Provides MemoryPluginPage, the lazy plugin entry into Memory settings and its independent plugin/service controls.
+ * [POS]: T-M3 host adapter; loads the existing page and copy together with the same plugin switch in its loading frame.
  */
 import { lazy, Suspense } from "react";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";

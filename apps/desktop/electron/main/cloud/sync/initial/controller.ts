@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on authenticated account admission, durable binding, actual inventory and a scoped synchronization run.
- * [OUTPUT]: Owns durable consent/status projection including the scanned byte total a synced pass is held to, setup-scoped failures and inventory-bound cleanup with identity fences and a retryable cleanup failure; a run the scope's suspension closed resumes on the next admission even when the account state did not change (TASK-20 F2).
+ * [OUTPUT]: Owns durable consent/status projection including opt-in status-transition diagnostics, the scanned byte total a synced pass is held to, setup-scoped failures and inventory-bound cleanup with identity fences and a retryable cleanup failure; a run the scope's suspension closed resumes on the next admission even when the account state did not change (TASK-20 F2).
  * [POS]: Main lifecycle coordinator; durable business state remains in the four existing Stores.
  */
 import { randomUUID } from "node:crypto";
@@ -33,6 +33,9 @@ export class InitialSyncController {
   private publish(value: Partial<SyncProgress>) {
     if (this.closed) return;
     const next = syncProgressSchema.parse({ ...this.progress, ...value });
+    if (process.env.BOTTEGA_SYNC_DIAGNOSTICS === "1" && next.status !== this.progress.status) {
+      console.debug("[cloud-sync-status]", next.status);
+    }
     // A pass that left nothing behind uploaded everything the scan counted; the row never settles below its own total.
     this.progress = next.status === "synced" ? { ...next, uploadedBytes: next.totalBytes } : next;
     this.ports.changed(this.progress);

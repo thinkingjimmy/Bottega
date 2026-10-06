@@ -2,6 +2,7 @@
  * [INPUT]: Depends on the live Provider catalog and its IPC narrowing (withProviderTarget), Electron dialog/BrowserWindow/app, Node fs/path, shared Settings, platform capabilities, ChatHomeService, backend runtime registry and model-catalog persistence, memory service, workspace resolver, trusted renderer IPC, and surface residence
  * [OUTPUT]: Registers settings and model APIs (the folder chooser, onboarding's suggested folder — offered and opened only after main re-derives it — and retry share one write probe and open) while excluding presence-owned mode writes; exports acknowledgeFullAccessFor (Full Access acknowledged from main, or from an App window only for a Chat resident in it), backendDefaultsFor and rememberChatDefaultsFor (TASK-11 S3-c: a malformed or unknown Provider id answers a ProviderIpcRefusal), and listModels (which answers the same refusal), whose empty-list answers cover a Project with no folder on this computer and a closed runtime registry so neither reaches the log as a stack; cached model catalogs avoid process admission, refreshes wait for quota, cold probes retain interactive priority, and the durable model cache is installed here. The settings envelope (settings:get, readSettingsEnvelope) is also readable by an App window holding its Studio, and its changes reach App windows.
  * [POS]: apps/desktop/electron/main/registration; Main Settings admission boundary; App windows receive no global settings envelope and only the backend/session projections required by their resident use chat
+ * Preference writes validate live built-in/package targets and metadata; New Chat reads wait for queued preference writes.
  */
 
 import { providerIdSchema } from "@bottega/contracts/model/provider";
@@ -275,9 +276,12 @@ export function backendDefaultsFor(store: Pick<SettingsStore, "getBackendDefault
 }
 
 /** `settings:remember-chat-defaults`: the options' own backend is checked before the store parses them; no cast. */
-export function rememberChatDefaultsFor(store: Pick<SettingsStore, "rememberChatDefaults">, raw: unknown, catalog: ProviderCatalog) {
+export function rememberChatDefaultsFor(store: Pick<SettingsStore, "rememberChatDefaults">, raw: unknown, catalog: ProviderCatalog, preference?: unknown) {
   const backend = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as { backend?: unknown }).backend : undefined;
-  return withProviderTarget(backend, catalog, () => store.rememberChatDefaults(raw));
+  const id = providerIdSchema.safeParse(backend);
+  if (!id.success) return { status: "invalid-input" } as const;
+  if (!catalog.get(id.data).known) return { status: "unknown-provider", id: id.data } as const;
+  return store.rememberChatDefaults(raw, preference);
 }
 
 export function registerSettings(
@@ -332,8 +336,9 @@ export function registerSettings(
     .handleWithContext(SETTINGS_CHANNEL.listModels, (context, rawBackend, rawScope) =>
       listModels(context, rawBackend, rawScope, resolveWorkspace, catalog())
     )
-    .handleWithContext(SETTINGS_CHANNEL.getBackendDefaults, (context, rawBackend) => {
+    .handleWithContext(SETTINGS_CHANNEL.getBackendDefaults, async (context, rawBackend) => {
       assertStudioRead(context);
+      await store.settled();
       return backendDefaultsFor(store, rawBackend, catalog());
     })
     .handleWithContext(SETTINGS_CHANNEL.patchChatOptions, (context, raw, reset) =>
@@ -349,7 +354,7 @@ export function registerSettings(
       return { agent: result.agent, agentRevision: result.agentRevision, chatRecordRevision: result.chatRecordRevision, options: result.options };
     }))
     .roles("main")
-    .handle(SETTINGS_CHANNEL.rememberChatDefaults, (options) => rememberChatDefaultsFor(store, options, catalog()));
+    .handle(SETTINGS_CHANNEL.rememberChatDefaults, (options, preference) => rememberChatDefaultsFor(store, options, catalog(), preference));
   /* 变更广播是 renderer rebase 的前提：没有它，外部写入永远到不了
      renderer，后续 patch 全部基于陈旧基线计算。 */
   const unwatch = store.onChanged((envelope) => {

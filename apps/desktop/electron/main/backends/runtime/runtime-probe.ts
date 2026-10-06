@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shell-free executable discovery, platform PATH/environment facts, the shared RUNTIME_TTL_MS freshness window, cancellable runtime/version probes, the provider host traits (built-in tool minimum versions) and startup/boot/composition-hooks (a restricted discovery another entry of this build may set; never in production)
- * [OUTPUT]: Provides runtime candidates, version validation, login-shell PATH cache expiry for explicit rechecks, and exact OS launch/crash classification without interpreting network failures as startup failures.
+ * [OUTPUT]: Provides distinct executables in GUI/login-shell/common-path order before alternate environments, version validation, login-shell PATH cache expiry for explicit rechecks, and exact OS launch/crash classification without interpreting network failures as startup failures.
  * [POS]: The backends are found when running the kernel; The lifecycle of the asynchronous process is called by its Runtime Registry flight unified with the canceled and drained
  */
 
@@ -11,7 +11,7 @@ import { promisify } from "node:util";
 import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
 import { RUNTIME_TTL_MS } from "../../../../shared/agent-availability/types";
 import type { AgentRuntime } from "../types";
-import { environmentValue, findExecutable, platformPathEnvironment } from "../../custody/executable-path";
+import { environmentValue, findExecutables, platformPathEnvironment } from "../../custody/executable-path";
 import { compositionOverrides } from "../../startup/boot/composition-hooks";
 import { providerTraits } from "../../../../shared/providers/traits";
 
@@ -19,12 +19,14 @@ const SHELL_PROBE_TIMEOUT_MS = 5_000;
 const VERSION_PROBE_TIMEOUT_MS = 5_000;
 const execFileAsync = promisify(execFile);
 
-async function commandPathAsync(
+async function commandPathsAsync(
   command: string,
   envPath = environmentValue(process.env, "PATH") ?? "",
   signal?: AbortSignal
 ) {
-  return findExecutable(command, { ...platformPathEnvironment(process.env), PATH: envPath }, signal);
+  const paths: string[] = [];
+  for await (const path of findExecutables(command, { ...platformPathEnvironment(process.env), PATH: envPath }, signal)) paths.push(path);
+  return paths;
 }
 
 /* ── One login shell per launch, not one per backend ──────────────────────
@@ -156,30 +158,33 @@ export async function probeRuntimeCandidatesAsync(options: {
   if (restricted !== undefined) {
     if (restricted === null) return [];
     try {
-      const executable = await commandPathAsync(options.command, restricted, options.signal);
-      return executable ? [{ executable, path: restricted }] : [];
+      const executables = await commandPathsAsync(options.command, restricted, options.signal);
+      return executables.map((executable) => ({ executable, path: restricted }));
     } catch {
       options.signal?.throwIfAborted();
       return [];
     }
   }
   const candidates: AgentRuntime[] = [];
+  const alternatives: AgentRuntime[] = [];
   const seen = new Set<string>();
+  const executables = new Set<string>();
   const append = (runtime: AgentRuntime | undefined) => {
     if (!runtime) return;
     const key = `${runtime.executable}\0${runtime.path}`;
     if (seen.has(key)) return;
     seen.add(key);
-    candidates.push(runtime);
+    (executables.has(runtime.executable) ? alternatives : candidates).push(runtime);
+    executables.add(runtime.executable);
   };
   options.signal?.throwIfAborted();
   try {
-    const executable = await commandPathAsync(
+    const executables = await commandPathsAsync(
       options.command,
       environmentValue(process.env, "PATH") ?? "",
       options.signal
     );
-    if (executable) {
+    for (const executable of executables) {
       append({ executable, path: environmentValue(process.env, "PATH") ?? "" });
     }
   } catch {
@@ -188,10 +193,7 @@ export async function probeRuntimeCandidatesAsync(options: {
   }
   try {
     const path = await loginShellPathAsync(options.signal);
-    const executable = path
-      ? await commandPathAsync(options.command, path, options.signal)
-      : undefined;
-    if (executable && path) append({ executable, path });
+    if (path) for (const executable of await commandPathsAsync(options.command, path, options.signal)) append({ executable, path });
   } catch {
     options.signal?.throwIfAborted();
     // shell 配置不可用时继续常见路径。
@@ -204,14 +206,13 @@ export async function probeRuntimeCandidatesAsync(options: {
       .filter(Boolean)
       .join(delimiter);
     try {
-      const canonical = await commandPathAsync(executable, path, options.signal);
-      if (canonical) append({ executable: canonical, path });
+      for (const entry of await commandPathsAsync(executable, path, options.signal)) append({ executable: entry, path });
     } catch {
       options.signal?.throwIfAborted();
       // 当前候选不可执行，继续下一项。
     }
   }
-  return candidates;
+  return [...candidates, ...alternatives];
 }
 
 /** Only OS launch errors and crash signals prove an unusable process. */

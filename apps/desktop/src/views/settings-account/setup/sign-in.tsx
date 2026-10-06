@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the account preload adapter, shared deletion copy, the Radix Dialog root and shared StepDialogContent, Settings primitives, login progress, credential recovery, the fixed sign-out control and the shared Sync row grammar.
  * [OUTPUT]: Provides SignIn — the signed-out Sync row (Not signed in · Continue with Google, with every failure, status and recovery action said in place) and the browser sign-in dialog it projects while a sign-in runs (status panel, verification code, Cancel, Open Browser Again and every main-granted recovery action, each with its own lock, including the local abandon of an unconfirmed cancellation).
- * [POS]: Signed-out half of the Sync settings setup page; it never receives credential authority and shows nothing about sync — an account is what unlocks the password step.
+ * [POS]: Signed-out half of the Sync settings setup page; it never receives credential authority. The quiet row invites sign-in: the web and the phone can control this computer afterwards, and nothing uploads until the first sync is confirmed. An account is what unlocks the password step.
  */
 import { useRef, useState } from "react";
 import { StepDialogContent } from "@ai-chat/ui/components/ui/app-dialog";

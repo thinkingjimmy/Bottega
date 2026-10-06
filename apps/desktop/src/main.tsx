@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, window context, surface migration, shared feedback toasts, ArchiveCelebrationHost, SketchHost, startup marks, and the build-gated cloud account lifecycle.
- * [OUTPUT]: Composes persistent providers with system typography, window-level feedback hosts before route effects, task-panel access, App recovery, settings navigation (including background-surface requests, build-flagged Agent configs and Plugins, named plugin details and legacy Memory/Dock aliases), route-independent ProductApp sketch and archive celebration hosts, and the catalog-loaded/product-loading/gate-open startup milestones.
+ * [OUTPUT]: Composes persistent providers with system typography, window-level feedback hosts before route effects, task-panel access, App recovery, two-step onboarding without the Memory copy section, settings navigation (including background-surface requests, build-flagged Agent configs and Plugins, named plugin details and legacy Memory/Dock aliases), route-independent ProductApp sketch and archive celebration hosts, and the catalog-loaded/product-loading/gate-open startup milestones.
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
 import { SettingsNavigationContext } from "@/components/providers/navigation/context";
@@ -113,7 +113,7 @@ const AppDetailView = lazy(() =>
 const withSection = <T,>(page: Promise<T>, section: CatalogSection) =>
   Promise.all([page, loadSection(section, effectiveLocale())]).then(([module]) => module);
 const OnboardingView = lazy(() =>
-  withSection(import("@/views/onboarding"), "memory").then((module) => ({
+  import("@/views/onboarding").then((module) => ({
     default: module.OnboardingView,
   }))
 );

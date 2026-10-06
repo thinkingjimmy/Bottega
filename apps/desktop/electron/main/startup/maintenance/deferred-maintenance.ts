@@ -44,9 +44,9 @@ const POST_WINDOW_SETTLE_MS = 1_500;
 
 /**
  * Every entry here used to sit between `whenReady` and `new BrowserWindow`. They are
- * kept in their original relative order because the ordering contracts that survive
- * the move (custody before App/Extension generation GC, continuation reconciliation
- * before external history sync) are all satisfied by work that stays pre-window.
+ * kept in their original relative order because custody before App/Extension
+ * generation GC is satisfied by work that stays pre-window. External history is
+ * imported only by explicit Project Add or Settings actions, never by maintenance.
  *
  * Pending-Skill recovery and the App staging sweep deliberately stayed behind: the sweep
  * treats every staging directory no pending intent references as an orphan, which is only
@@ -110,10 +110,6 @@ function maintenanceTasks(
     {
       name: "app-mcp-plan-reconcile",
       run: () => apps.reconcileThirdPartyMcpPlans(new Set(typeof quarantinedTurnRequestIds === "function" ? quarantinedTurnRequestIds() : quarantinedTurnRequestIds)),
-    },
-    {
-      name: "history-background-sync",
-      run: async () => historyImport.startBackgroundSync(),
     },
     { name: "archive-purge-recovery", run: () => archive.recoverPurge() },
     {

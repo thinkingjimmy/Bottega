@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron IPC, typed Settings channels and the top-frame subscription adapter.
- * [OUTPUT]: Installs fixed-purpose settings controls, the onboarding folder suggestion, the dialog-free folder retry, folder move and profile erase requests, synchronous appearance facts and folder-progress events.
+ * [OUTPUT]: Fixed-purpose Settings controls including typed Chat preference metadata, folder operations, synchronous appearance facts and progress events.
  * [POS]: Settings preload leaf; the composition root admits the frame before exposing this bridge.
  */
 import { contextBridge, ipcRenderer } from "electron";
@@ -38,7 +38,7 @@ contextBridge.exposeInMainWorld("settings", {
   listModels: (backend, scope) =>
     ipcRenderer.invoke(SETTINGS_CHANNEL.listModels, backend, scope),
   getBackendDefaults: (backend) => ipcRenderer.invoke(SETTINGS_CHANNEL.getBackendDefaults, backend),
-  rememberChatDefaults: (options) => ipcRenderer.invoke(SETTINGS_CHANNEL.rememberChatDefaults, options),
+  rememberChatDefaults: (options, preference) => ipcRenderer.invoke(SETTINGS_CHANNEL.rememberChatDefaults, options, preference),
   patchChatOptions: (input, reset) => ipcRenderer.invoke(SETTINGS_CHANNEL.patchChatOptions, input, reset),
 } satisfies SettingsBridgeApi);
 }

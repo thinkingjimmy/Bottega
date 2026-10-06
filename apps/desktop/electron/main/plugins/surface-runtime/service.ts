@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on the shared immutable compiler/seal, durable file publication, source inventory, catalog admission, source provenance and host authorization.
- * [OUTPUT]: Provides capacity-admitted local install, owned-source watching, atomic activation, retained failure, durable rollback/forward, strict-current publication and expiring lease-scoped generation pins.
+ * [INPUT]: Depends on the shared immutable compiler/seal, Surface file-tree digest, durable file publication, source inventory, catalog admission, source provenance and host authorization.
+ * [OUTPUT]: Provides capacity-admitted local install, owned-source watching, atomic activation, retained failure, durable rollback/forward, strict-current publication and expiring lease-scoped generation pins with runtime-only Surface identities.
  * [POS]: Plugin surface lifecycle owner; reuses App compiler artifacts without App records, Base grants or host-package execution.
  */
 import {assertPluginIdentity} from "./identity";
 import { randomUUID } from "node:crypto";
 import { REMOTE_PLUGIN_CATALOG_LIMITS } from "@ai-chat/cloud-protocol/surfaces/plugin/catalog";
+import { appSurfaceTreeDigest } from "@ai-chat/cloud-protocol/surfaces/manifest";
 import { readFile, realpath, mkdir } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { runtimeFileSchema, type PluginRuntimeRecord, type PluginGeneration, type PluginRuntimeOptions } from "./model";
@@ -168,7 +169,8 @@ export class PluginSurfaceRuntime {
   }
   private delivery(pluginId:string,generation:PluginGeneration,validate:()=>Promise<void>,failed?:()=>void) {
     const root=join(this.artifactRoot(pluginId,generation.generationId),"runtime/gui");
-    return {kind:"compiled" as const,generationId:generation.generationId,artifactDigest:generation.digests.contentDigest,
+    // Surface identity covers only delivered GUI files; contentDigest also covers private authoring source.
+    return {kind:"compiled" as const,generationId:generation.generationId,artifactDigest:appSurfaceTreeDigest(generation.files),
       files:generation.files.map(file=>({...file,mime:MIME[extname(file.path)]??"application/octet-stream",read:async()=>{
         try{
           await validate();const bytes=await readFile(join(root,file.path));

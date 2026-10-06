@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The single onboarding path, the requirement verdict, OnboardingFrame, OnboardingActions and the step bodies.
- * [OUTPUT]: Onboarding with one path — folder, Agent (with a recorded Install later exemption), optional capabilities — and one completion; each step ends in its own action row.
+ * [OUTPUT]: Two-step onboarding — folder, then Agent — with direct completion through Get Started or a recorded Install later exemption.
  * [POS]: Main-window onboarding composition; required facts stay in the setup provider, and the account is never consulted here.
  */
 import { useEffect, useRef, useState } from "react";
@@ -14,7 +14,6 @@ import { OnboardingAgents } from "@/components/setup/onboarding-agents";
 import { settingsStore } from "@/lib/settings/store/settings-store";
 import { OnboardingActions, OnboardingFrame, onboardingCopyId } from "./frame";
 import { initialOnboardingStep, type OnboardingStep } from "./plan";
-import { ExtrasStep } from "./steps/extras";
 import { FolderStep } from "./steps/folder";
 
 export function OnboardingView() {
@@ -38,30 +37,26 @@ export function OnboardingView() {
     }
     setup.leaveOnboarding();
   };
-  /* Install later is a recorded fact, not a bypass: it is saved before the step advances, so a relaunch does not ask again. */
+  /* Save Install later before leaving so a relaunch does not ask again. */
   const agentReady = setup.onboarding.facts.agent === "satisfied";
-  const last = step === "extras";
-  const blocked = step === "agent" && !agentReady;
-  const advance = (ready: boolean) => { if (last) void finish(ready); else setStep("extras"); };
+  const blocked = !agentReady;
   const deferAgent = async () => {
     if (deferring || finishing) return;
     setDeferring(true); setFinishError("");
     const saved = await settingsStore.update({ agentSetupDeferred: true }, t("onboarding.agentLaterFailed"), { errorScope: "local" });
     setDeferring(false);
     if (!saved) { setFinishError(t("onboarding.agentLaterFailed")); return; }
-    advance(true);
+    await finish(true);
   };
-  /* The folder step owns its own Continue and is irreversible once it opens;
-     Back exists only on the last step, because the Agent step is the one right after the folder. */
-  const actions = step && step !== "folder" ? <OnboardingActions>
-    {last && <SettingsButton variant="ghost" disabled={finishing} onClick={() => setStep("agent")}>{t("onboarding.back")}</SettingsButton>}
+  /* The folder owns Continue and cannot be changed after opening; Agent completes onboarding. */
+  const actions = step === "agent" ? <OnboardingActions>
     <span className="flex-1" />
     {finishError && <p role="alert" className="min-w-0 truncate text-destructive text-xs" title={finishError}>{finishError}</p>}
     {blocked && <SettingsButton variant="ghost" disabled={finishing || deferring} onClick={() => void deferAgent()}>
       {deferring && <Spinner className="size-3.5" />}{t("onboarding.agentLater")}
     </SettingsButton>}
-    <SettingsButton disabled={blocked || finishing} onClick={() => advance(agentReady)}>
-      {finishing && <Spinner className="size-3.5" />}{t(last ? "onboarding.start" : "onboarding.next")}
+    <SettingsButton disabled={blocked || finishing || deferring} onClick={() => void finish(agentReady)}>
+      {finishing && <Spinner className="size-3.5" />}{t("onboarding.start")}
     </SettingsButton>
   </OnboardingActions> : null;
   const id = step ? onboardingCopyId(step) : null;
@@ -72,7 +67,6 @@ export function OnboardingView() {
       {!step && <div role="status" className="flex justify-center gap-2 py-16 text-muted-foreground text-sm"><Spinner />{t("cloud.status.connecting")}</div>}
       {step === "folder" && <FolderStep onSelected={() => setStep("agent")} />}
       {step === "agent" && <OnboardingAgents />}
-      {step === "extras" && <ExtrasStep finishing={finishing} />}
       {actions}
     </OnboardingFrame>
   </TooltipProvider>;

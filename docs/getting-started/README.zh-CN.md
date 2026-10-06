@@ -36,7 +36,7 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 ### 全新安装
 
-首次设置只有一条路径，全程不涉及账号：选择 Bottega 文件夹 → 配置 Agent（也可以点**稍后再装**）→ 可选地添加 Skills 与长期记忆。选择空文件夹即可从头开始，选择这台电脑用过的 Bottega 文件夹则重新打开其中的内容。任何一次安装都要经过这一步，从旧版本升级也一样。登录是之后在设置里进行的步骤，见 [Cloud Sync 与 Cloud Web](#cloud-sync-与-cloud-web)。
+首次设置只有一条路径，全程不涉及账号：选择 Bottega 文件夹 → 配置 Agent（也可以点**稍后再装**）。Skills 与长期 Memory 可之后在设置中配置。选择空文件夹即可从头开始，选择这台电脑用过的 Bottega 文件夹则重新打开其中的内容。任何一次安装都要经过这一步，从旧版本升级也一样。登录是之后在设置里进行的步骤，见 [Cloud Sync 与 Cloud Web](#cloud-sync-与-cloud-web)。
 
 ## Bottega 的差异化价值
 
@@ -61,11 +61,11 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 ## 下载与安装
 
-[下载 0.2.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.0)，本次提供 **Apple 芯片的 macOS 安装包**。该版本标记为预发布，不进入 GitHub Latest。Windows、Linux 与 Android 发行另行安排。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
+[下载 0.2.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.1)，本次提供 **Apple 芯片的 macOS 安装包**。该版本标记为预发布，不进入 GitHub Latest。Windows、Linux 与 Android 发行另行安排。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
 
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
-| macOS（Apple 芯片） | `Bottega-0.2.0-arm64.dmg` 或 `Bottega-0.2.0-arm64-mac.zip` | 手动安装与更新。 |
+| macOS（Apple 芯片） | `Bottega-0.2.1-arm64.dmg` 或 `Bottega-0.2.1-arm64-mac.zip` | 手动安装与更新。 |
 
 Apple Developer 资格仍在审核中。本次安装包使用 **ad-hoc 签名**，**没有 Developer ID 签名，也未经过 Apple 公证**。自动更新已关闭；后续版本请从 Releases 页面下载并手动替换。
 
@@ -73,7 +73,7 @@ Apple Developer 资格仍在审核中。本次安装包使用 **ad-hoc 签名**�
 2. 从同一版本页面下载安装包和 `release-manifest.json`。运行下方命令，将输出与清单中对应安装包的 `sha256` 手动比较；下载 ZIP 时请替换为 ZIP 文件名：
 
 ```bash
-shasum -a 256 Bottega-0.2.0-arm64.dmg
+shasum -a 256 Bottega-0.2.1-arm64.dmg
 ```
 
 3. 打开 DMG，将 Bottega 拖入「应用程序」；使用 ZIP 时，解压后将应用复制到该目录。
@@ -110,6 +110,14 @@ xattr -rd com.apple.quarantine /Applications/Bottega.app
 **电脑睡着或离线时。** 它的 Chat 仍可阅读，改名、归档、调整顺序、编辑 Base 行、写 App 记录也都照常成功，等它醒来后对账。需要它醒着的只有执行类动作——发送、停止、批准、回答、插话、删除 Chat——这些控件会就地置灰并说明原因，草稿留在输入框里，电脑醒来后约半分钟内自行恢复。笔记本合盖约 90 秒后被视为离线。
 
 Bottega 保留一个服务端总开关，必要时可以为所有人关闭远程操作。关闭期间，浏览器里的 Chat 为只读；阅读转录和实时观看运行中的轮次仍然可用。
+
+<a id="升级到-021"></a>
+
+## 升级到 0.2.1
+
+请完全退出 Bottega（包括后台运行），备份内容文件夹与应用数据目录，再用 0.2.1 下载包替换应用。本次预发布继续使用手动更新。
+
+本次补丁保持协议 14，保留已有云端内容与同步密码。0.2.0 安装可以直接重新连接，无需重置账号或数据。首次设置简化为两步，Skills 与 Memory 从设置中配置；需要新增 Agent 历史时，在 Project 设置中手动导入。
 
 <a id="升级到-020"></a>
 

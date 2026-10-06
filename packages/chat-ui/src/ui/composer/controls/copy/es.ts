@@ -296,8 +296,6 @@ export const copy = {
         effortUnavailable: "El modelo actual no permite cambiar el esfuerzo",
         noModels: "No se encontraron modelos disponibles",
         backendDefaultModel: "Modelo predeterminado del backend",
-        speedDescription:
-          "Aproximadamente 2,5 veces más rápido en modelos Opus 5/4.8 compatibles. Consume más créditos de uso, pero no el límite de velocidad de la suscripción.",
         speedReason: {
           modelUnsupported: "El modelo actual no ofrece Fast",
           backendOff: "El backend desactivó Fast en esta sesión",

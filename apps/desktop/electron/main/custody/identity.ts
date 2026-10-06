@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the POSIX `ps` pgid/lstart fields and Node fs realpath/stat
- * [OUTPUT]: Provides observeProcessBirth (present with process-group id and birth / absent, proven by a successful read / unverified: the read failed, timed out or could not be parsed), probeProcessBirth (the nullable capture shape over it) and executableIdentity (realpath+dev/ino/size fingerprint of a binary)
+ * [OUTPUT]: Provides observeProcessBirth (present with process-group id and birth, including macOS's transient ? state / absent, proven by a successful read / unverified: the read failed, timed out or could not be parsed), probeProcessBirth (the nullable capture shape over it) and executableIdentity (realpath+dev/ino/size fingerprint of a binary)
  * [POS]: Custody's process-identity evidence leaf; the sole rule governing whether to kill is that an inconclusive probe must never be treated as confirmed exit
  */
 
@@ -50,7 +50,9 @@ export function observeProcessBirth(pid: number, run = spawnSync): BirthObservat
   const match = /^(\d+)\s+(\S+)\s+(.+)$/.exec(line);
   if (!match) return unverified;
   const processGroupId = Number(match[1]), status = match[2]!, birthIdentity = match[3]!.trim();
-  if (!Number.isSafeInteger(processGroupId) || processGroupId <= 0 || !/^[IRSTUZ][A-Za-z<>+]*$/.test(status) || !birthIdentity) return unverified;
+  /* macOS can retain PGID and birth after the Mach thread state disappears (?Es while exiting).
+     This still identifies the process; the unknown run state is not evidence that it has ended. */
+  if (!Number.isSafeInteger(processGroupId) || processGroupId <= 0 || !/^[IRSTUZ?][A-Za-z<>+]*$/.test(status) || !birthIdentity) return unverified;
   /* A zombie (killed, not yet reaped by its parent) can no longer run, and its PID cannot be reused until it is reaped: it is gone. */
   if (status.startsWith("Z")) return { state: "absent" };
   return { state: "present", processGroupId, birthIdentity };

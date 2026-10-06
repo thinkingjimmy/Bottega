@@ -2,7 +2,7 @@
  * [INPUT]: Depends on the backend registry, TurnRegistry, synchronous Steer policy, payload validation, Project Tools receipts and the MCP plan binding guard, Chat commit, Gallery, Memory, MCP leases, artifact capture sessions, frozen sessions, retry guards and credential reservations
  * [OUTPUT]: Provides canonical execution, main-only session prompt evidence, scoped availability, Project policy narrowing, MCP/session guards, typed finalization (only availability gates may say "install or update"; a Stop during the process-slot wait cancels), StartNotDispatchedError for every start that failed before an Agent process existed, generation-scoped Stop, interaction/retry IPC with authorized saved-history session replacement carrying the original user identity, and shutdown (which returns only after every settling turn has finished its ledger writes); a turn starts on turnBackend (a built-in's host code or an available package Provider's DescriptorBackend; nothing runs it: runtime-unavailable), and a package turn gets no plan check, third-party MCP plan or App session config.
  * Workflow turns isolate native Skills and omit ambient backend plugin projections while preserving Provider settings.
- * Workflow turns disable native Provider memory; quit judges remaining safety locks after runtime and turn owners settle.
+ * Workflow turns disable native Provider memory; quit judges remaining safety locks after runtime and turn owners settle. Explicit application exit may report background cleanup separately once all turn persistence succeeds.
  * [POS]: apps/desktop/electron/main/agent/bridge; Main-process multi-backend turn executor; the conversation coordinator supplies already-admitted manual intent
  */
 
@@ -697,7 +697,7 @@ async function drainEntry(
     throw new Error(`${entry.backend} cleanup 失败，安全锁仍驻留`);
   }
 }
-export async function shutdownAllAgents() {
+export async function shutdownAllAgents(options: { onBackgroundCleanupFailure?(cause: unknown): void } = {}) {
   shuttingDown = true;
   stopAllAgentProcessAdmission();
   await drainRequestReservations();
@@ -711,10 +711,16 @@ export async function shutdownAllAgents() {
   /* The owners close right after this returns: a turn still settling must finish its ledger writes first. */
   await turns.drainSettlements();
   // Owners can release safety locks while draining; judge them only after those owners settle.
-  results.push(...await Promise.allSettled([shutdownAuxiliaryAgentProcesses()]));
   const failures = results.flatMap((result) =>
     result.status === "rejected" ? [result.reason] : []
   );
+  try { await shutdownAuxiliaryAgentProcesses(); }
+  catch (cause) {
+    // Quit still closes host custody and its guardians. A quota/probe cleanup lock
+    // cannot hold the application open after every user turn has been persisted.
+    if (!failures.length && options.onBackgroundCleanupFailure) options.onBackgroundCleanupFailure(cause);
+    else failures.push(cause);
+  }
   if (failures.length) {
     throw new AggregateError(failures, "Agent shutdown 失败");
   }

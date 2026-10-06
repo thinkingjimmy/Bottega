@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React lazy/Suspense, shared history-import contracts, lib/history/client, and the shared toast channel
- * [OUTPUT]: Provides HistoryProvider/useHistory: event-first background warnings, shared Project Add with preflight counts and its `pendingProject` flight (name + whether the scan is still running) for in-place placeholders, popup operation failures, and caller-owned import/Memory confirmation errors
+ * [INPUT]: Depends on React lazy/Suspense, shared history-import contracts, installed Agent picker policy, backend facts, lib/history/client, and the shared toast channel
+ * [OUTPUT]: Provides HistoryProvider/useHistory with shared Project Add and explicit Settings imports, preflight counts, single-flight operations, empty-result dialogs, and caller-owned Memory confirmation errors
  * [POS]: The single renderer owner of external history and Project onboarding; presentation actions on a synchronized history belong to the canonical Chat, not here
  */
 
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { HISTORY_SOURCE_KINDS, type HistoryImportSnapshot, type HistoryMemoryPreview, type HistorySourceCount, type PreparedProjectHistoryImport, type ProjectHistoryCommitResult } from "../../../../shared/ipc/content/history-import-ipc";
+import { historyScanIsEmpty, type HistoryImportSnapshot, type HistoryMemoryPreview, type HistorySourceCount, type HistorySourceKind } from "../../../../shared/ipc/content/history-import-ipc";
 import type { Project } from "../../../../shared/ipc/workspace/projects-ipc";
 import {
   commitHistoryProject,
@@ -15,22 +15,17 @@ import {
   historySnapshot,
   onHistoryEvent,
   prepareHistoryProject,
-  refreshHistoryProject,
-  setHistoryProjectEnabled,
-  commitHistoryMemory,
-  discardHistoryMemory,
+  prepareProjectHistoryImport,
+  importProjectHistory,
 } from "@/lib/history/client";
+import { installedHistorySources } from "@/lib/agent/picker/presentation";
+import { listBackends } from "@/lib/settings/client/settings-client";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { toast } from "@ai-chat/ui/components/ui/sonner";
 
 const ProjectImportDialog = lazy(() =>
   import("@/components/sidebar/project/import/project-import-dialog").then((module) => ({
     default: module.ProjectImportDialog,
-  }))
-);
-const HistoryMemoryPreviewDialog = lazy(() =>
-  import("./memory-preview-dialog").then((module) => ({
-    default: module.HistoryMemoryPreviewDialog,
   }))
 );
 
@@ -44,10 +39,8 @@ type HistoryContextValue = {
   warning: string;
   pendingProject: PendingProject | null;
   addProject(): Promise<Project | null>;
-  commitProject(input: { token: string; importHistory: boolean; previewMemory: boolean }): Promise<ProjectHistoryCommitResult>;
-  commitMemory(snapshotId: string, digest: string): Promise<void>;
-  setEnabled(projectId: string, enabled: boolean): Promise<void>;
-  refreshProject(projectId: string): Promise<void>;
+  importProject(project: Project): Promise<void>;
+  importingProjectId: string | null;
 };
 
 const initial: HistoryImportSnapshot = { revision: 0, entries: [], canonicalRoutes: {}, projects: [], memoryDelivering: false, warning: null };
@@ -59,11 +52,15 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
   const [warning, setWarning] = useState("");
   const [pendingProject, setPendingProject] = useState<PendingProject | null>(null);
   const [confirmation, setConfirmation] = useState<{
-    prepared: PreparedProjectHistoryImport;
+    canonicalRoot: string;
     counts: HistorySourceCount[];
+    sourceKinds: HistorySourceKind[];
+    mode: "add" | "import";
+    onCommit(importHistory: boolean, previewMemory: boolean): Promise<HistoryMemoryPreview | null>;
+    onComplete(): void;
   } | null>(null);
-  const [refreshPreview, setRefreshPreview] = useState<HistoryMemoryPreview | null>(null);
-  useEffect(() => refreshPreview ? () => discardHistoryMemory(refreshPreview.snapshotId) : undefined, [refreshPreview]);
+  const [importingProjectId, setImportingProjectId] = useState<string | null>(null);
+  const importFlight = useRef<Promise<void> | null>(null);
   const addFlight = useRef<{
     promise: Promise<Project | null>;
     resolve(project: Project | null): void;
@@ -71,7 +68,7 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
   const buffered = useRef<HistoryImportSnapshot[]>([]);
   const hydrating = useRef(true);
 
-  /* mutation 之后不再手动重拉：main 在每次 setEnabled/commit/refresh 后都
+  /* mutation 之后不再手动重拉：main 在每次明确的添加/导入后都
      publish snapshot 事件，事件流按 revision 单调收敛是唯一权威。 */
   useEffect(() => {
     const unsubscribe = onHistoryEvent((event) => {
@@ -127,21 +124,30 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
      （超过门槛才显形），Sidebar 与 Composer 共享同一次添加。 */
   const addProject = useCallback(() => {
     if (addFlight.current) return addFlight.current.promise;
+    if (importFlight.current) return importFlight.current.then(() => null);
     let resolve!: (project: Project | null) => void;
     const promise = new Promise<Project | null>((done) => { resolve = done; });
     addFlight.current = { promise, resolve };
     void run(async () => {
-      const prepared = await prepareHistoryProject();
+      const sourceKinds = installedHistorySources(await listBackends());
+      const prepared = await prepareHistoryProject(sourceKinds);
       if (!prepared) return completeProject(null);
       const pending = { name: prepared.name, canonicalRoot: prepared.canonicalRoot };
       setPendingProject({ ...pending, scanning: true });
       const counts = await countHistoryProject(prepared.token).catch(() => []);
-      const empty = HISTORY_SOURCE_KINDS.every((kind) =>
-        counts.find((item) => item.sourceKind === kind)?.count === 0
-      );
+      const empty = historyScanIsEmpty(counts, sourceKinds);
       if (!empty) {
         setPendingProject({ ...pending, scanning: false });
-        setConfirmation({ prepared, counts });
+        let created: Project | null = null;
+        setConfirmation({
+          canonicalRoot: prepared.canonicalRoot, counts, sourceKinds, mode: "add",
+          onCommit: async (importHistory, previewMemory) => {
+            const result = await commitHistoryProject({ token: prepared.token, importHistory, previewMemory });
+            created = result.project;
+            return result.memoryPreview;
+          },
+          onComplete: () => completeProject(created),
+        });
         return;
       }
       const { project } = await commitHistoryProject({
@@ -154,22 +160,43 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
     return promise;
   }, [completeProject, run]);
 
+  const importProject = useCallback((project: Project) => {
+    if (importFlight.current) return importFlight.current;
+    if (addFlight.current) return addFlight.current.promise.then(() => undefined);
+    let complete!: () => void;
+    const promise = new Promise<void>((resolve) => { complete = resolve; });
+    importFlight.current = promise;
+    setImportingProjectId(project.id);
+    const finish = () => {
+      setConfirmation(null);
+      setImportingProjectId(null);
+      importFlight.current = null;
+      complete();
+    };
+    void run(async () => {
+      const sourceKinds = installedHistorySources(await listBackends());
+      const preview = await prepareProjectHistoryImport({ projectId: project.id, sourceKinds });
+      setConfirmation({
+        canonicalRoot: project.dir, counts: preview.counts, sourceKinds, mode: "import",
+        onCommit: async (_importHistory, previewMemory) => {
+          const result = await importProjectHistory({ projectId: project.id, membershipRevision: preview.membershipRevision, previewMemory, sourceKinds });
+          return result.memoryPreview;
+        },
+        onComplete: finish,
+      });
+    }).catch(finish);
+    return promise;
+  }, [run]);
+
   const value = useMemo<HistoryContextValue>(() => ({
     snapshot,
     loading,
     warning,
     pendingProject,
     addProject,
-    commitProject: commitHistoryProject,
-    commitMemory: commitHistoryMemory,
-    setEnabled: async (projectId, enabled) => {
-      await run(() => setHistoryProjectEnabled(projectId, enabled)).catch(() => {});
-    },
-    refreshProject: async (projectId) => {
-      const result = await run(() => refreshHistoryProject(projectId)).catch(() => null);
-      setRefreshPreview(result?.memoryPreview ?? null);
-    },
-  }), [addProject, loading, pendingProject, run, snapshot, warning]);
+    importProject,
+    importingProjectId,
+  }), [addProject, importingProjectId, importProject, loading, pendingProject, snapshot, warning]);
 
   return (
     <HistoryContext.Provider value={value}>
@@ -177,19 +204,8 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
       {confirmation && (
         <Suspense fallback={null}>
           <ProjectImportDialog
-            key={confirmation.prepared.token}
-            prepared={confirmation.prepared}
-            counts={confirmation.counts}
-            onComplete={completeProject}
-          />
-        </Suspense>
-      )}
-      {refreshPreview && (
-        <Suspense fallback={null}>
-          <HistoryMemoryPreviewDialog
-            preview={refreshPreview}
-            onClose={() => setRefreshPreview(null)}
-            onCommit={commitHistoryMemory}
+            key={`${confirmation.mode}:${confirmation.canonicalRoot}`}
+            {...confirmation}
           />
         </Suspense>
       )}

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Electron dialog/lifecycle ports, five-language presentation, live supervised activity, clipboard diagnostics and reversible/terminal shutdown operations.
- * [OUTPUT]: Installs the quit fence and task/process/draft-aware recovery dialogs; raw causes are clipboard-only, and returning resumes editing.
+ * [OUTPUT]: Installs the quit fence and task/process/draft-aware recovery dialogs; raw causes are clipboard-only, returning resumes editing, and failed recovery after cancellation uses an inline warning.
  * [POS]: Electron lifecycle adapter around safe-quit.ts; runtime.ts composes live admission ports; index.ts and terminal-owner-sequence.ts retain service ownership and close order
  */
 
@@ -21,6 +21,7 @@ export function installApplicationQuit(
   dialogs: Pick<typeof dialog, "showErrorBox"> & Partial<Pick<typeof dialog, "showMessageBox">>,
   ports: Omit<SafeQuitPorts, "notify" | "quit"> & { requestUserQuit?(): Promise<SafeQuitResult>;
     activity?(): { tasks: number; processes: number }; copyTechnicalDetails?(text: string): void;
+    recoveryWarning?(message: string): void;
     presentFailure?(failure: QuitFailure, canForce: boolean): Promise<boolean> },
   locale: () => AppLocale = () => "en"
 ) {
@@ -37,7 +38,13 @@ export function installApplicationQuit(
         ports.copyTechnicalDetails?.(inspect(failure.cause, { depth: null }));
       }
     } : undefined,
-    notify: async (recovered, failure) => {
+    notify: async (recovered, failure, presentation) => {
+      if (presentation === "notice") {
+        const message = translate(locale(), "settings.native.quitUnrecovered");
+        if (ports.recoveryWarning) ports.recoveryWarning(message);
+        else console.warn("[shutdown]", message);
+        return;
+      }
       if (ports.presentFailure) { await ports.presentFailure(failure, false); return; }
       if (!dialogs.showMessageBox) return dialogs.showErrorBox(
         translate(locale(), "settings.native.quitFailureTitle"),

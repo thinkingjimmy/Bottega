@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on AppSettings, Memory consent/settings stores, sharing range IPC type and localization errors
- * [OUTPUT]: Provides useMemoryConsent: a shared enable/cutover/sharing preview→confirm→mutation state machine with save-failure surfacing, history-inclusion choice, and error state; third-tier sharing options map directly into openSharing instead of two chained switches
+ * [OUTPUT]: Provides useMemoryConsent: a shared enable/cutover/sharing preview→confirm→mutation state machine with save-failure surfacing, history-inclusion choice, and plugin-disable cancellation fences; third-tier sharing options map directly into openSharing instead of two chained switches
  * [POS]: views/settings-memory's view-local interaction owner; pages compose only rows and dialogs from it, never re-implementing its capability flow
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { memoryStore } from "@/lib/memory/memory-store";
@@ -32,6 +32,21 @@ export function useMemoryConsent(settings: AppSettings | null) {
   const [preview, setPreview] = useState<MemoryConsentPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const generation = useRef(0);
+
+  useEffect(() => {
+    let enabled = settingsStore.getSnapshot().settings?.memory.pluginEnabled;
+    const release = settingsStore.subscribe(() => {
+      const next = settingsStore.getSnapshot().settings?.memory.pluginEnabled;
+      if (enabled === next) return;
+      enabled = next;
+      if (next) return;
+      generation.current += 1;
+      setIntent(null);
+      setPreview(null);
+    });
+    return () => { release(); generation.current += 1; };
+  }, []);
 
   useEffect(() => {
     if (!intent) return;
@@ -89,7 +104,8 @@ export function useMemoryConsent(settings: AppSettings | null) {
   };
 
   const accept = async () => {
-    if (!intent || !preview || busy) return;
+    if (!intent || !preview || busy || !settings?.memory.pluginEnabled) return;
+    const request = generation.current;
     setBusy(true);
     setError("");
     try {
@@ -100,6 +116,7 @@ export function useMemoryConsent(settings: AppSettings | null) {
         intent.sharingMode,
         preview.digest
       );
+      if (request !== generation.current || !settingsStore.getSnapshot().settings?.memory.pluginEnabled) return;
       const ok = await settingsStore.mutateMemory(
         mutationFor(authority.token, intent),
         t("memory.page.consentFailed")
@@ -125,7 +142,7 @@ export function useMemoryConsent(settings: AppSettings | null) {
     busy,
     error,
     openProvider(providerId: string) {
-      if (!settings) return;
+      if (!settings?.memory.pluginEnabled) return;
       open({
         providerId,
         reason:
@@ -134,7 +151,7 @@ export function useMemoryConsent(settings: AppSettings | null) {
       });
     },
     openSharing(sharingMode: MemorySharingMode) {
-      if (!settings) return;
+      if (!settings?.memory.pluginEnabled) return;
       open({
         providerId: settings.memory.provider,
         reason: "sharing",

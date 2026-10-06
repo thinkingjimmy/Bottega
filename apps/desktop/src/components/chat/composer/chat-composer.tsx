@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React/router, runtime controller, Agent submission custody, cloud account predicates, idle chunk prefetch, queue capacity, Chat i18n, workspace hooks, Gallery/Sketch custody, modal keyboard ownership, the per-Chat submission gate, unavailable draft images, the Agent connection warm-up client, startup marks, PromptInputProvider and RichInput.
- * [OUTPUT]: Presents a Plan decision or authentication retry held behind queued messages with "Send or clear the queued messages first" (F-46 ③), the one reason editing is off as data-composer-lock and a failed attach or draft read as "Couldn't prepare this Chat" with a retry in the notice row, Agent selection (a Provider turned off in Plugins blocks sending with its reason and a way to that Provider's plugin page), explicit local reference reselection, native rich submission, Sketch, lazy recovery UI and queue feedback without discarding drafts; an account-owned draft adapter loads only for an account that can execute remotely, and never disables typing while it loads
+ * [OUTPUT]: Native rich submission, Agent-menu availability recovery without a duplicate status/manage/recheck strip, preserved drafts and image warnings, queued Plan/authentication retry, prepare-failure recovery, Sketch and account-owned remote draft execution.
  * [POS]: Chat command surface; candidate projection is read-only while drafts, attachments, and Gallery custody remain in the per-Chat store
  */
 import { ChatAddMenu } from "./input/add-menu";
@@ -13,7 +13,6 @@ import { useSettingsNavigation } from "@/components/providers/navigation/context
 import { Tooltip, TooltipContent, TooltipTrigger } from "@ai-chat/ui/components/ui/tooltip";
 import { useSetup } from "@/components/providers/setup-provider";
 import { projectAvailability } from "../../../../shared/agent-availability/projection";
-import { AVAILABILITY_STATE_KEYS } from "../../../../shared/agent-availability/copy";
 import { builtinAgent } from "../../../../shared/chat-agent/options";
 import { PendingAgentStatus } from "../agent-switch/pending";
 import { applyComposerAttachmentCommand, composerSubmissionGate, readComposerInput } from "@/lib/chat/state/composer/chat-composer-store";
@@ -114,8 +113,7 @@ function ChatComposerContent({
   const providerOff = useProviderTurnedOff(controller.turnOptions.backend, i18n.language);
   const sendBlocked = (execution.canSend === undefined ? availability.policy.decision !== "allow" : !execution.canSend) || imagesBlocked || Boolean(providerOff);
   const recoveryBlocked = Boolean(controller.resumeFailure);
-  const showAvailabilityNotice = execution.canSend === undefined && (imagesBlocked || (availability.state !== "missing" &&
-    (sendBlocked || (recent?.outcome !== "success" && availability.state !== "ready" && availability.state !== "custom-route" && availability.state !== "unverified"))));
+  const showAuthenticationRetry = execution.canSend === undefined && availability.policy.reason === "auth-required";
   const focusedRef = useRef(false);
   const [branchBusy, setBranchBusy] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -524,14 +522,12 @@ function ChatComposerContent({
         </div> : providerOff ? <div className="flex flex-wrap items-center gap-2 px-3 pt-3 text-xs text-muted-foreground" data-provider-turned-off="">
           <span>{providerOff.message}</span>
           <Button type="button" variant="ghost" size="sm" onClick={() => requestSettingsSection({ section: "plugins", plugin: controller.turnOptions.backend })}>{providerOff.action}</Button>
-        </div> : showAvailabilityNotice && <div className="flex flex-wrap items-center gap-2 px-3 pt-3 text-xs text-muted-foreground">
-          <span>{imagesBlocked ? t("agentAvailability.imagesPreserved") : t(AVAILABILITY_STATE_KEYS[availability.state])}</span>
-          <Button type="button" variant="ghost" size="sm" onClick={() => availability.state === "unsupported" && settingsNavigation ? settingsNavigation.openUpdates() : void controller.openSetup()}>{t("agentAvailability.manage")}</Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => void setup.recheckBackend(controller.turnOptions.backend)}>{t("chat.checkAgain")}</Button>
-          {availability.policy.reason === "auth-required" && <Tooltip><TooltipTrigger asChild>
+        </div> : (imagesBlocked || showAuthenticationRetry) && <div className="flex flex-wrap items-center gap-2 px-3 pt-3 text-xs text-muted-foreground">
+          {imagesBlocked && <span>{t("agentAvailability.imagesPreserved")}</span>}
+          {showAuthenticationRetry && <Tooltip><TooltipTrigger asChild>
             <Button type={hasDraftContent ? "submit" : "button"} name="authentication-retry" onClick={() => { if (!hasDraftContent) controller.retryAuthentication(); }} variant="outline" size="sm" disabled={controller.queueHolds || editingDisabled || recoveryBlocked || submissionPending || isGenerating || queueFull || (!hasDraftContent && (!recent || recent.outcome === "success")) || imagesBlocked || gallerySendGate(controller.chatId)}>{t("agentAvailability.retrySending")}</Button>
           </TooltipTrigger><TooltipContent className="max-w-72">{t("agentAvailability.retryExplanation")}</TooltipContent></Tooltip>}
-          {availability.policy.reason === "auth-required" && controller.queueHolds && <span data-finish-queued-first="">{t("chat.queue.finishQueuedFirst")}</span>}
+          {showAuthenticationRetry && controller.queueHolds && <span data-finish-queued-first="">{t("chat.queue.finishQueuedFirst")}</span>}
         </div>}
         <PromptInputBody {...providerWarmup}>
           <PromptInputAttachments attachmentAction={sketch.attachmentAction} />

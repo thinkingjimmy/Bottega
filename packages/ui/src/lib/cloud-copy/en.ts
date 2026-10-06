@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, the account computer strip and its no-computer sentence, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs list, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy, the Web gate's verifying/revoked/restricted next steps and its slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, the account computer strip and its no-computer sentence, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy, the Web gate's verifying/revoked/restricted next steps and its slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 export const cloudCopy = {
@@ -127,6 +127,7 @@ export const cloudCopy = {
     "pendingDescription": "Set your sync password to start syncing this computer.",
     "resume": "Continue",
     "signedInAs": "You are signed in as {{email}}.",
+    "signedInAccount": "Signed-in account",
     "checkCode": "Check that it matches the code in your browser before you allow sign-in.",
     "enterPassword": "Enter your sync password",
     "enterPasswordDescription": "This computer joins the encrypted workspace you set up on another device. Bottega cannot recover the password.",
@@ -140,9 +141,8 @@ export const cloudCopy = {
   },
   "whatSyncs": {
     "title": "What syncs",
-    "description": "End-to-end encrypted with a sync password only you know.",
-    "after": "After you sign in",
-    "afterPassword": "After you set your sync password",
+    "lead": "These sync only after you sign in. Each one is end-to-end encrypted with a sync password only you know.",
+    "leadPassword": "These sync only after you set a sync password. Each one is end-to-end encrypted with a password only you know.",
     "chats": "Chats and Projects",
     "chatsDescription": "Conversations, their files and your Projects",
     "data": "Bases and Apps",
@@ -283,7 +283,7 @@ export const cloudCopy = {
   "revokeDescription": "This device will lose access to your cloud account. Content already downloaded stays on the device.",
   "localDescription": "Use Bottega locally for free. Signing in does not upload content until you confirm your first sync.",
   "notSignedIn": "Not signed in",
-  "signedOutDescription": "Bottega works fully on this computer for free. Sign in to keep your work in sync across your devices. Nothing uploads until you confirm the first sync.",
+  "signedOutDescription": "After you sign in, you can control this computer from the web or the mobile app. Nothing uploads until you confirm the first sync.",
   "tryNow": "Try Now",
   "tryAgain": "Try Again",
   "sync": "Sync",

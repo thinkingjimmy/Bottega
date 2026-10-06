@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron IPC, Project/Chat queries, strict turn options, the four history sources as worker-backed adapters over fence-resolved roots (import-worker/sources.ts; no concrete adapter on main), the dedicated import worker, Project/Memory coordinators, index/snapshot stores, and shared contracts
- * [OUTPUT]: Separates source visibility from saved-Chat continuation, resolves the continuation target from the Chat's own import origin, and silently chooses native adoption or saved-generation replay with durable intent receipts; adoption takes a built-in Agent's options only (a package Provider: PROVIDER_UNAVAILABLE).
+ * [OUTPUT]: Provides explicit Project Add/Settings history imports without startup scanning, delta previews fenced by Project membership, and saved-Chat continuation with durable intent receipts
  * [POS]: Canonical federated history and renderer-safe authority boundary; production SQLite ingestion parses outside main
  */
 
@@ -10,6 +10,8 @@ import type { BrowserWindow } from "electron";
 import { z } from "zod";
 import {
   HISTORY_IMPORT_CHANNEL,
+  HISTORY_SOURCE_KINDS,
+  type HistorySourceKind,
   type ForeignHistoryMessage,
   type HistoryImportEvent,
   type HistoryImportSnapshot,
@@ -42,7 +44,7 @@ import { canonicalHistoryProjection } from "./routing/canonical-projection";
 import {
   aliasesClaimed,
   deepestOwner,
-  historiesChanged,
+  historyImportCandidates,
   historyFileState,
   publicEntry,
   sourceRevisions,
@@ -51,6 +53,7 @@ import { foreignTranscriptSnapshot } from "./routing/foreign-transcript";
 
 
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
+const sourceKindsSchema = z.array(z.enum(HISTORY_SOURCE_KINDS)).max(HISTORY_SOURCE_KINDS.length);
 
 type ParseFlight = {
   controller: AbortController;
@@ -141,7 +144,6 @@ export class HistoryImportService {
   private readonly memory: MemoryGrantCoordinator;
   private window: BrowserWindow | null = null;
   private warning: string | null = null;
-  private detecting = new Set<string>();
   private refreshing = new Set<string>();
   private readonly parseCache = new Map<string, ParseFlight>();
   private readonly importWorker: HistoryImportWorkerClient | null;
@@ -157,8 +159,8 @@ export class HistoryImportService {
     this.adapters = adapters ?? workerHistoryAdapters(this.importWorker!, this.roots);
     this.projectImports = new ProjectImportCoordinator({
       select: options.prepareProject,
-      warm: async () => { await Promise.all(this.adapters.map((adapter) => adapter.warm?.())); },
-      count: async (root) => (await this.scan(root, "identity")).map(sourceCount),
+      warm: async (sources) => { await Promise.all(this.adapters.filter(adapter => sources.includes(adapter.sourceKind)).map((adapter) => adapter.warm?.())); },
+      count: async (root, sources) => (await this.scan(root, "identity", sources)).map(sourceCount),
       commit: options.commitProject,
     });
     this.memory = new MemoryGrantCoordinator(this.snapshots, {
@@ -192,34 +194,19 @@ export class HistoryImportService {
     await this.memory.reconcile();
   }
 
-  /* 后台同步必须排在续聊对账之后：一个抢先激活的新代际会让 pending 的
-     continuation.finalize 撞上代际围栏，saga 被隔离、Home 变孤儿。启动
-     顺序是组合根的事，本服务只提供这一枚可被安排的入口。 */
-  startBackgroundSync() {
-    /* 一次新的同步开跑，上一次的抱怨就作废：告警是「最近一次同步说了什么」，
-       不是一块永久墓碑。清在开头而不是结尾，是因为 detectAll 会把逐 Project
-       的失败自己吞成 setWarning——那些话说在这一行之后，因此照样留得住；
-       清在结尾反而会把本轮刚记下的真问题一起擦掉。 */
-    this.clearWarning();
-    setImmediate(() => void this.detectAll()
-      .then(() => this.syncStoredHistories())
-      .catch((cause) => this.setWarning(cause)));
-  }
-
   register(window: BrowserWindow, rendererUrl: string) {
     this.window = window;
-    /* 启动同步跑在窗口注册之前：那批 publish 全部落空。窗口一到就补发一次
-       当前快照，侧栏因此不必靠一次刷新才看见已经同步好的历史会话。 */
+    /* 注册窗口只发布已保存的历史快照，不扫描或更新外部来源。 */
     this.publish();
     const ipc = rendererIpc(rendererUrl, "拒绝非主窗口的历史导入请求")
       .roles("main");
     ipc
       .handle(HISTORY_IMPORT_CHANNEL.snapshot, () => this.snapshot())
-      .handle(HISTORY_IMPORT_CHANNEL.prepareProject, () => this.prepareProject())
+      .handle(HISTORY_IMPORT_CHANNEL.prepareProject, (sources) => this.prepareProject(sourceKindsSchema.parse(sources)))
       .handle(HISTORY_IMPORT_CHANNEL.countProject, (token) => this.projectImports.counts(z.string().min(1).parse(token)))
       .handle(HISTORY_IMPORT_CHANNEL.commitProject, (raw) => this.commitProject(parseCommit(raw)))
-      .handle(HISTORY_IMPORT_CHANNEL.setProjectEnabled, (projectId, enabled) => this.setProjectEnabled(idSchema.parse(projectId), z.boolean().parse(enabled)))
-      .handle(HISTORY_IMPORT_CHANNEL.refreshProject, (projectId) => this.refreshProjectForUser(idSchema.parse(projectId)))
+      .handle(HISTORY_IMPORT_CHANNEL.prepareImport, (raw) => { const input = z.object({ projectId: idSchema, sourceKinds: sourceKindsSchema }).strict().parse(raw); return this.prepareImport(input.projectId, input.sourceKinds); })
+      .handle(HISTORY_IMPORT_CHANNEL.importProject, (raw) => this.importProject(parseProjectImport(raw)))
       .handle(HISTORY_IMPORT_CHANNEL.adopt, (raw) => { const input = parseAdopt(raw); return this.replayByChat(input.chatId, input); })
       .handle(HISTORY_IMPORT_CHANNEL.memoryEligibility, (raw) => {
         const input = z.object({ surface: z.enum(["project", "settings"]), projectId: idSchema.optional() }).strict().parse(raw);
@@ -323,8 +310,8 @@ export class HistoryImportService {
     });
   }
 
-  async prepareProject() {
-    return this.projectImports.prepare();
+  async prepareProject(sourceKinds: readonly HistorySourceKind[] = HISTORY_SOURCE_KINDS) {
+    return this.projectImports.prepare(sourceKinds);
   }
 
   async commitProject(input: { token: string; importHistory: boolean; previewMemory: boolean }) {
@@ -336,9 +323,9 @@ export class HistoryImportService {
     await this.index.setMemoryImportIntent(project.id, memoryImportIntent);
     let memoryPreview: HistoryMemoryPreview | null = null;
     if (input.importHistory) {
-      await this.refreshProject(project.id);
+      await this.refreshProject(project.id, prepared.sourceKinds);
       if (memoryImportIntent) {
-        const preview = await this.memoryPreview({ projectId: project.id, includeProductChats: false });
+        const preview = await this.memoryPreview({ projectId: project.id, includeProductChats: false, sourceKinds: prepared.sourceKinds });
         if (preview.turns > 0) memoryPreview = preview;
         else this.memory.discard(preview.snapshotId);
       }
@@ -347,11 +334,29 @@ export class HistoryImportService {
     return { project, memoryPreview };
   }
 
-  async setProjectEnabled(projectId: string, enabled: boolean) {
-    const project = this.requireExternalProject(projectId);
-    await this.index.setEnabled({ projectId, canonicalRoot: project.dir, membershipRevision: project.membershipRevision, enabled });
-    if (enabled && !this.index.project(projectId)?.entries.length) await this.refreshProject(projectId);
-    this.publish();
+  async prepareImport(projectId: string, sourceKinds: readonly HistorySourceKind[] = HISTORY_SOURCE_KINDS) {
+    const project = { ...this.requireExternalProject(projectId) };
+    const scans = await this.scanOwned(project, "identity", sourceKinds);
+    this.requireImportBinding(project);
+    return {
+      projectId,
+      membershipRevision: project.membershipRevision,
+      counts: this.importCandidates(projectId, scans).map(sourceCount),
+    };
+  }
+
+  private importCandidates(projectId: string, scans: AdapterScan[]) {
+    const state = this.index.snapshot();
+    const bindings = this.options.listSessionBindings();
+    const claimed = new Set(bindings.flatMap(({ session }) => session ? [`${session.backend}:${session.id}`] : []));
+    const sourceKey = (key: SourceIdentity) => JSON.stringify([key.sourceKind, key.storageFingerprint, key.canonicalNativeId]);
+    const imported = new Map(bindings.flatMap((binding) => binding.chatId && binding.importOrigin
+      ? [[sourceKey(binding.importOrigin), binding.chatId] as const] : []));
+    return historyImportCandidates(scans, state.projects[projectId]?.entries ?? [], (entry) => {
+      if (aliasesClaimed(entry, claimed)) return "managed";
+      const owner = imported.get(sourceKey(entry.key)) ?? state.canonicalRoutes[entry.opaqueId]?.chatId;
+      return owner ? this.options.chatLifecycle(owner) : "missing";
+    });
   }
 
   /** wire 投影唯一出口：canonical 归档状态由 Chat 侧持有，此处只投源生事实。 */
@@ -359,53 +364,27 @@ export class HistoryImportService {
     return publicEntry(entry);
   }
 
-  async detectAll() {
-    for (const project of this.options.listProjects()) {
-      if (project.workspaceBinding.kind !== "external" || project.archivedAt) continue;
-      const stored = this.index.project(project.id);
-      if (!stored?.enabled) continue;
-      await this.detectProject(project.id).catch((cause) => this.setWarning(cause));
-    }
-  }
-
-  async detectProject(projectId: string) {
-    const project = this.requireExternalProject(projectId);
-    this.detecting.add(projectId); this.publish();
-    try {
-      const scans = this.stabilizeIncarnations(
-        await this.scanOwned(project, "identity"),
-        this.index.project(projectId)?.entries ?? []
-      );
-      const entries = scans.flatMap((scan) => scan.entries);
-      const current = this.index.project(projectId);
-      const hasChanges = historiesChanged(current?.entries ?? [], entries) || current?.membershipRevision !== project.membershipRevision;
-      await this.index.markDetected(projectId, {
-        hasChanges,
-        counts: scans.map(sourceCount),
-        fingerprints: Object.fromEntries(entries.map((entry) => [entry.sourcePath, entry.fingerprint])),
-      });
-      return this.projectState(this.index.project(projectId)!);
-    } finally { this.detecting.delete(projectId); this.publish(); }
-  }
-
-  async refreshProject(projectId: string) {
-    const project = this.requireExternalProject(projectId);
+  async refreshProject(projectId: string, sourceKinds: readonly HistorySourceKind[] = HISTORY_SOURCE_KINDS) {
+    const project = { ...this.requireExternalProject(projectId) };
+    await this.index.setEnabled({ projectId, canonicalRoot: project.dir, membershipRevision: project.membershipRevision, enabled: true });
     this.refreshing.add(projectId); this.publish();
     try {
-      const scans = this.stabilizeIncarnations(
-        await this.scanOwned(project, "full"),
-        this.index.project(projectId)?.entries ?? []
-      );
+      const previous = this.index.project(projectId);
+      const scans = this.stabilizeIncarnations(await this.scanOwned(project, "full", sourceKinds), previous?.entries ?? []);
+      const retained = (previous?.entries ?? []).filter(entry => !sourceKinds.includes(entry.sourceKind));
+      const entries = [...retained, ...scans.flatMap(scan => scan.entries)];
+      this.requireImportBinding(project);
       await this.syncEntries(
-        scans.flatMap((scan) => scan.entries),
-        new Set([projectId])
+        this.importCandidates(projectId, scans).flatMap((scan) => scan.entries),
+        new Set([projectId]),
+        entries
       );
       await this.index.publish({
         projectId, canonicalRoot: project.dir, membershipRevision: project.membershipRevision,
-        counts: scans.map(sourceCount), sourceRevisions: sourceRevisions(scans), entries: scans.flatMap((scan) => scan.entries),
+        counts: [...(previous?.counts ?? []).filter(count => !sourceKinds.includes(count.sourceKind)), ...scans.map(sourceCount)],
+        sourceRevisions: { ...sourceRevisions([]), ...previous?.sourceRevisions, ...Object.fromEntries(scans.map(scan => [scan.sourceKind, scan.sourceRevision])) }, entries,
       });
-      /* 这一轮走完了：启动重放留下的那句抱怨到此为止。失败仍会当场重新
-         说话（refreshProject 直接抛给调用方），所以这里不会吞掉任何真相。 */
+      /* 成功导入后收回旧告警；本次失败仍由调用方的确认弹窗报告。 */
       this.clearWarning();
       const state = this.projectState(this.index.project(projectId)!);
       this.publish({ type: "project", project: state });
@@ -413,10 +392,12 @@ export class HistoryImportService {
     } finally { this.refreshing.delete(projectId); this.publish(); }
   }
 
-  async refreshProjectForUser(projectId: string) {
-    const project = await this.refreshProject(projectId);
-    const preview = project.memoryImportIntent
-      ? await this.memoryPreview({ projectId, includeProductChats: false })
+  async importProject(input: { projectId: string; membershipRevision: number; previewMemory: boolean; sourceKinds?: readonly HistorySourceKind[] }) {
+    const current = this.requireExternalProject(input.projectId);
+    if (current.membershipRevision !== input.membershipRevision) throw new Error("Project 工作目录已变化，请重新预览历史导入");
+    const project = await this.refreshProject(input.projectId, input.sourceKinds);
+    const preview = input.previewMemory
+      ? await this.memoryPreview({ projectId: input.projectId, includeProductChats: false, sourceKinds: input.sourceKinds })
       : null;
     if (preview && preview.turns === 0) this.memory.discard(preview.snapshotId);
     return {
@@ -515,7 +496,7 @@ export class HistoryImportService {
     return this.memory.eligibility(input);
   }
 
-  memoryPreview(input: { projectId?: string; includeProductChats: boolean }) {
+  memoryPreview(input: { projectId?: string; includeProductChats: boolean; sourceKinds?: readonly HistorySourceKind[] }) {
     return this.memory.preview(input);
   }
 
@@ -538,14 +519,14 @@ export class HistoryImportService {
     ]);
   }
 
-  private async scan(root: string, depth: ScanDepth) { return Promise.all(this.adapters.map((adapter) => adapter.scanProject(root, depth))); }
+  private async scan(root: string, depth: ScanDepth, sourceKinds: readonly HistorySourceKind[] = HISTORY_SOURCE_KINDS) { return Promise.all(this.adapters.filter(adapter => sourceKinds.includes(adapter.sourceKind)).map((adapter) => adapter.scanProject(root, depth))); }
   /* 归属在这里定案，也在这里落到条目上。适配器交出的 `projectId` 恒为空串
      ——它读的是文件，不知道 Project 是什么；此处刚刚按 cwd 判过归属，正是
      那个知道答案的人。少了这一笔盖章，`refreshProject` 会拿着 projectId=""
      去 `syncHistory`，存储侧照单全收，把已有只读 Chat 的 local_project_id
      整个清空——24 条导入历史当场掉出 Project，落进裸 Chats 列表。 */
-  private async scanOwned(project: ProjectRef, depth: ScanDepth) {
-    const scans = await this.scan(project.dir, depth);
+  private async scanOwned(project: ProjectRef, depth: ScanDepth, sourceKinds: readonly HistorySourceKind[] = HISTORY_SOURCE_KINDS) {
+    const scans = await this.scan(project.dir, depth, sourceKinds);
     const roots = this.options.listProjects().filter((candidate) => candidate.workspaceBinding.kind === "external" && !candidate.archivedAt);
     return scans.map((scan) => ({
       ...scan,
@@ -578,6 +559,12 @@ export class HistoryImportService {
     if (!project || project.archivedAt || project.workspaceBinding.kind !== "external") throw new Error("Project 不存在、已归档或不具备外源导入资格");
     return project;
   }
+  private requireImportBinding(expected: ProjectRef) {
+    const current = this.requireExternalProject(expected.id);
+    if (current.dir !== expected.dir || current.membershipRevision !== expected.membershipRevision) {
+      throw new Error("Project 工作目录已变化，请重新预览历史导入");
+    }
+  }
   private validBinding(stored: StoredHistoryProject) {
     const project = this.options.getProject(stored.projectId);
     return Boolean(project && !project.archivedAt && project.workspaceBinding.kind === "external" && project.membershipRevision === stored.membershipRevision && project.dir === stored.canonicalRoot);
@@ -608,17 +595,6 @@ export class HistoryImportService {
     }
     return claimed;
   }
-  private async syncStoredHistories() {
-    const projects = Object.values(this.index.snapshot().projects).filter(
-      (project) => project.enabled && this.validBinding(project)
-    );
-    await this.syncEntries(
-      projects.flatMap((project) => project.entries),
-      new Set(projects.map((project) => project.projectId))
-    );
-    this.publish();
-  }
-
   /* Chat 被删后账本里那条路由就是断链：先抹掉它，本轮同步才会把 Chat 重建
      出来并记下新的路由。 */
   private async pruneDanglingRoutes() {
@@ -649,11 +625,12 @@ export class HistoryImportService {
 
   private async syncEntries(
     entries: readonly AdapterEntry[],
-    scope: ReadonlySet<string>
+    scope: ReadonlySet<string>,
+    scanned: readonly AdapterEntry[] = entries
   ) {
     await this.pruneDanglingRoutes();
     await this.reconcileSourceStatus(
-      new Set(entries.map((entry) => entry.opaqueId)),
+      new Set(scanned.map((entry) => entry.opaqueId)),
       scope
     );
     for (const entry of entries) {
@@ -678,7 +655,7 @@ export class HistoryImportService {
     }
   }
   private projectState(project: StoredHistoryProject): ProjectHistoryImportState {
-    return { projectId: project.projectId, enabled: project.enabled, memoryImportIntent: project.memoryImportIntent, detecting: this.detecting.has(project.projectId), refreshing: this.refreshing.has(project.projectId), delivering: this.memory.deliveringProjects().has(project.projectId), hasChanges: project.hasChanges, generation: project.generation, counts: project.counts };
+    return { projectId: project.projectId, enabled: project.enabled, memoryImportIntent: project.memoryImportIntent, detecting: false, refreshing: this.refreshing.has(project.projectId), delivering: this.memory.deliveringProjects().has(project.projectId), hasChanges: false, generation: project.generation, counts: project.counts };
   }
   private publish(event?: HistoryImportEvent) {
     const window = this.window;
@@ -712,4 +689,8 @@ function builtinTurnOptions(value: unknown) {
   const options = builtinOptions(validateAgentTurnOptions(value));
   if (!options) throw new Error("PROVIDER_UNAVAILABLE");
   return options;
+}
+
+function parseProjectImport(value: unknown) {
+  return z.object({ projectId: idSchema, membershipRevision: z.number().int().nonnegative(), previewMemory: z.boolean(), sourceKinds: sourceKindsSchema }).strict().parse(value);
 }

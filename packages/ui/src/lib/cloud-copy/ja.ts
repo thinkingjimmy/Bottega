@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs list, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -128,6 +128,7 @@ export const cloudCopy = {
     "pendingDescription": "同期パスワードを設定すると、このコンピューターの同期が始まります。",
     "resume": "続ける",
     "signedInAs": "{{email}} でログイン中です。",
+    "signedInAccount": "ログイン中のアカウント",
     "checkCode": "ブラウザに表示された確認コードと一致することを確かめてから許可してください。",
     "enterPassword": "同期パスワードを入力",
     "enterPasswordDescription": "このコンピューターは、別のデバイスで作成した暗号化ワークスペースに参加します。Bottega はパスワードを復元できません。",
@@ -141,9 +142,8 @@ export const cloudCopy = {
   },
   "whatSyncs": {
     "title": "同期される内容",
-    "description": "あなただけが知る同期パスワードでエンドツーエンド暗号化されます。",
-    "after": "ログイン後",
-    "afterPassword": "同期パスワードの設定後",
+    "lead": "ログイン後に同期されます。いずれも、あなただけが知る同期パスワードでエンドツーエンド暗号化されます。",
+    "leadPassword": "同期パスワードを設定したあとで同期されます。いずれも、あなただけが知る同期パスワードでエンドツーエンド暗号化されます。",
     "chats": "Chat と Project",
     "chatsDescription": "会話、その中のファイル、Project",
     "data": "Base と App",
@@ -284,7 +284,7 @@ export const cloudCopy = {
   "revokeDescription": "このデバイスからクラウドアカウントにアクセスできなくなります。ダウンロード済みの内容はデバイスに残ります。",
   "localDescription": "ローカル機能は無料で利用できます。ログイン後、初回同期を確認するまで内容はアップロードされません。",
   "notSignedIn": "ログインしていません",
-  "signedOutDescription": "Bottega はこのコンピューターで無料ですべて使えます。ログインすると、作業をデバイス間で同期できます。初回同期を確認するまで何もアップロードされません。",
+  "signedOutDescription": "ログインすると、ウェブまたはスマホからこのコンピューターをリモート操作できます。初回同期を確認するまで何もアップロードされません。",
   "tryNow": "今すぐ再試行",
   "tryAgain": "再試行",
   "sync": "同期",

@@ -1,22 +1,24 @@
 /**
- * [INPUT]: Shared unlock minimum/validation and creation assessment, encryption copy, typed field errors and native form controls.
- * [OUTPUT]: Immediately validated password fields with a live creation requirement checklist, direct Tab-to-confirmation navigation, independent visibility, associated errors and creation-only acknowledgement.
+ * [INPUT]: Shared unlock minimum/validation, the create-draft read model, encryption copy, typed field errors and native form controls.
+ * [OUTPUT]: Immediately validated password fields with a live creation requirement checklist, a create-only commit card, direct Tab-to-confirmation navigation, independent visibility and associated errors.
  * [POS]: Setup form and unlock dialog fields; no derived key or persistent password state exists in renderer.
  */
-import { useId, useRef, useState, type RefObject } from "react";
-import { MIN_PASSWORD_CODE_POINTS, NEW_PASSWORD_REASONS, assessNewPassword, validatePassword, type NewPasswordReason } from "@ai-chat/cloud-crypto";
+import { useId, useRef, useState, type ReactNode, type RefObject } from "react";
+import { MIN_PASSWORD_CODE_POINTS, assessNewPassword, validatePassword } from "@ai-chat/cloud-crypto";
 import { Check, Circle, Eye, EyeOff, X } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { getCloudEncryptionCopy } from "@ai-chat/ui/lib/cloud-copy/encryption";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
+import { assessCreateDraft, type CreateDraft, type RuleRow } from "./create-draft";
 import type { EncryptionFieldErrors, PasswordField } from "./field-errors";
+
 const labelClass = "font-medium text-[13px]/[1.45] text-muted-foreground";
 const errorClass = "text-[13px]/[1.45] text-destructive";
 
-function PasswordInput({ id, name, label, inputRef, nextInputRef, autoComplete, describedBy, error, invalid = Boolean(error), onChange }: {
-  id: string; name: PasswordField; label: string; inputRef: RefObject<HTMLInputElement | null>;
+function PasswordInput({ id, name, label, aside, inputRef, nextInputRef, autoComplete, describedBy, error, invalid = Boolean(error), onChange }: {
+  id: string; name: PasswordField; label: string; aside?: ReactNode; inputRef: RefObject<HTMLInputElement | null>;
   nextInputRef?: RefObject<HTMLInputElement | null>;
   autoComplete: "new-password" | "current-password"; describedBy?: string; error?: string; invalid?: boolean; onChange: () => void;
 }) {
@@ -24,7 +26,10 @@ function PasswordInput({ id, name, label, inputRef, nextInputRef, autoComplete, 
   const [visible, setVisible] = useState(false);
   const descriptions = [describedBy, error ? `${id}-error` : undefined].filter(Boolean).join(" ") || undefined;
   return <div className="flex flex-col gap-1.5">
-    <label htmlFor={id} className={labelClass}>{label}</label>
+    <label htmlFor={id} className={cn(labelClass, "flex items-center justify-between gap-3")}>
+      <span>{label}</span>
+      {aside}
+    </label>
     <div className="relative">
       <Input ref={inputRef} id={id} name={name} type={visible ? "text" : "password"} size="lg"
         autoComplete={autoComplete} spellCheck={false} required maxLength={1024} onChange={onChange} onInvalid={onChange}
@@ -43,46 +48,78 @@ function PasswordInput({ id, name, label, inputRef, nextInputRef, autoComplete, 
   </div>;
 }
 
-const REQUIRED: readonly NewPasswordReason[] = ["too-short", "needs-letter", "needs-digit"];
-
 /** Requirements stay listed with their state; prohibitions appear only once the draft breaks them. */
-function PasswordRules({ id, unmet, edited }: { id: string; unmet: readonly NewPasswordReason[]; edited: boolean }) {
+function RuleStrip({ id, rows }: { id: string; rows: readonly RuleRow[] }) {
   const { i18n } = useAppTranslation(), copy = getCloudEncryptionCopy(i18n.language);
   // Literal property reads rather than a key map, so the encrypted-copy audit can prove every rule line has a reader.
-  const ruleCopy: Record<NewPasswordReason, string> = { "too-short": copy.ruleLength, "needs-letter": copy.ruleLetter,
-    "needs-digit": copy.ruleDigit, "too-simple": copy.ruleSimple, "contains-email": copy.ruleEmail, common: copy.ruleCommon };
-  const shown = NEW_PASSWORD_REASONS.filter(reason => REQUIRED.includes(reason) || edited && unmet.includes(reason));
-  return <ul id={id} aria-label={copy.passwordRules} className="flex flex-col gap-1 text-[13px]/[1.45]">
-    {shown.map(reason => {
-      const met = !unmet.includes(reason), violated = !REQUIRED.includes(reason);
+  const ruleCopy = { "too-short": copy.ruleLength, "needs-letter": copy.ruleLetter, "needs-digit": copy.ruleDigit,
+    "too-simple": copy.ruleSimple, "contains-email": copy.ruleEmail, common: copy.ruleCommon };
+  return <ul id={id} aria-label={copy.passwordRules} className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]/[1.45]">
+    {rows.map(row => {
+      const met = row.state === "met", violated = row.state === "violated";
       const Icon = violated ? X : met ? Check : Circle;
-      return <li key={reason} data-rule={reason} data-met={met} className={cn("flex items-center gap-2",
+      return <li key={row.reason} data-rule={row.reason} data-met={met} className={cn("flex items-center gap-2",
         violated ? "text-destructive" : met ? "text-foreground" : "text-muted-foreground")}>
         <Icon aria-hidden className={cn("shrink-0", met || violated ? "size-3.5" : "size-2.5 mx-0.5")} strokeWidth={met || violated ? 2.25 : 2} />
-        <span>{ruleCopy[reason]}<span className="sr-only">{` (${met ? copy.ruleMet : copy.ruleUnmet})`}</span></span>
+        <span>{ruleCopy[row.reason]}<span className="sr-only">{` (${met ? copy.ruleMet : copy.ruleUnmet})`}</span></span>
       </li>;
     })}
   </ul>;
 }
 
-export function EncryptionFields({ creating, disabled, errors = {}, onEdit, describedBy, email }: {
-  creating: boolean; disabled: boolean; errors?: EncryptionFieldErrors; onEdit?: (field: PasswordField) => void;
-  /** Signed-in account email; a new password must not contain its local part. */
-  email?: string | null;
-  /** The id of a heading description already on screen; given, no legend or description is rendered here. */
-  describedBy?: string;
-}) {
+function MatchBadge() {
   const { i18n } = useAppTranslation(), copy = getCloudEncryptionCopy(i18n.language);
-  const id = useId(), input = useRef<HTMLInputElement>(null), confirmation = useRef<HTMLInputElement>(null);
+  return <span className="flex items-center gap-1 font-normal text-muted-foreground">
+    <Check aria-hidden className="size-3.5" strokeWidth={2.25} />
+    {copy.confirmationMatches}
+  </span>;
+}
+
+interface SharedFieldProps {
+  disabled: boolean;
+  errors?: EncryptionFieldErrors;
+  onEdit?: (field: PasswordField) => void;
+}
+
+export type EncryptionFieldsProps = SharedFieldProps & (
+  | {
+      mode: "create";
+      /** Signed-in account email; a new password must not contain its local part. */
+      email?: string | null;
+      /** The dialog lede already says this passphrase is not the Google password. */
+      describedBy: string;
+      /** True only when assessCreateDraft has no blocker. Never carries the passphrase. */
+      onReadyChange: (ready: boolean) => void;
+    }
+  | {
+      mode: "unlock";
+      /** Omitted by the daily unlock dialog, which then renders its own legend and description. */
+      describedBy?: string;
+    }
+);
+
+export function EncryptionFields(props: EncryptionFieldsProps) {
+  const { disabled, errors = {}, onEdit } = props;
+  const { i18n } = useAppTranslation(), copy = getCloudEncryptionCopy(i18n.language);
+  const creating = props.mode === "create";
+  const id = useId(), input = useRef<HTMLInputElement>(null), confirmation = useRef<HTMLInputElement>(null), risk = useRef<HTMLInputElement>(null);
   const edited = useRef({ password: false, confirmation: false });
   const [validation, setValidation] = useState<{ password?: "short" | "weak" | "invalid" | "long"; confirmation?: boolean }>({});
-  // null until the password is first edited: requirements start unmet and prohibitions stay hidden.
-  const [unmet, setUnmet] = useState<readonly NewPasswordReason[] | null>(null);
-  const description = describedBy ?? `${id}-description`, rules = `${id}-rules`;
+  const [draft, setDraft] = useState<CreateDraft>(() => assessCreateDraft(
+    { password: "", confirmation: "", accepted: false }, { passwordEdited: false }));
+  const description = props.describedBy ?? `${id}-description`, rules = `${id}-rules`;
+  const publishCreate = () => {
+    if (props.mode !== "create") return;
+    const next = assessCreateDraft({
+      password: input.current?.value ?? "", confirmation: confirmation.current?.value ?? "", accepted: risk.current?.checked === true,
+    }, { email: props.email, passwordEdited: edited.current.password });
+    setDraft(next);
+    props.onReadyChange(next.blocker === null);
+  };
   const change = (field: PasswordField) => {
     edited.current[field] = true;
     const password = input.current?.value ?? "", confirmed = confirmation.current?.value ?? "";
-    const assessment = creating ? assessNewPassword(password, { email }) : { ok: true as const };
+    const assessment = creating ? assessNewPassword(password, { email: props.mode === "create" ? props.email : undefined }) : { ok: true as const };
     let passwordIssue: typeof validation.password;
     if (edited.current.password) {
       let encodable = true;
@@ -92,9 +129,9 @@ export function EncryptionFields({ creating, disabled, errors = {}, onEdit, desc
       passwordIssue = creating ? !short && !encodable ? "long" : assessment.ok ? undefined : "weak" :
         encodable ? undefined : short ? "short" : "invalid";
     }
-    if (creating && edited.current.password) setUnmet(assessment.ok ? [] : assessment.reasons);
     // Compare the draft itself: matching short values have a length error, not a mismatch.
     setValidation({ password: passwordIssue, confirmation: creating && edited.current.confirmation && password !== confirmed });
+    publishCreate();
     onEdit?.(field);
   };
   const passwordError = validation.password === "short" ? copy.passwordTooShort :
@@ -102,27 +139,25 @@ export function EncryptionFields({ creating, disabled, errors = {}, onEdit, desc
     validation.password === "invalid" ? copy["sync-password-invalid"] : errors.password;
   const confirmationError = validation.confirmation ? copy.passwordMismatch : errors.confirmation;
   return <fieldset disabled={disabled} className="flex flex-col gap-4">
-    {!describedBy && <>
-      <legend className="mb-3 font-medium text-sm">{creating ? copy.setPassword : copy.password}</legend>
-      <p id={`${id}-description`} className="text-muted-foreground text-sm">{creating ? copy.setupDescription : copy.description}</p>
+    {props.mode === "unlock" && !props.describedBy && <>
+      <legend className="mb-3 font-medium text-sm">{copy.password}</legend>
+      <p id={`${id}-description`} className="text-muted-foreground text-sm">{copy.description}</p>
     </>}
     <div className="flex flex-col gap-2">
       <PasswordInput id={`${id}-password`} name="password" label={copy.password} inputRef={input} nextInputRef={creating ? confirmation : undefined}
         autoComplete={creating ? "new-password" : "current-password"} describedBy={creating ? `${description} ${rules}` : description}
         error={passwordError} invalid={Boolean(passwordError) || validation.password === "weak"} onChange={() => change("password")} />
-      {creating && <PasswordRules id={rules} unmet={unmet ?? REQUIRED} edited={unmet !== null} />}
+      {creating && <RuleStrip id={rules} rows={draft.rules} />}
     </div>
-    {creating && <PasswordInput id={`${id}-confirmation`} name="confirmation" label={copy.confirmation} inputRef={confirmation}
+    {creating && <PasswordInput id={`${id}-confirmation`} name="confirmation" label={copy.confirmation}
+      aside={draft.match === "matches" ? <MatchBadge /> : undefined} inputRef={confirmation}
       autoComplete="new-password" error={confirmationError} onChange={() => change("confirmation")} />}
     {errors.form && <p role="alert" className={errorClass}>{errors.form}</p>}
-    <p className="text-[13px]/[1.45] text-muted-foreground">{copy.independentPassword}</p>
-    {creating && <>
-      <hr className="border-border" />
-      <p className="text-[13px]/[1.45] text-muted-foreground">{copy.unrecoverableCloud}</p>
-      <label className="flex cursor-pointer items-start gap-3 text-sm/5">
-        <input name="riskAccepted" type="checkbox" required className="mt-0.5 size-4 shrink-0 accent-primary" />
-        <span>{copy.risk}</span>
-      </label>
-    </>}
+    {props.mode === "unlock" && <p className="text-[13px]/[1.45] text-muted-foreground">{copy.independentPassword}</p>}
+    {props.mode === "create" && <label className={cn("flex cursor-pointer items-start gap-3 rounded-xl border bg-muted/40 px-3 py-3 text-sm/5",
+      draft.accepted ? "border-foreground" : "border-border")}>
+      <input ref={risk} name="riskAccepted" type="checkbox" required className="mt-0.5 size-4 shrink-0 accent-primary" onChange={publishCreate} />
+      <span>{copy.risk}</span>
+    </label>}
   </fieldset>;
 }

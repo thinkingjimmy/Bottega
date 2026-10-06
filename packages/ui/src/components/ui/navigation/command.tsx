@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on cmdk, Dialog/InputGroup, Lucide, and other icon and style tools
- * [OUTPUT]: Provides the full Command barrel: CommandDialog for the top-1/3 command-palette surface, CommandInput, CommandList/CommandEmpty/CommandGroup/CommandItem, and CommandShortcut; dialog content focus callbacks remain host-owned
+ * [OUTPUT]: Full Command barrel with dialog focus callbacks, default framed and borderless divided CommandInput variants, result lists/groups/items and shortcut presentation.
  * [POS]: packages/ui/src/components/ui/navigation; components/ui's candidate-list core; used both inside a Popover (max-h-72 density) and as the desktop command panel (consumers override CommandList's height)
  */
 
@@ -80,15 +80,21 @@ function CommandDialog({
 
 function CommandInput({
   className,
+  variant = "default",
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: React.ComponentProps<typeof CommandPrimitive.Input> & {
+  variant?: "default" | "borderless"
+}) {
+  const borderless = variant === "borderless"
+  const InputWrapper = borderless ? "div" : InputGroup
   return (
-    <div data-slot="command-input-wrapper" className="p-1 pb-0">
-      <InputGroup className="h-8! bg-input/20 dark:bg-input/30">
+    <div data-slot="command-input-wrapper" className={cn("p-1 pb-0", borderless && "-mx-1 border-b border-border/50 px-2 pb-2")}>
+      <InputWrapper data-slot="input-group" role="group" className={cn("h-8!", borderless ? "flex w-full min-w-0 items-center" : "bg-input/20 dark:bg-input/30")}>
         <CommandPrimitive.Input
           data-slot="command-input"
           className={cn(
             "w-full text-xs/relaxed outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+            borderless && "pl-1.5",
             className
           )}
           {...props}
@@ -96,7 +102,7 @@ function CommandInput({
         <InputGroupAddon>
           <SearchIcon className="size-3.5 shrink-0 opacity-50" />
         </InputGroupAddon>
-      </InputGroup>
+      </InputWrapper>
     </div>
   )
 }

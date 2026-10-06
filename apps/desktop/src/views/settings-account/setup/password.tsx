@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on the shared StepDialogContent, account-scoped setup progress, password validators (creation checked against the signed-in email), field-specific errors and existing settings controls.
- * [OUTPUT]: Provides PasswordStep — step 2 of 2 as dialog content: password setup with retained input nodes across retries, inline final failures, consent-aware cancellation and a Cancel that closes the dialog when nothing is running.
+ * [INPUT]: Depends on the shared StepDialogContent, account-scoped setup progress, the create-draft gate (creation checked against the signed-in email), unlock validation, field-specific errors and existing settings controls.
+ * [OUTPUT]: Provides PasswordStep — step 2 of 2 as dialog content: the signed-in account under the title, one commitment card, a primary that stays quiet until the create draft can submit, retained input nodes across retries, inline final failures, consent-aware cancellation and a Cancel that closes the dialog when nothing is running.
  * [POS]: Sync password dialog body mounted by FinishSetup; main owns bounded retries, refreshed reviews, encryption and durable approval.
  */
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { validatePassword, validateNewPassword, passwordsMatch } from "@ai-chat/cloud-crypto";
+import { validatePassword } from "@ai-chat/cloud-crypto";
 import { StepDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { getCloudEncryptionCopy } from "@ai-chat/ui/lib/cloud-copy/encryption";
@@ -14,6 +14,7 @@ import { requiresSyncSetup, type SyncReview } from "../../../../shared/cloud/syn
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { SettingsAlert, SettingsButton } from "@/components/settings/settings-layout";
 import { cloudAccountClient, cloudAccountSource } from "@/lib/cloud/client";
+import { gateCreateSubmit } from "../encryption/create-draft";
 import { EncryptionFields } from "../encryption/fields";
 import { passwordFailure, useEncryptionErrors } from "../encryption/field-errors";
 
@@ -21,7 +22,7 @@ export function PasswordStep({ state, onClose }: { state: CloudAccountState; onC
   const { t, i18n } = useAppTranslation(), copy = getCloudEncryptionCopy(i18n.language), formId = useId();
   const [review, setReview] = useState<SyncReview | null>(null), [scanFailed, setScanFailed] = useState(false), [inspection, setInspection] = useState(0);
   const [pending, setPending] = useState(false), [failed, setFailed] = useState(false);
-  const [submitted, setSubmitted] = useState(false), [abandoned, setAbandoned] = useState(false);
+  const [submitted, setSubmitted] = useState(false), [abandoned, setAbandoned] = useState(false), [draftReady, setDraftReady] = useState(false);
   const form = useRef<HTMLFormElement>(null), generation = useRef(0), approved = useRef(false);
   const inflight = useRef<Promise<SyncReview> | null>(null), submitting = useRef(false);
   const ready = state.status === "ready", { encryption, sync, syncSetup } = state;
@@ -68,12 +69,12 @@ export function PasswordStep({ state, onClose }: { state: CloudAccountState; onC
     if (submitting.current || working || blocked || !canProceed || !canSubmit) return;
     validation.resetErrors();
     const values = new FormData(event.currentTarget), password = String(values.get("password") ?? ""), confirmation = String(values.get("confirmation") ?? "");
-    if (needsPassword) {
-      try { if (creating) validateNewPassword(password, { email: state.profile?.email }); else validatePassword(password); }
+    if (creating) {
+      const gate = gateCreateSubmit(event.currentTarget, { email: state.profile?.email });
+      if (!gate.ok) { if (gate.failure) validation.reportFailure(gate.failure); return; }
+    } else if (needsPassword) {
+      try { validatePassword(password); }
       catch (error) { validation.reportFailure(passwordFailure(error)); return; }
-      let matched = !creating;
-      if (creating) { try { matched = passwordsMatch(password, confirmation); } catch { matched = false; } }
-      if (!matched) { validation.reportFailure("sync-password-mismatch"); return; }
     }
     const expected = ++generation.current;
     submitting.current = true;
@@ -120,22 +121,25 @@ export function PasswordStep({ state, onClose }: { state: CloudAccountState; onC
     needsPassword ? creating ? copy.setupDescription : t("cloud.setup.enterPasswordDescription") :
       encryption.status === "unlocked" ? t("cloud.setup.unlockedDescription") : alert ? "" : copy.checking;
   const disabled = busy || blocked || !canProceed || !canSubmit || !submitted && encryption.status === "checking";
+  const draftHeld = creating && !draftReady;
   /* The dialog's footer sits outside the form's DOM subtree, so the submit button joins it by id. While
      work runs, Cancel stops it and keeps the draft; otherwise it closes the dialog, whose unmount releases
      the review. Escape follows the same rule, and a stray click outside never discards typed input. */
   return <StepDialogContent title={title} progress={{ index: 2, total: 2, label: t("common.stepOf", { current: 2, total: 2 }) }}
-    description={<span id="sync-setup-description"><span role={busy ? "status" : undefined}>{lead}</span> {t("cloud.setup.signedInAs", { email: state.profile?.email ?? "" })}</span>}
+    account={state.profile?.email ? { label: t("cloud.setup.signedInAccount"), value: state.profile.email } : undefined}
+    description={<span id="sync-setup-description"><span role={busy ? "status" : undefined}>{lead}</span></span>}
     onPointerDownOutside={event => event.preventDefault()} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}
     actions={<>
       <SettingsButton type="button" variant="ghost" onClick={busy ? abandon : onClose}>{t("cloud.cancel")}</SettingsButton>
       {needsRetry && discoveryRetry ? <SettingsButton type="button" disabled={!ready} onClick={retryInspection}>{t("cloud.retry")}</SettingsButton> :
-        <SettingsButton type="submit" form={formId} disabled={disabled}>{busy && <Spinner className="size-3.5" />}{t(needsRetry ? "cloud.retry" : "cloud.setup.enable")}</SettingsButton>}
+        <SettingsButton type="submit" form={formId} disabled={disabled} aria-disabled={draftHeld || undefined} className={draftHeld ? "opacity-50" : undefined}>{busy && <Spinner className="size-3.5" />}{t(needsRetry ? "cloud.retry" : "cloud.setup.enable")}</SettingsButton>}
     </>}>
     <form ref={form} id={formId} onSubmit={confirm} className="space-y-3">
       {alert && <SettingsAlert>{alert}</SettingsAlert>}
       {!ready && !busy && !unavailable && <p role="status" className="text-sm">{t(`cloud.status.${state.status}`)}</p>}
-      {needsPassword && <EncryptionFields creating={creating} email={state.profile?.email} disabled={busy} errors={{ password: validation.errors.password, confirmation: validation.errors.confirmation }}
-        onEdit={validation.editField} describedBy="sync-setup-description" />}
+      {needsPassword && (creating
+        ? <EncryptionFields mode="create" email={state.profile?.email} describedBy="sync-setup-description" onReadyChange={setDraftReady} disabled={busy} errors={{ password: validation.errors.password, confirmation: validation.errors.confirmation }} onEdit={validation.editField} />
+        : <EncryptionFields mode="unlock" describedBy="sync-setup-description" disabled={busy} errors={{ password: validation.errors.password, confirmation: validation.errors.confirmation }} onEdit={validation.editField} />)}
     </form>
   </StepDialogContent>;
 }

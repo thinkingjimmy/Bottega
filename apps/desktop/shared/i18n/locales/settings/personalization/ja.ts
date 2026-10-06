@@ -10,7 +10,7 @@ export const settingsPersonalizationJa: typeof settingsPersonalizationEn = {
   title: "パーソナライズ", sectionTitle: "カスタム指示", description: "インストール済み Agent ごとのグローバル指示ファイルを編集します。",
   loading: "指示ファイルを読み込み中…", emptyTitle: "Agent がインストールされていません", emptyHint: "バックエンド設定で Agent をインストールしてから戻ってください。",
   placeholder: "この Agent へのプレーンテキスト指示を入力…", createHint: "ファイルはまだありません。保存すると {{path}} に作成します。",
-  save: "指示を保存", saving: "保存中…", copyPath: "パスをコピー", copied: "パスをコピーしました", reveal: "ファイルマネージャーで表示",
+  save: "保存", saving: "保存中…", copyPath: "パスをコピー", copied: "パスをコピーしました", reveal: "ファイルマネージャーで表示",
   oversized: "256 KiB を超えるため、ここでは読み込みも編集もしません。",
   find: { open: "ファイル内を検索", placeholder: "ファイル内を検索", count: "{{current}} / {{total}}", noMatches: "一致なし", previous: "前の一致", next: "次の一致", close: "検索を閉じる" },
   metrics: { lines: "{{lines}} 行", limit: "上限 {{size}}", recommendedLines: "推奨は {{lines}} 行以内", recommendedSize: "推奨は {{size}} 以内" },

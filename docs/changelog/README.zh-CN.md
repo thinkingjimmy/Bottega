@@ -4,6 +4,19 @@
 
 本文件只记录产品里程碑，不记录内部实现的逐次迭代。日期表示对应能力首次形成完整产品形态的时间。
 
+## 2026-10-06 — v0.2.1
+
+[下载 0.2.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.1)，适用于 macOS Apple 芯片；也可以[打开 Bottega Web](https://app.getbottega.app)。
+
+- **首次启动更简短。** 选择内容文件夹与 Agent 后即可进入工作台，Skills 和 Memory 留到设置中配置。PATH 前面的 CLI 入口损坏时继续检查其他有效安装；macOS 可识别 Codex 桌面应用内置的 CLI。
+- **按需导入历史。** 在设置中手动导入 Project 历史，仅检查已安装的 Agent。添加 Project 时可以确认首次导入，重新打开后不再自动扫描或导入。
+- **保留 Agent 选择。** 记住 Agent 偏好，整理输入区菜单；Project 设置统一页面布局并改善页签切换。
+- **Memory 控制保持一致。** 插件入口与 Memory 服务授权使用独立开关，保留已选服务和数据，并协调所需同意。
+- **草图恢复更可靠。** 修复原生编译和初始化失败的恢复与重试，保留已确认的草图。
+- **同步与登录说明更清楚。** 同步密码后果只说明一次；批准桌面登录前核对电脑、账号与验证码；远程输入区在同步未连接时说明如何恢复。
+
+本次补丁保持**协议 14**，保留已有云端内容与同步密码。从 0.2.0 升级时，退出 Bottega 后手动替换应用。安装包使用 ad-hoc 签名，未经 Apple 公证；本次预发布不进入 GitHub Latest。空闲 CPU 仍待评估，详细实机走查与正式签名仍待完成。安装与升级步骤见[使用指南](../getting-started/README.zh-CN.md#升级到-021)。
+
 ## 2026-10-04 — v0.2.0
 
 **macOS Apple 芯片 + Web。** [下载 0.2.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.0)，或打开 [Bottega Web](https://app.getbottega.app)。本次为手动更新的预发布版本。Apple Developer 资格仍在审核中，macOS 安装包使用 ad-hoc 签名，尚未公证。Windows、Linux 与 Android 发行另行安排。

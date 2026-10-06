@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Shared ProjectRowMenu, React/routing, Memory settings, Projects/Apps/Bases/History providers, active App target, App Editor intents, Project/Chat contracts, shared system-file-manager copy, lifecycle modules and the shared complete Project row
+ * [INPUT]: Shared ProjectRowMenu, React/routing, Memory settings, Projects/Apps/Bases providers, active App target, App Editor intents, Project/Chat contracts, shared system-file-manager copy, lifecycle modules and the shared complete Project row
  * [OUTPUT]: Provides ProjectItem with pointer-explicit local expansion, Base, pinned App and native/mirror Chat ordering, sorting, Editor navigation, Settings, native directory reveal, unbound folder binding, the remote row's globe glyph and owning-computer badge with every directory item withheld, a new Chat created on the owning computer while it is awake, unpinning a borrowed row, uniform row-action states, and archive helpers
  * [POS]: Project row coordinator consumed by ProjectSection; reusable lifecycle state machines live in ../lifecycle, pinned App aliases in the sibling project-pinned-apps
  */
@@ -27,12 +27,10 @@ import {
   Archive,
   PinOff,
   Plus,
-  RefreshCw,
   TriangleAlert,
   Undo2,
 } from "lucide-react";
 import type { ChatSummary } from "../../../../../shared/ipc/content/chats-ipc";
-import type { ProjectHistoryImportState } from "../../../../../shared/ipc/content/history-import-ipc";
 import type { Project } from "../../../../../shared/ipc/workspace/projects-ipc";
 import { ChatNavigationRows } from "../../cloud/list";
 import { mergeChatRows } from "../../cloud/order";
@@ -65,7 +63,6 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@ai-chat/ui/components/ui/sidebar";
-import { useOptionalHistory } from "../../../providers/history/history-provider";
 import {
   ProjectLifecycleDialogs,
   useProjectLifecycle,
@@ -167,11 +164,9 @@ export async function settleProjectReveal(reveal: () => Promise<unknown>) {
 export function ProjectItem({
   project,
   chats,
-  historyState,
 }: {
   project: Project;
   chats: ChatSummary[];
-  historyState?: ProjectHistoryImportState;
 }) {
   const { t, i18n } = useAppTranslation();
   const revealLabel = useSystemFileManagerRevealLabel();
@@ -182,7 +177,6 @@ export function ProjectItem({
     releaseMissingProject,
   } = useProjects();
   const { rootBases, projectBases } = useBasesNavigation();
-  const history = useOptionalHistory();
   const { settings } = useSyncExternalStore(
     settingsStore.subscribe,
     settingsStore.getSnapshot,
@@ -380,24 +374,6 @@ export function ProjectItem({
                     {revealLabel}
                   </DropdownMenuItem>
                 )}
-                {project.workspaceBinding.kind === "external" &&
-                  !project.missing && (
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        void history?.setEnabled(
-                          project.id,
-                          !historyState?.enabled,
-                        )
-                      }
-                    >
-                      <RefreshCw />
-                      {t(
-                        historyState?.enabled
-                          ? "history.disableProject"
-                          : "history.enableProject",
-                      )}
-                    </DropdownMenuItem>
-                  )}
                 {needsFolder && (
                   <DropdownMenuItem
                     disabled={busy}
@@ -506,31 +482,7 @@ export function ProjectItem({
               <Plus />
             </SidebarMenuAction>
           )}
-          {/* delivering：已确认的 Memory Grant 正在后台逐 turn 交付。复用刷新
-              位与转圈语言——都是「本行历史活动进行中」，只有 aria 语义分流。 */}
-          {historyState?.enabled &&
-            (historyState.hasChanges ||
-              historyState.refreshing ||
-              historyState.delivering) && (
-              <SidebarMenuAction
-                className={`${projectRowActionClass} right-14`}
-                aria-label={t(
-                  historyState.delivering
-                    ? "history.deliveringMemory"
-                    : "history.refreshProject",
-                )}
-                disabled={historyState.refreshing || historyState.delivering}
-                onClick={() => void history?.refreshProject(project.id)}
-              >
-                <RefreshCw
-                  className={
-                    historyState.refreshing || historyState.delivering
-                      ? "animate-spin motion-reduce:animate-none"
-                      : ""
-                  }
-                />
-              </SidebarMenuAction>
-            )}
+
         </>
       }
       dialogs={

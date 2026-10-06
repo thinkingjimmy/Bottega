@@ -13,7 +13,7 @@ export const settingsPersonalizationEn = {
   emptyHint: "Install an Agent in Backends settings, then return here.",
   placeholder: "Write plain-text instructions for this Agent…",
   createHint: "This file does not exist yet. Saving creates it at {{path}}.",
-  save: "Save instructions",
+  save: "Save",
   saving: "Saving…",
   copyPath: "Copy path",
   copied: "Path copied",

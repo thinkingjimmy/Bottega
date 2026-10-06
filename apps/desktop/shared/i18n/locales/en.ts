@@ -2,6 +2,7 @@
  * [INPUT]: Depends on every feature catalog, including Agent and Chat-storage failures, Apps, Chat surfaces, and Settings leaves, and defines the translated-locale benchmark, with shared cloud account/approval and isolated composer copy.
  * [OUTPUT]: Provides the complete English catalog and its Catalog type, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery General appearance provides theme, language and archive confetti.
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
+ * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
  * [POS]: Reference and fallback locale for desktop i18n
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/en";
@@ -302,7 +303,6 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
       modelSelector: { ...composerCopy.chat.composer.modelSelector },
     },
     resumeFailure: composerCopy.resumeFailure,
-    checkAgain: "Check again",
     workedFor: "Worked for {{duration}}",
     sectionImagesDisclosure:
       "Up to {{count}} images per Section ({{megabytes}} MB total across this turn) will be sent to {{backend}}.",

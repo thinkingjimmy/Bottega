@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.0"><img alt="0.2.0 prerelease" src="https://img.shields.io/badge/release-0.2.0%20prerelease-blue"></a>
+  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.1"><img alt="0.2.1 prerelease" src="https://img.shields.io/badge/release-0.2.1%20prerelease-blue"></a>
   <a href="https://github.com/thinkingjimmy/Bottega/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/thinkingjimmy/Bottega?style=flat&amp;logo=github"></a>
   <a href="./LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
@@ -21,7 +21,7 @@
   <a href="https://www.getbottega.app">Website</a> ·
   <a href="./docs/README.md">Docs</a> ·
   <a href="./docs/getting-started/README.md">Quickstart</a> ·
-  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.0">Download</a> ·
+  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.1">Download</a> ·
   <a href="./docs/features/README.md">Features</a> ·
   <a href="./docs/changelog/README.md">Changelog</a> ·
   <a href="https://x.com/hellojimmywong">X</a>
@@ -56,13 +56,13 @@ Choose a prebuilt desktop release or run Bottega directly from source. Before la
 
 ## Download
 
-[Download 0.2.0 →](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.0)
+[Download 0.2.1 →](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.1)
 
 | Platform | Download |
 | --- | --- |
 | macOS (Apple silicon) | DMG or ZIP |
 
-0.2.0 ships for **macOS on Apple silicon only**. Automatic updates are disabled for this prerelease; download and replace the app manually. Quit Bottega and back up your Bottega folder and application data before upgrading.
+0.2.1 ships for **macOS on Apple silicon only**. Automatic updates are disabled for this prerelease; download and replace the app manually. Quit Bottega and back up your Bottega folder and application data before upgrading.
 
 The package has **ad-hoc signatures**, with no Developer ID signature or Apple notarization. Download the DMG or ZIP and `release-manifest.json` from the release page. Run `shasum -a 256` on the installer and compare the output with that installer's `sha256` in the manifest, then copy Bottega into `Applications`. See the [installation guide](./docs/getting-started/README.md#download-and-install) if macOS blocks the verified download.
 

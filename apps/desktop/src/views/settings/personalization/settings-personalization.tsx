@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, SetupProvider, shared Personalization contracts (a Provider refusal on save reads as a failed write), Agent branding, SettingsPage/Settings primitives, format/shortcut helpers, InstructionsFind, Tabs/Textarea/Kbd, and i18n
+ * [INPUT]: Depends on React, SetupProvider, shared Personalization contracts (a Provider refusal on save reads as a failed write), Agent branding, SettingsPage/Settings primitives, format helpers, shortcut registration, InstructionsFind, Tabs/Textarea, and i18n
  * [OUTPUT]: Provides global Personalization views plus a backend-agnostic InstructionsEditor with missing-file placeholders and an InstructionsPathBar with independent edit/search capabilities reusable by Project Settings
  * [POS]: apps/desktop/src/views/settings/personalization; Settings instruction editor surface; callers own file identity, save/reveal authority, drafts, and result normalization
  */
@@ -32,9 +32,8 @@ import {
 import { InstructionsFind } from "@/components/settings/instructions-find";
 import { AgentBackendIcon, backendLabel } from "@/lib/agent/agent-backends";
 import { formatBytes } from "@/lib/content/format-bytes";
-import { useGlobalShortcuts, useShortcutKeys } from "@/lib/navigation/shortcuts/shortcuts";
+import { useGlobalShortcuts } from "@/lib/navigation/shortcuts/shortcuts";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Kbd, KbdGroup } from "@ai-chat/ui/components/ui/kbd";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { Textarea } from "@ai-chat/ui/components/ui/textarea";
 import {
@@ -451,8 +450,6 @@ export function InstructionsEditor({
   };
 
   useGlobalShortcuts({ saveInstructions: () => void save() });
-  /* 键帽走响应式绑定：改绑换字、停用整组消失，保存按钮本身不受影响。 */
-  const saveKeys = useShortcutKeys("saveInstructions");
 
   const failure = error || (file.error && file.error !== "oversized-file" ? errorText(file.error) : "");
   const band = failure
@@ -524,12 +521,6 @@ export function InstructionsEditor({
         </p>
         <SettingsButton disabled={!dirty || saving} onClick={() => void save()}>
           {saving ? t("settings.personalization.saving") : t("settings.personalization.save")}
-          {/* 逐键帽渲染：join 在 Windows 上会拼出 "CtrlS" 一整块。 */}
-          {!saving && saveKeys && (
-            <KbdGroup className="ml-0.5">
-              {saveKeys.map((glyph) => <Kbd key={glyph}>{glyph}</Kbd>)}
-            </KbdGroup>
-          )}
         </SettingsButton>
       </div>}
     </>

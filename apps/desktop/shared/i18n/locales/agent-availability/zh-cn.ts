@@ -1,9 +1,12 @@
 /**
  * [INPUT]: Depends on the shared availability state vocabulary.
- * [OUTPUT]: Provides localized Agent availability and recovery copy.
+ * [OUTPUT]: Localized availability, login recovery, installed-provider empty states and separate required/optional update copy.
  * [POS]: Availability locale leaf.
  */
 export const agentAvailabilityZhCN = {
+  "updateAvailable": "有可用更新",
+  "updateForUsage": "更新后获取用量",
+  "noInstalledProviders": "没有已安装的 Provider",
   "state": {
     "recent-sign-in": "最近请求需登录",
     "connection": "连接异常",
@@ -14,7 +17,7 @@ export const agentAvailabilityZhCN = {
     "unverified": "待验证",
     "checking": "检查中",
     "missing": "未安装",
-    "unsupported": "有可用更新",
+    "unsupported": "需要更新",
     "sign-in": "未登录",
     "cannot-check": "无法检查",
     "cannot-start": "无法启动",

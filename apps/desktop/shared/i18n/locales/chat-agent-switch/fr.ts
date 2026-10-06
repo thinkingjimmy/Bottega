@@ -10,7 +10,7 @@ export const chatAgentSwitchFr = {
   "recovering": "Message enregistré. Récupération…",
   "stale": "Cette conversation a changé. Choisissez à nouveau l’Agent.",
   "adjacent": "Envoyez un nouveau message ou sélectionnez l’Agent précédent.",
-  "defaultsFailed": "Options enregistrées ; échec de la mise à jour des valeurs par défaut.",
+  "defaultsFailed": "Votre choix a été conservé, mais n’a pas pu être mémorisé pour les nouveaux chats.",
   "divider": "À partir d’ici, {{backend}} répond",
   "running": "Attendez la fin de la réponse.",
   "queue": "Traitez les messages en attente.",

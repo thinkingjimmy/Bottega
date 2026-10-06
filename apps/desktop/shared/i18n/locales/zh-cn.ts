@@ -2,6 +2,7 @@
  * [INPUT]: Depends on the English Catalog shape and Simplified Chinese feature catalogs, including Agent and Chat-storage failures, Apps, Chat, and Settings, with shared cloud account/approval and isolated composer copy.
  * [OUTPUT]: Provides the complete Simplified Chinese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery General appearance provides theme, language and archive confetti.
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
+ * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
  * [POS]: zh-CN desktop locale; compile-time structure must match English exactly
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/zh-cn";
@@ -298,7 +299,6 @@ currentModelUnavailable: "{{model}}（当前不可用）"
       modelSelector: { ...composerCopy.chat.composer.modelSelector },
     },
     resumeFailure: composerCopy.resumeFailure,
-    checkAgain: "重新检测",
     workedFor: "处理了 {{duration}}",
     sectionImagesDisclosure:
       "将向 {{backend}} 发送每个 Section 至多 {{count}} 张图片（本轮合计不超过 {{megabytes}} MB）。",

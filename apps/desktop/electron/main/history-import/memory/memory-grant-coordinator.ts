@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node:crypto, HistorySnapshotStore, visible-foreign-entries/materialize ports, Memory authorization state, product history intent, and provider commit/preview delivery ports
- * [OUTPUT]: Provides MemoryGrantCoordinator: authorization-bound preview to commit (an unanswered preview is dropped at its deadline or when its dialog closes), durable Grant creation and supersede, a background delivery pump with per-project activity tracking, source-watermark commit, and idempotent reconciliation of interrupted grants
+ * [OUTPUT]: Provides MemoryGrantCoordinator: source-scoped authorization-bound preview to commit (an unanswered preview is dropped at its deadline or when its dialog closes), durable Grant creation and supersede, a background delivery pump with per-project activity tracking, source-watermark commit, and idempotent reconciliation of interrupted grants
  * [POS]: apps/desktop/electron/main/history-import/memory; The Memory authorization state machine for history-import; authorization or Project-eligibility drift forces a fresh preview, commit resumes only unconfirmed phases and never silently reposts foreign content, and delivery failures surface through deliveryFailed rather than rejecting the commit call
  */
 
@@ -10,6 +10,7 @@ import type {
   ForeignHistorySummary,
   HistoryMemoryEligibility,
   HistoryMemoryPreview,
+  HistorySourceKind,
 } from "../../../../shared/ipc/content/history-import-ipc";
 import type { MemorySharingMode } from "../../../../shared/ipc/settings/settings-ipc";
 import type { ProductHistoryIntent } from "../../memory/orchestration/consent-controller";
@@ -113,7 +114,7 @@ export class MemoryGrantCoordinator {
     };
   }
 
-  async preview(input: { projectId?: string; includeProductChats: boolean }) {
+  async preview(input: { projectId?: string; includeProductChats: boolean; sourceKinds?: readonly HistorySourceKind[] }) {
     const authorization = this.ports.state();
     const authorizationDigest = hashAuthorization(authorization);
     const eligibility = this.eligibility({
@@ -122,7 +123,7 @@ export class MemoryGrantCoordinator {
     });
     const includeForeign = eligibility.enabled && eligibility.sharingMode !== "chat";
     const summaries = includeForeign
-      ? this.ports.visibleEntries().filter((entry) => !input.projectId || entry.projectId === input.projectId)
+      ? this.ports.visibleEntries().filter((entry) => (!input.projectId || entry.projectId === input.projectId) && (!input.sourceKinds || input.sourceKinds.includes(entry.sourceKind)))
       : [];
     const snapshots: MemorySourceSnapshot[] = [];
     const watermarks = this.snapshots.watermarks();

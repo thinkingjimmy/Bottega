@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on native quota source ports, process admission, durable snapshots, power lifecycle and bounded consumer demand.
- * [OUTPUT]: Owns quota snapshots, singleflight, identity fencing (a re-key under the same account fingerprint keeps the reading and re-reads), a deferred read that survives the retry backoff, a 5-second first retry after a transient failure, the read cap and the completion window owed to a closed surface, last-known seeding across launches, refresh/reset scheduling, warm-channel demand reporting, informational availability traces and warnings for read failures, one read re-owed by a recheck after a terminal verdict the quota read reached itself, manual reads bound only by their minimum and a server retry-after, and cleanup.
+ * [OUTPUT]: Owns quota snapshots, singleflight, identity fencing (a re-key under the same account fingerprint keeps the reading and re-reads), a deferred read that survives the retry backoff, a 5-second first retry after a transient failure, the read cap and the completion window owed to a closed surface, last-known seeding across launches, refresh/reset scheduling, idempotent surface demand, warm-channel demand reporting, blocker-transition traces and warnings for read failures, one read re-owed by a recheck after a terminal verdict the quota read reached itself, manual reads bound only by their minimum and a server retry-after, and cleanup.
  * [POS]: The sole main-process quota owner; application residency survives renderer teardown, shares every read with Settings/composer/Dock, and stops after three consecutive failures until a lifecycle or user wake.
  */
 import type { AgentBackendId } from "../../../shared/ipc/agent/agent-ipc";
@@ -17,6 +17,8 @@ import { nativeQuotaSource, type QuotaSourcePort } from "./source";
    confirmation are the supervisor's time, so only the read phase carries a deadline. */
 type Flight = { controller: AbortController; promise: Promise<void>; generation: number; phase: "waiting" | "reading"; deadline: number; settled: boolean; timer?: ReturnType<typeof setTimeout> };
 type Entry = { value: AgentUsageLimits; interactive: boolean; identity?: string; flight?: Flight; failures: number; resetAttempts: Set<string>; manualAt: number | null; pending: boolean; menu: boolean; completionUntil: number | null;
+  /** The last reported blockers for this deferred intent; repeated demand is not a transition. */
+  blockedBy?: string;
   /** A server-issued retry-after: the one wait a manual Refresh honours beyond its own minimum. */
   serverRetryUntil: number | null;
   /** A recheck after a terminal verdict owes one read, whatever the backoff says. */
@@ -92,10 +94,10 @@ export class AgentUsageLimitsService {
     this.trace = options.trace ?? ((backend, event) => console.info("[usage-limits:%s] %s", backend, event));
     this.releases = [this.source.subscribe((backend, kind) => kind === "recheck" ? this.recheck(backend) : this.invalidate(backend)),
       (options.subscribeAdmission ?? subscribeQuotaAdmission)((backend) => {
-        if (!this.entries.get(backend)?.pending) return;
-        const blocked = this.blocked(backend);
-        this.trace(backend, blocked ? `admission notice, still blocked: ${this.blockers(backend).join(", ")}` : "admission notice, resuming");
-        if (!blocked) this.reconcile();
+        const entry = this.entries.get(backend);
+        if (!entry?.pending) return;
+        if (this.blocked(backend)) this.defer(entry);
+        else { this.trace(backend, "admission notice, resuming"); this.reconcile(); }
       })];
     if (options.subscribeSuspension) this.releases.push(options.subscribeSuspension(value => this.setSuspended(value)));
   }
@@ -186,11 +188,15 @@ export class AgentUsageLimitsService {
     /* No list means every Provider with quota; an id this service does not read is left out and logged, never thrown. */
     const unknown = request.backends?.filter((backend) => !this.known(backend)) ?? [];
     if (unknown.length) this.trace("*", `demand ${request.id}: no quota for ${unknown.join(", ")}`);
-    const demand = { ...request, backends: request.backends ? request.backends.filter((backend) => this.known(backend)) : [...this.providers] };
+    const demand = { ...request, backends: request.backends ? [...new Set(request.backends.filter((backend) => this.known(backend)))] : [...this.providers] };
     const key = `${surface}\u0000${demand.id}`;
+    const previous = this.demands.get(key)?.demand;
+    // Dock snapshots and renderer updates reassert demand; only a changed subscription needs reconciliation.
+    if (demand.active ? previous?.mode === demand.mode && previous.backends.length === demand.backends.length &&
+      demand.backends.every(backend => previous.backends.includes(backend)) : !previous) return;
     if (demand.active) {
-      if (!this.demands.has(key)) this.wake();
-      if (!this.demands.has(key) && this.demands.size >= 64) throw new Error("Too many quota consumers");
+      if (!previous) this.wake();
+      if (!previous && this.demands.size >= 64) throw new Error("Too many quota consumers");
       this.demands.set(key, { demand, surface });
     } else this.demands.delete(key);
     this.reconcile(true);
@@ -285,7 +291,7 @@ export class AgentUsageLimitsService {
       void this.source.demand?.(backend, state, entry.interactive ? LIMITS_TIMING.channelIdleMs : PREFETCH_IDLE_MS);
       if (!this.requested(backend)) {
         if (entry.pending) this.trace(backend, "deferred read withdrawn: nobody asking");
-        entry.pending = false;
+        entry.pending = false; entry.blockedBy = undefined;
         entry.flight?.controller.abort("hidden");
         if (entry.value.fetchState === "deferred") this.publish(entry, { fetchState: "idle", reasonCode: null });
         continue;
@@ -352,6 +358,15 @@ export class AgentUsageLimitsService {
     await Promise.all(backends.map((backend) => this.start(backend, true)));
     return this.snapshot();
   }
+  private defer(entry: Entry) {
+    const backend = entry.value.backend, blockers = this.blockers(backend).join(", ");
+    entry.pending = true;
+    if (entry.blockedBy !== blockers) {
+      entry.blockedBy = blockers;
+      this.trace(backend, `deferred: ${blockers}`);
+    }
+    if (entry.value.fetchState !== "deferred") this.publish(entry, { fetchState: "deferred", reasonCode: "busy" });
+  }
   private start(backend: AgentBackendId, manual = false): Promise<void> {
     const entry = this.entries.get(backend)!;
     if (entry.flight) return entry.flight.promise;
@@ -363,9 +378,7 @@ export class AgentUsageLimitsService {
       if (entry.value.lastAttemptAt !== null && this.now() - entry.value.lastAttemptAt < LIMITS_TIMING.manualMs) return Promise.resolve();
     } else if (!this.needs(entry)) return Promise.resolve();
     if (this.blocked(backend)) {
-      this.trace(backend, `deferred at start: ${this.blockers(backend).join(", ")}`);
-      entry.pending = true;
-      if (entry.value.fetchState !== "deferred") this.publish(entry, { fetchState: "deferred", reasonCode: "busy" });
+      this.defer(entry);
       this.armTimer();
       return Promise.resolve();
     }
@@ -374,7 +387,7 @@ export class AgentUsageLimitsService {
     const generation = entry.value.generation;
     const flight: Flight = { controller, generation, phase: "waiting", deadline: Infinity, settled: false, promise: Promise.resolve() };
     entry.flight = flight;
-    entry.pending = false;
+    entry.pending = false; entry.blockedBy = undefined;
     entry.recheckOwed = false;
     controller.signal.addEventListener("abort", () => {
       if (entry.value.generation !== generation || flight.settled) return;
@@ -416,7 +429,7 @@ export class AgentUsageLimitsService {
       }
       entry.identity = target.identity;
       lease = this.acquire(backend, () => flight.controller.abort("busy"));
-      if (!lease) { this.trace(backend, `deferred at lease: ${this.blockers(backend).join(", ")}`); entry.pending = true; this.publish(entry, { fetchState: "deferred", reasonCode: "busy" }); return; }
+      if (!lease) { this.defer(entry); return; }
       if (!await this.source.confirm(backend, target, signal)) { this.invalidate(backend); return; }
       signal.throwIfAborted();
       this.beginRead(flight);

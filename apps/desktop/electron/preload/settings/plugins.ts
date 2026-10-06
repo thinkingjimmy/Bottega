@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Import-free plugin, surface and record channel contracts plus trusted role-filtered IPC helpers.
- * [OUTPUT]: Main-only plugin settings and record lease/result bridges, with resident-window surface and generation bridges.
+ * [OUTPUT]: Main-only plugin settings, initialization retry and record lease/result bridges, with resident-window surface and generation bridges.
  * [POS]: Native preload registration; isolated package frames receive no bridge.
  */
 import { contextBridge, ipcRenderer } from "electron";
@@ -35,6 +35,7 @@ export function installPluginSurfacesBridge(subscribe: <T>(channel: string) => (
     release: id => ipcRenderer.invoke(SURFACE.release, id),
     onChanged: listener => surfaceChanged(listener),
     history: id => ipcRenderer.invoke(SURFACE.history, id),
+    retryInitialization: id => ipcRenderer.invoke(SURFACE.retryInitialization, id),
     activate: (id, generationId, expected) => ipcRenderer.invoke(SURFACE.activate, id, generationId, expected),
     edit: (id, draftChatId) => ipcRenderer.invoke(SURFACE.edit, id, draftChatId),
     newPlugin: draftChatId => ipcRenderer.invoke(SURFACE.newPlugin, draftChatId),

@@ -50,7 +50,6 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
   const workbench = useWorkbenchCopy(locale);
   const copy = workbench.plugins;
   const navigate = useNavigate();
-  const [memorySetupRequested, setMemorySetupRequested] = useState(false);
   const [installHost, setInstallHost] = useState<HTMLDivElement | null>(null);
   /* Dock setup opens where it was asked for; going to another page ends that setup session. */
   const page = target ? `${target.view}:${target.id}` : "";
@@ -78,16 +77,14 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
   /* A setup plugin is never switched on directly (plugin-setup-required): its own flow turns it on. */
   const setup = (plugin: PluginView) => {
     if (plugin.turnOn.mode !== "setup") return;
-    if (plugin.turnOn.setup === "memory-consent") { setMemorySetupRequested(true); openSettings("memory"); }
-    else setDockSetupOpen(true);
+    setDockSetupOpen(true);
   };
   const plugin = target ? plugins?.find(item => item.id === target.id) ?? null : null;
   const view = target?.view ?? null;
   const name = plugin ? pluginText(plugin.name, workbench) : "";
 
   if (target?.id === "memory" && view === "settings") {
-    return <MemoryPluginPage onAbout={() => { setMemorySetupRequested(false); openAbout("memory"); }}
-      setupRequested={memorySetupRequested} onSetupHandled={() => setMemorySetupRequested(false)}
+    return <MemoryPluginPage onAbout={() => openAbout("memory")}
       unsupported={plugin?.availability.state === "unsupported"} />;
   }
   const alerts = <>

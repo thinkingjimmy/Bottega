@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the plugin owner contract, immutable platform support, and existing Memory settings, consent and runtime owners.
  * [OUTPUT]: Provides createMemoryPluginOwner and memoryDisableEffects for one official built-in Memory feature.
- * [POS]: Memory's plugin boundary; plugin off is pause, preserving data, consent and independently authorized rebuilds.
+ * [POS]: Memory's plugin boundary; availability preserves service preferences, data and independently authorized rebuilds.
  */
 import type { BuiltinOwner } from "../../plugins/catalog";
 import type { PluginDisableImpact } from "@bottega/contracts/plugins/impact";
@@ -23,14 +23,12 @@ export function memoryDisableEffects(): PluginDisableImpact["effects"]["items"] 
 export function createMemoryPluginOwner(ports: MemoryPluginPorts): BuiltinOwner {
   const supported = () => ports.platformSupport.capabilities.memory;
   return {
-    get descriptor() { return memoryPluginDescriptor(ports.settings.get().memory.enabled); },
-    enabled: () => { const memory = ports.settings.get().memory; return memory.enabled && !memory.paused; },
+    descriptor: memoryPluginDescriptor(),
+    enabled: () => ports.settings.get().memory.pluginEnabled,
     unsupported: () => supported() ? null : memoryPluginText("health.unsupported"),
     async setEnabled(enabled) {
       if (enabled && !supported()) throw new Error("plugin-unsupported");
-      const memory = ports.settings.get().memory;
-      if (!memory.enabled) { if (enabled) throw new Error("plugin-setup-required"); return; }
-      await ports.settingsOwner.mutate({ kind: "set-paused", paused: !enabled });
+      await ports.settingsOwner.setPluginEnabled(enabled);
     },
     adapter: createMemorySettingsAdapter(ports),
     health: () => memoryPluginHealth(ports),

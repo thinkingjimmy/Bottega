@@ -1,18 +1,16 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, I18n, preflight source counts, shared history-import agreement, HistoryProvider, lib/agent-backends AgentBackendIcon, and dialog/button primitives
- * [OUTPUT]: Provides ProjectImportDialog for found history or unavailable scans, with source counts, explicit add-without-history/import actions, and optional Memory Grant preview→commit
+ * [INPUT]: Depends on React, I18n, explicit installed-source selection and preflight counts, shared history-import agreement, caller-owned commit/completion ports, lib/agent-backends AgentBackendIcon, and dialog/button primitives
+ * [OUTPUT]: Provides a shared Project Add/manual-history dialog with source counts, empty/unavailable states, explicit import actions, and optional Memory Grant preview→commit
  * [POS]: The explicit user authorization surface of sidebar/project/import; history/memory stay off by default and are chosen per-button, never a standing checkbox; Grant is confirmed in the second step and delivery runs on the main backstage pump
  */
 
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { HISTORY_SOURCE_KINDS, type HistoryMemoryEligibility, type HistoryMemoryPreview, type HistorySourceCount, type HistorySourceKind, type PreparedProjectHistoryImport } from "../../../../../shared/ipc/content/history-import-ipc";
-import type { Project } from "../../../../../shared/ipc/workspace/projects-ipc";
-import { useHistory } from "@/components/providers/history/history-provider";
+import { type HistoryMemoryEligibility, type HistoryMemoryPreview, type HistorySourceCount, type HistorySourceKind, historyScanIsEmpty } from "../../../../../shared/ipc/content/history-import-ipc";
 import { AgentBackendIcon } from "@/lib/agent/agent-backends";
-import { discardHistoryMemory, historyMemoryEligibility } from "@/lib/history/client";
+import { commitHistoryMemory, discardHistoryMemory, historyMemoryEligibility } from "@/lib/history/client";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
 import { cn } from "@ai-chat/ui/lib/utils";
@@ -31,8 +29,8 @@ function leafName(root: string) {
  * 证据行：一条平铺列表，不再裹卡片、不再做 badge。
  *
  * 扫描由 Provider 在弹窗之前完成，这里只消费结果，不重复发起磁盘读取。
- * null = 没有来源回执，installed&count>0 = 有，
- * installed&count===0 = 无聊天记录，!installed = 未安装。
+ * 仅列入本次已安装 Provider；null = 无扫描回执，count>0 = 有历史，
+ * count===0 = 无聊天记录。历史目录是否存在不等于 CLI 是否安装。
  * 品牌标记不随存量变淡：logo 说的是「它是谁」，不是「它有多少」。
  * ============================================================ */
 function SourceRow({ kind, count }: {
@@ -40,7 +38,7 @@ function SourceRow({ kind, count }: {
   count: HistorySourceCount | null;
 }) {
   const { t } = useAppTranslation();
-  const found = count ? count.installed && count.count > 0 : false;
+  const found = Boolean(count && count.count > 0);
   return (
     <li className="flex items-center gap-2.5 py-2.5">
       <AgentBackendIcon backend={kind} className="size-4" />
@@ -50,9 +48,7 @@ function SourceRow({ kind, count }: {
       <span className={cn("ml-auto text-xs tabular-nums", !found && "text-muted-foreground")}>
         {count === null
           ? "—"
-          : !count.installed
-            ? t("history.notInstalled")
-            : count.count > 0
+          : count.count > 0
               ? t("history.sourceCount", { count: count.count })
               : t("history.sourceNone")}
       </span>
@@ -100,14 +96,16 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** 挂载方以 key=token 重挂重置表单；本组件不承担跨 prepared 的状态清理。 */
-export function ProjectImportDialog({ prepared, counts, onComplete }: {
-  prepared: PreparedProjectHistoryImport;
+/** Caller-owned ports keep Project creation separate from importing into an existing Project. */
+export function ProjectImportDialog({ canonicalRoot, counts, sourceKinds, mode, onCommit, onComplete }: {
+  canonicalRoot: string;
   counts: HistorySourceCount[];
-  onComplete(project: Project | null): void;
+  sourceKinds: HistorySourceKind[];
+  mode: "add" | "import";
+  onCommit(importHistory: boolean, previewMemory: boolean): Promise<HistoryMemoryPreview | null>;
+  onComplete(): void;
 }) {
   const { t } = useAppTranslation();
-  const { commitProject, commitMemory } = useHistory();
   /* 两颗按钮决定是否导入聊天记录；记忆导入是独立的可选项，
      只在合格时出现，且只对「Import history」这条路生效。 */
   const [importMemory, setImportMemory] = useState(false);
@@ -116,31 +114,26 @@ export function ProjectImportDialog({ prepared, counts, onComplete }: {
   const [preview, setPreview] = useState<HistoryMemoryPreview | null>(null);
   /* The decrypted preview is main's to drop the moment it leaves the screen, whichever button or X closed it. */
   useEffect(() => preview ? () => discardHistoryMemory(preview.snapshotId) : undefined, [preview]);
-  const [createdProject, setCreatedProject] = useState<Project | null>(null);
   const [error, setError] = useState("");
   const busy = pending !== null;
 
   useEffect(() => {
+    if (historyScanIsEmpty(counts, sourceKinds)) return;
     let stale = false;
     void historyMemoryEligibility({ surface: "project" })
       .then((next) => { if (!stale) setEligibility(next); })
       .catch(() => { if (!stale) setEligibility(null); });
     return () => { stale = true; };
-  }, [prepared.token]);
+  }, [counts, sourceKinds]);
 
   const commit = async (importHistory: boolean) => {
     if (busy) return;
     setPending(importHistory ? "add" : "skip");
     setError("");
     try {
-      const result = await commitProject({
-        token: prepared.token,
-        importHistory,
-        previewMemory: importHistory && importMemory,
-      });
-      setCreatedProject(result.project);
-      if (result.memoryPreview) setPreview(result.memoryPreview);
-      else onComplete(result.project);
+      const result = await onCommit(importHistory, importHistory && importMemory);
+      if (result) setPreview(result);
+      else onComplete();
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -149,12 +142,12 @@ export function ProjectImportDialog({ prepared, counts, onComplete }: {
   };
 
   const confirmMemory = async () => {
-    if (!preview || !createdProject || busy) return;
+    if (!preview || busy) return;
     setPending("confirm");
     setError("");
     try {
-      await commitMemory(preview.snapshotId, preview.digest);
-      onComplete(createdProject);
+      await commitHistoryMemory(preview.snapshotId, preview.digest);
+      onComplete();
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -162,11 +155,14 @@ export function ProjectImportDialog({ prepared, counts, onComplete }: {
     }
   };
 
-  /* 完整的零记录结果已直接添加项目；到达此处的零记录意味着扫描未能确认。 */
-  const total = counts.reduce((sum, item) => sum + item.count, 0);
-  const description = total > 0
-    ? t("history.projectFoundDescription", { count: total })
-    : t("history.projectUnavailableDescription");
+  /* First-time Add skips confirmed empty scans; Settings imports show an explicit empty result. */
+  const total = counts.filter(item => sourceKinds.includes(item.sourceKind)).reduce((sum, item) => sum + item.count, 0);
+  const empty = historyScanIsEmpty(counts, sourceKinds);
+  const description = empty
+    ? t("history.projectEmptyDescription")
+    : total > 0
+      ? t("history.projectFoundDescription", { count: total })
+      : t(mode === "add" ? "history.projectUnavailableDescription" : "history.importUnavailableDescription");
 
   /* 记忆合格与否不看待定的历史选择（无常驻开关可看），只看后端合格性；
      勾选它就是在说「走 Import history 这条路时，顺带导入记忆」。 */
@@ -178,12 +174,12 @@ export function ProjectImportDialog({ prepared, counts, onComplete }: {
     return t("history.memoryDestination", { scope: t(`memory.sharing.mode.${eligibility.sharingMode}`) });
   };
 
-  const leaf = leafName(prepared.canonicalRoot);
+  const leaf = leafName(canonicalRoot);
   return (
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !busy) onComplete(createdProject);
+        if (!open && !busy) onComplete();
       }}
     >
       <DialogContent>
@@ -204,7 +200,7 @@ export function ProjectImportDialog({ prepared, counts, onComplete }: {
               </DialogTitle>
               <DialogDescription className="mt-1 pr-6 text-[11px] leading-[16px]">{description}</DialogDescription>
               <ul className="mt-3 divide-y divide-border">
-                {HISTORY_SOURCE_KINDS.map((kind) => (
+                {sourceKinds.map((kind) => (
                   <SourceRow
                     count={counts.find((item) => item.sourceKind === kind) ?? null}
                     key={kind}
@@ -212,7 +208,7 @@ export function ProjectImportDialog({ prepared, counts, onComplete }: {
                   />
                 ))}
               </ul>
-              {eligibility?.visible && (
+              {!empty && eligibility?.visible && (
                 <label className={cn(
                   "flex min-h-11 items-start gap-2.5 border-t border-border py-2.5",
                   memoryEnabled ? "cursor-pointer" : "cursor-not-allowed"
@@ -246,7 +242,7 @@ export function ProjectImportDialog({ prepared, counts, onComplete }: {
               <Button
                 className="text-muted-foreground hover:text-foreground"
                 disabled={busy}
-                onClick={() => onComplete(createdProject)}
+                onClick={() => onComplete()}
                 size="pill"
                 variant="ghost"
               >
@@ -259,21 +255,21 @@ export function ProjectImportDialog({ prepared, counts, onComplete }: {
             </>
           ) : (
             <>
-              {/* 两颗都是「添加」，只是带不带历史；取消交给右上角的 X。 */}
+              {/* Existing Projects cancel this operation; only first-time Add can skip history. */}
               <Button
                 className="text-muted-foreground hover:text-foreground"
                 disabled={busy}
-                onClick={() => void commit(false)}
+                onClick={() => mode === "add" ? void commit(false) : onComplete()}
                 size="pill"
                 variant="ghost"
               >
                 {pending === "skip" && <Loader2 className="animate-spin motion-reduce:animate-none" />}
-                {t("history.addWithoutHistory")}
+                {t(mode === "add" ? "history.addWithoutHistory" : empty ? "common.close" : "common.cancel")}
               </Button>
-              <Button disabled={busy} onClick={() => void commit(true)} size="pill">
+              {!empty && <Button disabled={busy} onClick={() => void commit(true)} size="pill">
                 {pending === "add" && <Loader2 className="animate-spin motion-reduce:animate-none" />}
                 {t("history.addWithHistory")}
-              </Button>
+              </Button>}
             </>
           )}
         </DialogFooter>

@@ -14,6 +14,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Use Plan mode, live steering, queued messages, and visible tool activity without hiding backend differences.
 - Create Sections and Subagents for parallel work, inspect their progress, pass bounded context between them, and promote useful results into durable Sections.
 - Search and adopt supported local CLI histories without silently rewriting their original records.
+- Import Project history explicitly from Settings. Only installed Agents are included; reopening a Project does not scan again.
 - Continue an imported conversation with the ordinary composer, whatever the profile it is opened in and whether or not its Project has a folder. One divider marks where the imported history ends.
 
 ## Sketch
@@ -89,6 +90,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 
 - Keep long-term Memory off by default and require explicit consent before recall or capture.
 - Choose a managed local OpenViking or EverOS backend.
+- Manage the Memory plugin entry separately from service authorization in Long-term Memory. Turning off the plugin retains your backend choice and data.
 - Scope recall to one Chat, one Project group, or the user's personal workspace.
 - Separate trusted product instructions from recalled, untrusted facts before sending context to an Agent.
 - Show delivery, rebuild, source, version, and attention state instead of collapsing “unavailable” into “empty.”
@@ -115,7 +117,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Keep synchronization optional: Bottega works without an account, setup never asks about one, and signing in uploads nothing until you confirm the first sync.
 - Sign in through your system browser with Google, approve the request there by choosing the code Bottega shows on that computer, and let the desktop app pick the session up. Bottega never asks for that password.
 - Unlock synced content with a separate sync password. A new one needs at least 12 characters with a letter and a number, at least 5 different characters, no long runs of repeated or sequential characters, and nothing from your email name, `bottega`, or the most common passwords; the form ticks each rule as you type. The content key is derived on your own device with Argon2id, and content is sealed with XChaCha20-Poly1305 before upload.
-- Accept that there is no recovery: no recovery key, no approval from another device, no password reset, and no sync reset. The risk is stated and confirmed before the encrypted workspace is created.
+- Accept that there is no recovery: no recovery key, no approval from another device, no password reset, and no sync reset. A device that still holds the encryption key can continue to decrypt its content. The risk is stated and confirmed before the encrypted workspace is created.
 - Keep one encrypted workspace per account. The first computer sets the sync password; every later computer, browser, and phone enters it. Only a desktop can set it.
 - Keep the sync area to three things: sign-in state, this computer's name, and Sign out. Signing out stops publishing and stops accepting commands without deleting anything; removing this computer's cloud copies is a separate action, and deleting the account is separate again.
 - Watch the first upload honestly: the Sync row counts real uploaded bytes, and the smallest conversations go first so the count starts moving in seconds instead of minutes.
@@ -131,6 +133,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Stay unlocked on a browser you trust, or lock it again at any time. Static and Base-backed App interfaces open in the browser as well; server App interfaces, the in-app Browser, and local tools remain on the computer that owns them.
 - Use a phone browser: layout, touch targets, sheets, and drag interactions adapt below 768px. App and Base menus adapt to narrow screens and keep offline status beside the affected action.
 - Opt in to browser notifications where the browser supports them. Delivery depends on the browser, operating system permissions, and device state.
+- When sync is not connected, the remote composer explains how to sign in and finish sync on the computer.
 - Treat signing in as remote control: a signed-in computer publishes its Projects and Chats to the account and accepts commands for them. There is no second switch in the product.
 - Switch computers from one strip at the top of the sidebar, shared by Cloud Web, phones, and the desktop. It appears once the account holds more than one computer, shows each computer's presence, and puts this computer first on a desktop. The sidebar below it is that computer's.
 - Rename a computer in Settings; a name another computer already holds is refused, and a new computer that arrives with a taken name is registered with a numeric suffix.

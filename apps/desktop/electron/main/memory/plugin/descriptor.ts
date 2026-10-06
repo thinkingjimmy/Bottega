@@ -20,10 +20,10 @@ export const memoryPluginFields: SettingField[] = [
   { ...field("workflow-roles"), type: "toggle", default: false },
 ];
 
-export function memoryPluginDescriptor(authorized: boolean): PluginDescriptor {
+export function memoryPluginDescriptor(): PluginDescriptor {
   return {
     id: "memory", kind: "feature", source: "builtin", name: memoryPluginText("name"), summary: memoryPluginText("summary"), description: memoryPluginText("description"), icon: "memory",
-    provides: ["bottega.memory/v1"], requires: [], turnOn: authorized ? { mode: "direct" } : { mode: "setup", setup: "memory-consent" },
+    provides: ["bottega.memory/v1"], requires: [], turnOn: { mode: "direct" },
     turnOff: { allowed: true }, settings: memoryPluginFields,
     capabilities: ["recall", "capture", "backfill"].map(name => ({ label: memoryPluginText(`capability.${name}`), id: null })),
   };

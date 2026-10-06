@@ -1,9 +1,12 @@
 /**
  * [INPUT]: Depends on the shared availability state vocabulary.
- * [OUTPUT]: Provides localized Agent availability and recovery copy, including the custom-route state, why sign-in is not verified, and why a catalog entry is unavailable.
+ * [OUTPUT]: Localized availability, login recovery, installed-provider empty states and separate required/optional update copy.
  * [POS]: Availability locale leaf.
  */
 export const agentAvailabilityEn = {
+  "updateAvailable": "Update available",
+  "updateForUsage": "Update to view usage",
+  "noInstalledProviders": "No installed providers",
   "state": {
     "recent-sign-in": "Recent request needs sign-in",
     "connection": "Connection issue",
@@ -14,7 +17,7 @@ export const agentAvailabilityEn = {
     "unverified": "Not verified",
     "checking": "Checking",
     "missing": "Not installed",
-    "unsupported": "Update available",
+    "unsupported": "Update required",
     "sign-in": "Not signed in",
     "cannot-check": "Could not check",
     "cannot-start": "Cannot start",

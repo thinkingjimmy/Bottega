@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs list, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -128,6 +128,7 @@ export const cloudCopy = {
     "pendingDescription": "Définissez votre mot de passe de synchronisation pour commencer à synchroniser cet ordinateur.",
     "resume": "Continuer",
     "signedInAs": "Vous êtes connecté avec {{email}}.",
+    "signedInAccount": "Compte connecté",
     "checkCode": "Vérifiez qu’il correspond au code affiché dans votre navigateur avant d’autoriser la connexion.",
     "enterPassword": "Saisissez votre mot de passe de synchronisation",
     "enterPasswordDescription": "Cet ordinateur rejoint l’espace chiffré créé sur un autre appareil. Bottega ne peut pas récupérer le mot de passe.",
@@ -141,9 +142,8 @@ export const cloudCopy = {
   },
   "whatSyncs": {
     "title": "Ce qui est synchronisé",
-    "description": "Chiffré de bout en bout avec un mot de passe de synchronisation que vous seul connaissez.",
-    "after": "Après connexion",
-    "afterPassword": "Après le mot de passe de synchronisation",
+    "lead": "La synchronisation commence après la connexion. Chaque élément est chiffré de bout en bout avec un mot de passe de synchronisation que vous seul connaissez.",
+    "leadPassword": "La synchronisation commence après le mot de passe de synchronisation. Chaque élément est chiffré de bout en bout avec un mot de passe que vous seul connaissez.",
     "chats": "Chats et Projects",
     "chatsDescription": "Les conversations, leurs fichiers et vos Projects",
     "data": "Bases et Apps",
@@ -284,7 +284,7 @@ export const cloudCopy = {
   "revokeDescription": "Cet appareil n’aura plus accès à votre compte cloud. Le contenu déjà téléchargé restera sur l’appareil.",
   "localDescription": "Utilisez Bottega gratuitement en local. La connexion ne transfère aucun contenu avant votre confirmation de la première synchronisation.",
   "notSignedIn": "Non connecté",
-  "signedOutDescription": "Bottega fonctionne entièrement et gratuitement sur cet ordinateur. Connectez-vous pour synchroniser votre travail entre vos appareils. Rien n’est transféré avant que vous confirmiez la première synchronisation.",
+  "signedOutDescription": "Après la connexion, vous pouvez contrôler cet ordinateur à distance depuis le web ou l’application mobile. Rien n’est transféré avant que vous confirmiez la première synchronisation.",
   "tryNow": "Réessayer maintenant",
   "tryAgain": "Réessayer",
   "sync": "Synchronisation",

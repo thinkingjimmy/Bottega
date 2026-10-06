@@ -1,12 +1,12 @@
 {
   "name": "@ai-chat/desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Bottega desktop workspace for local Codex, Claude Code, Kimi Code, and OpenCode CLIs",
   "author": "Jimmy Wong",
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "node ../../packages/base-ui/scripts/build.mjs && node scripts/node-runtime/fetch-node.mjs --offline --dev-manifest && node scripts/presence/build-native.mjs --output-root out && node scripts/system-dock/build-native.mjs && node scripts/cloud/production.mjs dev",
+    "dev": "node ../../packages/base-ui/scripts/build.mjs && node scripts/node-runtime/fetch-node.mjs --dev-manifest && node scripts/presence/build-native.mjs --output-root out && node scripts/system-dock/build-native.mjs && node scripts/cloud/production.mjs dev",
     "pricing:update": "tsx scripts/generation/update-model-pricing.ts",
     "pricing:check": "tsx scripts/generation/update-model-pricing.ts --check",
     "assets:windows-icon": "node scripts/generation/generate-windows-icon.mjs",

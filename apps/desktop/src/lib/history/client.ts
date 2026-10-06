@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared history-import IPC and preload `window.historyImport`
- * [OUTPUT]: Provides canonical-route snapshots, Project actions, adoption, and Memory client calls
+ * [OUTPUT]: Provides canonical-route snapshots, explicit Project Add/history import, adoption, and Memory client calls
  * [POS]: The renderer platform boundary for external history
  */
 
@@ -32,15 +32,16 @@ const bridge = () => {
 
 export const historySnapshot = () =>
   window.historyImport?.snapshot() ?? Promise.resolve(empty);
-export const prepareHistoryProject = () => bridge().prepareProject();
+export const prepareHistoryProject = (sourceKinds: Parameters<HistoryImportBridgeApi["prepareProject"]>[0]) => bridge().prepareProject(sourceKinds);
 export const countHistoryProject = (token: string) => bridge().countProject(token);
 export const commitHistoryProject = (
   input: Parameters<HistoryImportBridgeApi["commitProject"]>[0]
 ) => bridge().commitProject(input);
-export const setHistoryProjectEnabled = (projectId: string, enabled: boolean) =>
-  bridge().setProjectEnabled(projectId, enabled);
-export const refreshHistoryProject = (projectId: string) =>
-  bridge().refreshProject(projectId);
+export const prepareProjectHistoryImport = (input: Parameters<HistoryImportBridgeApi["prepareImport"]>[0]) =>
+  bridge().prepareImport(input);
+export const importProjectHistory = (
+  input: Parameters<HistoryImportBridgeApi["importProject"]>[0]
+) => bridge().importProject(input);
 export const adoptHistory = (input: Parameters<HistoryImportBridgeApi["adopt"]>[0]) =>
   bridge().adopt(input);
 export const historyMemoryEligibility = (
