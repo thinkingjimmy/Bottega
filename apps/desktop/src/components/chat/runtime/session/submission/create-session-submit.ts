@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Chat/Project/Setup ports, the native CommandSink, coordinator outcome clients, frozen submission payloads and view/abort fences.
- * [OUTPUT]: Workspace-fenced manual submission and revision, captured accepted-use preferences that survive navigation, preserved ambiguous drafts and existing admission/custody gates.
+ * [OUTPUT]: Workspace-fenced submission and revision, current options after initial model preparation, captured accepted-use preferences, ambiguous draft retention and existing admission/custody gates.
  * [POS]: apps/desktop/src/components/chat/runtime/session/submission; The limit of the submission of chat/runtime/session transactions; The main custody is not cancelled due to view switching, and the delayed return can only be written back to the still matched renderer generation
  */
 import { lastCanonicalSeq } from "@/lib/native-transcript/window";
@@ -88,7 +88,7 @@ type SettingsPort = Pick<
   | "settingsLoading"
   | "settingsSaving"
   | "turnOptions"
-> & Partial<Pick<ReturnType<typeof useChatSettings>, "rememberUsedOptions" | "capturePreferenceUse" | "ensureInitialModel">>;
+> & Partial<Pick<ReturnType<typeof useChatSettings>, "rememberUsedOptions" | "capturePreferenceUse" | "ensureInitialModel" | "readTurnOptions">>;
 
 export type SessionSubmitInput = {
   snapshot: {
@@ -643,12 +643,16 @@ export function createSessionRevisionSubmit(
 }
 
 export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
-  const ports = createSessionSubmissionPorts(input);
   return async (message, options = {}) => {
     const signal = options.signal ?? new AbortController().signal;
+    let ports: ReturnType<typeof createSessionSubmissionPorts>;
     let envelope: ManualTurnSubmission;
     try {
       if (input.services.settings.ensureInitialModel) await awaitSubmissionStep(signal, input.services.settings.ensureInitialModel);
+      // Model defaults can settle after the render that created this callback.
+      const settings = input.services.settings;
+      ports = createSessionSubmissionPorts({ ...input, services: { ...input.services,
+        settings: { ...settings, turnOptions: settings.readTurnOptions?.() ?? settings.turnOptions } } });
       envelope = await ports.assembleSubmission(message, options);
     } catch (cause) {
       throwIfSubmissionAborted(signal);

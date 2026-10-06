@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical Chat/Agent drafts, shared preference policy, scoped model catalogs, Settings IPC, window role, warm-up and Setup invalidation events.
- * [OUTPUT]: Revision-fenced Chat options, complete draft preference learning, captured accepted-use callbacks, live first-model defaults and conditional quiet repair.
+ * [OUTPUT]: Revision-fenced Chat options, preference learning, accepted-use callbacks and live defaults for factory drafts; remembered choices remain usable, and send preparation receives results across display refreshes.
  * [POS]: apps/desktop/src/components/chat/runtime/settings; Composer settings owner; canonical commit and default learning are separate operations
  */
 
@@ -189,7 +189,8 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
     const request = ++modelGeneration.current;
     const current = () => request === modelGeneration.current && activeModelKey.current === modelKey;
     return listModels(listed, workspace).then(result => {
-      if (!current()) return;
+      // A newer display request does not cancel the catalog awaited by this send.
+      if (!current()) return result;
       setModelsOwner(modelKey); setModels(result); setModelsError(null);
       /* The composer stops being a skeleton the first time a model list lands;
          markStartup keeps only that first report. */
@@ -205,11 +206,15 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
   const retryModels = useCallback(() => { setModelsLoading(true); return loadModels(); }, [loadModels]);
   const ensureInitialModel = useCallback(async () => {
     const draft = readAgentDraft(chatId);
-    if (draft.canonical || draft.pending || !builtinOptions(draft.options) || modelOptions === "none" || folderless || !modelScopeRef.current) return;
+    const options = builtinOptions(draft.options);
+    if (draft.canonical || draft.pending || !options || modelOptions === "none" || folderless || !modelScopeRef.current) return;
+    const remembered = settingsStore.getSnapshot().settings?.defaultChatOptionsByBackend[options.backend]?.model;
+    if (remembered || !isFactoryChatOptions(options) || explicitModelChoice.current.has(`${chatId}:${backend}`)) return;
     const catalog = modelsOwner === modelKey && !modelsLoading && models.length ? models : await loadModels();
     if (!catalog?.length) throw new Error(translate(locale, "chat.composer.modelSelector.noModels"));
+    if (activeChat.current !== chatId || activeModelKey.current !== modelKey) throw new Error(translate(locale, "chat.agentSwitch.stale"));
     reconcileRef.current(catalog);
-  }, [chatId, folderless, loadModels, locale, modelKey, modelOptions, models, modelsLoading, modelsOwner]);
+  }, [backend, chatId, folderless, loadModels, locale, modelKey, modelOptions, models, modelsLoading, modelsOwner]);
   useEffect(() => {
     if (!state.loading && modelsOwner === modelKey && !modelsLoading) reconcileRef.current(models);
   }, [state.loading, modelsOwner, modelKey, modelsLoading, models]);
@@ -248,6 +253,7 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
     return () => { void rememberOptions(choice, intent, true); };
   }, [chatId, rememberOptions]);
   const rememberUsedOptions = useCallback((options: ChatTurnOptions) => capturePreferenceUse(options)?.(), [capturePreferenceUse]);
+  const readTurnOptions = useCallback(() => readAgentDraft(chatId).options, [chatId]);
   const lockBackend = useCallback(async (_backend: string) => {
     const record = await pendingRefresh();
     return record?.options ?? readAgentDraft(chatId).options;
@@ -269,7 +275,7 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
     /* Why the catalog is empty, said once where the person is looking for models. The row's own
        "Choose folder…" is where they act; this only answers the question the empty menu raises. */
     modelsEmpty: folderless ? translate(locale, "projects.unbound.turnRefused") : null, retryBackends, retryModels, initFailure,
-    selectBackend, lockBackend, updateTurnOptions, rememberUsedOptions, capturePreferenceUse, ensureInitialModel,
+    selectBackend, lockBackend, updateTurnOptions, rememberUsedOptions, capturePreferenceUse, ensureInitialModel, readTurnOptions,
   }), [turnOptions, builtinTurnOptions, state, pendingUndo, pendingError, locale, folderless, modelKey, modelsOwner, backends, settingsSaving, settingsError, models,
-    modelsLoading, modelsError, retryBackends, retryModels, initFailure, selectBackend, lockBackend, updateTurnOptions, rememberUsedOptions, capturePreferenceUse, ensureInitialModel]);
+    modelsLoading, modelsError, retryBackends, retryModels, initFailure, selectBackend, lockBackend, updateTurnOptions, rememberUsedOptions, capturePreferenceUse, ensureInitialModel, readTurnOptions]);
 }

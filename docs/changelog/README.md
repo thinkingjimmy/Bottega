@@ -10,7 +10,7 @@ This file records product milestones, not internal implementation iterations. Da
 
 - **A shorter first launch.** Choose your content folder and an Agent, then start. Skills and Memory can be configured later. Agent detection checks other valid CLI installations when an earlier PATH entry is broken, and finds the CLI bundled with the Codex desktop app on macOS.
 - **History imports on your terms.** Import Project history from Settings when you need it. Only installed Agents take part. Adding a Project can offer the initial import; reopening it does not scan or import again.
-- **Agent choices that stay with you.** Remember Agent preferences and use clearer composer menus. Project settings keep a consistent page layout and smoother tab changes.
+- **Agent choices that stay with you.** Remember Agent preferences, keep the first message on its selected model while the model list refreshes, and use clearer composer menus. Project settings keep a consistent page layout and smoother tab changes.
 - **Memory controls that agree.** Plugin visibility and Memory service authorization have separate controls. Changes retain the saved backend choice and data and reconcile the required consent.
 - **More reliable sketches.** Recover from native compiler and initialization failures and retry without losing the confirmed sketch.
 - **Clearer sync and login.** Read the sync-password consequence once, check the requesting computer, account and code before approving desktop login, and see how to reconnect when a remote composer has no sync connection.
