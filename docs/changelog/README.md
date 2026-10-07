@@ -8,10 +8,10 @@ This file records product milestones, not internal implementation iterations. Da
 
 [Download 0.2.2](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.2) for macOS on Apple silicon, or [open Bottega Web](https://app.getbottega.app).
 
-- **Consistent conversations across devices.** Desktop and Web share conversation presentation, composer controls and read state. Reading a Chat clears its unread state on the owning computer and other connected views.
+- **Consistent conversations across devices.** Desktop and Web share conversation presentation, composer controls and read state. Reading a Chat clears its unread state on the owning computer and other connected views. Questions and Plan review retain Stop, and queued commands keep their recovery actions.
 - **Choose a Project branch before sending.** Search, switch or create branches from New Chat on desktop and Web. Remote actions run on the selected computer. Project settings preserve the full draft, including attachments, references, Plan, permission and model choices. Busy Projects and Git conflicts require resolution before switching.
-- **Settings that match.** Web and desktop share Agent selection, sidebar controls and settings layouts. Skills uses the same empty-library frame as Extensions. Plugin installation is available on desktop.
-- **Packaged sketches that open reliably.** Sketch initializes its isolated editor from packaged resources and preserves its editable content and shared menu state.
+- **Settings that match.** Web and desktop share Agent selection, sidebar controls and settings layouts. Skills uses the same empty-library frame as Extensions. Plugin installation is available on desktop; introductions link back to the plugin list, and tool settings include plugin and managed Preview controls.
+- **Packaged sketches that open reliably.** Sketch initializes its isolated editor from packaged resources and preserves its editable content and shared menu state. Confirmed App installations recover without changing the approved package.
 
 This release upgrades Cloud Sync to **protocol 15**. Update every desktop that uses cloud features; older protocol 14 clients must upgrade to reconnect. Existing cloud content, sync passwords and account keys are preserved. Quit Bottega and replace the app manually. This macOS Apple silicon prerelease uses ad-hoc signatures, has no Apple notarization and is excluded from GitHub Latest. See the [upgrade guide](../getting-started/README.md#upgrading-to-022).
 
