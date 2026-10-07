@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on main-owned binding, bounded event/replacement capture, the ledger and Chat SQLite facade.
- * [OUTPUT]: Persists immutable live batches and ledger evidence, recovering incomplete frames independently of transport pause; a capture buffer lives only while its live-turn row waits or the registry holds its turn.
+ * [OUTPUT]: Persists immutable live batches and ledger evidence, recovering incomplete frames independently of transport pause; an explicit wake during capture drains a bounded follow-up round in the same flight; a capture buffer lives only while its live-turn row waits or the registry holds its turn.
  * [POS]: Local capture lifetime is independent of transport; account identity and cleanup fences guard every write.
  */
 import type { CloudBuildConfig } from "@ai-chat/cloud-protocol";
@@ -15,12 +15,14 @@ import { readOutboxSource } from "../sync/chats/sources";
 import { captureTurnAdmissions, readTurnOutbox, transferTurnEvidence, recoverLateTurnEvidence } from "./sources";
 import { projectBoundedEvents, projectTurnSnapshot } from "./events";
 import { LiveCaptureBuffer } from "./buffer";
+const CAPTURE_ROUNDS = 4;
 export type TurnRuntimePorts = { ledger: RelayLedger; turns: Pick<TurnRegistry, "subscribeEvents" | "attachSnapshot" | "liveEntries"> };
 export class LocalTurnRecorder {
   private readonly buffered = new Map<string, LiveCaptureBuffer>();
   private readonly unsubscribe: () => void;
   private readonly timer: ReturnType<typeof setInterval>;
   private flight: Promise<void> | null = null;
+  private rerun = false;
   private accountId: string | null = null;
   private closed = false;
   constructor(private readonly input: TurnRuntimePorts & { store: ChatStore; binding: SyncBindingStore; config: CloudBuildConfig; deviceId: string }) {
@@ -41,9 +43,19 @@ export class LocalTurnRecorder {
     return value;
   }
   flush() {
-    if (this.closed) return Promise.resolve(); if (this.flight) return this.flight;
-    const flight = this.capture(); this.flight = flight;
+    if (this.closed) return Promise.resolve(); if (this.flight) { this.rerun = true; return this.flight; }
+    const flight = this.rounds(); this.flight = flight;
     void flight.finally(() => { if (this.flight === flight) this.flight = null; }).catch(() => {}); return flight;
+  }
+  // A wake can follow a frozen chunk selection. Its caller must also wait for the follow-up capture.
+  private async rounds() {
+    let failure: { error: unknown } | null = null;
+    for (let round = 0; round < CAPTURE_ROUNDS; round++) {
+      this.rerun = false;
+      try { await this.capture(); } catch (error) { failure ??= { error }; }
+      if (!this.rerun || this.closed) break;
+    }
+    if (failure) throw failure.error;
   }
   private async capture() {
     const { store, ledger, binding, config, deviceId, turns } = this.input, current = binding.snapshot();
