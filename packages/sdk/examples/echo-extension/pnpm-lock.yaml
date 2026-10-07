@@ -39,21 +39,21 @@ importers:
 packages:
 
   '@bottega/contracts@file:vendor/bottega-contracts-0.1.0.tgz':
-    resolution: {integrity: sha512-1jL2OiXH2MZKHB05f7DJcthSnuRxH+qRWD7wEemxkyf5LO8i6WKhKMCyi3BgH2f18SEPDcvykJyVWo6kS1qOYg==, tarball: file:vendor/bottega-contracts-0.1.0.tgz}
+    resolution: {integrity: sha512-arB5Wn8Oz308+Lesodi/vLeg0VllC4n4/bXmMIdqRtWRpiSgpOOrNs1Zdk634ZiNUDt0Uf5c0//oMEvbLKaGCA==, tarball: file:vendor/bottega-contracts-0.1.0.tgz}
     version: 0.1.0
     engines: {node: '>=24'}
     peerDependencies:
       zod: ~4.6.4
 
   '@bottega/sdk@file:vendor/bottega-sdk-0.1.0.tgz':
-    resolution: {integrity: sha512-muT9arfq9SE7SwW6e2WDK4pAiqR4w1rhdxAlc+NK4NhDeSpp+PxwsYqP61g0c0zM+3oALgMGcNAD1L9fRQaWKw==, tarball: file:vendor/bottega-sdk-0.1.0.tgz}
+    resolution: {integrity: sha512-WM77N4n9H5Q97/fECIOCjfLCyGXohY2KZU7lWG+lUJaVTxuzslL6FFYkTW58mCKf0Q9PEPruZcr7TY7ZpBHE3Q==, tarball: file:vendor/bottega-sdk-0.1.0.tgz}
     version: 0.1.0
     engines: {node: '>=24'}
     peerDependencies:
       zod: ~4.6.4
 
   '@bottega/testing@file:vendor/bottega-testing-0.1.0.tgz':
-    resolution: {integrity: sha512-Mq13/tdZuUhvMODVwUsl8OEJzCwOAk8g9nrJ+SI0FlQr63LaiAXOYL8uSXlP311VEuphFqaTX2lpOcdlqKGNpg==, tarball: file:vendor/bottega-testing-0.1.0.tgz}
+    resolution: {integrity: sha512-rBBAvhsX75b0Ga+Ti3fYI33ShiO7KNeLoOh7pG7PVqDmp8E3lRa97GUBXM/gLjoaBEbo9Cv4V4LQFHaydtSWcQ==, tarball: file:vendor/bottega-testing-0.1.0.tgz}
     version: 0.1.0
     engines: {node: '>=24'}
     peerDependencies:

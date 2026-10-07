@@ -13,6 +13,14 @@ const PACKAGES = ["contracts", "sdk", "testing"];
 const walk = (directory) => readdirSync(directory, { withFileTypes: true })
   .flatMap((entry) => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)]);
 
+function publishedReadme(text, name) {
+  if (!/^> L[123] \|/m.test(text) && !/^Members List$/m.test(text)) return withoutProtocol(text);
+  const productSection = "\nModule boundaries\n\n";
+  const boundary = text.indexOf(productSection);
+  if (boundary < 0) throw new Error(`${name} README has an internal map without a product section`);
+  return `# ${name}\n\n${withoutProtocol(text.slice(boundary + productSection.length)).trim()}\n`;
+}
+
 async function buildPackage(root) {
   /* Tools resolve from the package being built: each declares esbuild and typescript as its own devDependencies. */
   const require = createRequire(join(root, "package.json"));
@@ -45,6 +53,7 @@ function packPackage(root, out, versions) {
   const stage = join(out, ".stage", source.name.replace("/", "__"));
   mkdirSync(stage, { recursive: true });
   for (const entry of source.files) cpSync(join(root, entry), join(stage, entry), { recursive: true });
+  if (source.files.includes("README.md")) writeFileSync(join(stage, "README.md"), publishedReadme(readFileSync(join(root, "README.md"), "utf8"), source.name));
   const published = { name: source.name, version: source.version, description: source.description, license: source.license,
     type: source.type, sideEffects: source.sideEffects, exports: source.publishConfig.exports, files: source.files,
     engines: source.engines, peerDependencies: source.peerDependencies, dependencies: exact(source.dependencies) };
