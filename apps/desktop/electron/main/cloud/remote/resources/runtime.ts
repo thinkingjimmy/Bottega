@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on account-scope admission, encrypted resource codecs, owner workflow/App/record ports, plugin request inbox and Memory barriers.
+ * [INPUT]: Depends on account-scope admission, encrypted resource codecs, owner Project/workflow/App/record ports, plugin request inbox and Memory barriers.
  * [OUTPUT]: Provides ResourceCommandRuntime and ResourceCommandPorts with verified operator identity, exact action classes, durable receipts and no replay of unknown effects.
  * [POS]: Owner-computer executor; installation commands enqueue a source or read requester-bound status; record commands use owner-bound ports and account-fenced encrypted replies.
  */
@@ -16,6 +16,7 @@ import type { WorkflowEvidencePage } from "@bottega/contracts/workflow/bridge";
 import { previewFeature } from "../../../preview/session/runtime";
 import { pluginInstallRequests, setPluginInstallAccount, type PluginInstallRequests } from "../../../extensions/install/renderer/requests";
 import { pluginInstallSourceSchema } from "@ai-chat/cloud-protocol/resources/plugin-install";
+import type { ProjectResourcePort } from "./projects";
 import type { RecordResourcePort } from "./records";
 declare const __BOTTEGA_SERVER_TUNNEL__: boolean;
 const extension = (): ReturnType<typeof import("../../../apps/gateway/tunnel/entry").resourceExtension> =>
@@ -56,6 +57,7 @@ export type ResourceCommandPorts = AdmissionPorts & {
   /** The owner request inbox; this port has no install-confirmation operation. */
   plugins?(): Pick<PluginInstallRequests, "request" | "status"> | null;
   records?: RecordResourcePort;
+  projects?: ProjectResourcePort;
   /** The account's name for a device, for the Edit Chat line that says where a decline came from. */
   deviceName?(deviceId: string): string;
   quota: { known(provider: string): boolean; refresh(provider: string): Promise<void> };
@@ -163,15 +165,23 @@ export class ResourceCommandRuntime {
         const result = await effect();
         await this.ports.transport.mutate("resources/commands:settle", { ...admission.header, commandId: command.commandId, ciphertextHash: command.packet.ciphertextHash, result }); return;
       }
-      body = await this.execute(command, opened!.body, { userId: admission.header.expectedUserId, deviceId: command.sourceDeviceId });
+      body = await this.execute(command, opened!.body, { userId: admission.header.expectedUserId, deviceId: command.sourceDeviceId }, () => {
+        const current = accountScopeAdmission(this.ports);
+        if (current.kind !== "admitted" || current.key !== admission.key) throw new Error("project-git-unavailable");
+        if (this.now() >= command.expiresAt) throw new Error("command-expired");
+      });
     }
     catch (error) { body = { ok: false, code: refusal(error) }; }
     await this.settle(admission, command, 2, body.ok ? "succeeded" : "refused", body);
   }
 
   /** The operator is the account and the device the server verified as sender, never a payload field (F10). */
-  private async execute(command: EncryptedResourceCommand, body: ResourceCommandBody, operator: VerifiedOperator): Promise<ResourceResultBody> {
+  private async execute(command: EncryptedResourceCommand, body: ResourceCommandBody, operator: VerifiedOperator, current: () => void): Promise<ResourceResultBody> {
     const input = body.input as Record<string, unknown>;
+    if (command.resourceKind === "project") {
+      if (!this.ports.projects) throw new Refused("project-git-unavailable");
+      return { ok: true, projectGit: await this.ports.projects.execute(body.action, command.resourceId, body.input, operator.userId, current) };
+    }
     if (command.resourceKind === "plugin") {
       if (["plugin-record-read", "plugin-record-report", "plugin-record-results"].includes(body.action)) {
         if (!this.ports.records) throw new Refused("plugin-record-unavailable");

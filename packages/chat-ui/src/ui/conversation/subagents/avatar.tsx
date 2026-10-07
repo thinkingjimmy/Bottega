@@ -1,12 +1,10 @@
 /**
- * [INPUT]: Depends on React canvas, the shared identity recipe and backend icons.
+ * [INPUT]: Depends on React canvas, the shared identity recipe and backend icons with their open Provider id type.
  * [OUTPUT]: Provides AgentAvatar and SubagentAvatar with deterministic visual identity.
  * [POS]: conversation/subagents' visual identity, consumed by its list and detail siblings.
  */
 
-import { AgentBackendIcon, backendLabel } from "@ai-chat/ui/components/identity/agent";
-import type { SubagentProjection } from "./merge";
-type AgentBackendId = NonNullable<SubagentProjection["meta"]["agent"]>;
+import { AgentBackendIcon, backendLabel, type AgentBackendId } from "@ai-chat/ui/components/identity/agent";
 import { useEffect, useRef } from "react";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { agentAvatarRecipe } from "./recipe";

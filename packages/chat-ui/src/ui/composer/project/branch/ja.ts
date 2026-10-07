@@ -1,0 +1,41 @@
+/**
+ * [INPUT]: Native branch labels and locale-specific recovery copy.
+ * [OUTPUT]: Shared ja Project branch catalog.
+ * [POS]: Composer branch locale leaf used by native and Web.
+ */
+export const branchJa = {
+    uncommitted_one: "未コミットのファイル {{count}} 件",
+    uncommitted_other: "未コミットのファイル {{count}} 件",
+    loadFailed: "ブランチを読み込めませんでした",
+    checkoutFailed: "ブランチを切り替えられませんでした",
+    createFailed: "ブランチを作成できませんでした",
+    fallback: "ブランチ",
+    search: "ブランチを検索",
+    empty: "ブランチが見つかりません",
+    detached: "Detached HEAD",
+    group: "ブランチ",
+    refreshing: "ブランチを更新中…",
+    newAction: "新しいブランチを作成して切り替える…",
+    createTitle: "ブランチを作成して切り替える",
+    createDescription: "現在の HEAD からローカルブランチを作成して切り替えます。",
+    name: "ブランチ名",
+    placeholder: "new-branch",
+    close: "閉じる",
+    creating: "作成中…",
+    createAndCheckout: "作成して切り替える",
+    more: "さらに表示",
+  retry: "再試行",
+  settings: "プロジェクト設定",
+  offline: "コンピューターはオフラインです。再接続してください。",
+  unavailable: "このコンピューターではプロジェクトを利用できません。",
+  changed: "作業フォルダーまたはブランチ一覧が変わりました。更新してください。",
+  busy: "プロジェクトのタスクを停止してから切り替えてください。",
+  invalidName: "有効なブランチ名を入力してください。",
+  exists: "同名のブランチが存在します。",
+  missing: "ブランチは存在しません。一覧を更新してください。",
+  checkoutConflict: "ブランチを切り替えられません。コンピューターで競合を解決してください。",
+  createError: "ブランチを作成できません。コンピューターでリポジトリを確認してください。",
+  budget: "ブランチの結果が大きすぎます。",
+  unknown: "結果は未確認です。元の操作の結果を確認してください。",
+  checkResult: "結果を確認",
+};

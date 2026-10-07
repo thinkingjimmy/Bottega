@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on Zod, the encryption scalars and purpose limits, the encrypted-space schema, REMOTE_LIMITS, the workflow confirm input and bridge refusal codes.
- * [OUTPUT]: Provides RESOURCE_LIMITS, the closed resource kinds and classes, the action registry (resourceActionDescriptor: class and criticality per action), the sealed command body and result body, the refusal codes, the encrypted command (plaintext header + packet), the encrypted result and the receipt. Registers App impact/enablement, requester-bound plugin installation and bounded encrypted record/result pages.
- * [POS]: Resource-command domain model (protocol 13, purposes 10 / 11, §10.1): a phone or Web asks the computer that owns a resource to act on it. The header names no action, input or path; the owner re-derives the class and criticality from the action and refuses a mismatch.
+ * [OUTPUT]: Provides RESOURCE_LIMITS, the closed resource kinds and classes, the action registry (resourceActionDescriptor: class and criticality per action), the sealed command body and result body, the refusal codes, the encrypted command (plaintext header + packet), the encrypted result and the receipt. Registers bounded Project Git operations, App impact/enablement, requester-bound plugin installation and bounded encrypted record/result pages.
+ * [POS]: Resource-command domain model (protocol 15, purposes 10 / 11, §10.1): a phone or Web asks the computer that owns a resource to act on it. The header names no action, input or path; the owner re-derives the class and criticality from the action and refuses a mismatch.
  */
 import { appDisableImpactSchema, setAppEnabledInputSchema } from "../apps/build-status/enablement";
 import { z } from "zod";
+import { PROJECT_GIT_REFUSALS, projectGitListSchema, projectGitCheckoutSchema, projectGitCreateSchema, projectGitPageSchema } from "./project-git";
 import { digest, id, version } from "../encryption/domains/scalars";
 import { PLAINTEXT_LIMITS } from "../encryption/limits";
 import { encryptedSpaceSchema } from "../spaces";
@@ -28,7 +29,7 @@ export const RESOURCE_LIMITS = Object.freeze({
   acceptedGraceMs: 3_600_000,
 });
 export const RESOURCE_CONTRACT = "bottega.resource/v1";
-export const RESOURCE_KINDS = ["provider-quota", "workflow-run", "workflow-binding", "app", "preview", "plugin"] as const;
+export const RESOURCE_KINDS = ["project", "provider-quota", "workflow-run", "workflow-binding", "app", "preview", "plugin"] as const;
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
 export const RESOURCE_CLASSES = ["read", "control", "work"] as const;
 export type ResourceClass = (typeof RESOURCE_CLASSES)[number];
@@ -36,6 +37,9 @@ export type ResourceClass = (typeof RESOURCE_CLASSES)[number];
 const empty = z.object({}).strict();
 /** The action registry (§10.1): each action belongs to one kind, with its class, criticality and exact input. Names are unique across kinds. */
 const REGISTRY = {
+  "project-git-list": { kind: "project", class: "read", critical: false, input: projectGitListSchema },
+  "project-git-checkout": { kind: "project", class: "control", critical: false, input: projectGitCheckoutSchema },
+  "project-git-create": { kind: "project", class: "control", critical: false, input: projectGitCreateSchema },
   "plugin-record-read": { kind: "plugin", class: "read", critical: false, input: pluginRecordReadSchema },
   "plugin-record-report": { kind: "plugin", class: "work", critical: false, input: pluginRecordReportSchema },
   "plugin-record-results": { kind: "plugin", class: "read", critical: false, input: pluginRecordResultsSchema },
@@ -87,7 +91,7 @@ export type ResourceCommandBody = { contract: typeof RESOURCE_CONTRACT; action: 
     installed, updated or removed, a pause that passes; `app-not-editable` is one that does not (U06-c). `startup-recovery-pending` /
     `earlier-process-holding`: the computer's startup recovery or an earlier Agent process held the command past its bounded wait. `already-resolved` (from the bridge list): for decline-extension, the extension decision it names was
     already made (on the computer, or by an earlier decline or the time limit); nothing changed (U06-d). */
-export const RESOURCE_REFUSALS = [...WORKFLOW_BRIDGE_ERRORS, "class-mismatch", "invalid-command", "provider-unknown", "not-waiting", "input-changed", "command-expired",
+export const RESOURCE_REFUSALS = [...WORKFLOW_BRIDGE_ERRORS, ...PROJECT_GIT_REFUSALS, "class-mismatch", "invalid-command", "provider-unknown", "not-waiting", "input-changed", "command-expired",
   "app-disabled", "app-enablement-stale", "app-not-found", "app-not-editable", "app-busy", "app-transitioning", "unsupported-action", "startup-recovery-pending", "earlier-process-holding",
   "plugin-setup-required", "plugin-unsupported", "plugin-not-found", "plugin-not-switchable", "tunnel-platform-unsupported", "tunnel-plugin-disabled",
   "tunnel-download-consent-required", "preview-service-unavailable", "preview-service-changed", "preview-chat-changed", "preview-session-closed",
@@ -97,6 +101,7 @@ export type ResourceRefusal = (typeof RESOURCE_REFUSALS)[number];
 /** `runId` for an action that creates a run (start, start-rework); `revision` is the run projection's revision after the action; `chatId` for the Chat an App action opened (none from open-editor while the App has no Edit Chat yet: the sender starts one). */
 export const resourceResultBodySchema = z.union([
   z.object({ ok: z.literal(true), runId: id.optional(), revision: version.positive().optional(), chatId: id.optional(),
+    projectGit: projectGitPageSchema.nullable().optional(),
     appImpact: appDisableImpactSchema.optional(),
     pluginInstall: pluginInstallReceiptSchema.optional(),
     pluginRecord: pluginRecordPageSchema.optional(),

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the bundled Node, native esbuild resolver, packaged compiler/toolchain bytes, signed component snapshots, private staging, and release-pinned Linux system/stable component selection
+ * [INPUT]: Depends on the bundled Node, native esbuild resolver, the loaded sandbox module path, packaged compiler/toolchain bytes, signed component snapshots, private staging, and release-pinned Linux system/stable component selection
  * [OUTPUT]: Provides production App and plugin GUI build compositions with hashed runtime custody, offline component scaffolding, and a never-throwing create whose missing payload becomes a typed GUI_COMPILER_SANDBOX_UNAVAILABLE build failure compilerProgram (TASK-35 C6).
  * [POS]: apps/gui-build composition leaf wired by AppsService; a damaged toolchain payload closes authoring only and leaves every other App runnable
  */
@@ -10,7 +10,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { app } from "electron";
 import { AppSourcePreparer } from "./pipeline/source-preparer";
-import { createCompilerSandbox } from "./pipeline/sandbox";
+import { createCompilerSandbox, sandboxAdapterEntryPath } from "./pipeline/sandbox";
 import { AppGuiBuildService } from "./service";
 import { AppGuiComponentScaffolder } from "./scaffold/component-scaffolder";
 import { AppGuiAdmissionPolicy } from "./admission";
@@ -127,18 +127,6 @@ function compilerService(stagingRoot: string, plugin = false) {
       ],
     }
   );
-}
-
-function sandboxAdapterEntryPath() {
-  const candidates = [
-    join(__dirname, "apps/gui-build/pipeline/sandbox.js"),
-    join(__dirname, "pipeline/sandbox.js"),
-    resolve(process.cwd(), "electron/main/apps/gui-build/pipeline/sandbox.ts"),
-    resolve(process.cwd(), "apps/desktop/electron/main/apps/gui-build/pipeline/sandbox.ts"),
-  ];
-  const entry = candidates.find(existsSync);
-  if (!entry) throw new Error("App GUI sandbox adapter bytes are unavailable");
-  return entry;
 }
 
 function resolveMetadataRoot(resourcesRoot: string | null) {

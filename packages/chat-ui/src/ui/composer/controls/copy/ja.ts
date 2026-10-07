@@ -185,6 +185,10 @@ export const copy = {
     "cancel": "キャンセル",
     "close": "閉じる"
   },
+  "plugin": {
+    "preparing": "準備中…",
+    "unavailable": "現在利用できません。このチャットのコンピューターでプラグイン設定を確認してください。"
+  },
   "sketch": {
     "title": "スケッチ",
     "description": "メッセージに添える画像を描きます。",

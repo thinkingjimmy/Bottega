@@ -127,7 +127,7 @@ function publicSnapshot(state: BranchState): GitBranchSnapshot {
 
 async function requireState(workspace: string) {
   const state = await readState(workspace);
-  if (!state) throw new Error("所选 Project 不是 Git 仓库");
+  if (!state) throw new Error("project-git-unavailable");
   return state;
 }
 
@@ -144,7 +144,7 @@ export async function checkoutGitBranch(
   const branch = state.branches.find(
     (item) => item.kind === target.kind && item.name === target.name
   );
-  if (!branch) throw new Error(`Branch 不存在：${target.name}`);
+  if (!branch) throw new Error("project-git-missing");
   if (branch.current) return publicSnapshot(state);
   if (branch.kind === "local") {
     await runProjectGitMutation(workspace, ["switch", "--", branch.name]);
@@ -168,11 +168,12 @@ export async function checkoutGitBranch(
 }
 
 export async function createGitBranch(workspace: string, rawName: string) {
-  await requireState(workspace);
+  const state = await requireState(workspace);
   const name = rawName.trim();
-  if (!name) throw new Error("Branch name 不能为空");
-  const normalized = (await runGit(workspace, ["check-ref-format", "--branch", name])).trim();
-  if (normalized !== name) throw new Error("Branch name 无效");
+  if (!name) throw new Error("project-git-invalid-name");
+  const normalized = (await runGit(workspace, ["check-ref-format", "--branch", name]).catch(() => { throw new Error("project-git-invalid-name"); })).trim();
+  if (normalized !== name) throw new Error("project-git-invalid-name");
+  if (state.branches.some(branch => branch.kind === "local" && branch.name === name)) throw new Error("project-git-exists");
   await runProjectGitMutation(workspace, ["switch", "-c", name, "--"]);
   return publicSnapshot(await requireState(workspace));
 }

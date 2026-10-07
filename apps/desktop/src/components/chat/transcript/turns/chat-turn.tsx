@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared conversation Agent/process headings, tool rows and grouping, Message, Thinking, Terminal, Plan, image source custody, subagent, structured Agent failure notices, RegularChatTurn, fork actions, cold-turn projection, and Chat formatting components
+ * [INPUT]: Depends on shared ConversationParts, ConversationDraft, ConversationElapsed, ConversationSubagent and conversation Agent/process headings, tool rows and grouping, Message, Thinking, Terminal, Plan, image source custody, subagent, structured Agent failure notices, RegularChatTurn, fork actions, cold-turn projection, and Chat formatting components
  * [OUTPUT]: Plan and process rendering (the replying Agent named from the Provider catalog: a package Provider's declared name, never its id) with consistent interrupted-state disclosure, copy annotation, media and Subagent projections.
  * [POS]: apps/desktop/src/components/chat/transcript/turns; Assistant-turn process renderer for chat/transcript; delegates non-plan terminal presentation to chat-regular-turn
  */
@@ -8,37 +8,25 @@ import { AgentBackendIcon, isAgentBackendId } from "@/lib/agent/agent-backends";
 import { useProviderName } from "@/lib/provider-catalog/hooks";
 import {
   useCallback,
-  useEffect,
   useMemo,
-  useState,
 } from "react";
-import {
-  CheckIcon,
-  CircleXIcon,
-} from "lucide-react";
 import {
   Message,
   MessageContent,
   MessageResponse,
 } from "@ai-chat/ui/components/ai-elements/message";
 import { ConversationAgent, ConversationProcess, ConversationProcessHeading as WorkedForRow } from "@ai-chat/ui/components/conversation/process";
-import { ThinkingShimmer } from "@ai-chat/ui/components/ai-elements/thinking-shimmer";
-import { Spinner } from "@ai-chat/ui/components/ui/spinner";
-import { cn } from "@ai-chat/ui/lib/utils";
 import type { AssistantChatMessage } from "../../../../../shared/ipc/content/chats-ipc";
 import { displaySubagentName } from "../../../../../shared/tools/subagent-name";
 import { formatDuration, workedForLabel } from "@/lib/chat/content/chat-format";
 import type { ProjectedSubagent } from "@/lib/chat/session/chat-turn-attach";
-import { groupParts } from "@ai-chat/ui/components/conversation/activity/groups";
 import {
   shimmerLabel,
   projectDraftPlan,
   type DraftPlanProjection,
   type DraftPart,
-  type DraftSubagentPart,
   type TurnDraft,
 } from "../../../../../shared/chats/model/chat-turn-reducer";
-import { SubagentAvatar } from "../../subagent/subagent-avatar";
 import { PlanCard } from "../notices/chat-plan-card";
 import { ChatMessageActions } from "../navigation/chat-message-actions";
 import { ImageBlock } from "../content/chat-image";
@@ -49,7 +37,9 @@ import { useDraftProjection } from "./draft-projection";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { AgentFailureNotice } from "@/components/agent-failure-notice";
 import type { AgentBackendId } from "../../../../../shared/ipc/agent/agent-ipc";
-import { ToolRow, ToolGroup } from "@ai-chat/ui/components/conversation/activity/tools";
+import { ConversationParts } from "@ai-chat/chat-ui/turn/parts";
+import { ConversationSubagent } from "@ai-chat/chat-ui/turn/subagent";
+import { ConversationDraft, ConversationElapsed } from "@ai-chat/chat-ui/turn/draft";
 import { RegularChatTurn } from "./chat-regular-turn";
 
 /* A package Provider's reply (TASK-11 S3-b) shows its name by id; the built-in-only affordances (sign-in, usage) get no backend id. */
@@ -75,93 +65,17 @@ export function TurnParts({
   backendId?: AgentBackendId;
 }) {
   const { t } = useAppTranslation();
-  return (
-    <div className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-2">
-      {groupParts(parts).map((group) => {
-        if (group.type === "text")
-          return (
-            <MessageContent className="w-full" key={group.part.itemId}>
-              <MessageResponse isAnimating={streamingIds.has(group.part.itemId)}>
-                {group.part.text}
-              </MessageResponse>
-            </MessageContent>
-          );
-        if (group.type === "image")
-          return (
-            <ImageBlock
-              key={group.part.itemId}
-              onOpen={onOpenImage}
-              part={group.part}
-              sourceRef={imageSourceRef?.(group.part.itemId) ?? null}
-            />
-          );
-        if (group.type === "failure")
-          return group.part.failure ? (
-            <AgentFailureNotice
-              backend={backendDisplayName}
-              backendId={backendId}
-              compact
-              failure={group.part.failure}
-              key={group.part.itemId}
-              tone={group.part.severity === "warning" ? "warning" : "danger"}
-            />
-          ) : null;
-        if (group.type === "subagent") {
-          const part: DraftSubagentPart = group.part;
-          const agent = subagents[part.agentThreadId];
-          const status = agent?.meta.status ?? part.status;
-          const active = ["pendingInit", "running"].includes(status);
-          const completed = ["completed", "shutdown"].includes(status);
-          const unavailable = !agent || !agent.draft;
-          return (
-            <button
-              className={cn(
-                "flex max-w-full items-center gap-2 rounded-full border bg-background px-2.5 py-1 text-muted-foreground text-sm transition-colors disabled:opacity-60",
-                onOpenSubagent
-                  ? "cursor-pointer hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed"
-                  : "cursor-default"
-              )}
-              disabled={!onOpenSubagent || unavailable}
-              key={part.itemId}
-              onClick={() => onOpenSubagent?.(part.agentThreadId)}
-              title={
-                !agent
-                  ? t("chat.transcript.subagentDetailsCleared")
-                  : unavailable
-                    ? t("chat.transcript.subagentDetailsLimited")
-                    : agent.meta.name
-              }
-              type="button"
-            >
-              <SubagentAvatar
-                agent={agent?.meta.agent ?? part.agent}
-                agentThreadId={part.agentThreadId}
-                size={18}
-              />
-              <span className="truncate">
-                {displaySubagentName(agent?.meta.name ?? part.name)}
-              </span>
-              {active ? (
-                <Spinner className="size-3.5" />
-              ) : completed ? (
-                <CheckIcon className="size-3.5" />
-              ) : (
-                <CircleXIcon className="size-3.5 text-destructive" />
-              )}
-            </button>
-          );
-        }
-        // 纯思考组（合流后仅一条 reasoning）交给 ToolRow：单条内联铺开，合流保持折叠
-        if (group.parts.length === 1 && group.parts[0].tool === "reasoning")
-          return (
-            <div className="w-full" key={group.key}>
-              <ToolRow part={group.parts[0]} />
-            </div>
-          );
-        return <ToolGroup key={group.key} parts={group.parts} />;
-      })}
-    </div>
-  );
+  return <ConversationParts parts={parts} streamingIds={streamingIds}
+    image={part => <ImageBlock onOpen={onOpenImage} part={part} sourceRef={imageSourceRef?.(part.itemId) ?? null} />}
+    failure={part => part.failure ? <AgentFailureNotice backend={backendDisplayName} backendId={backendId} compact failure={part.failure} tone={part.severity === "warning" ? "warning" : "danger"} /> : null}
+    subagent={part => {
+      const agent = subagents[part.agentThreadId];
+      return <ConversationSubagent id={part.agentThreadId} agent={agent?.meta.agent ?? part.agent}
+        name={displaySubagentName(agent?.meta.name ?? part.name)} status={agent?.meta.status ?? part.status}
+        disabled={Boolean(onOpenSubagent) && (!agent || !agent.draft)}
+        title={!agent ? t("chat.transcript.subagentDetailsCleared") : !agent.draft ? t("chat.transcript.subagentDetailsLimited") : agent.meta.name}
+        onOpen={onOpenSubagent ? () => onOpenSubagent(part.agentThreadId) : undefined} />;
+    }} />;
 }
 
 // ─── 过程区：Worked for 计时头 + 可折叠过程条目，plan 与普通终态消息共用 ───
@@ -404,10 +318,8 @@ export function ChatTurnDraft({
     );
 
   return (
-    <Message from="assistant">
-      {(projection.visibleCount > 0 || projection.streamingTexts.length > 0 || plan) && (
-        <ElapsedLabel startedAt={draft.startedAt} />
-      )}
+    <ConversationDraft label={label} editingPlan={Boolean(plan?.editing)}
+      elapsed={(projection.visibleCount > 0 || projection.streamingTexts.length > 0 || plan) && <ElapsedLabel startedAt={draft.startedAt} />}>
       {renderParts(projection.beforePlan)}
       {plan && (
         <PlanCard
@@ -426,11 +338,7 @@ export function ChatTurnDraft({
           </MessageResponse>
         </MessageContent>
       ))}
-      {/* 「进行中」仍只由末尾 shimmer 一处表达；唯 plan 流式编辑中由
-          PlanCard 头部的 Editing spinner 顶替，完成后 shimmer 归位——
-          批准退出 Plan 后的实施阶段因此始终有进行中信号 */}
-      {(!plan || !plan.editing) && <ThinkingShimmer>{label}</ThinkingShimmer>}
-    </Message>
+    </ConversationDraft>
   );
 }
 
@@ -442,24 +350,6 @@ export function ElapsedLabel({
   endedAt?: number;
 }) {
   const { t } = useAppTranslation();
-  const [now, setNow] = useState(() => endedAt ?? Date.now());
-  useEffect(() => {
-    if (endedAt !== undefined) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, [endedAt]);
-  const displayNow = endedAt ?? now;
-  return (
-    <WorkedForRow
-      label={
-        endedAt === undefined
-          ? t("chat.transcript.workingFor", {
-              duration: formatDuration(Math.max(0, displayNow - startedAt)),
-            })
-          : t("chat.workedFor", {
-              duration: formatDuration(Math.max(0, displayNow - startedAt)),
-            })
-      }
-    />
-  );
+  return <ConversationElapsed startedAt={startedAt} endedAt={endedAt} label={(duration, finished) =>
+    t(finished ? "chat.workedFor" : "chat.transcript.workingFor", { duration: formatDuration(duration) })} />;
 }

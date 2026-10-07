@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Complete draft state, target capabilities, the existing remote upload port and the remote feedback toast.
+ * [INPUT]: Complete draft state, target capabilities, shared localized plugin initialization messages, the existing remote upload port and the remote feedback toast.
  * [OUTPUT]: Shared Files, Sketch, Plan and permission controls plus drop/paste admission; every unsupported input flags its own control (file, Plan chip, permission chip), images show processing/rejected/reselect states, and a rejected add becomes a toast.; with `textOnly` (U06-c) no Files or Sketch and a dropped or pasted file refused with the rule
  * [POS]: Remote input presentation; send and account lifecycle remain with the parent.
  */
@@ -8,7 +8,7 @@ import type { RemoteComposerCapabilities, RemotePermissionMode } from "@ai-chat/
 import type { RemoteCommandPort } from "../../../platform/remote/contracts";
 import type { ComposerDraft, DraftFile, RemoteDraftStore } from "../../../platform/remote/input/draft";
 import { ComposerAddMenu } from "../../composer/controls/add";
-import { useComposerTranslation } from "../../composer/controls/copy/translation";
+import { pluginInitializationMessage, useComposerTranslation } from "../../composer/controls/copy/translation";
 import { ChatPermissionSelector } from "../../composer/controls/permission";
 import { ChatPlanChip } from "../../composer/controls/plan-chip";
 import { backendName, type RemoteCopy } from "../../../i18n/messages/remote";
@@ -65,7 +65,7 @@ export function useRemoteComposerControls(input: { store: RemoteDraftStore; draf
       <ComposerAddMenu locale={locale} disabled={disabled} files={port?.attachments && !input.textOnly ? { disabled: draft.files.length >= 8 || !capabilities?.fileInput && !capabilities?.imageInput, run: () => picker.current?.click() } : undefined}
         plugins={port?.attachments && !input.textOnly ? (input.plugins??[]).filter(entry=>entry.enabled&&!entry.records).map(entry=>({id:entry.id,name:entry.id==='sketch'?composerText('sketch.title'):entry.composer.title,icon:entry.composer.icon,
           disabled:!sketch.available||!entry.enabled||!entry.generationId||draft.files.length>=8||!capabilities?.imageInput,
-          reason:(!entry.generationId?entry.error:undefined)??(!entry.enabled?composerText('sketch.readOnly'):draft.files.length>=8?composerText('sketch.attachmentLimit'):undefined),run:anchor=>sketch.open(entry,anchor)})) : []}
+          reason:pluginInitializationMessage(entry,composerText)??(!entry.enabled?composerText('sketch.readOnly'):draft.files.length>=8?composerText('sketch.attachmentLimit'):undefined),run:anchor=>sketch.open(entry,anchor)})) : []}
         plan={{ active: draft.planMode, disabled: !capabilities?.planMode, run: () => store.update({ planMode: !draft.planMode }) }} preload={sketch.preload} />
       <ChatPermissionSelector locale={locale} value={permissionMode} disabled={disabled || !capabilities} allowedModes={capabilities?.permissionModes} backendDisplayName={agent}
         unavailableTitle={permissionUnavailable} deferConfirmation onChange={async permissionMode => store.update({ permissionMode, consent: null })} />

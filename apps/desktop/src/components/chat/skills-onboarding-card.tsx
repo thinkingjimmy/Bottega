@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the cached Skills onboarding snapshot, Library-first import, settingsStore, i18n, and Button
  * [OUTPUT]: Provides the one-time main-ready Skills import notice with separate title, description, and wrapping actions
- * [POS]: Chat-shell onboarding affordance; it never reads Agent paths, performs no IPC of its own on mount, and retires itself durably as done or skipped
+ * [POS]: New Chat onboarding affordance, scoped by ChatRoute; it never reads Agent paths, uses cached discovery, and retires itself durably as done or skipped
  */
 
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -20,8 +20,7 @@ export function SkillsOnboardingCard() {
     settingsStore.getSnapshot
   );
   /* The answer belongs to the Skills domain and changes only when Skills do, so
-     it is read once and kept; this card remounts on every chat navigation and
-     used to pay two IPC round trips for the same unchanged answer each time. */
+     it is read once and kept across visits to New Chat. */
   const discovery = useSyncExternalStore(
     skillsOnboardingStore.subscribe,
     skillsOnboardingStore.getSnapshot

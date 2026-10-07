@@ -1,6 +1,6 @@
 /**
  * [INPUT]: English fallback, lazy locale catalogs and React subscriptions.
- * [OUTPUT]: Locale loading, synchronous interpolation and reactive composer translation.
+ * [OUTPUT]: Locale loading, synchronous interpolation, reactive composer translation and shared plugin initialization messages without internal diagnostics.
  * [POS]: The loader beside the composer controls' locale catalogs; shared controls load only the selected language and native startup can await the same catalog.
  */
 import { resolveAppLocale } from "@ai-chat/ui/lib/locale";
@@ -23,6 +23,10 @@ export function loadComposerCatalog(locale: string): Promise<void> {
   flights.set(locale, flight); return flight;
 }
 export type ComposerTranslate = (key: string, values?: Record<string, unknown>) => string;
+export function pluginInitializationMessage(entry: { generationId: string | null; error: string | null }, t: ComposerTranslate): string | undefined {
+  if (entry.generationId) return undefined;
+  return t(!entry.error || entry.error === "PLUGIN_PREPARING" ? "plugin.preparing" : "plugin.unavailable");
+}
 export function composerTranslate(locale: string): ComposerTranslate {
   locale = resolveAppLocale(locale);
   return translateCatalog(catalogs[locale] ?? en);

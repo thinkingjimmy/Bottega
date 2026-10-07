@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Project/Chat contracts, main/errors, lifecycle-fenced ProjectStore, filesystem validation, ProjectResourceCleanupCoordinator, rebind saga, and cross-domain cleanup ports
- * [OUTPUT]: Provides Project operations, unbound folder binding, throttled Git origin refresh, configured cloud-removal handoff and deletion-fenced navigation without discarding native custody.
+ * [OUTPUT]: Provides Project operations, unbound folder binding, throttled Git origin refresh, configured cloud-removal handoff and deletion-fenced navigation and branch mutations with a queued remote-authority check.
  * [POS]: Main Project authority; archive/rebind preserve incarnation while permanent removal is delegated only to the durable resource cleanup coordinator
  */
 
@@ -360,14 +360,14 @@ export class ProjectsService {
       : this.branchWorkspace(projectId);
     return workspace ? listGitBranches(workspace) : null;
   }
-  checkoutBranch(projectId: string, target: GitBranchTarget) {
+  checkoutBranch(projectId: string, target: GitBranchTarget, current?: () => void) {
     return this.runBranchMutation(projectId, (workspace) =>
-      checkoutGitBranch(workspace, target)
+      checkoutGitBranch(workspace, target), current
     );
   }
-  createBranch(projectId: string, name: string) {
+  createBranch(projectId: string, name: string, current?: () => void) {
     return this.runBranchMutation(projectId, (workspace) =>
-      createGitBranch(workspace, name)
+      createGitBranch(workspace, name), current
     );
   }
   configureCloudRemoval(handler: (projectId: string) => Promise<void>) { if (this.cloudRemoval) throw new Error("Cloud Project removal is already configured"); this.cloudRemoval = handler; }
@@ -612,13 +612,15 @@ export class ProjectsService {
   }
   private runBranchMutation<T>(
     projectId: string,
-    mutate: (workspace: string) => Promise<T>
+    mutate: (workspace: string) => Promise<T>,
+    current?: () => void
   ) {
     return this.runExclusive(async () => {
+      current?.();
       const workspace = this.branchWorkspace(projectId);
       if (!workspace) throw new Error(`${PROJECT_UNAVAILABLE}: Project 不可用`);
       if (this.options.hasActiveTurnsByProject(projectId)) {
-        throw new Error("Project 正在运行任务，停止后再切换 branch");
+        throw Object.assign(new Error("Project has an active task. Stop it before switching branches."), { code: "project-git-busy" });
       }
       return mutate(workspace);
     });

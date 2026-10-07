@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the six Chat facades, confirmed heads and project readiness, shared preparation rejection proof, the account-level computer subscription, remote target/receipt hooks, the owning computer's published model catalog and transcript controls.
- * [OUTPUT]: Provides early intent submission and remote messaging (ruling 12: while a command waits for its computer, new messages are held and drained in order, answers to its turn stay locked with a named data-composer-lock, and Stop waiting unlocks locally) and the one automatic resend of a command refused for a changed connection once its computer is online again (TASK-20 D10), where every state lives on its control — icon Agent chip, model choice, a Send button that is the required action (prepare, retry preparation, bind) and greys in place with the owning computer's sentence when that computer goes down, a byte budget on the Send row, outcome toasts, and the read-only card in place of the composer for archived, remote-off, sync-disconnected and imported-not-yet-continued chats and for native chats whose owning computer has left the account; a guidance message refused because its turn had ended can go out once as a new message with the same uploaded files; plus immutable unknown attempts (checkpoint-recovered ones are adopted and looked up by their original commandId, never resent as new messages), a page or viewport-filling layout mode and one footer slot beneath the conversation.; gives the transcript its owner computer (stable per owner) so a failed Agent turn is said on the message
- * [POS]: Shared Web and desktop mirror composition; optional host layout places sibling panels under one draft callback owner, and native drafts keep their original storage owner.
+ * [INPUT]: Chat facades, confirmed heads, ConversationModel, remote command custody, computer presence, preparation, draft and consent ports.
+ * [OUTPUT]: Composes shared messages and a native-equivalent composer: Stop until settlement, queued sends, prioritized interactions, canonical error deduplication and original-request recovery. Retains draft ownership, preparation and one connection-change resend.
+ * [POS]: Shared Web and desktop mirror host; transcript, composer and sibling panels read one published live projection without another subscription.
  */
 import { ChatConversation, type ConversationRegions } from "../page/conversation";
 import { useArtifactHost, ArtifactHostProvider } from "../../artifacts/context";
@@ -9,6 +9,7 @@ import { useLayoutEffect, useCallback, useEffect, useMemo, useRef, useState, typ
 import { ComposerDock, ComposerForm, ComposerToolbar, ComposerActions } from "../composer/layout";
 import { PromptInputSubmit, PromptInputTools } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import { Button } from "@ai-chat/ui/components/ui/button";
+import { ProductFailureNotice } from "@ai-chat/ui/components/feedback/failure-notice";
 import { AgentBackendIcon } from "@ai-chat/ui/components/identity/agent";
 import { Archive, Cloud, RefreshCw } from "lucide-react";
 import { utf8Length } from "@ai-chat/cloud-protocol/chats/content/parts";
@@ -26,7 +27,7 @@ import { LOCAL_QUEUE_LIMIT, emptyLocalQueue, nextLocalStep, type LocalQueued } f
 import { formatCopy } from "@ai-chat/ui/lib/workbench-copy/format";
 import { remoteCopy } from "../../i18n/messages/remote";
 import { ChatTranscript } from "../conversation/transcript";
-import { ConversationModelProvider } from "../conversation/body/model";
+import { ConversationModelProvider, useConversationModel } from "../conversation/body/model";
 import type { ImageIdentity } from "../side-panel/image/identity";
 import { RemoteAgentSelector } from "./computer/agent";
 import { assertRemoteReferenceTarget, isRemoteWorkspaceQuery, type RemoteReference } from "@ai-chat/cloud-protocol/remote/input/references";
@@ -35,9 +36,11 @@ import { queryRemoteWorkspace } from "../../platform/remote/workspace";
 import type { WorkspacePreviewRequest } from "../side-panel/workspace";
 import { useRemoteReferences } from "./composer/input/references";
 import { awaitRemoteResult } from "../../platform/remote/commands/result";
+import { RemoteInteractions } from "./turn/controls";
+import { actionPending } from "./turn/state";
 import { RemoteForkDialog } from "./turn/fork";
 import { useComposerTranslation } from "../composer/controls/copy/translation";
-import { RemoteReceipts, reasonCopy } from "./delivery/receipts";
+import { RemoteReceipts, needsDeliveryRecovery, reasonCopy } from "./delivery/receipts";
 import { remoteDraftStore } from "../../platform/remote/input/draft";
 import { useRemoteDraft } from "../../platform/remote/input/hooks";
 import { useRemoteComposerControls } from "./composer/controls";
@@ -58,7 +61,7 @@ export function RemoteConversation(props: RemoteConversationProps) {
   return <ConversationModelProvider><RemoteConversationContent {...props} /></ConversationModelProvider>;
 }
 type RemoteConversationProps = Parameters<typeof RemoteConversationContent>[0];
-function RemoteConversationContent({ head, platform, locale, connected = true, targetMessageId, draft, initialText = "", layout = "page", onDirtyChange, bindProject, footer, readOnlyFooter, navigateToChat, keepComposerVisible = false, restore, onOpenImage, onOpenWorkspaceFile, children, disabledActions }: {
+function RemoteConversationContent({ head, platform, locale, connected = true, targetMessageId, draft, initialText = "", layout = "page", onDirtyChange, bindProject, footer, readOnlyFooter, navigateToChat, keepComposerVisible = false, restore, onOpenImage, onOpenWorkspaceFile, onOpenSubagent, onOpenPlan, expandedPlanId, children, disabledActions }: {
   disabledActions?: UnavailableAction[];
   head: CloudChatHead; platform: ChatPlatform; locale: string; connected?: boolean; targetMessageId?: string | null; draft?: RemoteDraft;
   keepComposerVisible?: boolean; initialText?: string; layout?: "page" | "fill"; onDirtyChange?(dirty: boolean): void; bindProject?(chatId: string): Promise<unknown>;
@@ -70,11 +73,18 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
   /** Restores an archived chat from the bar that replaces its composer. */
   restore?(): Promise<unknown>;
   onOpenImage?(identity: ImageIdentity): void;
+  onOpenSubagent?(id: string): void;
+  onOpenPlan?(id: string): void;
+  expandedPlanId?: string | null;
   onOpenWorkspaceFile?(request: WorkspacePreviewRequest): void;
   /** Compose sibling panels under the same draft-scoped artifact capabilities. */
   children?(conversation: ConversationRegions): ReactNode;
 }) {
-  const translate = useComposerTranslation(locale);
+  const translate = useComposerTranslation(locale), model = useConversationModel();
+  const conversation = model.chatId === head.chat.id && model.incarnationId === head.chat.incarnationId ? model : null;
+  const [queued, setQueued] = useState<{ chatId: string; incarnationId: string; ids: string[] } | null>(null);
+  const queuedCommands = useCallback((ids: string[]) => setQueued({ chatId: head.chat.id, incarnationId: head.chat.incarnationId, ids }), [head.chat.id, head.chat.incarnationId]);
+  const live = conversation?.live, turn = live?.state?.receipt.turnId === head.openTurnId ? live : null;
   const [forkAnchor, setForkAnchor] = useState<{ id: string; seq: number } | null>(null);
   const copy = remoteCopy(locale), input = remoteInputCopy(locale), account = useChatAccount(platform.account), port = platform.execution.remote;
   const targets = useRemoteTargets(port, head.chat.id), commands = useRemoteCommands(platform, head.chat.id, head.chat.incarnationId);
@@ -162,16 +172,11 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
     capabilities: capability?.capabilities, permissionMode, locale, backend: agent, disabled: uncertain || sendBusy || requestBusy || preparing || operationPending });
   const consent = useRemoteConsent(store, locale, target?.name ?? "", `${head.chat.id}/${head.chat.incarnationId}/${head.ownerDeviceId}`);
   const pendingFiles = completeDraft.files.some(file => file.state !== "ready");
-  const [referenceSelection, setReferenceSelection] = useState<{ requestId: string | null; mode: "next" | "current" }>({ requestId: null, mode: "next" });
-  const referenceMode = referenceSelection.requestId === head.openTurnId ? referenceSelection.mode : "next";
   const referenceSuggestions = useRemoteReferences({ head, target: target, platform, session: commands.session, store, locale, disabled: !authorized || uncertain || sendBusy });
   const referenceMismatch = completeDraft.references.some(reference => reference.value.kind === "file" && reference.value.deviceId !== target?.deviceId);
   const hasInput = Boolean(text.trim() || completeDraft.files.length || completeDraft.references.length);
   const budget = draftBudget(copy, { text, references: completeDraft.references.map(item => item.value), files: completeDraft.files.length }), tooLong = budget !== null;
   const blocked = referenceMismatch || baseBlocked || controls.unsupported || controls.editing || pendingFiles || sendBusy;
-  const runningCapabilities = target?.agents.find(item => item.backend === head.chat.agent)?.capabilities;
-  const steerBlocked = reportWaiting || !authorized || !usable || controls.editing || pendingFiles || sendBusy ||
-    Boolean(draft && (!draft.ready || draft.unsupported)) || completeDraft.files.some(file => file.image ? !runningCapabilities?.imageInput : !runningCapabilities?.fileInput);
   const planId = !head.openTurnId && completedPlan && !completeDraft.dismissedPlans.includes(completedPlan) ? completedPlan : null;
   // The chat's own options name the model until this device chooses another one for the same Agent.
   const choice = completeDraft.options?.backend === agent ? completeDraft.options : null;
@@ -271,14 +276,14 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
     revisionAttempt.current = null;
   };
   const retryAuth = capability?.reason === "auth-required" && selected === head.ownerDeviceId && ready && !head.openTurnId;
-  const send = async (override?: { displayText: string; planMode: boolean }, steer = false, authenticationRetry = false) => {
-    const outgoing = override?.displayText ?? text, queueLocally = !steer && !authenticationRetry && !override && holdNew;
+  const send = async (override?: { displayText: string; planMode: boolean }, authenticationRetry = false) => {
+    const outgoing = override?.displayText ?? text, queueLocally = !authenticationRetry && !override && holdNew;
     if (queueLocally && (localFull || !head.ownerDeviceId)) return;
-    if (sending.current || (steer ? steerBlocked : authenticationRetry ? !retryAuth || !authorized || controls.editing || pendingFiles || sendBusy : blocked) || requestBusy || uncertain || (!outgoing.trim() && !completeDraft.files.length && !completeDraft.references.length) || utf8Length(outgoing) > REMOTE_LIMITS.textBytes) return;
+    if (sending.current || (authenticationRetry ? !retryAuth || !authorized || controls.editing || pendingFiles || sendBusy : blocked) || requestBusy || uncertain || (!outgoing.trim() && !completeDraft.files.length && !completeDraft.references.length) || utf8Length(outgoing) > REMOTE_LIMITS.textBytes) return;
     sending.current = true; setSendBusy(true); feedback.dismiss();
     try {
       const references = completeDraft.references.map(item => item.value);
-      assertRemoteReferenceTarget(references, (steer ? target?.deviceId : selected) ?? "");
+      assertRemoteReferenceTarget(references, selected ?? "");
       await draft?.flush();
       const signal = platform.commands.remote?.lifetime ?? new AbortController().signal;
       const attachments = await store.prepare(head.chat.id, platform.commands.remote?.attachments, signal);
@@ -289,11 +294,6 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
         store.enqueueLocal({ commandId, text: outgoing, attachments, references, planMode: completeDraft.planMode,
           incarnationId: head.chat.incarnationId, ownerDeviceId: head.ownerDeviceId! }, gateId);
         draft?.change("");
-        return;
-      }
-      if (steer) {
-        if (!head.openTurnId) return;
-        await submit({ kind: "steer", requestId: head.openTurnId, text: outgoing, ...(references.length ? { references } : {}), ...(attachments.length ? { attachments } : {}) });
         return;
       }
       await startTurn({ text: outgoing, attachments, references }, override?.planMode ?? completeDraft.planMode,
@@ -391,7 +391,12 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
     } }
     finally { preparationBusy.current = false; if (mounted.current) setPreparing(false); }
   };
-  const interactionControls = { recoveryEnabled: platform.capabilities.recovery, entries: commands.entries, copy, locale, backendName: agent, computer: owner?.name ?? null, submit, draftChanged, disabled: !authorized || !usable };
+  const turnRunning = turn?.state?.state === "running" && turn.state.receipt.settlementState === "open";
+  const cancelPending = actionPending(commands.entries, payload => payload.kind === "cancel" && payload.requestId === head.openTurnId);
+  const generating = Boolean(head.openTurnId) && turn?.state?.receipt.settlementState !== "settled";
+  const showStop = generating && !hasInput;
+  const stopDisabled = !authorized || !usable || !turnRunning || !turn?.replayComplete || cancelPending || reportWaiting;
+  const interactionControls = { recoveryEnabled: platform.capabilities.recovery, entries: commands.entries, copy, locale, backendName: agent, computer: owner?.name ?? null, submit, draftChanged, disabled: !authorized || !usable || reportWaiting };
   /* The computer that owns this chat has no chip to sit on any more. When it cannot take the next message — a failed
      preparation, or Project facts still pending or unbound — the composer says so above the editor, with any recovery it has. */
   const computerNotice = gate || blockedReason ? null : (block ? [block.reason, ...(block.hint ? [block.hint] : [])].join(copy.sentenceGap) : null);
@@ -403,7 +408,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
     : computerNotice ? <div className="chat-remote-hint" role="status" data-computer-notice><p>{computerNotice}</p></div> : null;
   const action = bindable ? { kind: "bind" as const, label: copy.bindProject } : sendAction(copy, { head, target, ready: preparation?.state !== "blocked", busy: sendBusy || requestBusy || uncertain, retryCreate: false });
   const act = () => {
-    if (action.kind === "send") { void send(undefined, referenceMode === "current" && Boolean(head.openTurnId)); return; }
+    if (action.kind === "send") { void send(); return; }
     if (!authorized || preparing || operationPending || projectPending || !head.ownerDeviceId) return;
     if (action.kind === "retry-preparation" || action.kind === "bind") void retryPreparation();
   };
@@ -419,20 +424,45 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
       head={head} anchor={forkAnchor} session={commands.session} chats={platform.chats} locale={locale}
       navigate={id => navigateToChat(id, "")} onClose={() => setForkAnchor(null)} />;
   const transcript = <ChatTranscript findEnabled={platform.capabilities.find} outlineEnabled={platform.capabilities.outline} onEdit={ordinary && authorized && ready && usable && !head.openTurnId ? editMessage : undefined} onFork={ordinary && enabled && authorized && head.chat.classification.projectId && !head.archivedAt && usable && navigateToChat
-      ? { label: translate("fork.action"), run: setForkAnchor } : undefined} onOpenImage={onOpenImage} head={head} source={platform.transcript} live={platform.live} commands={platform.commands} locale={locale} targetMessageId={targetMessageId}
+      ? { label: translate("fork.action"), run: setForkAnchor } : undefined} onOpenImage={onOpenImage} onOpenSubagent={onOpenSubagent} onOpenPlan={onOpenPlan} expandedPlanId={expandedPlanId} head={head} source={platform.transcript} live={platform.live} commands={platform.commands} locale={locale} targetMessageId={targetMessageId}
       lineage={navigateToChat ? { chats: platform.chats, navigate: navigateToChat } : undefined}
       onCompletedPlan={setCompletedPlan} remote={ordinary && enabled ? interactionControls : undefined} onCanonicalCommands={commands.session?.canonical}
+      queuedCommandIds={queued?.chatId === head.chat.id && queued.incarnationId === head.chat.incarnationId ? queued.ids : undefined}
       remoteFailure={failureHost} />;
+  const representedFailure = (entry: RemoteEntry) => {
+    if (entry.uncertain || entry.receipt?.state === "outcome-unknown") return false;
+    const payload = entry.input.payload, projection = turn?.projection;
+    if (payload.kind === "respond-approval" && projection?.approvals.some(item => item.approvalId === payload.approvalId)) return true;
+    if (payload.kind === "respond-user-input" && projection?.userInputs.some(item => item.userInputId === payload.userInputId)) return true;
+    if ("retryToken" in payload && projection?.recovery?.retryToken === payload.retryToken) return true;
+    const user = conversation?.bodies.find(body => body.message.id === entry.receipt?.admission?.userMessageId)?.message;
+    if (!user) return false;
+    const next = conversation?.bodies.filter(body => body.message.seq > user.seq && body.message.role !== "notice").sort((a, b) => a.message.seq - b.message.seq)[0]?.message;
+    return next?.role === "assistant" && Boolean(next.failure || next.isError);
+  };
+  const recoveryEntries = commands.entries.filter(entry => !isRemoteWorkspaceQuery(entry.input.payload.kind) && !representedFailure(entry) && !sentAsNew.has(entry.input.commandId));
+  const hasDeliveryRecovery = recoveryEntries.some(entry => needsDeliveryRecovery(entry, !usable));
+  const liveUnavailable = Boolean(head.openTurnId) && (conversation?.liveError || live?.state?.state === "unknown");
   const composer = ordinary && (enabled || keepComposerVisible || remoteOff) && <ComposerDock className="chat-remote">
       {completeDraft.retainedText && <div className="chat-remote-hint" data-retained-draft>
         <p className="whitespace-pre-wrap break-words">{completeDraft.retainedText}</p>
         <Button type="button" variant="outline" disabled={uncertain || requestBusy || sendBusy} onClick={() => { store.restoreText(); draft?.change(store.snapshot().text); }}>{input.restoreDraft}</Button>
       </div>}
-      {composerNotice}
+      {outcome || !hasDeliveryRecovery ? composerNotice : null}
+      {liveUnavailable && !hasDeliveryRecovery && !composerNotice && <ProductFailureNotice compact tone="warning" copy={{ title: copy["outcome-unknown"], explanation: copy.unknownDetail, resolution: "" }} />}
+      {commands.session && <RemoteReceipts entries={recoveryEntries} session={commands.session} copy={copy} locale={locale} computer={owner?.name ?? null} computerUnavailable={!usable} disabled={!authorized} reexecuteDisabled={blocked || uncertain || requestBusy || holdNew}
+        sendAsNew={sendAsNew} sentAsNew={sentAsNew} stopped={stopped}
+        stopWaiting={entry => { store.stopWaiting(entry.input.commandId); store.track(commands.entries); }}
+        reexecute={entry => { if (!blocked && !uncertain && !holdNew && !requestBusy && entry.input.payload.kind === "start-turn") {
+          const original = entry.input.payload;
+          if (entry.input.targetDeviceId !== head.ownerDeviceId ||
+            original.agentSelection && original.agentSelection.backend !== agent) { setOutcome({ message: copy.chatChanged, retry: "refresh" }); return; }
+          void submit({ ...original, expectedAgentRevision: head.chat.agentRevision,
+            ...(original.agentSelection ? { agentSelection: { ...original.agentSelection, expectedFactRevision: head.catalogRevision } } : {}) });
+        } }} />}
       {enabled && (platform.capabilities.queue || local.items.length > 0 || local.paused) && commands.session && platform.commands.remote && <RemoteQueue head={head} port={platform.commands.remote} session={commands.session}
-        entries={commands.entries} locale={locale} disabled={!authorized} local={localRows} />}
+        entries={commands.entries} locale={locale} disabled={!authorized} local={localRows} onQueuedCommands={queuedCommands} />}
       {reportWaiting && (head.openTurnId || retryAuth || planId) && <p className="chat-remote-hint" data-answer-waits>{formatCopy(copy.answerWaits, { name: ownerName })}</p>}
-      {planId && <ChatPlanDecision locale={locale} pending={{ busy: blocked || requestBusy || uncertain || reportWaiting }} onDecision={decidePlan} />}
       {head.archivedAt !== null ? <RemoteUnavailable icon={<Archive aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.archivedTitle} description={restore ? copy.restoreToSend : undefined}
           actions={restore ? [{ label: copy.restore, disabled: restoring, run: runRestore }] : []} />
         : remoteOff ? <RemoteUnavailable icon={<PlatformGlyph kind="none" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disabled} description={copy.disabledDescription} actions={disabledActions} />
@@ -440,7 +470,9 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
             : <PlatformGlyph kind={target?.platform ?? "none"} className={preparing ? "size-3.5" : "mt-0.5 size-5 shrink-0 text-muted-foreground"} />)} title={copy.readOnly} description={gate.description}
           actions={cardActions} />
         : blockedReason ? <RemoteUnavailable icon={<Cloud aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disconnectedTitle} description={copy.disconnectedDescription} />
-        : <ComposerForm className="chat-remote-form" data-composer-lock={uncertain ? "awaiting-delivery" : reportWaiting ? "answer-waits" : undefined} onSubmit={event => { event.preventDefault(); act(); }} {...controls.events}>
+        : <RemoteInteractions projection={turn?.projection ?? null} requestId={head.openTurnId ?? ""} controls={interactionControls} running={turnRunning} ready={Boolean(turn?.replayComplete)}
+          planDecision={planId ? <ChatPlanDecision locale={locale} pending={{ busy: blocked || requestBusy || uncertain || reportWaiting }} onDecision={decidePlan} /> : undefined}>
+        <ComposerForm className="chat-remote-form" data-composer-lock={uncertain ? "awaiting-delivery" : reportWaiting ? "answer-waits" : undefined} onSubmit={event => { event.preventDefault(); act(); }} {...controls.events}>
         {controls.files}
         {referenceMismatch && <p role="alert" className="chat-remote-hint">{input.referenceChanged}</p>}
         <RemoteEditor onWorkspaceFileClick={node => {
@@ -456,30 +488,19 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
           (item.value.kind === "file" ? `file:${item.value.path}` : `library:${item.value.libraryId}`) !== key) })} ref={composerElement} text={text} change={change} files={completeDraft.files} remove={id => store.remove(id)} placeholder={copy.placeholder} label={copy.draft}
           disabled={uncertain || sendBusy || requestBusy || (draft ? !draft.ready : false)} previewTitle={input.previewFile} onFileClick={controls.openFile} fileStates={controls.fileStates} />
         <ComposerToolbar><PromptInputTools>{controls.tools}
-          {head.openTurnId && <Button type="button" variant="ghost" size="sm" aria-pressed={referenceMode === "current"} disabled={sendBusy || uncertain || reportWaiting} onClick={() => setReferenceSelection({ requestId: head.openTurnId, mode: referenceMode === "next" ? "current" : "next" })}>{referenceMode === "current" ? input.currentTurn : input.nextMessage}</Button>}
           {budget && <span role="alert" className="chat-remote-budget">{budget}</span>}
         </PromptInputTools><ComposerActions>
           <RemoteAgentSelector quotaEnabled={platform.capabilities.quota} locale={locale} target={target} value={agent} copy={copy} disabled={!authorized || preparing || operationPending || uncertain || reportWaiting} onSelect={backend => { setPendingAgent({ backend, head }); store.update({ options: null }); }} />
           {capability?.models && <ComposerModelSelector locale={locale} backend={agent} models={platform.capabilities.serviceTier ? capability.models : capability.models.map(model => ({ ...model, serviceTiers: undefined }))} value={modelValue} disabled={!authorized || preparing || operationPending || uncertain || reportWaiting}
             onChange={next => store.update({ options: { backend: agent, ...next } })} />}
-          {retryAuth && <Button type="button" variant="outline" disabled={!authorized || requestBusy || uncertain || reportWaiting || sendBusy || pendingFiles} onClick={() => void send(hasInput ? undefined : { displayText: copy.retryShort, planMode: false }, false, true)}>{copy.retryShort}</Button>}
+          {retryAuth && <Button type="button" variant="outline" disabled={!authorized || requestBusy || uncertain || reportWaiting || sendBusy || pendingFiles} onClick={() => void send(hasInput ? undefined : { displayText: copy.retryShort, planMode: false }, true)}>{copy.retryShort}</Button>}
           {action.kind === "send"
-            ? <PromptInputSubmit className="shrink-0 rounded-full max-md:size-11 pointer-coarse:size-11" aria-label={referenceMode === "current" && head.openTurnId ? input.guide : copy.send} status={action.busy ? "submitted" : undefined} tooltip={block?.reason} disabled={(referenceMode === "current" && head.openTurnId ? steerBlocked || referenceMismatch : blocked || holdNew && localFull) || requestBusy || uncertain || !hasInput || tooLong} />
+            ? <PromptInputSubmit className="shrink-0 rounded-full max-md:size-11 pointer-coarse:size-11" aria-label={showStop ? copy.stop : copy.send} status={generating ? "streaming" : action.busy ? "submitted" : undefined} preferSubmit={hasInput} onStop={() => { if (!stopDisabled && head.openTurnId) void submit({ kind: "cancel", requestId: head.openTurnId }); }} tooltip={block?.reason} disabled={showStop ? stopDisabled : (blocked || holdNew && localFull) || requestBusy || uncertain || !hasInput || tooLong} />
             : <Button type="submit" size="lg" className="rounded-full px-3 text-sm" data-send-action={action.kind} disabled={!authorized || preparing || operationPending || uncertain || projectPending}>{action.label}</Button>}
         </ComposerActions></ComposerToolbar>
-      </ComposerForm>}
+      </ComposerForm></RemoteInteractions>}
       {controls.dialogs}{consent.dialog}
-      {commands.session && <RemoteReceipts entries={commands.entries.filter(entry => !isRemoteWorkspaceQuery(entry.input.payload.kind))} session={commands.session} copy={copy} locale={locale} computer={owner?.name ?? null} disabled={!authorized} reexecuteDisabled={blocked || uncertain || requestBusy || holdNew}
-        sendAsNew={sendAsNew} sentAsNew={sentAsNew} stopped={stopped}
-        stopWaiting={entry => { store.stopWaiting(entry.input.commandId); store.track(commands.entries); }}
-        reexecute={entry => { if (!blocked && !uncertain && !holdNew && !requestBusy && entry.input.payload.kind === "start-turn") {
-          const original = entry.input.payload;
-          if (entry.input.targetDeviceId !== head.ownerDeviceId ||
-            original.agentSelection && original.agentSelection.backend !== agent) { setOutcome({ message: copy.chatChanged, retry: "refresh" }); return; }
-          void submit({ ...original, expectedAgentRevision: head.chat.agentRevision,
-            ...(original.agentSelection ? { agentSelection: { ...original.agentSelection, expectedFactRevision: head.catalogRevision } } : {}) });
-        } }} />}
-      {commands.more && <Button type="button" variant="outline" disabled={commands.loading} onClick={() => void commands.session?.more()}>{copy.check}</Button>}
+
     </ComposerDock>;
   const regions: ConversationRegions = { overlay, transcript, composer, footer: footer ?? (!enabled && readOnlyFooter),
     containerRef: bindConversation, className: "chat-remote-conversation", layout };

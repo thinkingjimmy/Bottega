@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on immutable compiler roots, the apps/support digest primitives, framed requests, actual probe budgets, admitted Linux component identities, kernel profile validation and native platform executables
- * [OUTPUT]: Provides fail-closed native compiler adapters, fresh system AppArmor probes, stable component leases, resource supervision and verified Windows v2 result binding TASK-35 C6: nodeExecutable is resolved on first use and reported as the compiler-node-runtime payload.; custodyVerdict and CUSTODY_PROBE_WALL_MS (a 10 s wall that bounds a slow start, not containment), with the supervisor reporting its peak process count
+ * [OUTPUT]: Provides fail-closed native compiler adapters, the loaded adapter module path for custody hashing, fresh system AppArmor probes, stable component leases, resource supervision and verified Windows v2 result binding TASK-35 C6: nodeExecutable is resolved on first use and reported as the compiler-node-runtime payload.; custodyVerdict and CUSTODY_PROBE_WALL_MS (a 10 s wall that bounds a slow start, not containment), with the supervisor reporting its peak process count
  * [POS]: apps/gui-build/pipeline OS authority boundary; no compiled App transform may invoke the compiler child without this supervisor
  */
 import { type Launch, type SupervisionResult, supervise, unavailable } from "./process/supervision";
@@ -12,6 +12,7 @@ import { constants } from "node:fs";
 import { access, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 import type { CompilerOutcome, CompilerSandboxEvidence, CompilerSandboxPort, SealedCompilerInput } from "../contracts";
 import { APP_GUI_BUILD_BUDGET } from "../contracts";
@@ -26,6 +27,11 @@ import { admittedLinuxProfile } from "../native/linux/profile";
 import { prepareExecutableControl } from "../native/probe-control";
 
 type SandboxPlatform = CompilerSandboxPort["platform"];
+
+/** Rollup binds this URL to the chunk containing the adapter, including inside an ASAR. */
+export function sandboxAdapterEntryPath(): string {
+  return fileURLToPath(import.meta.url);
+}
 
 type CompilerSandboxOptions = Readonly<{
   compilerEntry: string;

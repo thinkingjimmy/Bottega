@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on remote ExecutionFacade creation receipts, canonical UTF-8 text budgets, target capabilities and catalogs, the shared first-message readiness flow and host-owned completion/local-navigation callbacks.
- * [OUTPUT]: Frozen first-send intent (an App's first Edit Chat when `appTarget` names the App, whose existing Edit Chat takes the text unsent, U06 Q7-d) (a checkpoint-recovered one is looked up by its original ids before any retry; one refused for its files before anything was stored unlocks the draft's files and retries as a new message), Send and Retry greyed while any file is not sendable, visible sent progress, editable next draft, creation on the computer the host names — greyed in place with that computer's sentence when it cannot take one, and covered by the read-only card when sync is not connected — and inline structured recovery with separate custody for unsent original and newer drafts.; U06-c: with `appTarget` text only (no files, sketch or references, the rule said), the starting line naming the computer, refusals by name and a notice for the host when another Edit Chat took the text
+ * [INPUT]: Depends on remote ExecutionFacade creation receipts, canonical UTF-8 text budgets, target capabilities and catalogs, the shared first-message readiness flow and host-owned completion/local-navigation callbacks and execution-scoped toolbar render state/busy admission.
+ * [OUTPUT]: Frozen first-send intent (an App's first Edit Chat when `appTarget` names the App, whose existing Edit Chat takes the text unsent, U06 Q7-d) (a checkpoint-recovered one is looked up by its original ids before any retry; one refused for its files before anything was stored unlocks the draft's files and retries as a new message), Send and Retry greyed while any file is not sendable, the shared user bubble and thinking state, editable next draft, creation on the computer the host names — greyed in place with that computer's sentence when it cannot take one, and covered by the read-only card when sync is not connected — and inline structured recovery with separate custody for unsent original and newer drafts.; U06-c: with `appTarget` text only (no files, sketch or references, the rule said), refusals by name and a notice for the host when another Edit Chat took the text
  * [POS]: Shared creation form; explicit submit intent owns the automatic first message until preparation, cancellation or route handoff.
  */
 import { useRemoteReferences } from "./composer/input/references";
@@ -13,12 +13,18 @@ import { useRemoteFeedback } from "./composer/feedback";
 import { RemoteEditor } from "./composer/input/editor";
 import { draftBudget, sendAction, type OwnerBlock } from "./composer/status";
 import { remoteInputCopy } from "./composer/copy";
-import { AppEditFailure, AppEditStarting, AppEditTextOnly, appEditFilledNotice, appEditTextOnly } from "./composer/app-edit";
+import { AppEditFailure, AppEditTextOnly, appEditFilledNotice, appEditTextOnly } from "./composer/app-edit";
 import { ComposerModelSelector, remoteTurnOptions, type ModelChoice } from "../composer/controls/model";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { PromptInputSubmit, PromptInputTools } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { ComposerDock, ComposerForm, ComposerToolbar, ComposerActions } from "../composer/layout";
+import { Conversation, ConversationContent } from "@ai-chat/ui/components/ai-elements/conversation";
+import { conversationColumnClassName } from "@ai-chat/ui/components/conversation/layout";
+import { ConversationUser } from "../conversation/turn/user";
+import { ConversationActions } from "@ai-chat/ui/components/conversation/actions";
+import { ConversationDraft } from "../conversation/turn/draft";
+import { chatCopy } from "../../i18n/copy";
 import { ChatEmptyState } from "../composer/empty";
 import { composerCopy } from "../composer/copy";
 import { FirstMessageFailure } from "../../platform/remote/creation/first-message";
@@ -28,19 +34,20 @@ import type { RemoteCreated, RemoteCreateInput } from "../../platform/remote/con
 import { useChatAccount } from "../../platform/presentation/hooks";
 import { useRemoteTargets } from "../../platform/remote/hooks";
 import { reasonCopy } from "./delivery/receipts";
-import { remoteReasonSchema, type RemoteReason } from "@ai-chat/cloud-protocol/remote/model";
+import { remoteReasonSchema, type RemoteReason, type RemoteTarget } from "@ai-chat/cloud-protocol/remote/model";
 import { remoteCopy } from "../../i18n/messages/remote";
 import { targetReason } from "./computer/selectors";
 import { RemoteAgentSelector } from "./computer/agent";
 import { Cloud } from "lucide-react";
 import { RemoteUnavailable } from "./computer/unavailable";
 import { PlatformGlyph } from "./computer/glyphs";
-export function RemoteCreateChat({ platform, locale, projectId, appTarget, appName, onCreated, onDirtyChange, heading: _heading = true, computer, draft, context, disabledActions }: {
+export type RemoteCreateContext = { target?: RemoteTarget; locked: boolean; unavailable: string | null };
+export function RemoteCreateChat({ platform, locale, projectId, appTarget, appName, onCreated, onDirtyChange, heading: _heading = true, computer, draft, context, contextBusy = false, disabledActions }: {
   platform: Pick<ChatPlatform, "account"> & Partial<Pick<ChatPlatform, "chats" | "commands" | "skills" | "capabilities" | "transcript">> & { execution: Pick<ChatPlatform["execution"], "remote"> }; locale: string; projectId: string | null;
   disabledActions?: import("./computer/unavailable").UnavailableAction[];
   /** The computer this Chat is created on — its installations and the one sentence to say when it cannot take one. Nothing is chosen here; `null` is an account with no computer and `undefined` an answer not in yet. */
   computer?: { installations: readonly string[]; block: OwnerBlock | null } | null;
-  draft?: { text: string; change(text: string): void; unsupported?: boolean }; context?: ReactNode;
+  draft?: { text: string; change(text: string): void; unsupported?: boolean }; context?: ReactNode | ((state: RemoteCreateContext) => ReactNode); contextBusy?: boolean;
   /** U06 Q7-d: the App whose first Edit Chat this creates; it replaces `projectId` (the computer derives the App's Project). */
   appTarget?: NonNullable<RemoteCreateInput["target"]>;
   /** The App's name for the lines of its first Edit message (U06-c). */
@@ -48,7 +55,7 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
   /** `notice`: why the destination is not the Chat this form created (the App already had its Edit Chat), for the page it opens to say. */
   onCreated(destination: Pick<RemoteCreated, "chatId" | "incarnationId">, text: string, notice?: string): void | Promise<void>; onDirtyChange?(dirty: boolean): void; heading?: boolean;
 }) {
-  const copy = remoteCopy(locale), input = remoteInputCopy(locale), port = platform.execution.remote, account = useChatAccount(platform.account), targets = useRemoteTargets(port, null, projectId);
+  const reading = chatCopy(locale), copy = remoteCopy(locale), input = remoteInputCopy(locale), port = platform.execution.remote, account = useChatAccount(platform.account), targets = useRemoteTargets(port, null, projectId);
   const [backend, setBackend] = useState<RemoteCreateInput["backend"] | null>(null);
   const draftKey = `new:${projectId ?? "root"}`, store = remoteDraftStore(platform, draftKey, draft?.text);
   const completeDraft = useRemoteDraft(store, platform.commands?.remote);
@@ -82,12 +89,12 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
   // A retry sends the attempt's own text with the unlocked draft's references and files, so that is what it is measured by — not the next draft.
   const retryBudget = attempt ? draftBudget(copy, { text: attempt.text, references: draftReferences, files: completeDraft.files.length }) : null;
   const filesBlocked = completeDraft.files.some(file => !firstMessageFileReady(file, Boolean(attempt)));
-  const retryBlocked = filesBlocked || refused && (retryBudget !== null || controls.unsupported || controls.editing || !attempt?.text.trim() && !completeDraft.files.length && !completeDraft.references.length);
-  const disabled = filesBlocked || controls.unsupported || controls.editing || tooLong || Boolean(draft?.unsupported) || !allowed || !target || !selected || Boolean(target && targetReason(target, protocol, copy)) || !target.agents.some(value => value.backend === agent && value.available);
+  const retryBlocked = contextBusy || filesBlocked || refused && (retryBudget !== null || controls.unsupported || controls.editing || !attempt?.text.trim() && !completeDraft.files.length && !completeDraft.references.length);
+  const disabled = contextBusy || filesBlocked || controls.unsupported || controls.editing || tooLong || Boolean(draft?.unsupported) || !allowed || !target || !selected || Boolean(target && targetReason(target, protocol, copy)) || !target.agents.some(value => value.backend === agent && value.available);
   const remoteBlockedReason = !allowed ? targets.value?.remoteControlEnabled === false ? copy.disabled : copy.disconnected : null;
   useEffect(() => { onDirtyChange?.(hasInput || Boolean(attempt)); }, [hasInput, attempt, onDirtyChange]);
   const create = async () => {
-    if (!port || !allowed || flight.current || (attempt ? retryBlocked : disabled || !hasInput)) return;
+    if (!port || !allowed || contextBusy || flight.current || (attempt ? retryBlocked : disabled || !hasInput)) return;
     const input = attempt?.input ?? { createOperationId: crypto.randomUUID(), targetDeviceId: selected, backend: agent as RemoteCreateInput["backend"],
       projectId: appTarget ? null : projectId, ...(appTarget ? { target: appTarget } : {}) };
     const options = choice ? remoteTurnOptions(choice) : undefined;
@@ -157,11 +164,14 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
     ?? (target ? targetReason(target, protocol, copy) : null)
     ?? (computer === null ? copy.noComputers : computer && targets.value !== null && !targetId ? copy.noComputerOnline : null);
   return <section className="flex h-full min-h-0 flex-col" aria-label={copy.newChat}>
-    {attempt ? <div className="flex min-h-0 flex-1 flex-col justify-end overflow-auto p-4">
-      <p className="whitespace-pre-wrap break-words">{attempt.text}</p>
-      {busy && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><span className="chat-remote-working" aria-hidden="true" />{appTarget ? <AppEditStarting locale={locale} computer={appValues.computer} /> : copy.sent}</p>}
-    </div> : <ChatEmptyState title={composerCopy(locale).empty} />}
-    <ComposerDock className="chat-remote"><fieldset disabled={locked} className="min-w-0">{context}</fieldset>
+    {attempt ? <Conversation className="min-h-0 min-w-0 flex-1" initial="instant" resize="instant">
+      <ConversationContent className={`${conversationColumnClassName} gap-6`}>
+        <ConversationUser content={attempt.text} showMore={reading.showMore} showLess={reading.showLess}
+          actions={<ConversationActions role="user" copyLabel={reading.copy} copiedLabel={reading.copied} onCopy={() => navigator.clipboard.writeText(attempt.text)} />} />
+        {busy && <ConversationDraft label="Thinking" />}
+      </ConversationContent>
+    </Conversation> : <ChatEmptyState title={composerCopy(locale).empty} />}
+    <ComposerDock className="chat-remote"><fieldset disabled={busy || Boolean(attempt)} className="min-w-0">{typeof context === "function" ? context({ target, locked: busy || Boolean(attempt), unavailable: notice }) : context}</fieldset>
       {notice && !unavailable && !syncDisconnected && !(targets.value === null && notice === copy.disconnected) && <div className="chat-remote-hint" role="status" data-computer-notice><p>{notice}</p></div>}
       {unavailable ? <RemoteUnavailable icon={<PlatformGlyph kind="none" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disabled} description={copy.disabledDescription} actions={disabledActions} />
         : syncDisconnected ? <RemoteUnavailable icon={<Cloud aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disconnectedTitle} description={copy.disconnectedDescription} />

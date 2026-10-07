@@ -1,0 +1,41 @@
+/**
+ * [INPUT]: Native branch labels and locale-specific recovery copy.
+ * [OUTPUT]: Shared zh-cn Project branch catalog.
+ * [POS]: Composer branch locale leaf used by native and Web.
+ */
+export const branchZhCn = {
+    uncommitted_one: "{{count}} 个未提交文件",
+    uncommitted_other: "{{count}} 个未提交文件",
+    loadFailed: "无法加载分支",
+    checkoutFailed: "无法切换分支",
+    createFailed: "无法创建分支",
+    fallback: "分支",
+    search: "搜索分支",
+    empty: "没有找到分支",
+    detached: "游离 HEAD",
+    group: "分支",
+    refreshing: "正在刷新分支…",
+    newAction: "创建并切换到新分支…",
+    createTitle: "创建并切换分支",
+    createDescription: "从当前 HEAD 创建本地分支并切换过去。",
+    name: "分支名称",
+    placeholder: "new-branch",
+    close: "关闭",
+    creating: "正在创建…",
+    createAndCheckout: "创建并切换",
+    more: "更多分支",
+  retry: "重试",
+  settings: "项目设置",
+  offline: "电脑已离线，重新连接后可切换分支。",
+  unavailable: "此项目在当前电脑上不可用。",
+  changed: "工作目录或分支列表已变化，请刷新后重试。",
+  busy: "请先停止项目中运行的任务，再切换分支。",
+  invalidName: "请输入有效的分支名称。",
+  exists: "已存在同名分支。",
+  missing: "该分支已不存在，请刷新列表。",
+  checkoutConflict: "Git 无法切换分支，请在电脑上处理冲突后重试。",
+  createError: "Git 无法创建分支，请在电脑上检查仓库。",
+  budget: "分支结果过大，无法显示。",
+  unknown: "操作结果尚未确认，请先查询原操作结果。",
+  checkResult: "查询结果",
+};

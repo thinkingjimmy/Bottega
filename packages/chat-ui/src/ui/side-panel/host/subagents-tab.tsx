@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Published bounded conversation model, shared subagent views and private file port.
- * [OUTPUT]: Window-aware list/detail drill-down with imported-history disclosure.
- * [POS]: Read-only platform subagent panel; detail navigation does not add browser history.
+ * [INPUT]: Published bounded ConversationModel, shared subagent views, an optional initial agent identity and private file access.
+ * [OUTPUT]: Window-aware list/detail drill-down with imported-history disclosure and direct navigation from a transcript chip.
+ * [POS]: Read-only subagent panel; detail navigation does not add browser history.
  */
 import { useMemo, useState } from "react";
 import { useConversationModel } from "../../conversation/body/model";
@@ -11,8 +11,8 @@ import { SubagentDetail } from "../../conversation/subagents/detail";
 import { sidePanelCopy } from "../../../i18n/side-panel";
 import type { TranscriptSource } from "../../../platform/contracts";
 import type { ImageIdentity } from "../image/identity";
-export function SubagentsTab({ chatId, source, locale, onOpenImage }: { chatId: string; source: TranscriptSource; locale: string; onOpenImage(identity: ImageIdentity): void }) {
-  const model = useConversationModel(), copy = sidePanelCopy(locale), [path, setPath] = useState<string[]>([]);
+export function SubagentsTab({ chatId, source, locale, onOpenImage, initialId }: { initialId?: string | null; chatId: string; source: TranscriptSource; locale: string; onOpenImage(identity: ImageIdentity): void }) {
+  const model = useConversationModel(), copy = sidePanelCopy(locale), [path, setPath] = useState<string[]>(initialId ? [initialId] : []);
   const agents = useMemo(() => mergeSubagents(model), [model]), selected = agents.find(agent => agent.meta.agentThreadId === path.at(-1));
   return <>
     {model.segments.some(segment => segment.kind === "imported") && <p role="note" className="px-4 pt-3 text-xs text-muted-foreground">{copy.importedUnavailable}</p>}

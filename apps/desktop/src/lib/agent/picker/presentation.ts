@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Provider catalog entries, supported History source identifiers, independent runtime/auth facts, availability states and quota snapshots.
+ * [INPUT]: Provider catalog entries, History source identifiers, independent runtime/auth facts and shared native/remote picker presentation.
  * [OUTPUT]: Installed-provider visibility for Composer and History import, quota-demand eligibility and login-first, quota-first picker presentation
  * [POS]: Pure Agent picker policy; UI rendering and main-process execution admission remain separate consumers of the facts.
  */
@@ -7,7 +7,7 @@ import type { BackendInfo } from "../../../../shared/ipc/agent/agent-ipc";
 import type { ProviderCatalogSnapshot } from "../../../../shared/providers/catalog-ipc";
 import type { AvailabilityState } from "../../../../shared/agent-availability/types";
 import { activeNegative } from "../../../../shared/agent-availability/projection";
-import { generalQuotaWindows } from "../../../../shared/usage-limits/projection";
+import { projectAgentPickerPresentation } from "@ai-chat/chat-ui/agent-picker/presentation";
 import type { AgentUsageLimits } from "../../../../shared/usage-limits/types";
 import { HISTORY_SOURCE_KINDS } from "../../../../shared/ipc/content/history-import-ipc";
 type PickerBackend = Pick<BackendInfo, "runtimeStatus" | "authStatus" | "availability" | "updateAvailable">;
@@ -32,11 +32,7 @@ export function pickerQuotaEligible(backend?: PickerBackend) {
 }
 
 export function projectPickerPresentation(backend: PickerBackend | undefined, state: AvailabilityState, limits?: AgentUsageLimits) {
-  const login = signedOut(backend) || limits?.availability === "needs-auth";
-  const displayState = login ? "sign-in" : backend?.authStatus === "checking" && !backend.availability?.lastConfirmedAuth ? "checking" : state;
-  const hasQuota = limits?.availability === "available" && generalQuotaWindows(limits).some(window => window.usedPercent !== null);
-  const showQuota = ["ready", "unverified"].includes(displayState) || displayState === "unsupported" && hasQuota;
-  const update = displayState === "unsupported" && !hasQuota ? "required"
-    : showQuota && (backend?.updateAvailable || displayState === "unsupported") ? "available" : undefined;
-  return { state: displayState, showQuota, update } as const;
+  return projectAgentPickerPresentation({ state, limits, signedOut: signedOut(backend),
+    checking: backend?.authStatus === "checking" && !backend.availability?.lastConfirmedAuth,
+    updateAvailable: backend?.updateAvailable });
 }

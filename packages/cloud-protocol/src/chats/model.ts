@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod, public IDs and canonical Agent options.
- * [OUTPUT]: Provides portable Chat facts and server-owned metadata/preparation heads with exact catalog revision baselines.
+ * [OUTPUT]: Provides portable Chat facts and server-owned metadata/preparation heads with exact catalog revision baselines and exact-turn account read state.
  * [POS]: Closed reading contract; local context, paths, sessions and grants have no representation.
  */
 import { acceptedQueueSchema } from "../remote/queue";

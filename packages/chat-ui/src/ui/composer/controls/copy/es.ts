@@ -185,6 +185,10 @@ export const copy = {
     "cancel": "Cancelar",
     "close": "Cerrar"
   },
+  "plugin": {
+    "preparing": "Preparando…",
+    "unavailable": "No disponible. Revisa los ajustes del complemento en el equipo de este chat."
+  },
   "sketch": {
     "title": "Boceto",
     "description": "Dibuja una imagen para tu mensaje.",

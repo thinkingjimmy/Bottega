@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Shared native/Web Project selector and Plan catalogs and the English Chat composer structural type.
+ * [INPUT]: Shared native/Web branch and Project selector and Plan catalogs and the English Chat composer structural type.
  * [OUTPUT]: Provides the Spanish Chat composer catalog with the exact English structure
  * [POS]: Spanish Chat composer locale leaf; assembled inside the top-level chat.composer namespace
  */
@@ -7,6 +7,7 @@
 import type { chatComposerEn } from "./en";
 
 import { copy as sharedComposer } from "@ai-chat/chat-ui/composer-control-copy/es";
+import { branchEs } from "@ai-chat/chat-ui/branch-copy/es";
 import { projectSelectorEs } from "@ai-chat/chat-ui/project-copy";
 
 export const chatComposerEs: typeof chatComposerEn = {
@@ -15,27 +16,7 @@ export const chatComposerEs: typeof chatComposerEn = {
     standardSpeed: "Estándar",
   },
   approval: sharedComposer.approval,
-  branch: {
-    uncommitted_one: "{{count}} archivo sin confirmar",
-    uncommitted_other: "{{count}} archivos sin confirmar",
-    loadFailed: "No se pudieron cargar las ramas",
-    checkoutFailed: "No se pudo cambiar de rama",
-    createFailed: "No se pudo crear la rama",
-    fallback: "Ramas",
-    search: "Buscar ramas",
-    empty: "No se encontraron ramas",
-    detached: "HEAD separado",
-    group: "Ramas",
-    refreshing: "Actualizando ramas…",
-    newAction: "Crear y cambiar a una rama nueva…",
-    createTitle: "Crear y cambiar de rama",
-    createDescription: "Crea una rama local desde el HEAD actual y cambia a ella.",
-    name: "Nombre de la rama",
-    placeholder: "new-branch",
-    close: "Cerrar",
-    creating: "Creando…",
-    createAndCheckout: "Crear y cambiar",
-  },
+  branch: branchEs,
   surface: {
     plan: "Plan",
     authorizeFileFailed: "No se pudo autorizar {{file}}",

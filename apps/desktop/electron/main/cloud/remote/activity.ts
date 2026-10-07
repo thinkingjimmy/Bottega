@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Confirmed account-scoped catalog revisions and the existing native activity publisher.
- * [OUTPUT]: Projects remote running/waiting/results into native unread, tray and top-panel identities.
+ * [INPUT]: Confirmed account-scoped catalog revisions, exact-turn read reconciliation and the existing native activity publisher.
+ * [OUTPUT]: Delivers every confirmed head to read reconciliation and projects remote running/waiting/results into native unread, tray and top-panel identities.
  * [POS]: Background catalog observer; no synthetic Agent process, execution authority or renderer lifetime.
  */
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
@@ -31,7 +31,7 @@ export class RemoteActivityObserver {
   private readonly active = new Set<string>();
   private readonly seen = new Map<string, string>();
   constructor(private readonly ports: { store: Pick<ChatSyncStore, "read">; activity: RemoteActivityPort; deviceId: string;
-    scope(): SyncScope | null; exists(chatId: string): boolean; now?(): number }) {}
+    scope(): SyncScope | null; exists(chatId: string): boolean; now?(): number; onHead?(head: CloudChatHead): void }) {}
   private clear() {
     for (const id of this.active) this.ports.activity.forgetRemote(id);
     this.active.clear(); this.seen.clear(); this.cursor = 0; this.generation++;
@@ -54,6 +54,7 @@ export class RemoteActivityObserver {
       const page = await this.ports.store.read(scope, { type: "confirmed-catalog", afterRevision: this.cursor, throughRevision });
       if (!current() || page.type !== "confirmed-catalog") return;
       for (const head of page.value.items) {
+        this.ports.onHead?.(head);
         const id = head.chat.id, value = head.activityTurn?.ownerDeviceId !== this.ports.deviceId && this.ports.exists(id) ? remoteActivity(head) : null;
         if (!value) { this.ports.activity.forgetRemote(id); this.active.delete(id); continue; }
         const terminalKey = JSON.stringify([head.chat.incarnationId, value.event.requestId, value.event.generation]);

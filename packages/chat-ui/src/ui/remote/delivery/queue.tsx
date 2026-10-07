@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Complete awaiting identities, accepted head queue and immutable encrypted command receipts.
- * [OUTPUT]: One native queue surface with exact-revision withdrawal/reordering and explicit conflict feedback, plus this controller's held messages (ruling 12) as local rows with their pause and Resume.
+ * [OUTPUT]: One native queue surface with exact-revision withdrawal/reordering and explicit conflict feedback, plus held messages, pause/Resume and a queued-command identity callback that keeps optimistic transcript messages out of the queue.
  * [POS]: The delivery surface's queue beside receipts.tsx; the shared panel owns gestures, coordinator/server ports own effects.
  */
 import { useEffect, useRef, useState } from "react";
@@ -20,8 +20,8 @@ import type { LocalQueued } from "../../../platform/remote/input/local-queue";
 /** Ruling 12: this controller's held messages, shown as a third row kind after the computer's and the server's rows. */
 export type LocalQueueRows = { items: readonly LocalQueued[]; paused: string | null; hint: string | null;
   remove(commandId: string): void; reorder(commandIds: readonly string[]): void; resume(): void };
-export function RemoteQueue({ head, port, session, entries, locale, disabled, local }: { head: CloudChatHead; port: RemoteCommandPort;
-  session: RemoteCommandSession; entries: RemoteEntry[]; locale: string; disabled: boolean; local?: LocalQueueRows }) {
+export function RemoteQueue({ head, port, session, entries, locale, disabled, local, onQueuedCommands }: { head: CloudChatHead; port: RemoteCommandPort;
+  session: RemoteCommandSession; entries: RemoteEntry[]; locale: string; disabled: boolean; local?: LocalQueueRows; onQueuedCommands?(ids: string[]): void }) {
   const [snapshot, setSnapshot] = useState<{ port: RemoteCommandPort; chatId: string; value: AwaitingQueue } | null>(null);
   const waiting = snapshot?.port === port && snapshot.chatId === head.chat.id ? snapshot.value : null;
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
@@ -41,6 +41,7 @@ export function RemoteQueue({ head, port, session, entries, locale, disabled, lo
     ...(waiting?.items ?? []).filter(item => !known.has(item.intentId)).map(item => ({ ...item, kind: "awaiting" as const })),
     ...(local?.items ?? []).map(item => ({ intentId: item.commandId, sourceDeviceId: null, kind: "local" as const, text: item.text }))];
   const rowKey = rows.map(item => item.intentId).join("/");
+  useEffect(() => { onQueuedCommands?.(rowKey ? rowKey.split("/") : []); }, [rowKey, onQueuedCommands]);
   useEffect(() => {
     for (const row of rows) if (row.kind !== "local" && row.sourceDeviceId) void session.load(row.intentId).catch(() => {});
   }, [session, rowKey]); // eslint-disable-line react-hooks/exhaustive-deps

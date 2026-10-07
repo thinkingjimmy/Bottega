@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on the shared availability state vocabulary.
+ * [INPUT]: Depends on the availability vocabulary and shared native/remote Agent update copy.
  * [OUTPUT]: Localized availability, login recovery, installed-provider empty states and separate required/optional update copy.
  * [POS]: Availability locale leaf.
  */
+import { agentPickerZhCN } from "@ai-chat/chat-ui/agent-picker/copy";
 export const agentAvailabilityZhCN = {
-  "updateAvailable": "有可用更新",
-  "updateForUsage": "更新后获取用量",
+  ...agentPickerZhCN,
   "noInstalledProviders": "没有已安装的 Provider",
   "state": {
     "recent-sign-in": "最近请求需登录",

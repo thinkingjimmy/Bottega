@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Closed identity, revision and ciphertext-reference scalars.
- * [OUTPUT]: Chat, Project, App, Skill, account-configuration, Agent-configuration, workflow projection (run, attention, binding), App build status and resource-command / result bindings with named allowed-metadata commitments.
+ * [OUTPUT]: Provides Chat, Project, App, Skill, account-configuration, Agent-configuration, workflow projection (run, attention, binding), App build status and resource-command / result bindings (including the project kind) with named allowed-metadata commitments.
  * [POS]: Record-level domain separation; no title, option value, source path or plaintext digest is metadata.
  */
 import { z } from "zod";
@@ -49,7 +49,7 @@ export const appBuildStatusBindingSchema = z.object({ appId: id, ownerDeviceId: 
 /* Resource commands (P13 §10.1, purposes 10 / 11): routing, class and criticality are authenticated, so a server cannot
    re-address a command, and a sender cannot take a reserved control slot for an action the owner does not call critical. */
 export const resourceCommandBindingSchema = z.object({ protocolVersion: version.positive(), sourceDeviceId: id, targetDeviceId: id,
-  resourceKind: z.enum(["provider-quota", "workflow-run", "workflow-binding", "app", "preview", "plugin"]), resourceId: id, commandClass: z.enum(["read", "control", "work"]),
+  resourceKind: z.enum(["project", "provider-quota", "workflow-run", "workflow-binding", "app", "preview", "plugin"]), resourceId: id, commandClass: z.enum(["read", "control", "work"]),
   critical: z.boolean(), expiresAt: version }).strict();
 export const resourceResultBindingSchema = resourceCommandBindingSchema.extend({ commandCiphertextHash: digest, resultRevision: version.positive(),
   state: z.enum(["accepted", "succeeded", "refused", "unknown"]) }).strict();

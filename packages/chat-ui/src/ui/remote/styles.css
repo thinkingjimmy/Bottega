@@ -27,17 +27,6 @@
 /* InputGroup owns the complete editor's focus frame, including its toolbar. */
 .chat-remote :is(button, textarea, input, select):not([data-slot="input-group-control"]):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .chat-remote :is(button, input, textarea):disabled { opacity: .55; cursor: not-allowed; }
-.chat-remote-receipts { display: grid; gap: 8px; list-style: none; padding: 0; }
-.chat-remote-receipt, .chat-remote-interaction { border: 1px solid var(--border); border-radius: 14px; padding: 12px; overflow-wrap: anywhere; }
-.chat-remote-receipt p, .chat-remote-interaction p { margin-block: 6px; }
-.chat-remote-receipt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.chat-remote-interaction { margin-block: 12px; }
-.chat-remote-interaction pre { overflow: auto; max-height: 200px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
-.chat-remote-interaction fieldset { display: grid; gap: 8px; padding-block: 12px; }
-/* Only choice rows sit inline with their control; the free-text answer keeps the stacked label grid. */
-.chat-remote-interaction fieldset label:has(input[type="radio"], input[type="checkbox"]) { display: flex; min-height: 44px; flex-direction: row; align-items: center; gap: 10px; }
-.chat-remote-interaction legend { font-weight: 500; }
-.chat-remote-optimistic { border-style: dashed; }
 /* Fill mode: the host gives the conversation a fixed height; the transcript is the only scroller and the composer stays visible. */
 .chat-remote-conversation[data-layout="fill"] { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .chat-remote-conversation[data-layout="fill"] > .cloud-transcript { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; padding-block: 0; }

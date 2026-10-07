@@ -190,13 +190,19 @@ export function SettingsEmpty({
   icon,
   title,
   hint,
+  children,
+  ...props
 }: {
   icon: ReactNode;
   title: string;
   hint: ReactNode;
-}) {
+  children?: ReactNode;
+} & Omit<ComponentProps<"div">, "className" | "children">) {
   return (
-    <div className="rounded-lg border border-dashed px-6 py-8 text-center">
+    <div
+      {...props}
+      className="rounded-lg border border-dashed px-6 py-8 text-center"
+    >
       <span
         aria-hidden="true"
         className="[&>svg]:mx-auto [&>svg]:size-6 [&>svg]:text-muted-foreground/60"
@@ -204,9 +210,10 @@ export function SettingsEmpty({
         {icon}
       </span>
       <p className="mt-2.5 font-medium text-sm">{title}</p>
-      <p className="mx-auto mt-1 max-w-sm text-muted-foreground text-xs leading-relaxed">
+      <p className="mx-auto mt-1 max-w-sm text-pretty text-muted-foreground text-xs leading-relaxed">
         {hint}
       </p>
+      {children}
     </div>
   );
 }

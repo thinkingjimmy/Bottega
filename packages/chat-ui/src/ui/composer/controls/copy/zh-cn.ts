@@ -185,6 +185,10 @@ export const copy = {
     "cancel": "取消",
     "close": "关闭"
   },
+  "plugin": {
+    "preparing": "正在准备…",
+    "unavailable": "暂不可用。请在此聊天所属电脑的插件设置中检查。"
+  },
   "sketch": {
     "title": "草图",
     "description": "为消息绘制一张图片。",

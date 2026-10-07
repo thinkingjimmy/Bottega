@@ -1,0 +1,41 @@
+/**
+ * [INPUT]: Native branch labels and locale-specific recovery copy.
+ * [OUTPUT]: Shared fr Project branch catalog.
+ * [POS]: Composer branch locale leaf used by native and Web.
+ */
+export const branchFr = {
+    uncommitted_one: "{{count}} fichier non validé",
+    uncommitted_other: "{{count}} fichiers non validés",
+    loadFailed: "Impossible de charger les branches",
+    checkoutFailed: "Impossible de changer de branche",
+    createFailed: "Impossible de créer la branche",
+    fallback: "Branches",
+    search: "Rechercher des branches",
+    empty: "Aucune branche trouvée",
+    detached: "HEAD détachée",
+    group: "Branches",
+    refreshing: "Actualisation des branches…",
+    newAction: "Créer et extraire une nouvelle branche…",
+    createTitle: "Créer et extraire une branche",
+    createDescription: "Créez une branche locale depuis la HEAD actuelle et extrayez-la.",
+    name: "Nom de la branche",
+    placeholder: "new-branch",
+    close: "Fermer",
+    creating: "Création…",
+    createAndCheckout: "Créer et extraire",
+    more: "Plus de branches",
+  retry: "Réessayer",
+  settings: "Paramètres du projet",
+  offline: "L’ordinateur est hors ligne. Reconnectez-le pour changer de branche.",
+  unavailable: "Ce projet est indisponible sur cet ordinateur.",
+  changed: "Le dossier ou la liste des branches a changé. Actualisez et réessayez.",
+  busy: "Arrêtez la tâche du projet avant de changer de branche.",
+  invalidName: "Saisissez un nom de branche valide.",
+  exists: "Une branche porte déjà ce nom.",
+  missing: "Cette branche n’existe plus. Actualisez la liste.",
+  checkoutConflict: "Git ne peut pas changer de branche. Résolvez les conflits sur l’ordinateur.",
+  createError: "Git ne peut pas créer la branche. Vérifiez le dépôt sur l’ordinateur.",
+  budget: "Le résultat est trop volumineux.",
+  unknown: "Le résultat n’est pas confirmé. Vérifiez l’opération initiale avant de continuer.",
+  checkResult: "Vérifier le résultat",
+};

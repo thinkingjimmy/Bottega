@@ -120,7 +120,7 @@ function ProjectChip({ creating, name, copy, ...props }: {
   const pending = useDelayed(300, creating), id = useId();
   const label = pending ? copy.creating : name;
   return <Button type="button" size="lg" variant="ghost"
-    className={`${composerContextButtonClass} max-w-56 gap-2 data-[state=open]:bg-muted-foreground/10 max-md:h-11 pointer-coarse:h-11`}
+    className={`${composerContextButtonClass} min-w-0 max-w-56 shrink gap-2 data-[state=open]:bg-muted-foreground/10 max-md:h-11 pointer-coarse:h-11`}
     aria-label={typeof label === "string" ? copy.current.replace("{{project}}", () => label) : undefined}
     aria-labelledby={typeof label === "string" ? undefined : id} aria-busy={pending || undefined} {...props}>
     {pending ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Folder className="size-4" />}

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on router, i18n, Chats/Projects/Setup providers, canonical chat context, the exact App Editor route gate, draft routing/residence, the Apps event feed (Edit-draft supersession), the Agent connection warm-up client, PageShell, idle chunk prefetch, side-panel capability policy, and ChatView
  * [OUTPUT]: One ChatPage with selected local/cloud session ports and imported first turns, the cloud port warmed and kept resolved at idle so a residence change swaps ports in one commit and hands the caret back to the rebuilt composer; missing conversations never open draft composers; an App Edit draft route follows its own Chat, or the remote Edit Chat that displaced it, once listed (editorDraftTarget, U06 Q7-c3)
- * [POS]: apps/desktop/src/views/chat; The sole product chat route adapter in views
+ * [POS]: Sole product chat route adapter; Skills import guidance belongs only to ordinary New Chat routes, including Project drafts.
  */
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -351,7 +351,7 @@ function LocalChatRoute({ surfaceVisible = true, cloudFacts = false, renderPage 
     />
   );
   const notices = <>
-        <SkillsOnboardingCard />
+        {!id && !editorDraft && <SkillsOnboardingCard />}
         {id && cloudFacts && window.cloudChat && <Suspense fallback={null}><NativeCloudStatus chatId={id} /></Suspense>}
         {recoveryTruncated && (
           <div className="mx-3 mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs" role="status">

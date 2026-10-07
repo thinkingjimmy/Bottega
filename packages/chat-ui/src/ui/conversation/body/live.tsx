@@ -1,128 +1,55 @@
 /**
- * [INPUT]: Depends on the live settlement/projection model, shared native message surfaces and Markdown and optional exact remote interaction controls.
- * [OUTPUT]: Shows verified live output through the canonical groupParts/ToolGroup presentation, unknown/sealing states and original-request controls gated by complete replay.
- * [POS]: The conversation body's live reply beside message.tsx; only a matching durable body or explicit empty receipt removes it.
+ * [INPUT]: Verified live projection, shared turn views, portable text budgets and host-owned detail navigation.
+ * [OUTPUT]: Native-equivalent live content retained until its matching durable body arrives; interactions belong to the composer.
+ * [POS]: Remote transcript adapter for the same draft/parts/Plan presentation used by native turns.
  */
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from "@ai-chat/ui/components/ai-elements/message";
-import { groupParts } from "@ai-chat/ui/components/conversation/activity/groups";
-import { ToolGroup, ToolRow } from "@ai-chat/ui/components/conversation/activity/tools";
-import type { LiveProjection } from "@ai-chat/cloud-protocol/turns/live";
+import { MessageContent, MessageResponse } from "@ai-chat/ui/components/ai-elements/message";
+import { formatConversationDuration } from "@ai-chat/ui/components/conversation/activity/format";
+import { hydrateDraft, projectDraftPlan, shimmerLabel } from "@ai-chat/cloud-protocol/turns/reducer";
 import type { ChatLiveView } from "../../../platform/model";
 import type { ChatCopy } from "../../../i18n/copy";
-import {
-  RemoteInteractions,
-  type RemoteInteractionControls,
-} from "../../remote/turn/interactions";
-export function LiveReply({
-  value,
-  copy,
-  canonicalReady,
-  remote,
-}: {
-  value: ChatLiveView;
-  copy: ChatCopy;
-  canonicalReady: boolean;
-  remote?: RemoteInteractionControls;
-}) {
-  const state = value.state,
-    projection = value.projection;
-  if (
-    !state ||
-    (state.receipt.settlementState === "settled" &&
-      (state.receipt.resultKind === "empty" || canonicalReady))
-  )
-    return null;
-  const status =
-    state.receipt.settlementState === "sealing"
-      ? copy.sealing
-      : state.receipt.settlementState === "settled"
-        ? copy.settling
-        : state.state === "unknown"
-          ? copy.unknown
-          : copy.running;
-  // Turn admission persists the original coordinator requestId as turnId.
-  const requestId = state.receipt.turnId;
-  return (
-    <section className="chat-live" aria-label={status}>
-      <Message from="assistant">
-        <MessageContent>
-          <p className="chat-live-status" role="status">
-            {status}
-          </p>
-          {!value.replayComplete && <p role="status">{copy.settling}</p>}
-          {projection && <LiveParts parts={projection.draft.parts} copy={copy} />}
-          {projection?.draft.streaming.map(([id, text]) => (
-            <MessageResponse key={id} isAnimating>
-              {text}
-            </MessageResponse>
-          ))}
-          {projection?.subagents.map((agent) => (
-            <details className="chat-disclosure" key={agent.meta.agentThreadId}>
-              <summary>{agent.meta.name || copy.subagent}</summary>
-              {agent.draft ? (
-                <>
-                  <LiveParts parts={agent.draft.parts} copy={copy} />
-                  {agent.draft.streaming.map(([id, text]) => (
-                    <MessageResponse key={id} isAnimating>
-                      {text}
-                    </MessageResponse>
-                  ))}
-                </>
-              ) : (
-                <p>{copy.unavailableDetail}</p>
-              )}
-            </details>
-          ))}
-          {remote ? (
-            <RemoteInteractions
-              key={requestId}
-              projection={projection}
-              requestId={requestId}
-              controls={remote}
-              running={
-                state.state === "running" &&
-                state.receipt.settlementState === "open"
-              }
-              ready={value.replayComplete}
-            />
-          ) : (
-            Boolean(
-              projection?.approvals.length || projection?.userInputs.length,
-            ) && (
-              <aside className="chat-readonly-interactions">
-                <p>{copy.interactions}</p>
-                {projection?.approvals.map((item) => (
-                  <p key={item.approvalId}>
-                    {item.reason || item.command || item.purpose}
-                  </p>
-                ))}
-                {projection?.userInputs.flatMap((item) =>
-                  item.questions.map((question) => (
-                    <p key={`${item.userInputId}:${question.id}`}>
-                      {question.question}
-                    </p>
-                  )),
-                )}
-              </aside>
-            )
-          )}
-        </MessageContent>
-      </Message>
-    </section>
-  );
-}
+import { ArtifactMessageRenderers } from "../../../artifacts/renderer";
+import { ConversationDraft, ConversationElapsed } from "../turn/draft";
+import { ConversationParts } from "../turn/parts";
+import { TranscriptPlan } from "./message";
+import { ConversationSubagent } from "../turn/subagent";
+import { capPartMarkdown } from "../turn/projection";
+import { planTranslation, turnCopy } from "../turn/copy";
 
-function LiveParts({ parts, copy }: { parts: LiveProjection["draft"]["parts"]; copy: ChatCopy }) {
-  return groupParts(parts).map(group => {
-    if (group.type === "tools") return group.parts.length === 1 && group.parts[0]!.tool === "reasoning"
-      ? <ToolRow key={group.key} part={group.parts[0]!} /> : <ToolGroup key={group.key} parts={group.parts} />;
-    const part = group.part;
-    if (part.type === "text") return <MessageResponse key={part.itemId}>{part.text}</MessageResponse>;
-    if (part.type === "tool") return <ToolRow key={part.itemId} part={part} />;
-    return <p key={part.itemId}>{part.name || copy.subagent}</p>;
-  });
+export function LiveReply({ value, copy, canonicalReady, locale = "en", interactive, onOpenSubagent, onOpenPlan, expandedPlanId }: {
+  value: ChatLiveView; copy: ChatCopy; canonicalReady: boolean; locale?: string; interactive?: boolean;
+  onOpenSubagent?(id: string): void; onOpenPlan?(id: string): void; expandedPlanId?: string | null;
+}) {
+  const state = value.state, projection = value.projection;
+  if (!state || state.receipt.settlementState === "settled" && (state.receipt.resultKind === "empty" || canonicalReady)) return null;
+  const draft = projection && hydrateDraft(projection.draft), plan = draft && projectDraftPlan(draft);
+  const parts = draft?.parts.filter(part => part.itemId !== plan?.itemId) ?? [];
+  const index = plan ? draft!.parts.findIndex(part => part.itemId === plan.itemId) : -1;
+  const streaming = [...(draft?.streaming ?? [])].filter(([id, text]) => text && id !== plan?.itemId && !parts.some(part => part.itemId === id));
+  const capped = capPartMarkdown(parts, [...streaming.map(([id, markdown]) => ({ id, markdown })), ...(plan ? [{ id: plan.itemId, markdown: plan.content }] : [])]);
+  const text = (id: string, fallback: string) => capped.fragments.find(fragment => fragment.id === id)?.markdown ?? fallback;
+  const active = state.state === "running" && state.receipt.settlementState === "open" && !projection?.terminal;
+  const hasContent = Boolean(parts.length || streaming.length || plan), planId = state.receipt.assistantMessageId;
+  const render = (values: typeof parts) => values.length > 0 && <ConversationParts parts={values} streamingIds={new Set(draft?.streaming.keys())}
+    subagent={part => {
+      const agent = projection?.subagents.find(item => item.meta.agentThreadId === part.agentThreadId);
+      return <ConversationSubagent id={part.agentThreadId} agent={agent?.meta.agent ?? part.agent}
+        name={agent?.meta.name || part.name || copy.subagent} status={agent?.meta.status ?? part.status}
+        disabled={!agent?.draft || !onOpenSubagent} title={!agent?.draft ? copy.unavailableDetail : undefined}
+        onOpen={onOpenSubagent ? () => onOpenSubagent(part.agentThreadId) : undefined} />;
+    }} />;
+  return <section className="min-w-0" data-live-reply=""><ArtifactMessageRenderers>
+    <ConversationDraft active={active} editingPlan={Boolean(plan?.editing && active)}
+      label={draft ? shimmerLabel(draft, Boolean(projection?.approvals.length || projection?.userInputs.length)) : "Thinking"}
+      elapsed={draft && hasContent && <ConversationElapsed startedAt={draft.startedAt}
+        endedAt={state.terminalSeenAt ?? undefined}
+        label={duration => turnCopy(locale).workingFor.replace("{{duration}}", formatConversationDuration(duration, locale))} />}>
+      {render(index >= 0 ? capped.parts.slice(0, index) : capped.parts)}
+      {plan && <TranscriptPlan content={text(plan.itemId, plan.content)} editing={plan.editing && active} copyable={false} translate={planTranslation(locale)}
+        isExpanded={expandedPlanId === planId} onToggle={onOpenPlan ? () => onOpenPlan(planId) : undefined} />}
+      {index >= 0 && render(capped.parts.slice(index))}
+      {streaming.map(([id, content]) => <MessageContent key={id}><MessageResponse isAnimating={active}>{text(id, content)}</MessageResponse></MessageContent>)}
+      {!interactive && Boolean(projection?.approvals.length || projection?.userInputs.length) && <p className="text-sm text-muted-foreground">{copy.interactions}</p>}
+    </ConversationDraft>
+  </ArtifactMessageRenderers></section>;
 }

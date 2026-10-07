@@ -1,46 +1,52 @@
 /**
  * [INPUT]: Depends on immutable command entries, receipt recovery actions and shared remote copy.
- * [OUTPUT]: Presents canonical command states (one the owning computer has not admitted waits for it by name, B-01, with a local-only Stop waiting beside the warning that it may already have run — ruling 12;a transferred Steer reads "will send after this turn"; one refused because its turn had ended offers Send as a new message — steerTurnEnded), TTL deadlines, a command refused for a changed connection as reconnecting while its one resend is pending and as kept when that fails (TASK-20 D10), plan (entitlement/quota) refusals, explicit safe retry and distinct new execution actions.
+ * [OUTPUT]: Presents only actionable delivery failures and unknown outcomes through the shared failure view; normal and successful receipts render nothing. Original-request retry, lookup, Stop waiting and explicit new execution remain distinct.
  * [POS]: Shared delivery feedback; an unknown transport or execution never synthesizes success.
  */
+import { ProductFailureNotice } from "@ai-chat/ui/components/feedback/failure-notice";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { formatCopy } from "@ai-chat/ui/lib/workbench-copy/format";
 import { awaitingReport, awaitingResubmit, type RemoteEntry, type RemoteCommandSession } from "../../../platform/remote/commands/session";
 import { handledElsewhereBlock } from "../composer/status";
 import type { RemoteCopy } from "../../../i18n/messages/remote";
-export function RemoteReceipts({ entries, session, copy, locale, computer, reexecute, sendAsNew, sentAsNew, disabled, reexecuteDisabled, stopped, stopWaiting }: {
+export const needsDeliveryRecovery = (entry: RemoteEntry, computerUnavailable = false) => !entry.resubmittedAs && !awaitingResubmit(entry) &&
+  (entry.uncertain || Boolean(entry.rejected) || ["outcome-unknown", "error", "expired", "rejected"].includes(entry.receipt?.state ?? "") || computerUnavailable && awaitingReport(entry));
+export function RemoteReceipts({ entries, session, copy, computer, computerUnavailable, reexecute, sendAsNew, sentAsNew, disabled, reexecuteDisabled, stopped, stopWaiting }: {
   entries: RemoteEntry[]; session: RemoteCommandSession; copy: RemoteCopy; locale: string; disabled?: boolean; reexecuteDisabled?: boolean; reexecute(entry: RemoteEntry): void;
   /** The owning computer's name, which a command it has not admitted waits for. */
   computer?: string | null;
+  computerUnavailable?: boolean;
   /** Resends a guidance message whose turn had ended as a new message, reusing its uploaded files. */
   sendAsNew?(entry: RemoteEntry): void; sentAsNew?: ReadonlySet<string>;
   /** Ruling 12: commands this controller stopped waiting for, and the local-only action that adds one. */
   stopped?: ReadonlySet<string>; stopWaiting?(entry: RemoteEntry): void;
 }) {
-  // A command that was resent is shown by its resend.
-  return <ul className="chat-remote-receipts">{entries.filter(entry => !entry.resubmittedAs).map(entry => {
+  // Normal command progress belongs to the turn and queue. Receipts only supply recovery.
+  const attention = entries.filter(entry => needsDeliveryRecovery(entry, computerUnavailable) && !sentAsNew?.has(entry.input.commandId));
+  if (!attention.length) return null;
+  return <div className="mb-3 space-y-2" data-delivery-recovery="">{attention.map(entry => {
     const receipt = entry.receipt, state = receipt?.state, retryable = !receipt || entry.uncertain || state === "pending" || state === "claimed";
     const resending = awaitingResubmit(entry), connection = connectionNotice(entry, copy, computer);
     const canReexecute = !resending && entry.input.payload.kind === "start-turn" && (Boolean(entry.rejected) || !receipt?.admission && ["expired", "rejected"].includes(state ?? ""));
     const canSendAsNew = Boolean(sendAsNew) && steerTurnEnded(entry) && !sentAsNew?.has(entry.input.commandId);
     const waiting = Boolean(computer) && awaitingReport(entry), isStopped = waiting && Boolean(stopped?.has(entry.input.commandId));
-    return <li className="chat-remote-receipt" key={entry.input.commandId} data-command-id={entry.input.commandId}>
-      <p role="status">{resending ? connection : receiptStatus(entry, copy, computer, isStopped)}</p>
-      {waiting && <p className="chat-remote-hint" data-stop-waiting-warning>{formatCopy(copy.stopWaitingWarning, { name: computer! })}</p>}
-      {entry.uncertain && <p>{copy.receiptUnknown}</p>}
-      {state === "outcome-unknown" && <p>{copy.unknownDetail}</p>}
-      {receipt?.blockedBy && <p>{copy.blockedBy}</p>}
-      {receipt?.reason && !resending && <p className="chat-remote-hint">{steerTurnEnded(entry) ? copy.turnEnded : connection ?? reasonCopy(receipt.reason, copy)}</p>}
-      {receipt && (state === "pending" || state === "claimed") && <p className="chat-remote-hint">{copy.expires.replace("{time}", new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit", second: "2-digit" }).format(receipt.command.expiresAt))}</p>}
-      <div className="chat-remote-receipt-actions">
+    const explanation = steerTurnEnded(entry) ? copy.turnEnded : connection ?? (receipt?.reason ? reasonCopy(receipt.reason, copy) : entry.rejected ? rejectionCopy(entry.rejected, copy) : "");
+    const title = receiptStatus(entry, copy, computer, isStopped);
+    const resolution = waiting ? formatCopy(copy.stopWaitingWarning, { name: computer! }) : state === "outcome-unknown" ? copy.unknownDetail : "";
+    return <div key={entry.input.commandId} data-command-id={entry.input.commandId}>
+      <ProductFailureNotice compact tone={entry.uncertain || waiting || state === "outcome-unknown" ? "warning" : "danger"}
+        copy={{ title, explanation: explanation === title ? "" : explanation,
+          resolution: resolution === title || resolution === explanation ? "" : resolution }}>
+      <div className="flex flex-wrap gap-2 pt-1">
         {!entry.rejected && (retryable || state === "outcome-unknown") && <Button type="button" variant="outline" disabled={entry.busy || disabled} onClick={() => void session.check(entry.input.commandId)}>{copy.check}</Button>}
         {retryable && <Button type="button" variant="outline" disabled={entry.busy || disabled} onClick={() => void session.retry(entry.input.commandId)}>{copy.retry}</Button>}
         {canReexecute && <Button type="button" variant="outline" disabled={entry.busy || disabled || reexecuteDisabled} onClick={() => reexecute(entry)}>{copy.executeAgain}</Button>}
         {waiting && !isStopped && stopWaiting && <Button type="button" variant="outline" onClick={() => stopWaiting(entry)}>{copy.stopWaiting}</Button>}
         {canSendAsNew && <Button type="button" variant="outline" disabled={entry.busy || disabled || reexecuteDisabled} onClick={() => sendAsNew!(entry)}>{copy.sendAsNew}</Button>}
       </div>
-    </li>;
-  })}</ul>;
+      </ProductFailureNotice>
+    </div>;
+  })}</div>;
 }
 /** TASK-20 D10: a command refused for a changed connection is being resent once, or its resend failed too; null for any other receipt. */
 export function connectionNotice(entry: RemoteEntry, copy: RemoteCopy, computer?: string | null): string | null {

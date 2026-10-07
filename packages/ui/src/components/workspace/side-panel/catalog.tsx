@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Host-translated catalog entries and capability/duplicate predicates.
  * [OUTPUT]: SidePanelCatalog and SidePanelAddMenu with readable disabled reasons.
- * [POS]: Canonical four-card directory presentation shared by desktop and Web.
+ * [POS]: Canonical panel directory presentation shared by desktop and Web.
  */
 import { PlusIcon, type LucideIcon } from "lucide-react";
 import { Button } from "../../ui/controls/button";

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React context, shared scrolling/feedback primitives and class-name utilities.
- * [OUTPUT]: SettingsPage and SettingsCanvas with inherited width, canvas or persistent page headings, trailing page actions, section headers and alerts.
+ * [OUTPUT]: SettingsPage and SettingsCanvas with inherited width, wrapping canvas or persistent page headings, trailing page actions, section headers and alerts.
  * [POS]: Platform-independent settings presentation.
  */
 
@@ -45,7 +45,7 @@ function SettingsHeading({ className }: { className?: string }) {
       <div className="flex min-w-0 flex-1 basis-48 items-center gap-3">
         {page.leading}
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h1 className="text-balance font-heading text-2xl font-semibold leading-8 tracking-tight">{page.title}</h1>
+          <h1 className="min-w-0 wrap-anywhere text-balance font-heading text-2xl font-semibold leading-8 tracking-tight">{page.title}</h1>
           {page.titleAdornment}
         </div>
       </div>

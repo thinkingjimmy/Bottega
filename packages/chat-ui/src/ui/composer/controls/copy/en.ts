@@ -185,6 +185,10 @@ export const copy = {
     "cancel": "Cancel",
     "close": "Close"
   },
+  "plugin": {
+    "preparing": "Preparing…",
+    "unavailable": "Unavailable. Check plugin settings on this chat’s computer."
+  },
   "sketch": {
     "title": "Sketch",
     "description": "Draw an image for your message.",

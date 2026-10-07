@@ -1,5 +1,5 @@
 /**
- * [INPUT]: No runtime dependencies; only a type-only import of AppGrantRecord from apps-ipc
+ * [INPUT]: Type-only imports of portable Git branch contracts and AppGrantRecord from apps-ipc
  * [OUTPUT]: Project IPC contracts, a display-only cloud origin that answers this computer's folder and another computer's authorship separately, and local lifecycle/binding projections.
  * [POS]: apps/desktop/shared/ipc/workspace; Shared Project wire truth; projectLifecycleRevision fences incarnation/deletion, reveal carries only Project ID, and appPlacements express navigation without granting App capability
  */
@@ -76,22 +76,8 @@ export type ProjectsSnapshot = {
   warning?: string;
 };
 
-type GitBranchKind = "local" | "remote";
-
-export type GitBranchRef = {
-  name: string;
-  kind: GitBranchKind;
-  current: boolean;
-};
-
-export type GitBranchSnapshot = {
-  head: string;
-  detached: boolean;
-  uncommittedFiles: number;
-  branches: GitBranchRef[];
-};
-
-export type GitBranchTarget = Pick<GitBranchRef, "name" | "kind">;
+export type { GitBranchRef, GitBranchSnapshot, GitBranchTarget } from "@ai-chat/cloud-protocol/resources/project-git";
+import type { GitBranchSnapshot, GitBranchTarget } from "@ai-chat/cloud-protocol/resources/project-git";
 
 export type ProjectsEvent =
   | { type: "upserted"; project: Project }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared turn reducer, Agent/chats agreement with conversation level SubagentRegistry, and the turn model in ./turn-registry-model (TurnOrigin, TurnEntry, RetryClaim and the tombstone predicates)
- * [OUTPUT]: Provides TurnRegistry lifecycle ownership, ordered event observers, exact terminal identities, Subagent outcomes, steering fences, input leases, retry claims (a Stop during a claim cancels the next generation), tombstones, drain and the quit-only settle drain (a stored tombstone's onTurnSettled tail).
+ * [OUTPUT]: Provides TurnRegistry lifecycle ownership, ordered event observers, exact terminal identities stamped from persisted results and legacy terminal events, Subagent outcomes, steering fences, input leases, retry claims (a Stop during a claim cancels the next generation), tombstones, drain and the quit-only settle drain (a stored tombstone's onTurnSettled tail).
  * [POS]: apps/desktop/electron/main/agent/turns/turn; Electron main's single source of truth for turn lifecycle; carries no Electron dependency itself, with IO and release owned by agent-bridge.ts
  */
 
@@ -495,7 +495,7 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
       body = completeInteraction(entry, body);
       this.applyBody(entry, body);
       if (entry.effectiveTerminal && entry.terminalSeq === undefined &&
-          ["done", "cancelled", "error"].includes(body.type)) entry.terminalSeq = seq;
+          ["done", "cancelled", "error", "turn-persisted"].includes(body.type)) entry.terminalSeq = seq;
       if (body.type === "subagent-update") {
         entry.currentSubagents ??= new Set();
         if (["pendingInit", "running"].includes(body.agent.status)) entry.currentSubagents.add(body.agent.agentThreadId);

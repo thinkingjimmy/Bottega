@@ -1,0 +1,41 @@
+/**
+ * [INPUT]: Native branch labels and locale-specific recovery copy.
+ * [OUTPUT]: Shared en Project branch catalog.
+ * [POS]: Composer branch locale leaf used by native and Web.
+ */
+export const branchEn = {
+    uncommitted_one: "{{count}} uncommitted file",
+    uncommitted_other: "{{count}} uncommitted files",
+    loadFailed: "Couldn't load branches",
+    checkoutFailed: "Couldn't switch branches",
+    createFailed: "Couldn't create the branch",
+    fallback: "Branches",
+    search: "Search branches",
+    empty: "No branches found",
+    detached: "Detached HEAD",
+    group: "Branches",
+    refreshing: "Refreshing branches…",
+    newAction: "Create and check out a new branch…",
+    createTitle: "Create and check out branch",
+    createDescription: "Create a local branch from the current HEAD and check it out.",
+    name: "Branch name",
+    placeholder: "new-branch",
+    close: "Close",
+    creating: "Creating…",
+    createAndCheckout: "Create and check out",
+    more: "More branches",
+  retry: "Retry",
+  settings: "Project settings",
+  offline: "The computer is offline. Reconnect to change branches.",
+  unavailable: "This Project is unavailable on this computer.",
+  changed: "The workspace or branch list changed. Refresh and try again.",
+  busy: "Stop the Project task before changing branches.",
+  invalidName: "Enter a valid branch name.",
+  exists: "A branch with this name already exists.",
+  missing: "The branch no longer exists. Refresh the list.",
+  checkoutConflict: "Git could not switch branches. Resolve conflicting changes on the computer and retry.",
+  createError: "Git could not create the branch. Check the repository on the computer.",
+  budget: "The branch result is too large to display.",
+  unknown: "The result is not confirmed. Check the original operation before continuing.",
+  checkResult: "Check result",
+};

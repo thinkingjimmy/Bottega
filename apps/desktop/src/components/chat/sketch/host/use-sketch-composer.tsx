@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on composer controls and stable menu triggers, source resources, editor preloading/intents, and submission tokens.
+ * [INPUT]: Depends on composer controls, shared localized plugin initialization messages, stable menu triggers, source resources, editor preloading/intents, and submission tokens.
  * [OUTPUT]: Provides Sketch menu preloading/thumbnail actions and synchronous source pin/actual-finally settlement hooks; a failed send preparation throws localized copy and logs the raw cause.
  * [POS]: Thin composer integration; source ownership and the mounted editor outlive ChatView.
  */
@@ -26,7 +26,7 @@ import type { ChatSessionController } from "../../runtime/use-chat-session";
 import { openSketch } from "./controller";
 import {useComposerPlugins} from "./plugin/catalog";
 import {pluginSourceEditable} from "@bottega/contracts/plugins/surface/source";
-import {useComposerTranslation} from "@ai-chat/chat-ui/composer-translation";
+import {pluginInitializationMessage,useComposerTranslation} from "@ai-chat/chat-ui/composer-translation";
 import type {PluginComposerEntry} from "@ai-chat/chat-ui/plugins/host/contracts";
 
 export function useSketchComposer(
@@ -72,7 +72,7 @@ export function useSketchComposer(
   const disabledReason = count >= 8 ? t("sketch.attachmentLimit") : composerMigrating(controller.chatId) ? t("sketch.migrationActive") : t("sketch.readOnly");
   return {
     plugins: entries.filter(entry=>entry.enabled).map(entry=>({id:entry.id,name:entry.id==='sketch'?t('sketch.title'):entry.composer.title,icon:entry.composer.icon,
-      disabled:newDisabled||!entry.enabled||!entry.generationId,reason:(!entry.generationId?entry.error:undefined)??(!entry.enabled?t('sketch.readOnly'):newDisabled?disabledReason:undefined),
+      disabled:newDisabled||!entry.enabled||!entry.generationId,reason:pluginInitializationMessage(entry,copy)??(!entry.enabled?t('sketch.readOnly'):newDisabled?disabledReason:undefined),
       run:(anchor:HTMLElement|null)=>open(entry,undefined,anchor)})),
     preload: () => {},
     newDisabled,

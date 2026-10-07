@@ -1,6 +1,6 @@
 {
   "name": "@ai-chat/desktop",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Bottega desktop workspace for local Codex, Claude Code, Kimi Code, and OpenCode CLIs",
   "author": "Jimmy Wong",
   "private": true,

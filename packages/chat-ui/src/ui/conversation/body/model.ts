@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Bounded transcript bodies, live projections and native/imported window provenance.
- * [OUTPUT]: ConversationModelProvider, useConversationModel and publication store for sibling readers.
- * [POS]: The conversation body's read-only publication channel for its image and subagent readers; an outer host provider is reused by RemoteConversation.
+ * [INPUT]: Bounded transcript bodies, live projections, live read failures and native/imported window provenance.
+ * [OUTPUT]: ConversationModelProvider, useConversationModel and publication store for transcript, composer and sibling panel readers.
+ * [POS]: One read-only publication channel; an outer host provider is reused by RemoteConversation.
  */
 import { createContext, createElement, useContext, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { ChatBody } from "@ai-chat/cloud-protocol/chats/transcript/body";
@@ -9,6 +9,7 @@ import type { ChatLiveView } from "../../../platform/model";
 export type ConversationModel = {
   chatId: string; incarnationId: string; bodies: ChatBody[]; live: ChatLiveView | null;
   segments: { kind: "native" | "imported"; id: string }[];
+  liveError?: boolean;
   ready: boolean; hasEarlier: boolean; latest: boolean; canonicalReady: boolean;
 };
 export const EMPTY_CONVERSATION: ConversationModel = { chatId: "", incarnationId: "", bodies: [], live: null, segments: [], ready: false, hasEarlier: false, latest: true, canonicalReady: false };

@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on the shared availability state vocabulary.
+ * [INPUT]: Depends on the availability vocabulary and shared native/remote Agent update copy.
  * [OUTPUT]: Localized availability, login recovery, installed-provider empty states and separate required/optional update copy.
  * [POS]: Availability locale leaf.
  */
+import { agentPickerEn } from "@ai-chat/chat-ui/agent-picker/copy";
 export const agentAvailabilityEn = {
-  "updateAvailable": "Update available",
-  "updateForUsage": "Update to view usage",
+  ...agentPickerEn,
   "noInstalledProviders": "No installed providers",
   "state": {
     "recent-sign-in": "Recent request needs sign-in",

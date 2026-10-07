@@ -1,8 +1,9 @@
 /**
- * [INPUT]: The PreparedCloudRuntime shape from prepare.ts, Electron account/lifecycle ports, isolated userData, original coordinator/control owners and artifact custody/publication.
- * [OUTPUT]: Wires binding-fenced offline identity, a read-only operation-receipt lookup for the broker, startup/token admission, synchronization, scoped artifact transfers, sleep/quit presence (resume is refreshed by the application lifecycle), continuation, remote IPC and the `attachAccountConfig(store)` Dock-layout sync seam onto an already prepared runtime, with verified owner/account record resource ports, Agent-configuration sync, the Workflow projection outbox and the resource-command executor attached alongside, behind one shared Memory reconnect barrier.
+ * [INPUT]: Owner Project Git resource operations, the PreparedCloudRuntime shape from prepare.ts, Electron account/lifecycle ports, isolated userData, original coordinator/control owners and artifact custody/publication.
+ * [OUTPUT]: Wires binding-fenced offline identity, a read-only operation-receipt lookup for the broker, startup/token admission, synchronization, bidirectional Chat read acknowledgements, scoped artifact transfers, sleep/quit presence (resume is refreshed by the application lifecycle), continuation, remote IPC and the `attachAccountConfig(store)` Dock-layout sync seam onto an already prepared runtime, with verified owner/account record resource ports, Agent-configuration sync, the Workflow projection outbox and the resource-command executor attached alongside, behind one shared Memory reconnect barrier.
  * [POS]: Heavy half of the cloud composition, dynamically loaded and never reached from prepare.ts; stable builds exclude the implementation and SDK.
  */
+import { projectResourcePort } from "../remote/resources/projects";
 import { recordResourcePort } from "../remote/resources/records";
 import { MemoryControlBarrier } from "../remote/memory/runtime";
 import { attachPreviewCloud } from "../../preview/session/cloud";
@@ -66,6 +67,7 @@ import { composeSyncEncryption } from "../encryption/composition";
 import type { PreparedCloudRuntime } from "./prepare";
 import type { UnifiedSkillsService } from "../../skills-management/service";
 import { RemoteActivityObserver, type RemoteActivityPort } from "../remote/activity";
+import { ChatReadSync, type ReadActivityPort } from "../remote/read/sync";
 import { AccountConfigSyncCoordinator, type AccountConfigSyncHandle } from "../sync/account-config/coordinator";
 import type { DockConfigStore } from "../../system-dock/store/config-store";
 import { attachAgentConfigSync } from "../../agent-configs/runtime";
@@ -77,7 +79,7 @@ import { ledgerActivityReason } from "../../sections/coordinator/agent-switch/ac
 /* Device registration and folder ownership are compared with each other by the server, so they share the cloud purpose. */
 const machineIdHash = machineIdFor("cloud");
 export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: () => void,
-  ui: { recordPlugins?: () => import("../../plugins/records/service").RecordPluginService | null; pluginSurfaces?: () => import("../sync/surfaces/source").PluginSurfaceSource | null; activity?: RemoteActivityPort; skills?: UnifiedSkillsService; events: SyncEventPorts & { chats: Pick<ChatsService, "configureCloudRemoval" | "preflightChatFork" | "forkChat"> }; gallery: Pick<GalleryMediaService, "readForSynchronization">; turns: TurnRuntimePorts & { turns: TurnRegistry<AgentTurn> }; remote: { workspaceReferences?: import("../remote/commands/input/references").RemoteWorkspacePorts; coordinator: ConversationCoordinator; settings: SettingsStore; quota?(): import("../../../../shared/usage-limits/types").UsageLimitsSnapshot; usage?: Pick<import("../../usage-limits/service").AgentUsageLimitsService, "known" | "refreshRemote">; memory?: import("../remote/commands/runtime").RemoteRuntimePorts["memory"]; workspace(): string; publishRecord?(record: ChatMetadata): void }; projectGate: ProjectsService; apps?: () => RemoteApps | null; buildStatus?: () => import("../../apps/service/consent/build-status").AppBuildTracker | null; saveAsApp: SaveAsAppService; promotion: BasePromotionService; rescue: ProjectRescueService }) {
+  ui: { recordPlugins?: () => import("../../plugins/records/service").RecordPluginService | null; pluginSurfaces?: () => import("../sync/surfaces/source").PluginSurfaceSource | null; activity?: RemoteActivityPort & ReadActivityPort; skills?: UnifiedSkillsService; events: SyncEventPorts & { chats: Pick<ChatsService, "configureCloudRemoval" | "preflightChatFork" | "forkChat"> }; gallery: Pick<GalleryMediaService, "readForSynchronization">; turns: TurnRuntimePorts & { turns: TurnRegistry<AgentTurn> }; remote: { workspaceReferences?: import("../remote/commands/input/references").RemoteWorkspacePorts; coordinator: ConversationCoordinator; settings: SettingsStore; quota?(): import("../../../../shared/usage-limits/types").UsageLimitsSnapshot; usage?: Pick<import("../../usage-limits/service").AgentUsageLimitsService, "known" | "refreshRemote">; memory?: import("../remote/commands/runtime").RemoteRuntimePorts["memory"]; workspace(): string; publishRecord?(record: ChatMetadata): void }; projectGate: ProjectsService; apps?: () => RemoteApps | null; buildStatus?: () => import("../../apps/service/consent/build-status").AppBuildTracker | null; saveAsApp: SaveAsAppService; promotion: BasePromotionService; rescue: ProjectRescueService }) {
   const { config, vault, deviceId, binding, scope, owners, userData, lifecycle } = prepared;
   if (!scope || !owners || !lifecycle || !prepared.appInstall) throw new Error("SYNC_OWNERS_NOT_ATTACHED");
   if (ui.skills) owners.skills = ui.skills;
@@ -197,6 +199,7 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
     ...ui.remote, ...ui.turns, forks: ui.events.chats, execution, own: activity => scope.own(activity) });
   /* P13 R-24 / R-32: a phone or Web asks this computer to act on its workflows or read a Provider's quota again. */
   const resources = new ResourceCommandRuntime({ memoryBarrier, config, deviceId, binding, account: service, transport, crypto: contentCrypto, workflows: workflowResourcePort, apps: appResourcePort(() => ui.apps?.() ?? null),
+    projects: projectResourcePort({ projects: ui.projectGate, deviceId, environment: config.environmentId }),
     records: recordResourcePort({ bases: owners.bases, records: () => ui.recordPlugins?.() ?? null, environment: config.environmentId,
       current: userId => { const active = binding.snapshot(), account = service.snapshot();
         return active?.userId === userId && active.phase === "active" && !active.paused && account.status === "ready" && account.profile?.userId === userId; },
@@ -217,17 +220,28 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
   let namesUserId: string | null = null;
   const avatars = new AccountAvatarCache(userData);
   const encryption = await composeSyncEncryption({ config, userData, deviceId, service, transport, binding, scope, sync, onSyncEnabled: initial => initial ? ui.remote.settings.setTrusted({ keepRunningInBackground: true }).then(() => {}) : Promise.resolve() });
+  const readScope = () => {
+    const account = service.snapshot(), selected = binding.snapshot();
+    return selected?.phase === "active" && !selected.paused && account.profile?.userId === selected.userId && ["ready", "temporarily-offline"].includes(account.status)
+      ? { environment: config.environmentId, userId: selected.userId } : null;
+  };
+  const readState = ui.activity ? new ChatReadSync({ activity: ui.activity, scope: () => {
+    const selected = readScope(); return selected ? JSON.stringify(selected) : null;
+  }, send: async head => {
+    const selected = readScope();
+    if (!selected || service.snapshot().status !== "ready") throw new Error("CHAT_READ_OFFLINE");
+    const crypto = contentCrypto(), turn = head.activityTurn!;
+    return transport.mutate("chats/navigation/read:consume", { ...protocolHeader(config), expectedUserId: selected.userId,
+      encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint },
+      chatId: head.chat.id, incarnationId: head.chat.incarnationId, turnId: turn.turnId, ownerDeviceId: turn.ownerDeviceId, sequence: turn.sequence });
+  } }) : null;
   if (ui.activity) remoteActivity = new RemoteActivityObserver({ store: owners.chats.sync, activity: ui.activity, deviceId,
-    exists: id => Boolean(owners.chats.getIncarnationId(id)), scope: () => {
-      const account = service.snapshot(), selected = binding.snapshot();
-      return selected?.phase === "active" && !selected.paused && account.profile?.userId === selected.userId && ["ready", "temporarily-offline"].includes(account.status)
-        ? { environment: config.environmentId, userId: selected.userId } : null;
-    } });
+    exists: id => Boolean(owners.chats.getIncarnationId(id)), scope: readScope, onHead: head => readState?.observe(head) });
   service.attachSync(sync); const unsubscribeSync = service.subscribe(value => {
     const userId = value.profile?.userId ?? null;
     if (value.profile || ["signed-out", "signing-out", "revoked", "deleting"].includes(value.status)) avatars.select(value.profile, dataUrl => service.updateAvatar(userId, dataUrl));
     if (userId !== namesUserId) { owners.chats.sync.clearDeviceNames(); namesUserId = userId; }
-    sync.accountChanged(); remoteActivity?.wake();
+    sync.accountChanged(); readState?.wake(); remoteActivity?.wake();
     void encryption.owner.accountChanged().catch(() => {});
     void cloudApps?.accountChanged().catch(() => undefined);
     armPromotions(); recoverPromotions();
@@ -279,5 +293,5 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
     registerCloudRemote(remoteClient, window, rendererUrl);
   }, onProtocolArgs, refresh: () => service.refresh(true),
     /** Read-only: who is signed in on this computer (the verified operator of a workflow confirmation). */
-    accountIdentity: () => service.connectionIdentity(), close: async () => { await previews.close(); await accountConfig?.close(); await agentConfigs?.close(); await workflowProjection.close(); await resources.close(); await memoryBarrier.close(); await remoteActivity?.close(); await reportClosing(); powerMonitor.removeListener("suspend", sleep); app.removeListener("before-quit", quit); if (promotionTimer) clearInterval(promotionTimer); inbox.close(); unsubscribeSync(); await encryption.close(); await remote.close(); avatars.close(); await avatars.settled(); await cloudApps?.close(); await execution.close(); await chatReader?.close(); await baseImages.close(); baseReview?.close(); service.close(); await service.login.drain(); await vault.drain(); await sync.close(); await recorder.close(); await prepared.homeCapture?.close(); await scope.close(); await recoveringPromotion; await binding.close(); } };
+    accountIdentity: () => service.connectionIdentity(), close: async () => { await previews.close(); await accountConfig?.close(); await agentConfigs?.close(); await workflowProjection.close(); await resources.close(); await memoryBarrier.close(); await remoteActivity?.close(); await readState?.close(); await reportClosing(); powerMonitor.removeListener("suspend", sleep); app.removeListener("before-quit", quit); if (promotionTimer) clearInterval(promotionTimer); inbox.close(); unsubscribeSync(); await encryption.close(); await remote.close(); avatars.close(); await avatars.settled(); await cloudApps?.close(); await execution.close(); await chatReader?.close(); await baseImages.close(); baseReview?.close(); service.close(); await service.login.drain(); await vault.drain(); await sync.close(); await recorder.close(); await prepared.homeCapture?.close(); await scope.close(); await recoveringPromotion; await binding.close(); } };
 }

@@ -25,7 +25,7 @@ export function RemoteRecovery({ recovery, requestId, controls }: { recovery: Re
     catch { setError(controls.copy.requestFailed); }
     finally { setSending(null); }
   };
-  if (done) return <p role="status">{controls.copy.alreadyResolved}</p>;
+  if (done) return null;
   const allowed = Object.fromEntries(Object.entries(recovery.allowedActions).map(([key, value]) => [key, value && !controls.disabled])) as Recovery["allowedActions"];
   return <ResumeFailureDialog translate={(key, values) => translate(key.replace(/^chat\./, ""), values)} controller={{
     resumeFailure: { retried: recovery.generation > 1, allowedActions: allowed }, resumeFailureOpen: open, resumeFailurePending: sending ?? pending ?? null,

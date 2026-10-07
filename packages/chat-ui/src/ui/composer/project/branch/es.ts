@@ -1,0 +1,41 @@
+/**
+ * [INPUT]: Native branch labels and locale-specific recovery copy.
+ * [OUTPUT]: Shared es Project branch catalog.
+ * [POS]: Composer branch locale leaf used by native and Web.
+ */
+export const branchEs = {
+    uncommitted_one: "{{count}} archivo sin confirmar",
+    uncommitted_other: "{{count}} archivos sin confirmar",
+    loadFailed: "No se pudieron cargar las ramas",
+    checkoutFailed: "No se pudo cambiar de rama",
+    createFailed: "No se pudo crear la rama",
+    fallback: "Ramas",
+    search: "Buscar ramas",
+    empty: "No se encontraron ramas",
+    detached: "HEAD separado",
+    group: "Ramas",
+    refreshing: "Actualizando ramas…",
+    newAction: "Crear y cambiar a una rama nueva…",
+    createTitle: "Crear y cambiar de rama",
+    createDescription: "Crea una rama local desde el HEAD actual y cambia a ella.",
+    name: "Nombre de la rama",
+    placeholder: "new-branch",
+    close: "Cerrar",
+    creating: "Creando…",
+    createAndCheckout: "Crear y cambiar",
+    more: "Más ramas",
+  retry: "Reintentar",
+  settings: "Configuración del proyecto",
+  offline: "El equipo está desconectado. Conéctalo para cambiar de rama.",
+  unavailable: "Este proyecto no está disponible en este equipo.",
+  changed: "La carpeta o la lista de ramas cambió. Actualiza e inténtalo de nuevo.",
+  busy: "Detén la tarea del proyecto antes de cambiar de rama.",
+  invalidName: "Introduce un nombre de rama válido.",
+  exists: "Ya existe una rama con este nombre.",
+  missing: "La rama ya no existe. Actualiza la lista.",
+  checkoutConflict: "Git no pudo cambiar de rama. Resuelve los conflictos en el equipo.",
+  createError: "Git no pudo crear la rama. Revisa el repositorio en el equipo.",
+  budget: "El resultado es demasiado grande.",
+  unknown: "El resultado no está confirmado. Consulta la operación original antes de continuar.",
+  checkResult: "Consultar resultado",
+};

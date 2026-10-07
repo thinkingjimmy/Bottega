@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Confirmed head activity identities, an account/device storage namespace, optional bounded persistence and an optional identity digest.
- * [OUTPUT]: Exact-turn unread consumption and reactive activity projection for browser hosts; a host that persists keeps digests, never Chat identities.
+ * [INPUT]: Confirmed head activity/read identities, an account/device storage namespace, optional bounded persistence and an optional identity digest.
+ * [OUTPUT]: Exact-turn local/cloud unread consumption and reactive activity projection for browser hosts; a host that persists keeps digests, never Chat identities.
  * [POS]: Shared presentation library; terminal history is never execution authority.
  */
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";

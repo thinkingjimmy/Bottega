@@ -15,7 +15,7 @@ import { ConversationModelProvider } from "../conversation/body/model";
 import { RemoteConversation } from "../remote/conversation";
 import { useChatSidePanel } from "../side-panel/host/panel";
 import type { PanelServices } from "../side-panel/host/ports";
-type ConversationProps = Omit<ComponentProps<typeof RemoteConversation>, "children" | "onOpenImage" | "onOpenWorkspaceFile" | "layout">;
+type ConversationProps = Omit<ComponentProps<typeof RemoteConversation>, "children" | "onOpenImage" | "onOpenWorkspaceFile" | "onOpenPlan" | "expandedPlanId" | "onOpenSubagent" | "layout">;
 export type CloudChatPageProps = ConversationProps & {
   panels: PanelServices;
   /** Raised by a host that just swapped this conversation onto another execution port. */
@@ -36,6 +36,7 @@ function CloudChatPageContent({ panels, chrome, headerActions, notices, navigati
   const { head, platform, locale } = conversation, copy = sidePanelCopy(locale), [remoteDirty, setRemoteDirty] = useState(false);
   const panel = useChatSidePanel(head, platform.transcript, locale, panels);
   const page = <RemoteConversation {...conversation} layout="fill" onDirtyChange={dirty => { setRemoteDirty(dirty); conversation.onDirtyChange?.(dirty); }}
+    onOpenSubagent={panel.eligible ? panel.onOpenSubagent : undefined} onOpenPlan={panel.eligible ? panel.onOpenPlan : undefined} expandedPlanId={panel.expandedPlanId}
     onOpenImage={panel.eligible ? panel.onOpenImage : undefined} onOpenWorkspaceFile={panel.eligible && platform.capabilities.files ? panel.onOpenWorkspaceFile : undefined}>
     {regions => <ChatPageSessionView renderPage={renderPage} regions={{ ...regions, focusComposer }} containerRef={panel.containerRef} takeover={panel.takeover} notices={notices} panel={panel.element} navigation={navigation?.(panel.dirty, panel.dirty || remoteDirty)} header={<WorkspaceHeader {...chrome} icon={<AgentBackendIcon backend={head.chat.agent} className="size-4 shrink-0" />}
           title={head.chat.title ?? <><span aria-hidden className="block h-3 w-32 animate-pulse rounded bg-muted" /><span className="sr-only">{copy.generatingTitle}</span></>}

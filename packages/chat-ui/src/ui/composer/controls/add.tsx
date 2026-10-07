@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Shared menu primitives, locale, host-owned Files/Plan actions and enabled plugin contributions.
- * [OUTPUT]: ComposerAddMenu presents the same keyboard-accessible menu on native and Web.
+ * [OUTPUT]: ComposerAddMenu presents the same keyboard-accessible menu on native and Web, with viewport-bounded readable disabled reasons.
  * [POS]: Stateless composer action menu; hosts retain draft and capability authority.
  */
 import { useRef } from "react";
@@ -15,14 +15,14 @@ export function ComposerAddMenu({ locale, disabled, files, plugins = [], plan, p
   const t = useComposerTranslation(locale), anchor = useRef<HTMLButtonElement>(null);
   return <PromptInputActionMenu onOpenChange={open => { if (open) preload?.(); }}>
     <PromptInputActionMenuTrigger ref={anchor} aria-label={t("chat.composer.add")} className="rounded-full" disabled={disabled}><PlusIcon className="size-4" /></PromptInputActionMenuTrigger>
-    <PromptInputActionMenuContent side="top">
+    <PromptInputActionMenuContent side="top" className="w-auto max-w-[calc(100vw-1rem)]">
       {files && <PromptInputActionMenuItem disabled={files.disabled} title={files.reason} onSelect={() => files.run(anchor.current)}><FileUpIcon className="size-4" />{t("chat.composer.files")}</PromptInputActionMenuItem>}
       {plugins.map(plugin => {
         const Icon = plugin.icon === "pencil" || plugin.icon === "sketch" ? PencilIcon : PuzzleIcon;
         return <PromptInputActionMenuItem key={plugin.id} data-composer-plugin={plugin.id} disabled={plugin.disabled} onSelect={() => plugin.run(anchor.current)}>
           <Icon aria-hidden className="size-4 shrink-0" />
           <span className="flex min-w-0 flex-col"><span>{plugin.name}</span>
-            {plugin.disabled && plugin.reason && <span className="max-w-64 whitespace-normal text-xs leading-snug">{plugin.reason}</span>}
+            {plugin.disabled && plugin.reason && <span className="w-56 max-w-[calc(100vw-5rem)] whitespace-normal text-xs leading-snug">{plugin.reason}</span>}
           </span>
         </PromptInputActionMenuItem>;
       })}

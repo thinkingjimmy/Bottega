@@ -1,15 +1,10 @@
 /**
- * [INPUT]: Depends on canonical user/notice messages, remote source copy, attachment/image projection, localized notice rendering, and shared message actions.
+ * [INPUT]: Depends on canonical user/notice messages, the shared origin-free user bubble, attachment/image projection, localized notice rendering, and shared message actions.
  * [OUTPUT]: Provides memoized user and notice transcript rows plus the common message anchor shell
  * [POS]: apps/desktop/src/components/chat/transcript/turns; Static transcript row sibling; assistant turns and transcript window orchestration remain in ChatTranscript
  */
 
 import { memo, type ReactNode } from "react";
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from "@ai-chat/ui/components/ai-elements/message";
 import type {
   NoticeChatMessage,
   UserChatMessage,
@@ -19,8 +14,8 @@ import type { LiveAttachmentPreview } from "../../runtime/files/chat-attachments
 import { capMarkdown } from "@/lib/charts/chart-markdown";
 import { ChatMessageActions } from "../navigation/chat-message-actions";
 import { ChatNotice } from "../notices/chat-notice";
-import { ChatUserAttachments, UserMessageFold } from "../content/chat-user-attachments";
-import { remoteCopy } from "@ai-chat/chat-ui/remote-copy";
+import { ChatUserAttachments } from "../content/chat-user-attachments";
+import { ConversationUser } from "@ai-chat/chat-ui/turn/user";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 
 export const MessageShell = ({ children, id }: {
@@ -31,16 +26,6 @@ export const MessageShell = ({ children, id }: {
     {children}
   </div>
 );
-
-function UserMessageBody({ content }: { content: string }) {
-  return (
-    <MessageContent className="gap-1">
-      <UserMessageFold measurementKey={content}>
-        <MessageResponse>{capMarkdown(content)}</MessageResponse>
-      </UserMessageFold>
-    </MessageContent>
-  );
-}
 
 export const ChatUserMessage = memo(function ChatUserMessage({
   message,
@@ -59,10 +44,10 @@ export const ChatUserMessage = memo(function ChatUserMessage({
   onEdit?: () => void;
   editDisabledReason?: string;
 }) {
-  const { i18n } = useAppTranslation();
+  const { t } = useAppTranslation();
   return (
     <MessageShell id={message.id}>
-      <Message from="user">
+      <ConversationUser content={capMarkdown(message.content)} showMore={t("chat.transcript.showMore")} showLess={t("chat.transcript.showLess")} attachments={
         <ChatUserAttachments
           attachments={message.attachments}
           chatId={chatId}
@@ -78,8 +63,7 @@ export const ChatUserMessage = memo(function ChatUserMessage({
               })
             : undefined}
         />
-        <UserMessageBody content={message.content} />
-        {message.remoteSource && <span className="text-xs text-muted-foreground" aria-label={remoteCopy(i18n.language).from.replace("{device}", message.remoteSource.name)}>{remoteCopy(i18n.language).from.replace("{device}", message.remoteSource.name)}</span>}
+      } actions={
         <ChatMessageActions
           content={message.content}
           createdAt={message.createdAt}
@@ -87,7 +71,7 @@ export const ChatUserMessage = memo(function ChatUserMessage({
           editDisabledReason={editDisabledReason}
           role="user"
         />
-      </Message>
+      } />
     </MessageShell>
   );
 });
