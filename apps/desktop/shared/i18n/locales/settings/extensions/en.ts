@@ -46,7 +46,6 @@ export const settingsExtensionsEn = {
       format: "Detected format",
       pluginFormat:
         "Agent Plugins 1.0 package (root plugin.json).",
-      hostFormat: "Bottega host package (bottega.extension.json; runs explicitly trusted code in a utility process).",
       skillFormat:
         "Pure Skill repository (no plugin.json; only the skills/ subtree).",
       scripts: "Executable scripts",

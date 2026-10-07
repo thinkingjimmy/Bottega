@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Workspace-resolver, workspace-file-index/read, shared Workspace IPC/fuzzy, pure functions with Node realpath/lstat
- * [OUTPUT]: Provides search/scan and a hard-top, 8 MiB single index and 32 MiB global path caching budget, 256 chat recent LRU, generation-token, fail, fresh-proof opaque readRef
+ * [OUTPUT]: Root file entries have an empty directory label; Provides search/scan and a hard-top, 8 MiB single index and 32 MiB global path caching budget, 256 chat recent LRU, generation-token, fail, fresh-proof opaque readRef
  * [POS]: apps/desktop/electron/main/workspace/files; The ability-free Workspace candidate directory of Electron main and the dual-limit LRU owner; Members prove to have commissioned index, content reading boundaries, read authority
  */
 
@@ -434,7 +434,7 @@ export class WorkspaceFileCatalog {
         return {
           path: entry.path,
           name: basename(entry.path),
-          dir: dirname(entry.path) === "../.." ? "" : dirname(entry.path),
+          dir: dirname(entry.path) === "." ? "" : dirname(entry.path),
           entryKind: entry.entryKind,
         } satisfies WorkspaceFileEntry;
       })

@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Depends on Measurement store/identity, four builtin Provider launchers, model-free probes and installed-runtime ports.
+ * [INPUT]: Canonical built-in Provider ids from shared/providers/builtin; Depends on Measurement store/identity, four builtin Provider launchers, model-free probes and installed-runtime ports.
  * [OUTPUT]: Provides ProviderMeasurements with adopt, ensure, recheck, current and change subscriptions; revalidates after probes and retries changed runtimes up to twice without adopting stale versions.
  * [POS]: On-demand evidence owner for all four Providers; identity changes trigger new probes and stale evidence is excluded.
  */
+import { BUILTIN_PROVIDER_IDS } from "../../../../shared/providers/builtin";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,7 +30,7 @@ import { currentMeasurements } from "@ai-chat/cloud-protocol/contracts/provider"
 
 /* The allowlist a read-only turn runs with (04 §5), shared with the product path; its announcement proves tool-filter and read-only together. */
 export const PLAN_REVIEW_TOOLS = CLAUDE_READ_ONLY_TOOLS;
-export const MEASURED_PROVIDERS = ["claude", "codex", "kimi", "opencode"] as const;
+export const MEASURED_PROVIDERS = [BUILTIN_PROVIDER_IDS.claude, BUILTIN_PROVIDER_IDS.codex, BUILTIN_PROVIDER_IDS.kimi, BUILTIN_PROVIDER_IDS.opencode] as const;
 type Measured = (typeof MEASURED_PROVIDERS)[number];
 type Verdict = MeasuredCapability["state"];
 export type MeasurementPorts = {
@@ -74,7 +75,7 @@ export class ProviderMeasurements {
       /* Adopting never starts runtime discovery: at startup, and in a fenced environment, that is work nobody asked for. */
       const runtime = mode === "adopt" ? this.ports.knownRuntime(providerId) : await this.ports.runtime(providerId);
       if (!runtime) { this.identities.delete(providerId); this.emit(); return; }
-      const adapter = providerId === "claude" ? claudeAdapterEntry() : providerId === "codex" ? codexAcpEntry() : undefined;
+      const adapter = providerId === BUILTIN_PROVIDER_IDS.claude ? claudeAdapterEntry() : providerId === BUILTIN_PROVIDER_IDS.codex ? codexAcpEntry() : undefined;
       const identity = await measurementIdentity(runtime, adapter);
       const stored = this.store.forProvider(providerId);
       const same = (record: MeasuredCapability) => JSON.stringify(record.identity) === JSON.stringify(identity);
@@ -101,28 +102,28 @@ export class ProviderMeasurements {
   private async probe(providerId: Measured, runtime: ResolvedRuntime, signal: AbortSignal): Promise<Partial<Record<ProviderCapability, Verdict>>> {
     const workspace = await mkdtemp(join(tmpdir(), "bottega-probe-"));
     try {
-      if (providerId === "claude") {
+      if (providerId === BUILTIN_PROVIDER_IDS.claude) {
         const tools = await probeClaudeToolSet({ runtime, workspace, requested: PLAN_REVIEW_TOOLS, signal });
         const verdict = claudeToolVerdicts(PLAN_REVIEW_TOOLS, tools);
         /* Session setup may reach the API too; the sink keeps every request on this machine. */
         const sink = await openRequestSink();
-        const teardown = await probeTeardown({ backend: "claude", cwd: workspace,
+        const teardown = await probeTeardown({ backend: BUILTIN_PROVIDER_IDS.claude, cwd: workspace,
           ...adapterLaunch("claude-agent-acp", { ...claudeAdapterEnvironment(runtime), ANTHROPIC_BASE_URL: sink.url, CLAUDE_CODE_MAX_RETRIES: "0" }),
           validateSessionId: validateClaudeSessionId, sessionMissing: claudeSessionMissing, timeoutMs: 20_000, totalTimeoutMs: 45_000, signal }).finally(() => sink.close());
         const network = await probeClaudeNetworkOff({ runtime, root: workspace, signal });
         this.ports.report?.(providerId, { tools, teardown, network });
         return { "tool-filter": verdict.toolFilter, "read-only": verdict.readOnly, cancel: teardown.state, "network-off": claudeNetworkVerdict(network) };
       }
-      if (providerId === "kimi" || providerId === "opencode") {
-        const launch = providerId === "kimi" ? kimiAcpLaunch(runtime) : opencodeAcpLaunch(runtime);
+      if (providerId === BUILTIN_PROVIDER_IDS.kimi || providerId === BUILTIN_PROVIDER_IDS.opencode) {
+        const launch = providerId === BUILTIN_PROVIDER_IDS.kimi ? kimiAcpLaunch(runtime) : opencodeAcpLaunch(runtime);
         const teardown = await probeTeardown({ backend: providerId, cwd: workspace, ...launch, initializeOnly: true,
-          validateSessionId: providerId === "kimi" ? validateKimiSessionId : validateOpencodeSessionId,
+          validateSessionId: providerId === BUILTIN_PROVIDER_IDS.kimi ? validateKimiSessionId : validateOpencodeSessionId,
           timeoutMs: 20_000, totalTimeoutMs: 40_000, signal });
         this.ports.report?.(providerId, { teardown });
         return { cancel: teardown.state };
       }
-      const readOnly = probeSeatbeltReadOnly("codex");
-      const teardown = await probeTeardown({ backend: "codex", cwd: workspace,
+      const readOnly = probeSeatbeltReadOnly(BUILTIN_PROVIDER_IDS.codex);
+      const teardown = await probeTeardown({ backend: BUILTIN_PROVIDER_IDS.codex, cwd: workspace,
         ...adapterLaunch("codex-acp", codexAcpEnvironment(runtime)), validateSessionId: validateCodexSessionId, sessionMissing: codexSessionMissing, timeoutMs: 20_000, totalTimeoutMs: 40_000, signal });
       this.ports.report?.(providerId, { readOnly, teardown });
       return { "read-only": readOnly.state, cancel: teardown.state };

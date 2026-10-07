@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on remote ExecutionFacade creation receipts, canonical UTF-8 text budgets, target capabilities and catalogs, the shared first-message readiness flow and host-owned completion/local-navigation callbacks and execution-scoped toolbar render state/busy admission.
+ * [INPUT]: Depends on remote ExecutionFacade creation receipts, canonical UTF-8 text budgets, target capabilities and catalogs, shared localized thinking copy, the shared first-message readiness flow and host-owned completion/local-navigation callbacks and execution-scoped toolbar render state/busy admission.
  * [OUTPUT]: Frozen first-send intent (an App's first Edit Chat when `appTarget` names the App, whose existing Edit Chat takes the text unsent, U06 Q7-d) (a checkpoint-recovered one is looked up by its original ids before any retry; one refused for its files before anything was stored unlocks the draft's files and retries as a new message), Send and Retry greyed while any file is not sendable, the shared user bubble and thinking state, editable next draft, creation on the computer the host names — greyed in place with that computer's sentence when it cannot take one, and covered by the read-only card when sync is not connected — and inline structured recovery with separate custody for unsent original and newer drafts.; U06-c: with `appTarget` text only (no files, sketch or references, the rule said), refusals by name and a notice for the host when another Edit Chat took the text
  * [POS]: Shared creation form; explicit submit intent owns the automatic first message until preparation, cancellation or route handoff.
  */
@@ -23,6 +23,7 @@ import { Conversation, ConversationContent } from "@ai-chat/ui/components/ai-ele
 import { conversationColumnClassName } from "@ai-chat/ui/components/conversation/layout";
 import { ConversationUser } from "../conversation/turn/user";
 import { ConversationActions } from "@ai-chat/ui/components/conversation/actions";
+import { turnCopy } from "../conversation/turn/copy";
 import { ConversationDraft } from "../conversation/turn/draft";
 import { chatCopy } from "../../i18n/copy";
 import { ChatEmptyState } from "../composer/empty";
@@ -168,7 +169,7 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
       <ConversationContent className={`${conversationColumnClassName} gap-6`}>
         <ConversationUser content={attempt.text} showMore={reading.showMore} showLess={reading.showLess}
           actions={<ConversationActions role="user" copyLabel={reading.copy} copiedLabel={reading.copied} onCopy={() => navigator.clipboard.writeText(attempt.text)} />} />
-        {busy && <ConversationDraft label="Thinking" />}
+        {busy && <ConversationDraft label={turnCopy(locale).thinking} />}
       </ConversationContent>
     </Conversation> : <ChatEmptyState title={composerCopy(locale).empty} />}
     <ComposerDock className="chat-remote"><fieldset disabled={busy || Boolean(attempt)} className="min-w-0">{typeof context === "function" ? context({ target, locked: busy || Boolean(attempt), unavailable: notice }) : context}</fieldset>

@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on ./en for the WorkbenchCopy shape.
+ * [INPUT]: Canonical built-in Provider ids; Depends on ./en for the WorkbenchCopy shape.
  * [OUTPUT]: Provides es, the Spanish workbench catalog.
  * Names built-in recipes and Workflow plugins and explains missing workflow measurements.
  * [POS]: Lazy workbench-copy locale; the interface says only Workflow and Ejecución; lanes are carriles, columns columnas.
  */
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import { dock } from "./dock/es";
 import type { WorkbenchCopy } from "./en";
 import { memoryPluginCopy } from "./memory/es";
@@ -272,7 +273,7 @@ export const es: WorkbenchCopy = {
         summary: "Los roles de Agent hacen avanzar el trabajo en una Base, paso a paso, con una revisión en cada paso.",
         description: "Workflow convierte una Base en una cadena de trabajo. Cada paso es un rol que interpreta una de tus configuraciones de Agent, y cada paso termina con una revisión antes de seguir.\n\nConfigúralo en un Project y añade tarjetas a su primera columna. Abre cualquier ejecución para ver qué hizo cada rol y decidir qué pasa después.",
       },
-      claude: {
+      [BUILTIN_PROVIDER_IDS.claude]: {
         name: "Claude",
         summary: "Claude Code de Anthropic, funcionando como Agent en Bottega.",
         description: "Ejecuta Claude Code de Anthropic como Agent en Bottega. Trabaja en tus carpetas de Project con el acceso que permite cada configuración de Agent.\n\nNecesita la CLI de Claude Code y una cuenta de Anthropic con la sesión iniciada en este ordenador. Extras como el contexto de un millón de tokens y Claude in Chrome están en sus ajustes.",
@@ -300,7 +301,7 @@ export const es: WorkbenchCopy = {
           },
         },
       },
-      codex: {
+      [BUILTIN_PROVIDER_IDS.codex]: {
         name: "Codex",
         summary: "La CLI de Codex de OpenAI, funcionando como Agent en Bottega.",
         description: "Ejecuta la CLI de Codex de OpenAI como Agent en Bottega. Lee y edita tus carpetas de Project dentro de los límites de cada configuración de Agent.\n\nNecesita la CLI de Codex y una cuenta de OpenAI con la sesión iniciada en este ordenador. Sus propias memorias y su función multiagente se pueden desactivar en sus ajustes.",
@@ -316,13 +317,13 @@ export const es: WorkbenchCopy = {
           },
         },
       },
-      kimi: {
+      [BUILTIN_PROVIDER_IDS.kimi]: {
         name: "Kimi",
         summary: "La CLI de Kimi de Moonshot, funcionando como Agent en Bottega.",
         description: "Ejecuta la CLI de Kimi de Moonshot como Agent en Bottega. Necesita la CLI de Kimi y una cuenta de Moonshot con la sesión iniciada en este ordenador.",
         publisher: "Moonshot AI",
       },
-      opencode: {
+      [BUILTIN_PROVIDER_IDS.opencode]: {
         name: "OpenCode",
         summary: "OpenCode, de código abierto, que puede usar modelos de muchos servicios.",
         description: "Ejecuta la CLI de código abierto OpenCode como Agent en Bottega. Puede usar modelos de muchos servicios.",

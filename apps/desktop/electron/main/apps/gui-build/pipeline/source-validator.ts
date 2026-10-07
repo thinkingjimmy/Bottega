@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared author-source analysis, the runtime-authority analyzer, immutable source receipts, compiled GUI manifest, strict scaffold contracts, fixed author import metadata, and the preferences schema authority
- * [OUTPUT]: Provides App/plugin compiled source layout and subject-specific SDK admission, source-extension allowlist, canonical manifest, ABI, importer-domain, component-origin, preferences, CSS/SVG remote-reference, and raw-transport validation
+ * [OUTPUT]: Provides App/plugin compiled source layout and subject-specific SDK admission, source-extension allowlist, canonical manifest refusal without a second parse, ABI, importer-domain, component-origin, preferences, CSS/SVG remote-reference, and raw-transport validation
  * [POS]: apps/gui-build/pipeline source policy; code policy runs on the syntax tree and only CSS/SVG keep a scoped byte check, so comments never fail a build
  */
 
@@ -70,6 +70,7 @@ export async function validateCompiledGuiSource(
     if (FORBIDDEN_CONFIG.test(path)) add({ code: "GUI_BUILD_IMPORT_FORBIDDEN", file: path, message: "App-controlled build configuration is forbidden" });
   }
   await validateManifestBytes(receipt, add);
+  if (findings.some(finding => finding.code === "GUI_BUILD_MANIFEST_INVALID" && finding.file === "app.json")) return findings;
   await validateComponents(receipt, gui, files, add);
   await validatePreferences(receipt, gui, files, add);
   await validateSourceFiles(receipt, gui, analysis, add);

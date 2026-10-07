@@ -18,7 +18,7 @@ import { useAppTranslation } from "@/components/providers/preferences/i18n-provi
 import { agentConfigsBridge } from "@/lib/agent/agent-configs-client";
 import { AgentBackendIcon, backendLabel } from "@/lib/agent/agent-backends";
 import { requestSettingsSection } from "@/lib/settings/navigation/settings-navigation";
-import type { AgentBackendId } from "../../../../../shared/ipc/agent/agent-ipc";
+import { builtinProviderCatalog, knownBackend } from "../../../../../shared/providers/catalog";
 import { workflowsBridge } from "../bridge";
 import { preflightReason } from "./refusals";
 
@@ -56,7 +56,7 @@ export function FirstEnable({ projectId, base, onEnabled, onClose }: {
     else if (failure === "workflow-plugin-disabled" || failure === "contract-missing" || problem?.refusal === "plugin-disabled" || problem?.refusal === "agent-config-provider-disabled") {
       requestSettingsSection({ section: "plugins", plugin: problem?.provider ?? "workflow" });
     } else if (problem?.refusal.startsWith("agent-config-") || problem?.refusal === "config-unavailable") requestSettingsSection({ section: "agent-configs" });
-    else requestSettingsSection({ section: "providers", agent: problem?.provider as AgentBackendId | undefined });
+    else requestSettingsSection({ section: "providers", agent: problem?.provider ? knownBackend(builtinProviderCatalog, problem.provider) ?? undefined : undefined });
   };
   const enable = async () => {
     if (!defaults?.ready || !bridge || busy || !room) return;

@@ -26,7 +26,7 @@ import { createDescriptorBackend } from "../../providers/host/packages/descripto
 import { followPackageProviders } from "../../providers/host/packages/runtime-sync";
 import { ProviderAdmissionRefused } from "../../providers/host/admission";
 import { extensionPackageRoot } from "../../extensions/skills/skill-candidates";
-import { builtinProviderCatalog } from "../../../../shared/providers/catalog";
+import { builtinProviderCatalog, knownBackend } from "../../../../shared/providers/catalog";
 import { runtimePort } from "../../runtime";
 import { composeAgentConfigs } from "../../agent-configs/runtime";
 import { backendById, backendRegistry, backendRuntimeRegistry, providerReadinessPlan } from "../../backends";
@@ -258,8 +258,9 @@ export async function composeFoundationRuntime(input: Parameters<typeof composeO
     defaultConfigurations: async (provider, persist, projectId) => agentConfigs.service.workflowDefaults(provider, await workflowDefaultLabels(input.workflows.locale()), persist, projectId),
     /* T21-c: what the Provider's runtime here takes, checked the way a turn's start checks it (capability-validation). */
     unapplied: async (providerId, fields, workspace) => {
-      if (!backendRegistry.has(providerId as AgentBackendId)) return [];
-      const snapshot = backendRuntimeRegistry.current(providerId as AgentBackendId), backend = backendById(providerId as AgentBackendId);
+      const backendId = knownBackend(builtinProviderCatalog, providerId);
+      if (!backendId) return [];
+      const snapshot = backendRuntimeRegistry.current(backendId), backend = backendById(backendId);
       if (snapshot?.runtimeStatus !== "installed") return [];
       const models = snapshot.capabilities.modelOptions === "list-only" && backend.models
         ? (await backend.models.list(snapshot.runtime, workspace ?? homedir()).catch(() => null))?.map(entry => entry.slug) ?? null : null;
@@ -278,7 +279,7 @@ export async function composeFoundationRuntime(input: Parameters<typeof composeO
   workflowsReady.catch((cause) => console.warn("[workflows] runtime failed to start", cause));
   /* Q29: a Provider turned off pauses each run with a step of it still ahead, after the current step. */
   const releasePluginRuns = plugins.onChanged(() => { void workflowsReady.then(workflows => {
-    for (const providerId of AGENT_BACKEND_ORDER) if (!plugins!.providerEnabled(providerId)) void workflows.pauseForProvider(providerId);
+    for (const { id: providerId } of builtinProviderCatalog.entries()) if (!plugins!.providerEnabled(providerId)) void workflows.pauseForProvider(providerId);
     if (!plugins!.workflowEnabled()) void workflows.pauseForWorkflowPlugin();
   }).catch(() => undefined); });
   const impact = { now: () => Date.now(), agentConfigs: () => agentConfigs.service.list(), bindings: () => workflowRuntime()?.bindings() ?? [],

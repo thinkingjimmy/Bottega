@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on frozen package preflight, shared authorization/extensions, manifest/Base contracts, cross-volume publication, App/Project/Base Stores and lifecycle custody.
- * [OUTPUT]: Provides BaseAppImporter import/recover/retryPending/cancelPending, rejected-package receipt reads, durable Studio-only authorization, internal Base navigation, compiled rebuild, grant-before-promotion ordering and idempotent fulfillment recovery
+ * [OUTPUT]: Provides BaseAppImporter import/recover/retryPending/cancelPending, rejected-package receipt reads, durable Studio-only authorization, internal Base navigation, compiled rebuild from a verified copy without mutating confirmed package bytes, grant-before-promotion ordering and idempotent fulfillment recovery
  * [POS]: apps/install's unified Base App delivery pipeline; GitHub import and preset install differ only in where the package comes from, so import/recover/retryPending/cancelPending share one code path with no source-specific branching
  */
 
+import { AppSourcePreparer, removeCompilerStagingTree } from "../gui-build/pipeline/source-preparer";
 import { publishDirectory } from "../store/folder/publication";
 import { authorizeAndPromote, assertStudioAuthorization } from "./delivery/authorization";
 import { fulfillExtensions, fulfillmentInput, fulfillmentFromIntent } from "./delivery/extensions";
@@ -393,18 +394,25 @@ export class BaseAppImporter {
         throw new Error("安装恢复的 frozen manifest 已漂移");
       }
     } else {
-      record = await this.apps.set(
-        {
-          ...record,
-          state: "creating",
-          lastError: null,
-          agentWarning: null,
-          manifest,
-        },
-        {
-          generationSourceDir: packageRoot,
+      const compiled = Boolean(manifest.gui?.build);
+      const source = compiled ? await new AppSourcePreparer().freeze({
+        appId, liveRoot: packageRoot, stagingParent: join(dirname(packageRoot), ".compiler-input"), compiled: true,
+      }) : null;
+      try {
+        const generationSourceDir = source?.snapshotRoot ?? packageRoot;
+        if (source) {
+          const inspection = await inspectPackage(generationSourceDir);
+          if (await packageDigest(generationSourceDir, inspection.files) !== activeRequest.source.digest) {
+            throw new Error("APP_CANDIDATE_DIGEST_CHANGED");
+          }
+          await makeWritable(generationSourceDir);
         }
-      );
+        record = await this.apps.set({
+          ...record, state: "creating", lastError: null, agentWarning: null, manifest,
+        }, { generationSourceDir });
+      } finally {
+        if (source) await removeCompilerStagingTree(source.snapshotRoot);
+      }
     }
     const declarations = manifest.extensionRequirements ?? [];
     const canApproveExtensions = fulfillment.complete &&

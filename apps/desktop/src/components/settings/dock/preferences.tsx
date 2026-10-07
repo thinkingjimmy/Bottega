@@ -196,11 +196,11 @@ export function DockPlacement({ state }: { state: DockSettingsState }) {
   if (placement.sharedEdge) messages.push(t("systemDock.placement.sharedHint"));
   if (placement.presentation === "hidden") {
     const hiddenKey = {
-      disabled: "disabledHint", unsupported: "unsupportedHint", user: "userHiddenHint", "locked-or-sleeping": "lockedHint",
-      "not-ready": "waitingHint", "renderer-failed": "failedRendererHint", "coexist-hide": "coexistHiddenHint",
-      "no-display": "noDisplayHint", "no-space": "noSpaceHint", autohide: "autoHiddenHint", transition: "waitingHint",
+      disabled: "systemDock.placement.disabledHint", unsupported: "systemDock.placement.unsupportedHint", user: "systemDock.placement.userHiddenHint", "locked-or-sleeping": "systemDock.placement.lockedHint",
+      "not-ready": "systemDock.placement.waitingHint", "renderer-failed": "systemDock.placement.failedRendererHint", "coexist-hide": "systemDock.placement.coexistHiddenHint",
+      "no-display": "systemDock.placement.noDisplayHint", "no-space": "systemDock.placement.noSpaceHint", autohide: "systemDock.placement.autoHiddenHint", transition: "systemDock.placement.waitingHint",
     }[placement.hiddenBy];
-    const message = t(`systemDock.placement.${hiddenKey}`);
+    const message = t(hiddenKey);
     if (!messages.includes(message)) messages.push(message);
   }
   if (state.pending === "preference" && state.optimistic?.displaySelection) messages.push(t("systemDock.placement.pendingHint"));
@@ -234,7 +234,7 @@ export function DockPlacement({ state }: { state: DockSettingsState }) {
               document.getElementById(`dock-edge-${next}`)?.focus();
               void set({ edge: next });
             }} tabIndex={prefs.edge === edge ? 0 : -1} onClick={() => { if (!disabled) void set({ edge: edge as DockEdge }); }}>
-            <Icon className="size-6" aria-hidden="true" /><span>{t(`systemDock.placement.${edge}`)}</span>
+            <Icon className="size-6" aria-hidden="true" /><span>{t(edge === "left" ? "systemDock.placement.left" : edge === "right" ? "systemDock.placement.right" : "systemDock.placement.bottom")}</span>
           </button>;
         })}
       </div>} />

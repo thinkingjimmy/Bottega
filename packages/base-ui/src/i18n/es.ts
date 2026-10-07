@@ -385,7 +385,7 @@ export const basesEs: BasesCatalog = {
     generating: "Generando…",
     retry: "Reintentar",
     loadingImage: "Cargando la imagen",
-    previewFailed: "No se puede previsualizar esta imagen",
+
     onlyOnDevice: "Solo en {{device}}",
     onlyOnSource: "Solo en el equipo de origen",
     generated: "Generada",

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on scoped transcript/live sources, optional remote controls, virtualized native conversation geometry and portable Chat heads.
+ * [INPUT]: Depends on scoped transcript/live sources, optional remote controls, shared localized thinking copy, virtualized native conversation geometry and portable Chat heads.
  * [OUTPUT]: Renders canonical and live messages without duplication, publishes one bounded model, and reports message/detail intents. Settlement proof retires waiting even before the head catches up.
  * [POS]: conversation/'s root transcript over body/ and timeline/ for desktop and Web; missing pages never imply a complete or empty reply.
  */
@@ -14,6 +14,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { ConversationUser } from "./turn/user";
+import { turnCopy } from "./turn/copy";
 import { ConversationDraft } from "./turn/draft";
 import { ConversationActions } from "@ai-chat/ui/components/conversation/actions";
 import { ConversationSkeleton } from "@ai-chat/ui/components/conversation/skeleton";
@@ -305,7 +306,7 @@ export function ChatTranscript({
             <ConversationUser content={entry.input.payload.kind === "start-turn" ? entry.input.payload.text : ""} showMore={copy.showMore} showLess={copy.showLess}
               actions={<ConversationActions role="user" copyLabel={copy.copy} copiedLabel={copy.copied} onCopy={() => navigator.clipboard.writeText(entry.input.payload.kind === "start-turn" ? entry.input.payload.text : "")} />} />
           </article>)}
-          {value.latest && waitingForReply && <ConversationDraft label="Thinking" />}
+          {value.latest && waitingForReply && <ConversationDraft label={turnCopy(locale).thinking} />}
           {/* D-16: the live reply belongs under the newest messages; a reader on an older page is told, and can go back. */}
           {value.latest ? (
             <LiveReply

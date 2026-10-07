@@ -2,11 +2,11 @@
  * [INPUT]: Depends on Node crypto/fs/path, the Extension Registry's installed generation and administrative state, the host manifest,
  *          trust gate, shared plugin resolver, SerialQueue, package settings ports and the utility runtime's drain/disposal operations.
  * [OUTPUT]: Re-exports HOST_OFFERED_CONTRACTS; provides PackageAdmission, HostPackageRuntime, hostIdOf, HostPackageContractError and
- *           HostPackageRevokedError. Runtime exposes installed manifest metadata, active resolve/negotiate/ensure, trust verdicts and
+ *           HostPackageRevokedError. Runtime exposes installed manifest metadata, active resolve/negotiate/ensure with admission before metadata reads, trust verdicts and
  *           revocation events, settings attachment and deferred replacement, callerOf/outstanding, stopPackage/stopAdmission/close.
  * [POS]: The bridge from Registry admission to service/bridge processes. A per-package queue serializes starts and settings replacement;
  *        process-start settings are frozen per host and pending revisions are acknowledged only after all required roles reach hello.
- *        Explicit disposal aborts waiting work outside that queue so revocation and shutdown cannot wait on their own queued operation.
+ *        Trust checks run before joining that queue so revocation can close a held start; explicit disposal aborts waiting work outside that queue so revocation and shutdown cannot wait on their own queued operation.
  */
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -130,6 +130,7 @@ export class HostPackageRuntime {
   }
 
   private assertOpen(installIdentity: string, signal: AbortSignal) {
+    if (this.isRevoked(installIdentity)) throw this.revoked.get(installIdentity)!.error;
     if (this.stopped || this.closing.has(installIdentity) || signal.aborted) throw new HostPackageContractError("package-inactive", [installIdentity]);
   }
 
@@ -229,12 +230,18 @@ export class HostPackageRuntime {
    * a new start or a running host alike, first re-checks the signature against the latest snapshot (cached per generation and
    * snapshot version); a refusal marks the generation revoked and closes it out through stopPackage.
    */
-  ensure(installIdentity: string, role: Role): Promise<UtilityHost> {
+  async ensure(installIdentity: string, role: Role): Promise<UtilityHost> {
     const life = this.lifecycle(installIdentity), signal = life.controller.signal;
+    this.assertOpen(installIdentity, signal);
+    const current = await this.resolve(installIdentity);
+    if (!current) throw new HostPackageContractError("package-inactive", [installIdentity]);
+    await this.assertTrusted(current);
     return life.queue.enqueue(async () => {
       this.assertOpen(installIdentity, signal);
-      const manifest = await this.manifest(installIdentity);
-      if (manifest?.provider) this.providerIds.set(installIdentity, manifest.provider.id);
+      const resolved = await this.resolve(installIdentity);
+      if (!resolved) throw new HostPackageContractError("package-inactive", [installIdentity]);
+      const manifest = resolved.manifest;
+      if (manifest.provider) this.providerIds.set(installIdentity, manifest.provider.id);
       await this.replacePending(installIdentity, signal);
       const revision = this.pendingRestarts.get(installIdentity);
       if (revision) revision.roles.add(role);
@@ -307,8 +314,9 @@ export class HostPackageRuntime {
     if (verdict.status !== "refused") return verdict;
     const error = new HostPackageRevokedError(resolved.installIdentity, verdict.reason);
     this.revoked.set(resolved.installIdentity, { generationId: resolved.generationId, error });
+    const stop = this.stopPackage(resolved.installIdentity, error);
     for (const listener of this.revokedListeners) { try { listener(resolved.installIdentity); } catch (cause) { console.warn("[host-packages] revocation listener failed", cause); } }
-    await this.stopPackage(resolved.installIdentity, error);
+    await stop;
     return verdict;
   }
 

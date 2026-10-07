@@ -23,9 +23,9 @@ export function loadComposerCatalog(locale: string): Promise<void> {
   flights.set(locale, flight); return flight;
 }
 export type ComposerTranslate = (key: string, values?: Record<string, unknown>) => string;
-export function pluginInitializationMessage(entry: { generationId: string | null; error: string | null }, t: ComposerTranslate): string | undefined {
+export function pluginInitializationMessage(entry: { generationId: string | null; error: string | null }, composerText: ComposerTranslate): string | undefined {
   if (entry.generationId) return undefined;
-  return t(!entry.error || entry.error === "PLUGIN_PREPARING" ? "plugin.preparing" : "plugin.unavailable");
+  return composerText(!entry.error || entry.error === "PLUGIN_PREPARING" ? "plugin.preparing" : "plugin.unavailable");
 }
 export function composerTranslate(locale: string): ComposerTranslate {
   locale = resolveAppLocale(locale);

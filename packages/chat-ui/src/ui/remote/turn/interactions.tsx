@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on safe live interaction projections, immutable command receipts and controlled response callbacks.
- * [OUTPUT]: Places shared approval/question cards around or in the composer, with sequential answers, receipt-based pending states and shared interaction results.
+ * [OUTPUT]: Inactive question explanations and request-scoped already-resolved feedback; places shared approval/question cards around or in the composer, with sequential answers, receipt-based pending states, shared interaction results and guarded slot actions when an interaction replaces the editor.
  * [POS]: Shared remote interaction surface; recovery follows the platform declaration; unrepresentable decisions remain unavailable.
  */
 import { RemoteRecovery } from "./recovery";
@@ -24,9 +24,9 @@ function settled(entries: RemoteEntry[], matches: (payload: RemoteAction) => boo
   return entries.find(entry => matches(entry.input.payload) && (entry.receipt?.result === "already-resolved" || entry.receipt?.state === "done"))?.receipt ?? null;
 }
 /** Normal approvals sit above the editor; Plan review and questions own its slot. */
-export function RemoteInteractions({ projection, requestId, controls, running, ready, children, planDecision }: {
+export function RemoteInteractions({ projection, requestId, controls, running, ready, children, planDecision, slotActions }: {
   projection: LiveProjection | null; requestId: string; controls: RemoteInteractionControls; running: boolean; ready: boolean;
-  children?: ReactNode; planDecision?: ReactNode;
+  children?: ReactNode; planDecision?: ReactNode; slotActions?: ReactNode;
 }) {
   const { copy, entries, submit } = controls;
   const disabled = controls.disabled || !ready || !running, active = projection?.phase === "active" || projection?.phase === "starting";
@@ -34,6 +34,7 @@ export function RemoteInteractions({ projection, requestId, controls, running, r
   const t: ComposerTranslate = (key, values) => translate(key.replace(/^chat\.composer\./, ""), values);
   const approvals = projection?.approvals.filter(approval => !settled(entries, payload => payload.kind === "respond-approval" && payload.requestId === requestId && payload.approvalId === approval.approvalId)) ?? [];
   const questions = projection?.userInputs.filter(input => !settled(entries, payload => payload.kind === "respond-user-input" && payload.requestId === requestId && payload.userInputId === input.userInputId)) ?? [];
+  const resolvedElsewhere = entries.some(entry => "requestId" in entry.input.payload && entry.input.payload.requestId === requestId && entry.receipt?.result === "already-resolved");
   const planReview = approvals.find(approval => approval.purpose === "plan-review");
   const renderApproval = (approval: NonNullable<typeof projection>["approvals"][number]) => {
     const matches = (payload: RemoteAction) => payload.kind === "respond-approval" && payload.requestId === requestId && payload.approvalId === approval.approvalId;
@@ -47,9 +48,12 @@ export function RemoteInteractions({ projection, requestId, controls, running, r
   };
   return <InteractionTranslation.Provider value={t}>
     <InteractionResults results={projection?.interactionResults} copy={copy} />
+    {resolvedElsewhere && !projection?.interactionResults?.length && <p role="status" className="mb-2 text-xs text-muted-foreground">{copy.alreadyResolved}</p>}
     {controls.recoveryEnabled !== false && projection?.phase === "resume-failed" && projection.recovery && <RemoteRecovery key={projection.recovery.retryToken} recovery={projection.recovery} requestId={requestId} controls={{ ...controls, disabled }} />}
     {approvals.filter(approval => approval.purpose !== "plan-review").map(renderApproval)}
-    {planReview ? renderApproval(planReview) : questions[0] ? <RemoteQuestions key={questions[0].userInputId} input={questions[0]} queue={questions} requestId={requestId} controls={controls} disabled={disabled || !active} /> : planDecision ?? children}
+    {planReview ? renderApproval(planReview) : questions[0] ? <><RemoteQuestions key={questions[0].userInputId} input={questions[0]} queue={questions} requestId={requestId} controls={controls} disabled={disabled || !active} />
+      {!active && <p className="mb-2 text-xs text-muted-foreground">{copy.localOnly}</p>}</> : planDecision ?? children}
+    {(planReview || questions[0] || planDecision) && slotActions}
   </InteractionTranslation.Provider>;
 }
 function RemoteQuestions({ input, queue, requestId, controls, disabled }: {

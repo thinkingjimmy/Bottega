@@ -392,7 +392,7 @@ export const basesEn = {
     generating: "Generating…",
     retry: "Retry",
     loadingImage: "Loading image",
-    previewFailed: "Cannot preview this image",
+
     onlyOnDevice: "Only on {{device}}",
     onlyOnSource: "Only on the source computer",
     generated: "Generated",

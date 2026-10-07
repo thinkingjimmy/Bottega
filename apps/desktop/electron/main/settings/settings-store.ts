@@ -43,7 +43,7 @@ import { builtinProviderCatalog, type ProviderCatalog } from "../../../shared/pr
 import { mergeProviderMaps, patchProviderChoices, PROVIDER_ORDER_LIMIT, projectProviderFields, readProviderFields, type ProjectedProviderFields, type ProviderChoicesPatch, type StoredProviderFields } from "./provider-fields";
 export { DEFAULT_CHAT_OPTIONS_BY_BACKEND } from "../../../shared/chat-agent/options";
 const optionValue = z.string().trim().min(1).max(200);
-const DEFAULT_TITLE_AGENT: AgentBackendId = AGENT_BACKEND_ORDER[0];
+const DEFAULT_TITLE_AGENT: AgentBackendId = DEFAULT_PROVIDER_ID;
 
 const SCHEMA_VERSION = 11;
 const DEFAULT_SETTINGS: AppSettings = {

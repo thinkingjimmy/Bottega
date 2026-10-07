@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Portable messages, shared turn and action views, artifact renderers, private file access and host-owned detail callbacks.
+ * [INPUT]: Canonical built-in Provider ids; Portable messages, shared turn and action views, artifact renderers, private file access and host-owned detail callbacks.
  * [OUTPUT]: Renders origin-free canonical user bubbles, Agent/process headings, Plan, tools, media and subagents with Edit/Fork/copy actions and localized failure or interruption presentation.
  * [POS]: Canonical transcript adapter for Web and desktop mirrors; no execution command or local authority is reconstructed.
  */
+import { BUILTIN_PROVIDER_IDS } from "@ai-chat/cloud-protocol/chats/backend-id";
 import { projectUnavailableArtifacts } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import { ArtifactMessageRenderers } from "../../../artifacts/renderer";
 import { lazy, memo, Suspense, useMemo, useState, type ComponentProps } from "react";
@@ -57,7 +58,7 @@ export function TranscriptParts({ parts, parents = [], ...props }: Props & { par
   return <ConversationParts parts={parts} text={projectUnavailableArtifacts}
     subagent={part => <TranscriptSubagent {...props} part={part} parents={parents} />}
     failure={part => part.failure && props.remoteFailure
-      ? <ProductFailureNotice compact copy={remoteFailureCopy(part.failure, props.locale, { backend: backendName(props.body.message.role === "assistant" ? props.body.message.backend : "codex"), computer: props.remoteFailure.computer })} />
+      ? <ProductFailureNotice compact copy={remoteFailureCopy(part.failure, props.locale, { backend: backendName(props.body.message.role === "assistant" ? props.body.message.backend : BUILTIN_PROVIDER_IDS.codex), computer: props.remoteFailure.computer })} />
       : <ToolRow part={part} />}
     image={part => {
       const media = props.body.media.find(file => file.itemId === part.itemId && file.subagentId === (parents.at(-1) ?? null));

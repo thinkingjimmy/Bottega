@@ -74,7 +74,7 @@ async function readCandidate(
   component: ExtensionSkillComponent
 ): Promise<CatalogSkill | null> {
   const name = component.componentId.replace(/^skill:/, "");
-  if (!name || name.includes("/") || name.includes("../..")) return null;
+  if (!name || name.includes("/") || name.includes("..")) return null;
   const file = join(root, "skills", name, "SKILL.md");
   try {
     const metadata = await lstat(file);
@@ -88,7 +88,7 @@ async function readCandidate(
     /* 与 catalog 同一条 containment 口径：canonical 之后仍须留在包根内。 */
     const canonical = await realpath(file);
     const location = relative(await realpath(root), canonical);
-    if (location.startsWith("../..") || isAbsolute(location)) return null;
+    if (location.startsWith("..") || isAbsolute(location)) return null;
     const content = await readFile(canonical, "utf8");
     return {
       ref: component.componentInstanceIdentity,

@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on Zod, the contract grammar (contracts.ts), localized text (text.ts) and the settings fields (settings.ts).
+ * [INPUT]: Canonical SDK built-in Provider identities; Depends on Zod, the contract grammar (contracts.ts), localized text (text.ts) and the settings fields (settings.ts).
  * [OUTPUT]: Provides PLUGIN_KINDS, PLUGIN_SOURCES, TURN_ON_SETUPS, TURN_OFF_REASONS, pluginDescriptorSchema / PluginDescriptor, nativePluginId,
  *           BUILTIN_PLUGINS (Base, Workflow and the four built-in Providers with their introductions, and the first batch of Claude and Codex settings) builtinPlugin and the reserved builtin identity policy.
  * [POS]: Appendix C.1: one descriptor for every plugin (built-in feature, built-in Provider, host package, Agent-native). Memory, Tunnel,
  *        Dock and Sketch join BUILTIN_PLUGINS from their own documents. Defaults equal today's behaviour, so an untouched setting sends nothing.
  */
+import { BUILTIN_PROVIDER_IDS } from "../model/provider-capabilities";
 import { z } from "zod";
 import { AGENT_PROVIDER_CONTRACT, BASE_CONTRACT, pluginContractSchema } from "./contracts";
 import { settingFieldsSchema, type SettingField } from "./settings";
@@ -66,16 +67,16 @@ export const BUILTIN_PLUGINS: readonly PluginDescriptor[] = Object.freeze([
     description: copy("plugins.builtin.workflow.description"),
     icon: "workflow", provides: [], requires: [BASE_CONTRACT, AGENT_PROVIDER_CONTRACT], turnOn: { mode: "direct" }, turnOff: { allowed: true }, settings: [],
     capabilities: [{ label: copy("plugins.capability.workflowColumns"), id: null }, { label: copy("plugins.capability.workflowRoles"), id: null }] },
-  provider("claude", [
-    toggle("claude", "memory", "session-create", true),
-    toggle("claude", "native-subagents", "session-create", true),
-    toggle("claude", "workflow-tool", "session-create", true),
-    toggle("claude", "context-1m", "session-create", true),
-    toggle("claude", "claude-in-chrome", "session-create", false),
+  provider(BUILTIN_PROVIDER_IDS.claude, [
+    toggle(BUILTIN_PROVIDER_IDS.claude, "memory", "session-create", true),
+    toggle(BUILTIN_PROVIDER_IDS.claude, "native-subagents", "session-create", true),
+    toggle(BUILTIN_PROVIDER_IDS.claude, "workflow-tool", "session-create", true),
+    toggle(BUILTIN_PROVIDER_IDS.claude, "context-1m", "session-create", true),
+    toggle(BUILTIN_PROVIDER_IDS.claude, "claude-in-chrome", "session-create", false),
   ]),
-  provider("codex", [toggle("codex", "memory", "session-create", true), toggle("codex", "native-subagents", "session-create", true)]),
-  provider("kimi"),
-  provider("opencode"),
+  provider(BUILTIN_PROVIDER_IDS.codex, [toggle(BUILTIN_PROVIDER_IDS.codex, "memory", "session-create", true), toggle(BUILTIN_PROVIDER_IDS.codex, "native-subagents", "session-create", true)]),
+  provider(BUILTIN_PROVIDER_IDS.kimi),
+  provider(BUILTIN_PROVIDER_IDS.opencode),
 ] satisfies PluginDescriptor[]);
 /** Owners composed outside this table still reserve their product identity before they initialize. */
 export const BUILTIN_FEATURE_IDS = Object.freeze(['memory', 'tunnel', 'dock', 'sketch'] as const);

@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Depends on Provider plugin/runtime/auth snapshots and bounded refresh/scoped-auth ports.
+ * [INPUT]: Canonical built-in Provider ids from shared/providers/builtin; Depends on Provider plugin/runtime/auth snapshots and bounded refresh/scoped-auth ports.
  * [OUTPUT]: Provides createProviderReadiness with distinct installation, version and authentication refusals; OpenCode route readiness does not claim global sign-in.
  * [POS]: Workflow admission adapter shared by setup, execution and report repair.
  */
+import { BUILTIN_PROVIDER_IDS } from "../../../../shared/providers/builtin";
 import type { ProviderReadiness } from "../../workflows/runtime/turn/effective-config";
 
 /** Long enough for a fresh authentication check to answer, short enough that setup never hangs on one that will not. */
@@ -29,9 +30,9 @@ export function createProviderReadiness(ports: { enabled(providerId: string): bo
     /* A custom route's official answer is no evidence; its role runs like any turn on that route (TASK-13 E). */
     if (info?.authStatus === "unknown" && info.availability?.authUnknownReason === "custom-route") return "ready";
     /* OpenCode authenticates per model route. A successful ACP handshake permits a turn, without asserting global sign-in. */
-    if (providerId === "opencode" && info?.runtimeStatus === "installed" && info.authStatus === "unknown"
+    if (providerId === BUILTIN_PROVIDER_IDS.opencode && info?.runtimeStatus === "installed" && info.authStatus === "unknown"
       && info.availability?.authUnknownReason === "provider-scoped") return "ready";
-    if (providerId === "kimi" && info?.runtimeStatus === "installed" && info.authStatus === "unknown"
+    if (providerId === BUILTIN_PROVIDER_IDS.kimi && info?.runtimeStatus === "installed" && info.authStatus === "unknown"
       && info.availability?.authUnknownReason === "provider-scoped" && ports.checkScopedAuth) {
       /* The registry cannot advertise a workspace-scoped credential globally. Use Kimi's existing model-free auth probe
          for this admission only; its positive result never changes the account-wide sign-in indicator. */

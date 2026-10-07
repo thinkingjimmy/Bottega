@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on immutable command entries, receipt recovery actions and shared remote copy.
- * [OUTPUT]: Presents only actionable delivery failures and unknown outcomes through the shared failure view; normal and successful receipts render nothing. Original-request retry, lookup, Stop waiting and explicit new execution remain distinct.
+ * [OUTPUT]: Presents only actionable delivery failures and unknown outcomes through the shared failure view; normal progress renders no card; a received command still exposes its local Stop waiting control. Original-request retry, lookup, Stop waiting and explicit new execution remain distinct.
  * [POS]: Shared delivery feedback; an unknown transport or execution never synthesizes success.
  */
 import { ProductFailureNotice } from "@ai-chat/ui/components/feedback/failure-notice";
@@ -9,8 +9,9 @@ import { formatCopy } from "@ai-chat/ui/lib/workbench-copy/format";
 import { awaitingReport, awaitingResubmit, type RemoteEntry, type RemoteCommandSession } from "../../../platform/remote/commands/session";
 import { handledElsewhereBlock } from "../composer/status";
 import type { RemoteCopy } from "../../../i18n/messages/remote";
-export const needsDeliveryRecovery = (entry: RemoteEntry, computerUnavailable = false) => !entry.resubmittedAs && !awaitingResubmit(entry) &&
-  (entry.uncertain || Boolean(entry.rejected) || ["outcome-unknown", "error", "expired", "rejected"].includes(entry.receipt?.state ?? "") || computerUnavailable && awaitingReport(entry));
+export const needsDeliveryRecovery = (entry: RemoteEntry, computerUnavailable = false) => !entry.resubmittedAs &&
+  (entry.receipt?.reason === "connection-changed" && !entry.receipt.admission || !awaitingResubmit(entry) &&
+    (entry.uncertain || Boolean(entry.rejected) || ["outcome-unknown", "error", "expired", "rejected"].includes(entry.receipt?.state ?? "") || computerUnavailable && awaitingReport(entry)));
 export function RemoteReceipts({ entries, session, copy, computer, computerUnavailable, reexecute, sendAsNew, sentAsNew, disabled, reexecuteDisabled, stopped, stopWaiting }: {
   entries: RemoteEntry[]; session: RemoteCommandSession; copy: RemoteCopy; locale: string; disabled?: boolean; reexecuteDisabled?: boolean; reexecute(entry: RemoteEntry): void;
   /** The owning computer's name, which a command it has not admitted waits for. */
@@ -23,8 +24,19 @@ export function RemoteReceipts({ entries, session, copy, computer, computerUnava
 }) {
   // Normal command progress belongs to the turn and queue. Receipts only supply recovery.
   const attention = entries.filter(entry => needsDeliveryRecovery(entry, computerUnavailable) && !sentAsNew?.has(entry.input.commandId));
-  if (!attention.length) return null;
-  return <div className="mb-3 space-y-2" data-delivery-recovery="">{attention.map(entry => {
+  const waiting = computer && stopWaiting ? entries.filter(entry => awaitingReport(entry) && !entry.resubmittedAs &&
+    !sentAsNew?.has(entry.input.commandId) && !needsDeliveryRecovery(entry, computerUnavailable)) : [];
+  if (!attention.length && !waiting.length) return null;
+  return <div className="mb-3 space-y-2" data-delivery-recovery="">
+    {waiting.map(entry => {
+      const isStopped = Boolean(stopped?.has(entry.input.commandId));
+      return <div key={entry.input.commandId} data-command-id={entry.input.commandId} className="space-y-2 text-xs text-muted-foreground">
+        {isStopped && <p role="status">{formatCopy(copy.stoppedWaiting, { name: computer! })}</p>}
+        <p>{formatCopy(copy.stopWaitingWarning, { name: computer! })}</p>
+        {!isStopped && <Button type="button" variant="outline" size="sm" onClick={() => stopWaiting!(entry)}>{copy.stopWaiting}</Button>}
+      </div>;
+    })}
+    {attention.map(entry => {
     const receipt = entry.receipt, state = receipt?.state, retryable = !receipt || entry.uncertain || state === "pending" || state === "claimed";
     const resending = awaitingResubmit(entry), connection = connectionNotice(entry, copy, computer);
     const canReexecute = !resending && entry.input.payload.kind === "start-turn" && (Boolean(entry.rejected) || !receipt?.admission && ["expired", "rejected"].includes(state ?? ""));

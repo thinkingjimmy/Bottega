@@ -1,9 +1,11 @@
 /**
- * [INPUT]: The sequencing type of shared Agent/Settings only
- * [OUTPUT]: Explicit Provider-scoped Project history preview/import contracts and chat-scoped continuation receipts with durable manual intent identity, including failed outcomes
+ * [INPUT]: Canonical built-in Provider ids and Zod; The sequencing type of shared Agent/Settings only
+ * [OUTPUT]: historySourceKindSchema and its stable ordered kinds; Explicit Provider-scoped Project history preview/import contracts and chat-scoped continuation receipts with durable manual intent identity, including failed outcomes
  * [POS]: apps/desktop/shared/ipc/content; The single source of truth for the shared history-import wire; the renderer never receives a source file path and cannot forge a SessionRef
  */
 
+import { z } from "zod";
+import { BUILTIN_PROVIDER_IDS } from "../../providers/builtin";
 import type {
   AgentTurnOptions,
   AgentUserInput,
@@ -12,8 +14,11 @@ import type { ChatAttachmentPayload } from "./chats-ipc";
 import type { SubmissionContentV1 } from "../../content/submission/submission";
 import type { MemorySharingMode } from "../settings/settings-ipc";
 
-export const HISTORY_SOURCE_KINDS = ["claude", "codex", "kimi", "opencode"] as const;
-export type HistorySourceKind = (typeof HISTORY_SOURCE_KINDS)[number];
+export const historySourceKindSchema = z.enum([
+  BUILTIN_PROVIDER_IDS.claude, BUILTIN_PROVIDER_IDS.codex, BUILTIN_PROVIDER_IDS.kimi, BUILTIN_PROVIDER_IDS.opencode,
+]);
+export const HISTORY_SOURCE_KINDS = historySourceKindSchema.options;
+export type HistorySourceKind = z.infer<typeof historySourceKindSchema>;
 
 export type HistoryFileFingerprint = Readonly<{
   device: string;

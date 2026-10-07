@@ -16,7 +16,7 @@ export const chatComposerJa: typeof chatComposerEn = {
     standardSpeed: "標準",
   },
   approval: sharedComposer.approval,
-  branch: branchJa,
+  branch: { fallback: branchJa.fallback, loadFailed: branchJa.loadFailed, uncommitted_one: branchJa.uncommitted_one, uncommitted_other: branchJa.uncommitted_other },
   surface: {
     plan: "Plan",
     authorizeFileFailed: "{{file}} を承認できませんでした",

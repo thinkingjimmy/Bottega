@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React state, i18n, an explicit global/Project scope port, ui/Tabs, and Settings primitives
- * [OUTPUT]: Provides the shared 27-tool renderer with effective/source/backend facts, Project reset actions, and eight-domain navigation
+ * [OUTPUT]: Provides the shared ambient-tool renderer with effective/source/backend facts, Project reset actions, and eight-domain navigation
  * [POS]: apps/desktop/src/components/settings/tools; Scope-agnostic built-in tool controls for Settings › Tools; controllers own persistence and this component only renders snapshots and mutations
  */
 
@@ -62,6 +62,13 @@ export const BUILTIN_TOOL_COPY = {
   browser_close: { domain: "Browser" },
   design_render_check: { domain: "Design" },
   validate_app: { domain: "Apps" },
+  validate_plugin: { domain: "Apps" },
+  install_plugin: { domain: "Apps" },
+  plugin_versions: { domain: "Apps" },
+  activate_plugin_version: { domain: "Apps" },
+  preview_server_start: { domain: "Browser" },
+  preview_server_stop: { domain: "Browser" },
+  preview_server_list: { domain: "Browser" },
 } as const satisfies Record<string, BuiltinToolCopy>;
 
 const DOMAIN_ORDER: readonly BuiltinToolCopy["domain"][] = [

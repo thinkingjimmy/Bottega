@@ -16,7 +16,7 @@ export const chatComposerZhCN: typeof chatComposerEn = {
     standardSpeed: "标准",
   },
   approval: sharedComposer.approval,
-  branch: branchZhCn,
+  branch: { fallback: branchZhCn.fallback, loadFailed: branchZhCn.loadFailed, uncommitted_one: branchZhCn.uncommitted_one, uncommitted_other: branchZhCn.uncommitted_other },
   surface: {
     plan: "Plan",
     authorizeFileFailed: "无法授权文件 {{file}}",

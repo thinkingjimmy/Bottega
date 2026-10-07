@@ -471,6 +471,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
           actions={cardActions} />
         : blockedReason ? <RemoteUnavailable icon={<Cloud aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disconnectedTitle} description={copy.disconnectedDescription} />
         : <RemoteInteractions projection={turn?.projection ?? null} requestId={head.openTurnId ?? ""} controls={interactionControls} running={turnRunning} ready={Boolean(turn?.replayComplete)}
+          slotActions={generating && <div className="flex justify-end"><Button type="button" variant="outline" disabled={stopDisabled} onClick={() => { if (!stopDisabled && head.openTurnId) void submit({ kind: "cancel", requestId: head.openTurnId }); }}>{copy.stop}</Button></div>}
           planDecision={planId ? <ChatPlanDecision locale={locale} pending={{ busy: blocked || requestBusy || uncertain || reportWaiting }} onDecision={decidePlan} /> : undefined}>
         <ComposerForm className="chat-remote-form" data-composer-lock={uncertain ? "awaiting-delivery" : reportWaiting ? "answer-waits" : undefined} onSubmit={event => { event.preventDefault(); act(); }} {...controls.events}>
         {controls.files}

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on the final allowedTools issued for the turn
- * [OUTPUT]: Provides ProductContextFragments and productContextFragments: Base/Chart product-context text selected by the issued allowedTools
+ * [OUTPUT]: Provides ProductContextFragments and productContextFragments: Base/Chart/Preview product-context text selected by the issued allowedTools
  * [POS]: apps/desktop/shared/builtin-tools/agent; Cross-tool product-context truth of builtin-tools; it describes issued capability only and never edits prompts
  */
 
@@ -52,7 +52,12 @@ export function productContextFragments(
   const readable = BASE_READ_TOOLS.some((name) => allowed.has(name));
   const chartReadable = CHART_READ_TOOLS.some((name) => allowed.has(name));
   return {
-    ...(allowed.has("preview_server_start") ? { preview: "[Preview] Use preview_server_start for persistent live apps. Return its artifact fence; recheck with preview_server_list before finishing. Use preview_server_stop to stop a managed app. Never promise a remote URL before the user enables access." } : {}),
+    ...(allowed.has("preview_server_start") ? { preview: [
+      "[Preview] Use preview_server_start for persistent live apps. Return its artifact fence.",
+      ...(allowed.has("preview_server_list") ? ["Recheck with preview_server_list before finishing."] : []),
+      ...(allowed.has("preview_server_stop") ? ["Use preview_server_stop to stop a managed app."] : []),
+      "Never promise a remote URL before the user enables access.",
+    ].join(" ") } : {}),
     ...(writable
       ? { base: BASE_WRITE_CONTEXT }
       : readable

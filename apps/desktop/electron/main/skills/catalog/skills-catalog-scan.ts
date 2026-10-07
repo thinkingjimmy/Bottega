@@ -75,7 +75,7 @@ async function scanSkillRoot(
       const location = relative(canonicalRoot, canonical);
       if (location.startsWith("..") || isAbsolute(location)) continue;
       if (metadata.isDirectory()) {
-        if (!entry.name.startsWith("../..")) await visit(path, depth + 1);
+        if (!entry.name.startsWith(".")) await visit(path, depth + 1);
         continue;
       }
       if (

@@ -382,7 +382,7 @@ export const basesJa: BasesCatalog = {
     generating: "生成中…",
     retry: "再試行",
     loadingImage: "画像を読み込み中",
-    previewFailed: "この画像をプレビューできません",
+
     onlyOnDevice: "{{device}} でのみ利用できます",
     onlyOnSource: "元のコンピューターでのみ利用できます",
     generated: "生成結果",

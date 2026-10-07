@@ -4,6 +4,7 @@
  * Workflow preparation narrows Skills and MCP candidates before their receipts enter custody.
  * [POS]: The conversation-domain startup composition module; the external-history half lives in history-import-runtime.ts and assembles dependencies without holding global lifecycle state
  */
+import { builtinProviderCatalog, knownBackend } from "../../../../shared/providers/catalog";
 
 import { requireProvider } from "../../backends";
 import { join } from "node:path";
@@ -197,7 +198,9 @@ export function createChatsService({
         if (eligibility.decision !== "allow") {
           throw new Error(`${descriptor.displayName} 当前不可用于标题生成`);
         }
-        return generateTitle(backendById(descriptor.id as AgentBackendId), titleWorkspace, firstMessage, model, context);
+        const backend = knownBackend(builtinProviderCatalog, descriptor.id);
+        if (!backend) throw new Error(`${descriptor.displayName} cannot generate a title.`);
+        return generateTitle(backendById(backend), titleWorkspace, firstMessage, model, context);
       }
       /* The one-shot route has no purpose eligibility to consult, so it reads the
          authentication conclusion directly: a confirmed "no" is a hard failure, a

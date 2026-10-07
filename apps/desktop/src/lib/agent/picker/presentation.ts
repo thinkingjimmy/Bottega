@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Provider catalog entries, History source identifiers, independent runtime/auth facts and shared native/remote picker presentation.
+ * [INPUT]: Shared canonical history-source schema; Provider catalog entries, History source identifiers, independent runtime/auth facts and shared native/remote picker presentation.
  * [OUTPUT]: Installed-provider visibility for Composer and History import, quota-demand eligibility and login-first, quota-first picker presentation
  * [POS]: Pure Agent picker policy; UI rendering and main-process execution admission remain separate consumers of the facts.
  */
@@ -9,7 +9,7 @@ import type { AvailabilityState } from "../../../../shared/agent-availability/ty
 import { activeNegative } from "../../../../shared/agent-availability/projection";
 import { projectAgentPickerPresentation } from "@ai-chat/chat-ui/agent-picker/presentation";
 import type { AgentUsageLimits } from "../../../../shared/usage-limits/types";
-import { HISTORY_SOURCE_KINDS } from "../../../../shared/ipc/content/history-import-ipc";
+import { historySourceKindSchema } from "../../../../shared/ipc/content/history-import-ipc";
 type PickerBackend = Pick<BackendInfo, "runtimeStatus" | "authStatus" | "availability" | "updateAvailable">;
 
 export function installedPickerProvider(entry: Pick<ProviderCatalogSnapshot["entries"][number], "source" | "unavailableReason">, backend?: PickerBackend) {
@@ -18,7 +18,7 @@ export function installedPickerProvider(entry: Pick<ProviderCatalogSnapshot["ent
 }
 
 export function installedHistorySources(backends: readonly BackendInfo[]) {
-  return HISTORY_SOURCE_KINDS.filter(kind => installedPickerProvider({ source: "builtin" }, backends.find(backend => backend.id === kind)));
+  return historySourceKindSchema.options.filter(kind => installedPickerProvider({ source: "builtin" }, backends.find(backend => backend.id === kind)));
 }
 
 function signedOut(backend?: PickerBackend) {

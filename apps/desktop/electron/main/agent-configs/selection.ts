@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Depends on Local Skill library and MCP inventories, native Skill sources, prepared receipts and frozen workflow resources.
+ * [INPUT]: Canonical built-in Provider ids from shared/providers/builtin; Depends on Local Skill library and MCP inventories, native Skill sources, prepared receipts and frozen workflow resources.
  * [OUTPUT]: Provides workflowInventory, workflowNativeSkillRoots, workflowSkillSelection and workflowToolSelection; resource identity and digests must match.
  * [POS]: Local resource boundary for workflow configuration and turn preparation; secrets stay in main custody.
  */
+import { BUILTIN_PROVIDER_IDS } from "../../../shared/providers/builtin";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
@@ -22,11 +23,11 @@ export function workflowNativeSkillRoots(provider: string, workspace: string, so
     for (const source of sources?.sources(path) ?? []) roots.add(source.path);
     if (path === dirname(path)) break;
   }
-  if (provider === "codex") {
+  if (provider === BUILTIN_PROVIDER_IDS.codex) {
     roots.add(join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "skills"));
     roots.add("/etc/codex/skills");
   }
-  if (provider === "opencode") {
+  if (provider === BUILTIN_PROVIDER_IDS.opencode) {
     roots.add(join(homedir(), ".agents", "skills"));
     roots.add(join(homedir(), ".opencode", "skills"));
     roots.add(join(homedir(), ".opencode", "skill"));

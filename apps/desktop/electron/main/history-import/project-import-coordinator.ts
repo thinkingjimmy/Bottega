@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on crypto, Project/History shared Contract with Injected directory selection, selected-source index warm-up, scan counting, Project commit port
+ * [INPUT]: Shared canonical history-source schema; Depends on crypto, Project/History shared Contract with Injected directory selection, selected-source index warm-up, scan counting, Project commit port
  * [OUTPUT]: Provides ProjectImportCoordinator: selected-source warm-up alongside the folder picker, tokens freezing source selection, asynchronous preflight counts, TTL validation, and the sole commit input for created determination
  * [POS]: History-import's Project-onboarding state machine; HistoryImportService owns indexing after commit, and the coordinator discards the token once it is used
  */
 
 import { randomUUID } from "node:crypto";
-import { HISTORY_SOURCE_KINDS, type HistorySourceCount, type HistorySourceKind } from "../../../shared/ipc/content/history-import-ipc";
+import { historySourceKindSchema, type HistorySourceCount, type HistorySourceKind } from "../../../shared/ipc/content/history-import-ipc";
 import type { Project } from "../../../shared/ipc/workspace/projects-ipc";
 
 const PREPARE_TTL = 10 * 60_000;
@@ -33,7 +33,7 @@ export class ProjectImportCoordinator {
   /* 目录选定即返回令牌；侦测计数在后台跑，renderer 独立领取预检结果。
      预热与选择器同时开始：用户在系统对话框里的那几秒，正好把每个来源的
      身份索引备好，选定后的计数多数时候直接从内存作答。 */
-  async prepare(sourceKinds: readonly HistorySourceKind[] = HISTORY_SOURCE_KINDS) {
+  async prepare(sourceKinds: readonly HistorySourceKind[] = historySourceKindSchema.options) {
     this.ports.warm?.(sourceKinds).catch(() => {});
     const selected = await this.ports.select();
     if (!selected) return null;

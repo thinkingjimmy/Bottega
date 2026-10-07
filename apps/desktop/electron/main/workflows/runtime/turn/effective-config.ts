@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on Frozen config contracts, Provider readiness/measurement admission, builtin tool version gates and Chat defaults.
+ * [INPUT]: Canonical built-in Provider ids from shared/providers/builtin; Depends on Frozen config contracts, Provider readiness/measurement admission, builtin tool version gates and Chat defaults.
  * [OUTPUT]: Provides admitFrozen, preflightRoles, turnOptionsFor, turnReadOnly, turnNetworkOff, unappliedSettings and appliedScopeDifferences.
  * [POS]: Workflow role admission and effective setting translation; mandatory read-only caps remain visible without disabling valid configs.
  * Missing measurement identity is distinct from missing installation.
  * Frozen scope preserves explicit Memory readonly intent for main-owned turn policy.
  */
+import { BUILTIN_PROVIDER_IDS } from "../../../../../shared/providers/builtin";
 import type { FreezeRefusal, FrozenAgentConfig } from "@ai-chat/cloud-protocol/agent-config/payload";
 import { admitWorkflowRole, type MeasuredCapability, type MeasurementIdentity, type ProviderCapability } from "@ai-chat/cloud-protocol/contracts/provider";
 import type { ConfigApplySetting, WorkflowRolePreflight } from "@ai-chat/cloud-protocol/contracts/workflow/bridge";
@@ -114,7 +115,7 @@ export async function admitFrozen(role: WorkflowRoleName, frozen: FrozenLike, po
   if (readiness !== "ready") return { admitted: false, reason: readiness };
   const { measured, identity } = await ports.measurements(provider);
   if (!identity) return { admitted: false, reason: "provider-measurements-unavailable" };
-  if (provider === "kimi" && builtinToolsForVersion("kimi", identity.cliVersion) === "none") {
+  if (provider === BUILTIN_PROVIDER_IDS.kimi && builtinToolsForVersion(BUILTIN_PROVIDER_IDS.kimi, identity.cliVersion) === "none") {
     return { admitted: false, reason: "provider-version-too-old" };
   }
   const userRequires: ProviderCapability[] = [...(frozen.guarantees?.workspace === "read-only" ? ["read-only" as const] : []),

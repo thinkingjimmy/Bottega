@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on ./en for the WorkbenchCopy shape.
+ * [INPUT]: Canonical built-in Provider ids; Depends on ./en for the WorkbenchCopy shape.
  * [OUTPUT]: Provides ja, the Japanese workbench catalog.
  * Names built-in recipes and Workflow plugins and explains missing workflow measurements.
  * [POS]: Lazy workbench-copy locale; the interface says only ワークフロー and 実行.
  */
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import { dock } from "./dock/ja";
 import type { WorkbenchCopy } from "./en";
 import { memoryPluginCopy } from "./memory/ja";
@@ -272,7 +273,7 @@ export const ja: WorkbenchCopy = {
         summary: "Agent のロールが Base 上で作業を一歩ずつ進め、各ステップで確認できます。",
         description: "ワークフローは Base をパイプラインに変えます。各ステップは Agent 設定が担うロールで、ステップごとに確認してから次へ進みます。\n\nProject で設定し、最初の列にカードを追加すると始まります。実行を開くと各ロールの作業を確認し、次の進め方を変えられます。",
       },
-      claude: {
+      [BUILTIN_PROVIDER_IDS.claude]: {
         name: "Claude",
         summary: "Anthropic の Claude Code を Bottega の Agent として実行します。",
         description: "Anthropic の Claude Code を Bottega の Agent として実行します。各 Agent 設定が許す範囲で Project のフォルダを扱います。\n\nこのコンピューターに Claude Code CLI と Anthropic アカウントへのサインインが必要です。100 万トークンのコンテキストや Claude in Chrome などは設定で有効にできます。",
@@ -300,7 +301,7 @@ export const ja: WorkbenchCopy = {
           },
         },
       },
-      codex: {
+      [BUILTIN_PROVIDER_IDS.codex]: {
         name: "Codex",
         summary: "OpenAI の Codex CLI を Bottega の Agent として実行します。",
         description: "OpenAI の Codex CLI を Bottega の Agent として実行します。各 Agent 設定の範囲内で Project のフォルダを読み書きします。\n\nこのコンピューターに Codex CLI と OpenAI アカウントへのサインインが必要です。Codex 独自のメモリとマルチエージェント機能は設定でオフにできます。",
@@ -316,13 +317,13 @@ export const ja: WorkbenchCopy = {
           },
         },
       },
-      kimi: {
+      [BUILTIN_PROVIDER_IDS.kimi]: {
         name: "Kimi",
         summary: "Moonshot の Kimi CLI を Bottega の Agent として実行します。",
         description: "Moonshot の Kimi CLI を Bottega の Agent として実行します。このコンピューターに Kimi CLI と Moonshot アカウントへのサインインが必要です。",
         publisher: "Moonshot AI",
       },
-      opencode: {
+      [BUILTIN_PROVIDER_IDS.opencode]: {
         name: "OpenCode",
         summary: "多くのサービスのモデルを使えるオープンソースの OpenCode です。",
         description: "オープンソースの OpenCode CLI を Bottega の Agent として実行します。さまざまなサービスのモデルを使えます。",

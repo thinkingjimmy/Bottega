@@ -10,7 +10,7 @@
  *        settings page. The introduction has one hero H1 and the catalog's page actions sit beside its content H1. Turning a plugin off on its settings
  *        page keeps the page, so owner recovery (Dock) stays reachable while off.
  */
-import { ArrowUpRight, Plus } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Plus } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { formatWorkbench, useWorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
@@ -19,6 +19,7 @@ import { useAppTranslation } from "@/components/providers/preferences/i18n-provi
 import { SettingsAlert, SettingsButton, SettingsCanvas } from "@/components/settings/settings-layout";
 import { openPluginAuthoring } from "@/components/settings/plugins/authoring/open";
 import { pluginText } from "@/components/settings/plugins/copy";
+import { PluginIcon } from "@/components/settings/plugins/card";
 import { PluginGrid } from "@/components/settings/plugins/grid";
 import { PluginAboutPage, PluginControl } from "@/components/settings/plugins/detail/about";
 import { PluginSettingsPage } from "@/components/settings/plugins/detail/settings-page";
@@ -119,6 +120,10 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
     return (
       <SettingsPage>
         <SettingsCanvas>
+        <div className="mb-5 flex items-center gap-2 [-webkit-app-region:no-drag]">
+        <SettingsButton data-plugin-back="" variant="ghost" onClick={() => onOpenPlugin(null)}><ArrowLeft className="size-3.5" />{copy.back}</SettingsButton>
+        {plugin && <span data-plugin-crumb="" className="inline-flex items-center gap-2 text-sm text-muted-foreground"><PluginIcon plugin={plugin} size="md" />{name}</span>}
+        </div>
           {alerts}
           <PluginAboutPage key={target.id} pluginId={target.id} bridge={bridge} workbench={workbench} locale={locale} plugins={plugins ?? []}
             switching={switching} hasSettingsPage={plugin?.hasSettings ?? false} onOpenPlugin={openAbout} onOpenSettings={openSettings}

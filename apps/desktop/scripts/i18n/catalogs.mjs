@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Explicit product translation module paths, including shared App enablement and plugin installation copy.
+ * [INPUT]: Explicit product translation module paths, including shared App enablement, project branch and portable conversation copy.
  * [OUTPUT]: translationCatalogFiles, the closed set of complete locale dictionaries.
  * [POS]: Copy-audit policy data; UI and execution modules remain subject to sink checks.
  */
@@ -26,6 +26,8 @@ export const translationCatalogFiles = new Set([
   "packages/chat-ui/src/ui/composer/controls/copy/ja.ts",
   "packages/chat-ui/src/ui/composer/controls/copy/zh-cn.ts",
   "packages/chat-ui/src/ui/composer/agent/quota/copy.ts",
+  "packages/chat-ui/src/ui/conversation/turn/copy.ts",
+  ...["en", "es", "fr", "ja", "zh-cn"].map(locale => `packages/chat-ui/src/ui/composer/project/branch/${locale}.ts`),
   "packages/ui/src/components/workspace/copy/en.ts",
   "packages/ui/src/components/workspace/copy/es.ts",
   "packages/ui/src/components/workspace/copy/fr.ts",

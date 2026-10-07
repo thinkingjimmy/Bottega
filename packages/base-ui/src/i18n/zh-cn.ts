@@ -391,7 +391,7 @@ export const basesZhCN: BasesCatalog = {
     generating: "正在生成…",
     retry: "重试",
     loadingImage: "正在读取图片",
-    previewFailed: "无法预览图片",
+
     onlyOnDevice: "仅在 {{device}} 上",
     onlyOnSource: "仅在来源电脑上",
     generated: "生成结果",

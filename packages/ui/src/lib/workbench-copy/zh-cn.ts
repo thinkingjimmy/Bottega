@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on ./en for the WorkbenchCopy shape.
+ * [INPUT]: Canonical built-in Provider ids; Depends on ./en for the WorkbenchCopy shape.
  * [OUTPUT]: Provides zhCN, the Simplified Chinese workbench catalog.
  * Names built-in recipes and Workflow plugins and explains missing workflow measurements.
  * [POS]: Lazy workbench-copy locale; the interface says only 流程 and 运行.
  */
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import { dock } from "./dock/zh-cn";
 import type { WorkbenchCopy } from "./en";
 import { memoryPluginCopy } from "./memory/zh-cn";
@@ -272,7 +273,7 @@ export const zhCN: WorkbenchCopy = {
         summary: "让 Agent 角色按流程在 Base 上接力推进工作，每一步都可以审阅。",
         description: "流程把 Base 变成一条流水线。每一步由一个 Agent 配置扮演的角色完成，每一步结束都要审阅，通过后才进入下一步。\n\n在 Project 里设置流程，把卡片放进第一列即可开始。随时打开一次运行，查看每个角色做了什么，并决定接下来怎么走。",
       },
-      claude: {
+      [BUILTIN_PROVIDER_IDS.claude]: {
         name: "Claude",
         summary: "Anthropic 的 Claude Code，作为 Agent 在 Bottega 里运行。",
         description: "把 Anthropic 的 Claude Code 作为 Agent 在 Bottega 里运行。它在你的 Project 文件夹里工作，权限由各个 Agent 配置决定。\n\n需要在这台电脑上安装 Claude Code CLI 并登录 Anthropic 账号。100 万上下文、Claude in Chrome 等额外能力在它的设置里开启。",
@@ -300,7 +301,7 @@ export const zhCN: WorkbenchCopy = {
           },
         },
       },
-      codex: {
+      [BUILTIN_PROVIDER_IDS.codex]: {
         name: "Codex",
         summary: "OpenAI 的 Codex CLI，作为 Agent 在 Bottega 里运行。",
         description: "把 OpenAI 的 Codex CLI 作为 Agent 在 Bottega 里运行。它在各个 Agent 配置允许的范围内读写你的 Project 文件夹。\n\n需要在这台电脑上安装 Codex CLI 并登录 OpenAI 账号。它自带的记忆和多 Agent 功能可以在设置里关闭。",
@@ -316,13 +317,13 @@ export const zhCN: WorkbenchCopy = {
           },
         },
       },
-      kimi: {
+      [BUILTIN_PROVIDER_IDS.kimi]: {
         name: "Kimi",
         summary: "月之暗面的 Kimi CLI，作为 Agent 在 Bottega 里运行。",
         description: "把 Moonshot 的 Kimi CLI 作为 Agent 在 Bottega 里运行。需要在这台电脑上安装 Kimi CLI 并登录 Moonshot 账号。",
         publisher: "Moonshot AI",
       },
-      opencode: {
+      [BUILTIN_PROVIDER_IDS.opencode]: {
         name: "OpenCode",
         summary: "开源的 OpenCode，可以接入多家模型服务。",
         description: "把开源的 OpenCode CLI 作为 Agent 在 Bottega 里运行。它可以使用多家服务的模型。",

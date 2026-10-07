@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Locale and the native Plan/elapsed presentation labels.
+ * [INPUT]: Locale and the shared Plan, thinking and elapsed presentation labels.
  * [OUTPUT]: turnCopy and planTranslation for portable turn adapters.
  * [POS]: Shared turn presentation copy; native hosts may inject their translator.
  */
 const labels = {
   "en": {
+    "thinking": "Thinking",
     "plan": {
       "editingAria": "Plan is being edited",
       "editing": "Editing",
@@ -18,6 +19,7 @@ const labels = {
     "workingFor": "Working for {{duration}}"
   },
   "zh": {
+    "thinking": "思考中",
     "plan": {
       "editingAria": "正在编辑 Plan",
       "editing": "编辑中",
@@ -31,6 +33,7 @@ const labels = {
     "workingFor": "已处理 {{duration}}"
   },
   "ja": {
+    "thinking": "考え中",
     "plan": {
       "editingAria": "Plan を編集中",
       "editing": "編集中",
@@ -44,6 +47,7 @@ const labels = {
     "workingFor": "{{duration}} 処理中"
   },
   "fr": {
+    "thinking": "Réflexion en cours",
     "plan": {
       "editingAria": "Modification du Plan en cours",
       "editing": "Modification",
@@ -57,6 +61,7 @@ const labels = {
     "workingFor": "Traitement depuis {{duration}}"
   },
   "es": {
+    "thinking": "Pensando",
     "plan": {
       "editingAria": "Editando el Plan",
       "editing": "Editando",

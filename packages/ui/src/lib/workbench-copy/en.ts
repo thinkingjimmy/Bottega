@@ -1,9 +1,10 @@
 /**
- * [INPUT]: The confirmed U01–U07 canvas copy and the Copy board glossary (4-ui.md §7–§8).
+ * [INPUT]: Canonical built-in Provider ids; The confirmed U01–U07 canvas copy and the Copy board glossary (4-ui.md §7–§8).
  * [OUTPUT]: Provides en, the reference workbench catalog, and the WorkbenchCopy shape every locale must match.
  * Names built-in recipes and Workflow plugins and explains missing workflow measurements.
  * [POS]: Source language of workbench-copy; the only catalog that loads eagerly.
  */
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import { memoryPluginCopy } from "./memory/en";
 import { dock } from "./dock/en";
 export const en = {
@@ -270,7 +271,7 @@ export const en = {
         summary: "Agent roles move work forward on a Base, step by step, with a review at each step.",
         description: "Workflow turns a Base into a pipeline. Each step is a role played by one of your Agent configs, and each step ends with a review before work moves on.\n\nSet it up in a Project and add cards to its first column. Open any run to see what each role did and change what happens next.",
       },
-      claude: {
+      [BUILTIN_PROVIDER_IDS.claude]: {
         name: "Claude",
         summary: "Anthropic’s Claude Code, running as an Agent in Bottega.",
         description: "Run Anthropic’s Claude Code as an Agent in Bottega. It works in your Project folders with the access each Agent config allows.\n\nIt needs the Claude Code CLI and a signed-in Anthropic account on this computer. Extras like the 1M context window and Claude in Chrome are in its settings.",
@@ -298,7 +299,7 @@ export const en = {
           },
         },
       },
-      codex: {
+      [BUILTIN_PROVIDER_IDS.codex]: {
         name: "Codex",
         summary: "OpenAI’s Codex CLI, running as an Agent in Bottega.",
         description: "Run OpenAI’s Codex CLI as an Agent in Bottega. It reads and edits your Project folders within the limits of each Agent config.\n\nIt needs the Codex CLI and a signed-in OpenAI account on this computer. Its own memories and multi-agent feature can be turned off in its settings.",
@@ -314,13 +315,13 @@ export const en = {
           },
         },
       },
-      kimi: {
+      [BUILTIN_PROVIDER_IDS.kimi]: {
         name: "Kimi",
         summary: "Moonshot’s Kimi CLI, running as an Agent in Bottega.",
         description: "Run Moonshot’s Kimi CLI as an Agent in Bottega. It needs the Kimi CLI and a signed-in Moonshot account on this computer.",
         publisher: "Moonshot AI",
       },
-      opencode: {
+      [BUILTIN_PROVIDER_IDS.opencode]: {
         name: "OpenCode",
         summary: "Open-source OpenCode, which can use models from many services.",
         description: "Run the open-source OpenCode CLI as an Agent in Bottega. It can use models from many services.",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Workspace Index/path Budget, projects/git/git-runner and Node opendir/lstat/path
- * [OUTPUT]: Provides canonical POSIX path validation, an 8MB-bounded Git NUL-record index build (buildWorkspaceIndex), a filesystem walk fallback (defaultListWorkspaceFiles), and single-path existence/kind proof (proveWorkspaceEntry)
+ * [OUTPUT]: Rejects current/parent path segments and omits the current-directory root; Provides canonical POSIX path validation, an 8MB-bounded Git NUL-record index build (buildWorkspaceIndex), a filesystem walk fallback (defaultListWorkspaceFiles), and single-path existence/kind proof (proveWorkspaceEntry)
  * [POS]: apps/desktop/electron/main/workspace/files; Electron main's workspace-indexing layer; both the Git and filesystem-walk listing paths enforce raw/retained count and byte ceilings before returning entries
  */
 
@@ -89,7 +89,7 @@ export function validWorkspaceRelativePath(path: string) {
     path.includes("\\")
   ) return false;
   return path.split("/").every(
-    (segment) => segment !== "" && segment !== "../.." && segment !== ".."
+    (segment) => segment !== "" && segment !== "." && segment !== ".."
   );
 }
 
@@ -196,7 +196,7 @@ export function buildWorkspaceIndex(
   }
   const addDirectories = (start: string) => {
     let path = start;
-    while (path !== "../..") {
+    while (path !== ".") {
       if (directoryPaths.has(path)) return true;
       if (directories.length >= limits.directories) {
         directoryTruncated = true;

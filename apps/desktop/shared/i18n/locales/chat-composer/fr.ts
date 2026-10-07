@@ -16,7 +16,7 @@ export const chatComposerFr: typeof chatComposerEn = {
     standardSpeed: "Standard",
   },
   approval: sharedComposer.approval,
-  branch: branchFr,
+  branch: { fallback: branchFr.fallback, loadFailed: branchFr.loadFailed, uncommitted_one: branchFr.uncommitted_one, uncommitted_other: branchFr.uncommitted_other },
   surface: {
     plan: "Plan",
     authorizeFileFailed: "Impossible d’autoriser {{file}}",

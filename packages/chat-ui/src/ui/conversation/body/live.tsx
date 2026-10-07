@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Verified live projection, shared turn views, portable text budgets and host-owned detail navigation.
+ * [INPUT]: Verified live projection, shared localized turn views, portable text budgets and host-owned detail navigation.
  * [OUTPUT]: Native-equivalent live content retained until its matching durable body arrives; interactions belong to the composer.
  * [POS]: Remote transcript adapter for the same draft/parts/Plan presentation used by native turns.
  */
@@ -40,7 +40,7 @@ export function LiveReply({ value, copy, canonicalReady, locale = "en", interact
     }} />;
   return <section className="min-w-0" data-live-reply=""><ArtifactMessageRenderers>
     <ConversationDraft active={active} editingPlan={Boolean(plan?.editing && active)}
-      label={draft ? shimmerLabel(draft, Boolean(projection?.approvals.length || projection?.userInputs.length)) : "Thinking"}
+      label={draft ? shimmerLabel(draft, Boolean(projection?.approvals.length || projection?.userInputs.length)) : turnCopy(locale).thinking}
       elapsed={draft && hasContent && <ConversationElapsed startedAt={draft.startedAt}
         endedAt={state.terminalSeenAt ?? undefined}
         label={duration => turnCopy(locale).workingFor.replace("{{duration}}", formatConversationDuration(duration, locale))} />}>

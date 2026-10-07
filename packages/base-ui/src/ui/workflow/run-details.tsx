@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the shared Sheet/Button primitives, the run port and its readers, the confirm and rework panels, and
+ * [INPUT]: Canonical built-in Provider ids; Depends on the shared Sheet/Button primitives, the run port and its readers, the confirm and rework panels, and
  *          workbench-copy.
  * [OUTPUT]: Provides RunActions (a run's interventions — Check result and Cancel beside an unknown result, Continue, Pause, Force stop,
  * Version and missing-measurement fixes lead to the affected Provider setup.
@@ -25,6 +25,7 @@
  *        There is no separate runs list (Q4). A confirmation these details showed that someone else decided says where
  *        ("Already handled on {device}", or plainly when the host cannot name the device), never just disappears (T21-b).
  */
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import { workflowRecipeName } from "@ai-chat/ui/lib/workbench-copy";
 import { useEffect, useState, type ReactNode } from "react";
 import { MessageSquareIcon, TriangleAlertIcon } from "lucide-react";
@@ -310,11 +311,11 @@ function BlockedNotice({ run, facts, port }: { run: WorkflowRunView; facts: RunH
   const extractor = reason?.kind === "no-valid-report" ? reason.extractor ?? null : null;
   /* The format extractor is Claude (W9): its fixes lead to Claude, except a failed repair, which is read in the Chat. */
   const next = !reason ? null
-    : extractor === "plugin-disabled" ? { label: formatWorkbench(workbench.plugins.openPlugin, { name: facts.providerLabel("claude") }), run: () => port.openPlugins?.("claude") }
+    : extractor === "plugin-disabled" ? { label: formatWorkbench(workbench.plugins.openPlugin, { name: facts.providerLabel(BUILTIN_PROVIDER_IDS.claude) }), run: () => port.openPlugins?.(BUILTIN_PROVIDER_IDS.claude) }
     : extractor === "provider-signed-out" || extractor === "provider-not-installed" || extractor === "provider-version-too-old" || extractor === "not-measured" || isAuthUnconfirmed(extractor)
       ? { label: formatWorkbench(extractor === "provider-signed-out" ? copy.blockedSignIn : isAuthUnconfirmed(extractor) ? copy.blockedCheckSignIn
         : extractor === "not-measured" ? copy.blockedCheckProvider : copy.blockedSetUp,
-        { provider: facts.providerLabel("claude") }), run: () => port.openAgentSetup?.("claude") }
+        { provider: facts.providerLabel(BUILTIN_PROVIDER_IDS.claude) }), run: () => port.openAgentSetup?.(BUILTIN_PROVIDER_IDS.claude) }
     : (reason.kind === "provider-signed-out" || reason.kind === "provider-not-installed" || reason.kind === "provider-version-too-old" || reason.kind === "not-measured" || isAuthUnconfirmed(reason.kind)) && provider
       ? { label: formatWorkbench(reason.kind === "provider-signed-out" ? copy.blockedSignIn : isAuthUnconfirmed(reason.kind) ? copy.blockedCheckSignIn : copy.blockedSetUp, values), run: () => port.openAgentSetup?.(provider) }
     : reason.kind === "plugin-disabled" && provider ? { label: formatWorkbench(workbench.plugins.openPlugin, { name: facts.providerLabel(provider) }), run: () => port.openPlugins?.(provider) }

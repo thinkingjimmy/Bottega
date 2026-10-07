@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Installed workflow runtime, bounded evidence reader and the authoritative plugin catalog.
+ * [INPUT]: Canonical built-in Provider ids from shared/providers/builtin; Installed workflow runtime, bounded evidence reader and the authoritative plugin catalog.
  * [OUTPUT]: workflowResourcePort with run actions, encrypted evidence pages and revision-checked enable-and-retry through normal plugin admission.
  * [POS]: cloud/remote/resources' seam onto workflows; the same bridge calls a person on this computer makes, so every rule (plugin gate, A-02, Q20) applies unchanged.
  */
+import { BUILTIN_PROVIDER_IDS } from "../../../../../shared/providers/builtin";
 import { workflowRuntime } from "../../../workflows/runtime/installed";
 import type { WorkflowResourcePort } from "./runtime";
 import { installedPluginCatalog } from "../../../plugins/catalog";
@@ -18,7 +19,7 @@ export function workflowResourcePort(): WorkflowResourcePort | null {
       if (!run) throw new Error("workflow-run-not-found");
       if (run.revision !== expectedRevision) throw new Error("input-changed");
       if (run.state !== "blocked" || step?.state !== "blocked") throw new Error("not-blocked");
-      const pluginId = reason?.kind === "no-valid-report" && reason.extractor === "plugin-disabled" ? "claude" : reason?.kind === "plugin-disabled" ? reason.provider : null;
+      const pluginId = reason?.kind === "no-valid-report" && reason.extractor === "plugin-disabled" ? BUILTIN_PROVIDER_IDS.claude : reason?.kind === "plugin-disabled" ? reason.provider : null;
       if (!pluginId) throw new Error("not-blocked");
       const catalog = installedPluginCatalog();
       if (!catalog) throw new Error("plugin-not-found");

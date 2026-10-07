@@ -1,12 +1,12 @@
 /**
- * [INPUT]: Depends on Zod and the public backend identity tuple.
+ * [INPUT]: Depends on Zod and the canonical SDK keyed identities.
  * [OUTPUT]: Provides the canonical Agent option and default-map validators, the permission-mode enum and the opaque option value schema reused by remote turns and Agent configurations.
  * [POS]: Shared Chat options; these portable preferences never grant local execution authority.
  */
 import { z } from "zod";
-import { AGENT_BACKEND_ORDER } from "./backend-id";
-export { AGENT_BACKEND_ORDER } from "./backend-id";
-export const agentBackendIdSchema = z.enum(AGENT_BACKEND_ORDER);
+import { BUILTIN_PROVIDER_IDS } from "./backend-id";
+export * from "./backend-id";
+export const agentBackendIdSchema = z.enum(BUILTIN_PROVIDER_IDS);
 /* Opaque backend config values are never normalized: persistence must preserve
    the exact catalog value, including leading/trailing printable spaces. */
 const opaqueConfigValue = z
@@ -25,7 +25,7 @@ const permissionMode = z.enum([
 export const permissionModeSchema = permissionMode;
 const codexOptionsSchema = z
   .object({
-    backend: z.literal("codex"),
+    backend: z.literal(BUILTIN_PROVIDER_IDS.codex),
     model: optionValue,
     reasoningEffort: opaqueConfigValue,
     serviceTier: opaqueConfigValue,
@@ -34,7 +34,7 @@ const codexOptionsSchema = z
   .strict();
 const claudeOptionsSchema = z
   .object({
-    backend: z.literal("claude"),
+    backend: z.literal(BUILTIN_PROVIDER_IDS.claude),
     model: optionValue.optional(),
     reasoningEffort: opaqueConfigValue.optional(),
     serviceTier: opaqueConfigValue.optional(),
@@ -43,7 +43,7 @@ const claudeOptionsSchema = z
   .strict();
 const kimiOptionsSchema = z
   .object({
-    backend: z.literal("kimi"),
+    backend: z.literal(BUILTIN_PROVIDER_IDS.kimi),
     model: optionValue.optional(),
     reasoningEffort: opaqueConfigValue.optional(),
     permissionMode,
@@ -52,7 +52,7 @@ const kimiOptionsSchema = z
 // OpenCode variants may omit effort; absence delegates to the provider.
 const opencodeOptionsSchema = z
   .object({
-    backend: z.literal("opencode"),
+    backend: z.literal(BUILTIN_PROVIDER_IDS.opencode),
     model: optionValue.optional(),
     reasoningEffort: opaqueConfigValue.optional(),
     permissionMode,
@@ -66,9 +66,9 @@ export const turnOptionsSchema = z.discriminatedUnion("backend", [
 ]);
 export const defaultsSchema = z
   .object({
-    codex: codexOptionsSchema.optional(),
-    claude: claudeOptionsSchema.optional(),
-    kimi: kimiOptionsSchema.optional(),
-    opencode: opencodeOptionsSchema.optional(),
+    [BUILTIN_PROVIDER_IDS.codex]: codexOptionsSchema.optional(),
+    [BUILTIN_PROVIDER_IDS.claude]: claudeOptionsSchema.optional(),
+    [BUILTIN_PROVIDER_IDS.kimi]: kimiOptionsSchema.optional(),
+    [BUILTIN_PROVIDER_IDS.opencode]: opencodeOptionsSchema.optional(),
   })
   .strict();

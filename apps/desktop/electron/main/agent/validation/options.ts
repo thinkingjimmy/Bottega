@@ -1,15 +1,14 @@
 /**
- * [INPUT]: Agent submission contracts and explicit validation dependencies.
+ * [INPUT]: The canonical Provider catalog, Agent submission contracts and explicit validation dependencies.
  * [OUTPUT]: validateAgentTurnOptions.
  * [POS]: Agent validation options boundary; admission and authority checks stay mandatory.
  */
-import { AGENT_BACKEND_ORDER } from "../../../../shared/ipc/agent/agent-ipc";
-import type { AgentBackendId, AgentPermissionMode, AgentTurnOptions } from "../../../../shared/ipc/agent/agent-ipc";
+import { builtinProviderCatalog, knownBackend } from "../../../../shared/providers/catalog";
+import type { AgentPermissionMode, AgentTurnOptions } from "../../../../shared/ipc/agent/agent-ipc";
 import { backendRegistry, turnBackend } from "../../backends";
 import { chatAgentIdSchema, packageTurnOptionsSchema, type ChatTurnOptions, type PackageTurnOptions } from "../../../../shared/chat-agent/options";
 import { assertExactKeys } from "./primitives";
 
-const BACKENDS = new Set<string>(AGENT_BACKEND_ORDER);
 
 export function validateAgentTurnOptions(value: unknown): ChatTurnOptions {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -17,8 +16,8 @@ export function validateAgentTurnOptions(value: unknown): ChatTurnOptions {
   }
   const raw = value as Record<string, unknown>;
   if (typeof raw.backend !== "string") throw new Error("未知的 Agent 后端");
-  if (!BACKENDS.has(raw.backend)) return packageTurnOptions(raw);
-  const backend = raw.backend as AgentBackendId;
+  const backend = knownBackend(builtinProviderCatalog, raw.backend);
+  if (!backend) return packageTurnOptions(raw);
   const descriptor = backendRegistry.get(backend)!;
   assertExactKeys(
     value,

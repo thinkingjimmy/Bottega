@@ -1,8 +1,9 @@
 /**
- * [INPUT]: A blocked run, the owning-computer facts and the admitted remote recovery port.
+ * [INPUT]: Canonical built-in Provider ids; A blocked run, the owning-computer facts and the admitted remote recovery port.
  * [OUTPUT]: RemoteRecovery: actionable local instructions plus remote enable/retry where supported.
  * [POS]: Remote-only portion of the shared blocked-step notice; never offers Provider sign-in on a phone.
  */
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import { useState } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { useAppTranslation } from "../../platform/i18n";
@@ -17,7 +18,7 @@ export function RemoteRecovery({ run, stepId, reason, stepLabel, facts, port }: 
   if (!facts.remote || !reason) return null;
   const extractor = reason.kind === "no-valid-report" && reason.extractor;
   const plugin = reason.kind === "plugin-disabled" || extractor === "plugin-disabled";
-  const provider = extractor ? "claude" : reason.provider;
+  const provider = extractor ? BUILTIN_PROVIDER_IDS.claude : reason.provider;
   const values = { computer: facts.computer, provider: provider ? facts.providerLabel(provider) : "", step: stepLabel };
   const format = (text: string) => Object.entries(values).reduce((line, [key, value]) => line.replaceAll("{" + key + "}", value), text);
   const guidance = plugin ? copy.plugin : provider && (reason.kind.startsWith("provider-") || Boolean(extractor)) ? copy.provider : copy.config;

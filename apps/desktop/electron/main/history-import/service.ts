@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron IPC, Project/Chat queries, strict turn options, the four history sources as worker-backed adapters over fence-resolved roots (import-worker/sources.ts; no concrete adapter on main), the dedicated import worker, Project/Memory coordinators, index/snapshot stores, and shared contracts
+ * [INPUT]: Shared canonical history-source schema; Depends on Electron IPC, Project/Chat queries, strict turn options, the four history sources as worker-backed adapters over fence-resolved roots (import-worker/sources.ts; no concrete adapter on main), the dedicated import worker, Project/Memory coordinators, index/snapshot stores, and shared contracts
  * [OUTPUT]: Provides explicit Project Add/Settings history imports without startup scanning, delta previews fenced by Project membership, and saved-Chat continuation with durable intent receipts
  * [POS]: Canonical federated history and renderer-safe authority boundary; production SQLite ingestion parses outside main
  */
@@ -10,7 +10,7 @@ import type { BrowserWindow } from "electron";
 import { z } from "zod";
 import {
   HISTORY_IMPORT_CHANNEL,
-  HISTORY_SOURCE_KINDS,
+  historySourceKindSchema,
   type HistorySourceKind,
   type ForeignHistoryMessage,
   type HistoryImportEvent,
@@ -53,7 +53,7 @@ import { foreignTranscriptSnapshot } from "./routing/foreign-transcript";
 
 
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
-const sourceKindsSchema = z.array(z.enum(HISTORY_SOURCE_KINDS)).max(HISTORY_SOURCE_KINDS.length);
+const sourceKindsSchema = z.array(historySourceKindSchema).max(historySourceKindSchema.options.length);
 
 type ParseFlight = {
   controller: AbortController;
@@ -310,7 +310,7 @@ export class HistoryImportService {
     });
   }
 
-  async prepareProject(sourceKinds: readonly HistorySourceKind[] = HISTORY_SOURCE_KINDS) {
+  async prepareProject(sourceKinds: readonly HistorySourceKind[] = historySourceKindSchema.options) {
     return this.projectImports.prepare(sourceKinds);
   }
 
@@ -334,7 +334,7 @@ export class HistoryImportService {
     return { project, memoryPreview };
   }
 
-  async prepareImport(projectId: string, sourceKinds: readonly HistorySourceKind[] = HISTORY_SOURCE_KINDS) {
+  async prepareImport(projectId: string, sourceKinds: readonly HistorySourceKind[] = historySourceKindSchema.options) {
     const project = { ...this.requireExternalProject(projectId) };
     const scans = await this.scanOwned(project, "identity", sourceKinds);
     this.requireImportBinding(project);
@@ -364,7 +364,7 @@ export class HistoryImportService {
     return publicEntry(entry);
   }
 
-  async refreshProject(projectId: string, sourceKinds: readonly HistorySourceKind[] = HISTORY_SOURCE_KINDS) {
+  async refreshProject(projectId: string, sourceKinds: readonly HistorySourceKind[] = historySourceKindSchema.options) {
     const project = { ...this.requireExternalProject(projectId) };
     await this.index.setEnabled({ projectId, canonicalRoot: project.dir, membershipRevision: project.membershipRevision, enabled: true });
     this.refreshing.add(projectId); this.publish();
@@ -519,13 +519,13 @@ export class HistoryImportService {
     ]);
   }
 
-  private async scan(root: string, depth: ScanDepth, sourceKinds: readonly HistorySourceKind[] = HISTORY_SOURCE_KINDS) { return Promise.all(this.adapters.filter(adapter => sourceKinds.includes(adapter.sourceKind)).map((adapter) => adapter.scanProject(root, depth))); }
+  private async scan(root: string, depth: ScanDepth, sourceKinds: readonly HistorySourceKind[] = historySourceKindSchema.options) { return Promise.all(this.adapters.filter(adapter => sourceKinds.includes(adapter.sourceKind)).map((adapter) => adapter.scanProject(root, depth))); }
   /* 归属在这里定案，也在这里落到条目上。适配器交出的 `projectId` 恒为空串
      ——它读的是文件，不知道 Project 是什么；此处刚刚按 cwd 判过归属，正是
      那个知道答案的人。少了这一笔盖章，`refreshProject` 会拿着 projectId=""
      去 `syncHistory`，存储侧照单全收，把已有只读 Chat 的 local_project_id
      整个清空——24 条导入历史当场掉出 Project，落进裸 Chats 列表。 */
-  private async scanOwned(project: ProjectRef, depth: ScanDepth, sourceKinds: readonly HistorySourceKind[] = HISTORY_SOURCE_KINDS) {
+  private async scanOwned(project: ProjectRef, depth: ScanDepth, sourceKinds: readonly HistorySourceKind[] = historySourceKindSchema.options) {
     const scans = await this.scan(project.dir, depth, sourceKinds);
     const roots = this.options.listProjects().filter((candidate) => candidate.workspaceBinding.kind === "external" && !candidate.archivedAt);
     return scans.map((scan) => ({

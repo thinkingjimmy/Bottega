@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the Provider contract (@ai-chat/cloud-protocol/contracts/provider) and the closed AGENT_BACKEND_ORDER
- * [OUTPUT]: Provides BUILTIN_PROVIDER_DESCRIPTORS (the four built-in providers as layer-1 descriptors), builtinProviderDescriptor and assignableProviders
+ * [OUTPUT]: Provides canonical BUILTIN_PROVIDER_IDS, BUILTIN_PROVIDER_DESCRIPTORS (the four built-in providers as layer-1 descriptors), builtinProviderDescriptor and assignableProviders
  * [POS]: The static half of the host Provider catalog shared by main and renderer; runtime facts in electron/main/backends are checked against it by the backend registry, and tool schemas derive their provider enums from it
  */
 import { AGENT_BACKEND_ORDER } from "@ai-chat/cloud-protocol/chats/options";
@@ -72,6 +72,8 @@ const descriptors: Record<BuiltinId, ProviderDescriptor> = {
 
 /* Not parsed here: the provider bridge bundles this module for the tool schemas' capability lookup, and the descriptor schema would
    ride along. The catalog parses every descriptor in main, and the drift guard parses these four. */
+export { BUILTIN_PROVIDER_IDS } from "@ai-chat/cloud-protocol/chats/backend-id";
+
 export const BUILTIN_PROVIDER_DESCRIPTORS: readonly ProviderDescriptor[] = Object.freeze(AGENT_BACKEND_ORDER.map(id => descriptors[id]));
 
 /** The descriptor for a provider id, or null for an id this host does not ship; callers render a neutral fallback. */
