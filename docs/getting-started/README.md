@@ -59,13 +59,17 @@ See the [features guide](../features/README.md) for the product model and its fo
 
 Authenticate with the CLI provider before starting Bottega. Bottega never asks for or imports that credential.
 
+## Upgrading to 0.2.2
+
+Cloud Sync now uses protocol 15. Update all computers that use cloud features to 0.2.2 before reconnecting. Existing cloud content, sync passwords and account keys remain. Quit Bottega completely, back up the Bottega folder and application data, then replace the app with the verified 0.2.2 download. This prerelease requires manual updates and has ad-hoc signatures without Apple notarization.
+
 ## Download and install
 
-[Download 0.2.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.1) for **macOS on Apple silicon**. It is a prerelease and is excluded from GitHub Latest. Windows, Linux, and Android distribution are scheduled separately. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
+[Download 0.2.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.2) for **macOS on Apple silicon**. It is a prerelease and is excluded from GitHub Latest. Windows, Linux, and Android distribution are scheduled separately. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| macOS (Apple silicon) | `Bottega-0.2.1-arm64.dmg` or `Bottega-0.2.1-arm64-mac.zip` | Manual installation and updates. |
+| macOS (Apple silicon) | `Bottega-0.2.2-arm64.dmg` or `Bottega-0.2.2-arm64-mac.zip` | Manual installation and updates. |
 
 Apple Developer enrollment is pending. These packages use **ad-hoc signatures**, with **no Developer ID signature or Apple notarization**. Automatic updates are disabled: download each new version from the Releases page and replace the installed app manually.
 
@@ -73,7 +77,7 @@ Apple Developer enrollment is pending. These packages use **ad-hoc signatures**,
 2. Download the DMG or ZIP and `release-manifest.json` from the same release. Run the command below and manually compare its output with the matching installer's `sha256` in the manifest. Use the ZIP filename instead if you downloaded the ZIP:
 
 ```bash
-shasum -a 256 Bottega-0.2.1-arm64.dmg
+shasum -a 256 Bottega-0.2.2-arm64.dmg
 ```
 
 3. Open the DMG and drag Bottega into `Applications`, or extract the ZIP and copy the app there.
