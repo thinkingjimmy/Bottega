@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Shared canonical history-source schema; Depends on Electron IPC, Project/Chat queries, strict turn options, the four history sources as worker-backed adapters over fence-resolved roots (import-worker/sources.ts; no concrete adapter on main), the dedicated import worker, Project/Memory coordinators, index/snapshot stores, and shared contracts
+ * [INPUT]: Shared pure canonical history-source tuple with main-owned strict validation; Depends on Electron IPC, Project/Chat queries, strict turn options, the four history sources as worker-backed adapters over fence-resolved roots (import-worker/sources.ts; no concrete adapter on main), the dedicated import worker, Project/Memory coordinators, index/snapshot stores, and shared contracts
  * [OUTPUT]: Provides explicit Project Add/Settings history imports without startup scanning, delta previews fenced by Project membership, and saved-Chat continuation with durable intent receipts
  * [POS]: Canonical federated history and renderer-safe authority boundary; production SQLite ingestion parses outside main
  */
@@ -10,7 +10,7 @@ import type { BrowserWindow } from "electron";
 import { z } from "zod";
 import {
   HISTORY_IMPORT_CHANNEL,
-  historySourceKindSchema,
+  HISTORY_SOURCE_KINDS,
   type HistorySourceKind,
   type ForeignHistoryMessage,
   type HistoryImportEvent,
@@ -53,6 +53,7 @@ import { foreignTranscriptSnapshot } from "./routing/foreign-transcript";
 
 
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
+const historySourceKindSchema = z.enum(HISTORY_SOURCE_KINDS);
 const sourceKindsSchema = z.array(historySourceKindSchema).max(historySourceKindSchema.options.length);
 
 type ParseFlight = {
