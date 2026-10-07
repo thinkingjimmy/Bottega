@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical built-in Provider ids; The sequencing type of shared Agent/Settings only
- * [OUTPUT]: Stable ordered HISTORY_SOURCE_KINDS and its type; Explicit Provider-scoped Project history preview/import contracts and chat-scoped continuation receipts with durable manual intent identity, including failed outcomes
+ * [OUTPUT]: Immutable historySourceCatalog, legacy ordered kinds and their type; Explicit Provider-scoped Project history preview/import contracts and chat-scoped continuation receipts with durable manual intent identity, including failed outcomes
  * [POS]: apps/desktop/shared/ipc/content; The single source of truth for the shared history-import wire; the renderer never receives a source file path and cannot forge a SessionRef
  */
 
@@ -13,10 +13,11 @@ import type { ChatAttachmentPayload } from "./chats-ipc";
 import type { SubmissionContentV1 } from "../../content/submission/submission";
 import type { MemorySharingMode } from "../settings/settings-ipc";
 
-export const HISTORY_SOURCE_KINDS = [
+export const historySourceCatalog = Object.freeze({ kinds: Object.freeze([
   BUILTIN_PROVIDER_IDS.claude, BUILTIN_PROVIDER_IDS.codex, BUILTIN_PROVIDER_IDS.kimi, BUILTIN_PROVIDER_IDS.opencode,
-] as const;
-export type HistorySourceKind = (typeof HISTORY_SOURCE_KINDS)[number];
+] as const) });
+export const HISTORY_SOURCE_KINDS = historySourceCatalog.kinds;
+export type HistorySourceKind = (typeof historySourceCatalog.kinds)[number];
 
 export type HistoryFileFingerprint = Readonly<{
   device: string;
