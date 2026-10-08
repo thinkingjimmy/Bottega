@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on injected authorized turn queries/subscriptions, the canonical live reducer and bounded local receive diagnostics.
+ * [INPUT]: Depends on injected authorized turn queries/subscriptions, the canonical live reducer, bounded local receive diagnostics and optional structural browser event/visibility scopes through globalThis; no ambient DOM types.
  * [OUTPUT]: Contiguous-watermark LiveTurnSource and reattachingLive with opaque verified receive/settlement milestones; verified content survives replay, transient failures recover on 2/5/15/30 seconds or foreground/network events, deterministic failures never retry.
  * [POS]: Read-only replay coordination; a missing chunk never implies an empty or finished result.
  */
@@ -91,6 +91,11 @@ export function liveFailureTransient(error: unknown): boolean {
 }
 export const LIVE_RETRY_MS = [2_000, 5_000, 15_000, 30_000] as const;
 type Schedule = (run: () => void, delay: number) => () => void;
+type ResumeEventTarget = {
+  addEventListener(type: string, listener: () => void): void;
+  removeEventListener(type: string, listener: () => void): void;
+};
+type LiveBrowserScope = { window?: ResumeEventTarget; document?: ResumeEventTarget & { readonly visibilityState?: string } };
 const timer: Schedule = (run, delay) => { const handle = setTimeout(run, delay); return () => clearTimeout(handle); };
 /**
  * TASK-20 T20-8b: a transient live failure re-attaches on the 2/5/15/30 s ladder instead of leaving the open Chat's live view
@@ -99,6 +104,8 @@ const timer: Schedule = (run, delay) => { const handle = setTimeout(run, delay);
  */
 export function reattachingLive(source: LiveTurnSource, schedule: Schedule = timer): LiveTurnSource {
   return { attach(chatId, changed, failed) {
+    const scope = globalThis as LiveBrowserScope;
+    const hostWindow = scope.window, hostDocument = scope.document;
     let closed = false, failures = 0, stop: Unsubscribe | null = null, cancel: (() => void) | null = null;
     let retained: ChatLiveView | null = null, retryable = false, generation = 0, progress = beginReceive("live");
     const start = () => {
@@ -127,14 +134,14 @@ export function reattachingLive(source: LiveTurnSource, schedule: Schedule = tim
       });
     };
     const resume = () => {
-      if (!retryable || document.visibilityState !== "visible") return;
+      if (!retryable || hostDocument?.visibilityState !== "visible") return;
       cancel?.(); cancel = null; stop?.(); start();
     };
-    if (typeof window !== "undefined") { window.addEventListener("online", resume); window.addEventListener("pageshow", resume); document.addEventListener("visibilitychange", resume); }
+    if (hostWindow && hostDocument) { hostWindow.addEventListener("online", resume); hostWindow.addEventListener("pageshow", resume); hostDocument.addEventListener("visibilitychange", resume); }
     start();
     return () => {
       closed = true; progress.close(); cancel?.(); cancel = null; stop?.();
-      if (typeof window !== "undefined") { window.removeEventListener("online", resume); window.removeEventListener("pageshow", resume); document.removeEventListener("visibilitychange", resume); }
+      if (hostWindow && hostDocument) { hostWindow.removeEventListener("online", resume); hostWindow.removeEventListener("pageshow", resume); hostDocument.removeEventListener("visibilitychange", resume); }
     };
   } };
 }

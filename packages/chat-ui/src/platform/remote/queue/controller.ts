@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Account-bound command/draft custody, complete queue metadata and fresh execution facts.
- * [OUTPUT]: One queue controller for local, cloud-waiting and admitted messages, durable edits and Steer, ordering and source pause.
+ * [OUTPUT]: One queue controller for local, cloud-waiting and admitted messages, durable edits and Steer, ordering and source pause; admission completion schedules the next eligible successor.
  * [POS]: Shared remote queue authority; the UI renders its state and the account lifetime owns its effects.
  */
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
@@ -309,6 +309,6 @@ export class RemoteQueueController {
       await this.execute(input, "admit", item.commandId);
       this.store.track(this.session.snapshot().entries);
     } catch (error) { this.store.pauseLocal(code(error)); this.publish({ error: code(error) }); }
-    finally { this.draining = false; }
+    finally { this.draining = false; this.schedule(); }
   }
 }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Chat facades, confirmed heads, ConversationModel, shared send projection, complete queue, command/draft custody and scoped consent.
- * [OUTPUT]: Shared messages, successor queue and composer; destination commit consumes creation custody, view-local body readiness retires pending bubbles, uncertain delivery retains loading, and Stop cancels the original request. Shared queue custody survives route changes, restores complete inputs and pauses successors through Stop.
+ * [OUTPUT]: Shared messages, successor queue and composer; destination commit consumes creation custody, view-local body readiness retires pending bubbles, uncertain delivery retains loading, and Stop cancels the original request. Shared queue custody survives route changes, restores complete inputs and pauses successors through Stop; explicit auth-required retry retains capability and permission checks.
  * [POS]: Shared Web and desktop mirror host; transcript, composer and sibling panels read one published live projection without another subscription.
  */
 import { ChatConversation, type ConversationRegions } from "../page/conversation";
@@ -343,7 +343,8 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
     const { text: outgoing, attachments, references } = content, observed = pendingAgent?.head ?? head;
     if (!preparation) await retryPreparation();
     let consentScope;
-    const frozenCapability = target?.agents.find(item => item.backend === settings.backend && item.available)?.capabilities;
+    const frozenCapability = target?.agents.find(item => item.backend === settings.backend &&
+      (item.available || authenticationRetry && item.reason === "auth-required"))?.capabilities;
     if (!frozenCapability || !frozenCapability.permissionModes.includes(settings.permissionMode) || planMode && !frozenCapability.planMode ||
       attachments.some(file => file.kind === "image" ? !frozenCapability.imageInput : !frozenCapability.fileInput)) {
       feedback.notSent(copy.chatChanged, { label: copy.refresh, run: refresh }); return null;

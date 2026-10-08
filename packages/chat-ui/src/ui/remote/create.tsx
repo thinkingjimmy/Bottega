@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Account/target capabilities, frozen first-message custody, original command settlement and host destination preparation/navigation.
- * [OUTPUT]: RemoteCreateChat and destination/context contracts: immediate user bubble, editable next draft and continuous Thinking through prepared route handoff; confirmed Stop/completion ends activity. App Edit creation remains text only and follows an existing Edit Chat unsent.
+ * [OUTPUT]: RemoteCreateChat and destination/context contracts: immediate user bubble, editable next draft and continuous Thinking through prepared route handoff; confirmed Stop/completion ends activity. Definite file refusals unlock the original files; pending attempts retain their custody. App Edit creation remains text only and follows an existing Edit Chat unsent.
  * [POS]: Shared creation form; account-fenced original IDs own recovery, and destination commit releases the creation view.
  */
 import { useRemoteReferences } from "./composer/input/references";
@@ -245,9 +245,9 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
       {unavailable ? <RemoteUnavailable icon={<PlatformGlyph kind="none" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disabled} description={copy.disabledDescription} actions={disabledActions} />
         : syncDisconnected && !waiting ? <RemoteUnavailable icon={<Cloud aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disconnectedTitle} description={copy.disconnectedDescription} />
         : <ComposerForm className="chat-remote-form" onSubmit={event => { event.preventDefault(); void create(); }} aria-busy={busy} {...controls.events}>
-        {!attempt && controls.files}
+        {!frozen && controls.files}
         <RemoteEditor references={completeDraft.references} suggestions={references}
-          removeReference={key => store.update({ references: store.snapshot().references.filter(item => (item.value.kind === "file" ? `file:${item.value.path}` : `library:${item.value.libraryId}`) !== key) })} text={text} change={setText} files={attempt ? [] : completeDraft.files} remove={id => { if (!locked) store.remove(id); }} disabled={false} placeholder={copy.placeholder}
+          removeReference={key => store.update({ references: store.snapshot().references.filter(item => (item.value.kind === "file" ? `file:${item.value.path}` : `library:${item.value.libraryId}`) !== key) })} text={text} change={setText} files={frozen ? [] : completeDraft.files} remove={id => { if (!locked) store.remove(id); }} disabled={false} placeholder={copy.placeholder}
           label={copy.draft} previewTitle={input.previewFile} onFileClick={controls.openFile} fileStates={controls.fileStates} />
         <ComposerToolbar><PromptInputTools>{controls.tools}
           {budget && <span role="alert" className="chat-remote-budget">{budget}</span>}

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Immutable remote DTOs, account-bound command ports, scoped subscriptions and canonical content hashing.
+ * [INPUT]: Immutable remote DTOs, account-bound command ports, scoped subscriptions, canonical content hashing and optional structural document visibility through globalThis; no ambient DOM types.
  * [OUTPUT]: awaitingRemoteAdmission / awaitingReport (ruling 12); awaitingResubmit and resubmit, the one resend under a new id of a command refused for a changed connection (TASK-20 D10); refuses a command too large to seal before it becomes an entry; provides exact retries and receipt reconciliation, including automatic read-only reconnect lookup under the original command identity, uncertain withdrawal recovery, checkpoint adoption by original commandId and terminal draft release without an execution outbox; watches the newest page plus one receipts watch per twenty unsettled commands (settled ones are never watched). Background queue owners retain receipt watches; source-scoped Stop survives checkpoints; queue controls never receive automatic new identities.
  * [POS]: Shared CommandSink consumer; confirmed receipts or strict post-lookup rejections resolve transport uncertainty.
  */
@@ -267,7 +267,8 @@ export class RemoteCommandSession {
     if (this.recoveryTimer) return;
     this.recoveryTimer = setTimeout(() => {
       this.recoveryTimer = null;
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") { this.recoverLater(); return; }
+      const scope = globalThis as { document?: { readonly visibilityState?: string } };
+      if (scope.document?.visibilityState === "hidden") { this.recoverLater(); return; }
       this.recoveryStep++;
       if (this.state.error) this.resubscribe();
       for (const entry of this.state.entries) if (needsRead(entry)) void this.check(entry.input.commandId);
