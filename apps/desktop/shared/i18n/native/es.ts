@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain es copy.
- * [OUTPUT]: Provides nativeEs, the es `settings.native.*` copy.
+ * [OUTPUT]: Provides nativeEs, the es `settings.native.*` copy, including the generic JSON file filter.
  * [POS]: Main-only catalog under shared/i18n/native; the renderer never imports it, so this copy stays out of its first chunk.
  */
 
@@ -88,6 +88,7 @@ export const nativeEs: NativeCatalog = {
   quitRecovered: "Se produjo un error al preparar la salida. La aplicación se recuperó y el chat sigue disponible. Inténtalo de nuevo más tarde.",
   quitUnrecovered: "Se canceló la salida. No se pueden iniciar tareas nuevas por ahora. Sal y vuelve a abrir Bottega.",
   filterCsv: "CSV",
+  filterJson: "JSON",
   filterBaseJson: "Base JSON",
   filterExcelWorkbook: "Libro de Excel",
   extensionTitle: "Activar extensiones Agent del repositorio",

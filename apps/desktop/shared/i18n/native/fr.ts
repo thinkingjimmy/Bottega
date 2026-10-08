@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain fr copy.
- * [OUTPUT]: Provides nativeFr, the fr `settings.native.*` copy.
+ * [OUTPUT]: Provides nativeFr, the fr `settings.native.*` copy, including the generic JSON file filter.
  * [POS]: Main-only catalog under shared/i18n/native; the renderer never imports it, so this copy stays out of its first chunk.
  */
 
@@ -88,6 +88,7 @@ export const nativeFr: NativeCatalog = {
   quitRecovered: "Une erreur est survenue pendant la préparation de la fermeture. L’application a récupéré et le chat reste disponible. Réessayez plus tard.",
   quitUnrecovered: "La fermeture a été annulée. Les nouvelles tâches sont temporairement indisponibles. Quittez puis rouvrez Bottega.",
   filterCsv: "CSV",
+  filterJson: "JSON",
   filterBaseJson: "Base JSON",
   filterExcelWorkbook: "Classeur Excel",
   extensionTitle: "Activer les extensions Agent du dépôt",

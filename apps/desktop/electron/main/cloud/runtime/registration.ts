@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on the trusted main-frame registrar, closed IPC schemas and account service.
+ * [INPUT]: Depends on the trusted main-frame registrar, closed IPC schemas, current-locale callback and account service.
  * [OUTPUT]: Registers offline-safe native diagnostic export and trusted account actions, closed review results, the pushed account computer list, front-window handshake re-checks, forwarded page online/offline changes (T20-2) and window-exit cancellation of unfinished password work.
  * [POS]: Electron IPC boundary; child frames and auxiliary windows receive no account authority.
  */
 import { exportRecoveryDiagnostics } from "./diagnostics/export";
 import type { BrowserWindow } from "electron";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { z } from "zod";
 import { CLOUD_CHANNEL, cloudAccountStateSchema, cloudComputerRenameResultSchema, cloudComputerRenameSchema, cloudComputersResultSchema, cloudDevicesPageSchema, cloudDevicesQuerySchema, cloudRenameSchema, cloudRevokeSchema, savedLoginDiscardResultSchema, savedLoginDiscardReviewSchema } from "../../../../shared/ipc/settings/cloud-ipc";
 import { syncEncryptionStateSchema, syncSetupInputSchema, syncUnlockInputSchema } from "../../../../shared/cloud/encryption";
@@ -12,10 +13,10 @@ import { syncApprovalSchema, syncCleanupReviewSchema, syncReviewSchema } from ".
 import { rendererIpc } from "../../registration/ipc-registrar";
 import { replying, sendParsed } from "../replies";
 import { SavedLoginReviewExpired, type CloudAccountService } from "./service";
-export function registerCloudAccount(service: CloudAccountService, window: BrowserWindow, rendererUrl: string) {
+export function registerCloudAccount(service: CloudAccountService, window: BrowserWindow, rendererUrl: string, currentLocale: () => AppLocale) {
   const ipc = rendererIpc(rendererUrl, "Cloud account access denied").roles("main");
   const noArgs = z.tuple([]);
-  ipc.handle(CLOUD_CHANNEL.exportSyncDiagnostics, (...args) => { noArgs.parse(args); return exportRecoveryDiagnostics(window, service); });
+  ipc.handle(CLOUD_CHANNEL.exportSyncDiagnostics, (...args) => { noArgs.parse(args); return exportRecoveryDiagnostics(window, service, currentLocale()); });
   /* Each reply leaves main in its contract's exact shape (OPT-34); actions without an entry reply with nothing the renderer reads. */
   const replies: Partial<Record<string, z.ZodType>> = {
     getAccountState: cloudAccountStateSchema, startLogin: cloudAccountStateSchema, cancelLogin: cloudAccountStateSchema, abandonLogin: cloudAccountStateSchema,

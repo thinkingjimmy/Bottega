@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on main-owned sync progress and encryption state, five-language copy, the shared encryption error mapper, settings primitives, the unlock button, the handshake retry action and the router.
+ * [INPUT]: Depends on main-owned sync progress and encryption state, closed remote-health status with explicit five-language labels, the shared encryption error mapper, settings primitives, the unlock button, the handshake retry action and the router.
  * [OUTPUT]: Provides AccountSync — the settings page's single Sync row (badge, one sentence, a byte-led progress bar that falls back to whole items, its state action, and offline diagnostic export) — and AppPackagesSection for blocked App packages.
  * [POS]: Settings sync projection; signing in is what publishes this computer, so the row carries no switch — unlock retains its dialog through key derivation, an unavailable handshake keeps its own retry, and cancelled discovery or an unfinished disconnect retains a retry exit.
  */
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { getCloudEncryptionCopy } from "@ai-chat/ui/lib/cloud-copy/encryption";
+import type { RemoteHealthStatus } from "@ai-chat/cloud-protocol";
 import { cloudHandshakeFailed, type CloudAccountState } from "../../../shared/ipc/settings/cloud-ipc";
 import type { SyncProgress } from "../../../shared/cloud/sync";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
@@ -33,6 +34,13 @@ export function AccountSync({ state }: { state: CloudAccountState }) {
   const { t, i18n } = useAppTranslation(), copy = getCloudEncryptionCopy(i18n.language);
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), [exporting, setExporting] = useState(false);
   const sync = state.sync, encryption = state.encryption, ready = state.status === "ready";
+  const healthLabels = {
+    initializing: t("cloud.computers.health.initializing"),
+    locked: t("cloud.computers.health.locked"),
+    recovering: t("cloud.computers.health.recovering"),
+    "memory-blocked": t("cloud.computers.health.memory-blocked"),
+    "content-error": t("cloud.computers.health.content-error"),
+  } satisfies Record<Exclude<RemoteHealthStatus, "ready">, string>;
   const unavailable = cloudHandshakeFailed(state);
   const action = (run: () => Promise<void>) => {
     if (busy) return; setBusy(true); setFailed(false);
@@ -86,7 +94,7 @@ export function AccountSync({ state }: { state: CloudAccountState }) {
   }
   return <SettingsSection title={t("cloud.sync")} alert={failed ? t("cloud.actionFailed") : undefined}>
     <SettingsList><SettingsRow label={t("cloud.sync")} badge={<SettingsBadge tone={tone}>{badge}</SettingsBadge>} description={<>{description}{state.remoteHealth && state.remoteHealth.status !== "ready" &&
-        <span role="status" className="mt-1 block text-muted-foreground">{t(`cloud.computers.health.${state.remoteHealth.status}`)}</span>}</>} control={control} />
+        <span role="status" className="mt-1 block text-muted-foreground">{healthLabels[state.remoteHealth.status]}</span>}</>} control={control} />
       <SettingsRow label={t("cloud.computers.exportDiagnostics")} description={t("cloud.computers.diagnosticsDescription")}
         control={<SettingsButton variant="ghost" disabled={exporting} onClick={exportDiagnostics}>{t("cloud.computers.exportDiagnostics")}</SettingsButton>} />
     </SettingsList>

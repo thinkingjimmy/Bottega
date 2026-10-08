@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Owner Project Git resource operations, the PreparedCloudRuntime shape from prepare.ts, Electron account/lifecycle ports, the bounded recovery timeline, isolated userData, original coordinator/control owners and artifact custody/publication.
+ * [INPUT]: Owner Project Git resource operations, the PreparedCloudRuntime shape from prepare.ts, Electron account/lifecycle ports and preferred languages, shared locale negotiation, the bounded recovery timeline, isolated userData, original coordinator/control owners and artifact custody/publication.
  * [OUTPUT]: Wires binding-fenced offline identity, a read-only operation-receipt lookup for the broker, startup/token admission, synchronization with library-confirmed remote readiness independent of historical backlog, bidirectional Chat read acknowledgements, scoped artifact transfers, sleep/quit presence (resume is refreshed by the application lifecycle), continuation, remote IPC and the `attachAccountConfig(store)` Dock-layout sync seam onto an already prepared runtime, with verified owner/account record resource ports, Agent-configuration sync, the Workflow projection outbox and the resource-command executor attached alongside, behind one shared Memory reconnect barrier.
  * [POS]: Heavy half of the cloud composition, dynamically loaded and never reached from prepare.ts; stable builds exclude the implementation and SDK.
  */
@@ -11,6 +11,7 @@ import { NativePluginSurfaces } from "../sync/surfaces/native";
 import { artifactRuntime } from "../../artifacts/runtime";
 import { artifactCloudTransport } from "../../artifacts/storage/transport";
 import { app, powerMonitor, shell, type BrowserWindow } from "electron";
+import { resolveAppLocale } from "@ai-chat/ui/lib/locale";
 import { SessionClient } from "../account/session-client";
 import { initialDeviceName } from "../account/device-name";
 import { machineIdFor } from "../../machine/machine-id";
@@ -289,7 +290,8 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
     }});
   return { openPluginSurface:pluginSurfaces.open.bind(pluginSurfaces),assertPluginDraft:pluginSurfaces.assertDraft.bind(pluginSurfaces),
     subscribeIdentity:(listener:()=>void)=>service.subscribe(listener),attachAccountConfig, receipt, register: (window: BrowserWindow, rendererUrl: string) => {
-    registerCloudAccount(service, window, rendererUrl); registerCloudChat(chatReader!, execution, window, rendererUrl); registerCloudBaseReview(baseReview!, window, rendererUrl);
+    registerCloudAccount(service, window, rendererUrl, () => resolveAppLocale(ui.remote.settings.get().language, app.getPreferredSystemLanguages()));
+    registerCloudChat(chatReader!, execution, window, rendererUrl); registerCloudBaseReview(baseReview!, window, rendererUrl);
     registerCloudConversion(conversionReview, rendererUrl);
     registerCloudApps(cloudApps!, window, rendererUrl);
     registerCloudRemote(remoteClient, window, rendererUrl);

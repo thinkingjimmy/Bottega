@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain ja copy.
- * [OUTPUT]: Provides nativeJa, the ja `settings.native.*` copy.
+ * [OUTPUT]: Provides nativeJa, the ja `settings.native.*` copy, including the generic JSON file filter.
  * [POS]: Main-only catalog under shared/i18n/native; the renderer never imports it, so this copy stays out of its first chunk.
  */
 
@@ -88,6 +88,7 @@ export const nativeJa: NativeCatalog = {
   quitRecovered: "終了準備中にエラーが発生しました。アプリは復旧し、チャットは引き続き利用できます。後でもう一度お試しください。",
   quitUnrecovered: "終了をキャンセルしました。現在、新しいタスクを開始できません。Bottega を終了して開き直してください。",
   filterCsv: "CSV",
+  filterJson: "JSON",
   filterBaseJson: "Base JSON",
   filterExcelWorkbook: "Excel ワークブック",
   extensionTitle: "リポジトリの Agent 拡張を有効化",

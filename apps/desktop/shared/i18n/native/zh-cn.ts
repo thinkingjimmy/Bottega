@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain zh-cn copy.
- * [OUTPUT]: Provides nativeZhCN, the zh-cn `settings.native.*` copy.
+ * [OUTPUT]: Provides nativeZhCN, the zh-cn `settings.native.*` copy, including the generic JSON file filter.
  * [POS]: Main-only catalog under shared/i18n/native; the renderer never imports it, so this copy stays out of its first chunk.
  */
 
@@ -88,6 +88,7 @@ export const nativeZhCN: NativeCatalog = {
   quitRecovered: "退出准备发生错误，应用已恢复运行，聊天功能仍可使用。请稍后重试。",
   quitUnrecovered: "已取消退出，但暂时无法启动新任务。请退出并重新打开 Bottega。",
   filterCsv: "CSV",
+  filterJson: "JSON",
   filterBaseJson: "Base JSON",
   filterExcelWorkbook: "Excel 工作簿",
   extensionTitle: "启用仓库 Agent 扩展",

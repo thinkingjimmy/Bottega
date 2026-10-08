@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain en copy.
- * [OUTPUT]: Provides nativeEn, the en `settings.native.*` copy.
+ * [OUTPUT]: Provides nativeEn, the en `settings.native.*` copy, including the generic JSON file filter.
  * [POS]: Main-only catalog under shared/i18n/native; the renderer never imports it, so this copy stays out of its first chunk.
  */
 
@@ -88,6 +88,7 @@ export const nativeEn = {
   quitRecovered: "An error occurred while preparing to quit. The app recovered and chat remains available. Try again later.",
   quitUnrecovered: "Quitting was cancelled. New tasks are temporarily unavailable. Quit and reopen Bottega to try again.",
   filterCsv: "CSV",
+  filterJson: "JSON",
   filterBaseJson: "Base JSON",
   filterExcelWorkbook: "Excel workbook",
   extensionTitle: "Enable repository Agent extensions",
