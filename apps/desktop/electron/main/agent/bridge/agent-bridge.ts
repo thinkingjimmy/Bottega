@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides canonical execution, main-only session prompt evidence, scoped availability, Project policy narrowing, MCP/session guards, typed finalization (only availability gates may say "install or update"; a Stop during the process-slot wait cancels), StartNotDispatchedError for every start that failed before an Agent process existed, generation-scoped Stop, interaction/retry IPC with authorized saved-history session replacement carrying the original user identity, and shutdown (which returns only after every settling turn has finished its ledger writes); a turn starts on turnBackend (a built-in's host code or an available package Provider's DescriptorBackend; nothing runs it: runtime-unavailable), and a package turn gets no plan check, third-party MCP plan or App session config.
  * Workflow turns isolate native Skills and omit ambient backend plugin projections while preserving Provider settings.
  * Workflow turns disable native Provider memory; quit judges remaining safety locks after runtime and turn owners settle. Explicit application exit may report background cleanup separately once all turn persistence succeeds.
+ * Explicit Speed changes reset session fallback for the next turn while preserving an unsettled turn's observed tier and reason.
  * [POS]: apps/desktop/electron/main/agent/bridge; Main-process multi-backend turn executor; the conversation coordinator supplies already-admitted manual intent
  */
 
@@ -565,12 +566,11 @@ export function releaseThreadScopeForConversation(conversationId: string) {
   threadScopes.releaseConversation(conversationId);
 }
 
-// Reset model/Speed fallback in the session, live entry, and renderer together
-// so explicit preference changes cannot leave stale fallback state visible.
+// Preference changes apply to the next turn; an unsettled turn keeps its observed tier.
 export function resetThreadServiceTierEffective(conversationId: string) {
   threadScopes.resetServiceTierEffective(conversationId);
   const entry = turns.byConversation(conversationId) as BridgeEntry | undefined;
-  if (entry) publish(entry, { type: "service-tier-effective" });
+  if (entry && !blocksNewTurn(entry)) publish(entry, { type: "service-tier-effective" });
 }
 
 export function registerAgentBridge(

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the canonical Chat schema, SQLite connection, and deterministic repository codecs
- * [OUTPUT]: Writes canonical facts while preserving managed lifecycle and frozen original-source identity.
+ * [OUTPUT]: Writes canonical facts and atomic message/title-job transitions while preserving managed lifecycle and frozen original-source identity.
  * [POS]: Write projection layer beneath transactional ChatRepository mutation orchestration
  */
 
@@ -11,6 +11,7 @@ import type { ChatFacts } from "../../projection/chat-summary";
 import { normalizeSearchText } from "../../../../../shared/content/search/search-text";
 import {
   assertSubagentBudget,
+  chatRecordSchema,
   messageSchema,
   subagentsSchema,
 } from "../../schema/chat-schema";
@@ -142,6 +143,8 @@ export class ChatRecordWriter {
     if (changes(core) !== 1 || changes(local) !== 1) {
       throw new Error("REVISION_STALE");
     }
+    if (command.titleJob) this.writeTitleJob({ id: command.chatId, updatedAt: command.updatedAt,
+      titleJob: chatRecordSchema.shape.titleJob.parse(command.titleJob) }, command.deviceId);
     if (message?.role === "user") {
       this.database.prepare(
         `UPDATE chat_device_bindings SET start_state_json = ?
@@ -416,6 +419,10 @@ export class ChatRecordWriter {
       record.readOnlyReason ?? null,
       record.chatRecordRevision
     );
+    this.writeTitleJob(record, deviceId);
+  }
+
+  private writeTitleJob(record: Pick<ChatRecord, "id" | "titleJob" | "updatedAt">, deviceId: string) {
     this.database.prepare(
       `INSERT INTO chat_title_jobs(chat_id, device_id, state, job_json, updated_at)
        VALUES (?, ?, ?, ?, ?)

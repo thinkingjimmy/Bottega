@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Navigation destinations, metadata section models, host actions and optional native window chrome.
+ * [INPUT]: Navigation destinations, metadata section models, host actions, the lightweight computer panel identity and optional native window chrome.
  * [OUTPUT]: WorkspaceNavigation owns the text-only Bottega header, computer strip, primary routes, ordered groups, settings footer and resize rail, live or inert, as a sidebar or phone home page. The activity bell can carry a count badge.
  * [POS]: The single product sidebar view; Electron IPC, browser queries and routing stay in host adapters.
  */
@@ -33,7 +33,7 @@ import {
   WorkspaceNavigationSection,
   type NavigationSectionModel,
 } from "./section";
-import { COMPUTER_PANEL_ID } from "../../account/computer-switcher";
+import { COMPUTER_PANEL_ID } from "./computer-panel";
 
 type NavigationDestination = {
   label: string;

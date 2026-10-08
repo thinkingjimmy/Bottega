@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on injected transcript pages, verified Chat heads, bounded imported-body preparation and an optional host cache of prepared bodies.
- * [OUTPUT]: Publishes complete initial windows once (a first read that failed is read again on the next head update, F07), retains readable content during revision refresh, reads only appended messages for a new head within one rewrite epoch (R-04) against an installed watermark kept apart from the observed head, catching up after any read (initial, delta or earlier()) a head that arrived meanwhile (C2-02, C3-01), and keeps earlier() contiguous after appends trim the window (its cursor moves to the oldest row still shown), and reuses verified imported bodies across virtual row mounts and, where a host offers one, across sessions.
+ * [INPUT]: Depends on injected transcript pages, verified Chat heads, bounded imported-body preparation an optional host cache of prepared bodies and bounded local receive diagnostics.
+ * [OUTPUT]: Records opaque installed body watermarks independently of live settlement. Publishes complete initial windows once (a first read that failed is read again on the next head update, F07), retains readable content during revision refresh, reads only appended messages for a new head within one rewrite epoch (R-04) against an installed watermark kept apart from the observed head, catching up after any read (initial, delta or earlier()) a head that arrived meanwhile (C2-02, C3-01), and keeps earlier() contiguous after appends trim the window (its cursor moves to the oldest row still shown), and reuses verified imported bodies across virtual row mounts and, where a host offers one, across sessions.
  * A failed initial imported window can retry latest even when native rows already loaded.
  * [POS]: Session-scoped presentation state, generic over its rows and head (cloud rows by default; a host such as desktop native supplies its own), with ordered, bounded imported-prefix/native-suffix paging and cancellable reads.
  */
@@ -10,6 +10,7 @@ import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { TranscriptSource } from "./contracts";
 import type { TranscriptPage, TranscriptRequest } from "./model";
 import { prepareImportedBody, type PreparedImportedField } from "./transcript/fields";
+import { beginReceive } from "./transcript/receive-diagnostics";
 import { readInParallel } from "./transcript/parallel";
 export type TranscriptItem<Native = ChatBody, Imported = ImportedEntry> =
   | { kind: "native"; body: Native }
@@ -59,6 +60,7 @@ export class TranscriptSession<Native = ChatBody, Imported = ImportedEntry, Head
   private installed: { incarnationId: string; epoch: number; seq: number } | null = null;
   private closed = true;
   private lifetime = 0;
+  private progress: ReturnType<typeof beginReceive> | null = null;
   private readonly rows: TranscriptRows<Native, Imported>;
   constructor(private readonly chatId: string, private readonly source: SessionSource<Native, Imported, Head>, private readonly targetMessageId?: string | null,
     private readonly incarnationId?: string, rows?: TranscriptRows<Native, Imported>) {
@@ -66,10 +68,13 @@ export class TranscriptSession<Native = ChatBody, Imported = ImportedEntry, Head
   }
   snapshot = () => this.value;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
-  private update(value: Partial<Snapshot<Native, Imported>>) { if (!this.closed) { this.value = { ...this.value, ...value }; for (const listener of this.listeners) listener(); } }
+  private update(value: Partial<Snapshot<Native, Imported>>) { if (!this.closed) { if (value.error) this.progress?.update({ phase: "failed" }); this.value = { ...this.value, ...value }; for (const listener of this.listeners) listener(); } }
   setHead(head: Head) {
     if (head.chat.id !== this.chatId || this.incarnationId && head.chat.incarnationId !== this.incarnationId) throw new Error("CHAT_IDENTITY_CHANGED");
     const previous = this.head; this.head = head;
+    if (!this.closed && previous && (previous.chat.incarnationId !== head.chat.incarnationId || previous.rewriteEpoch !== head.rewriteEpoch)) {
+      this.progress?.close(); this.progress = beginReceive("body");
+    }
     /* A first read that failed installed no window, and a host whose source has no change feed (desktop's native port) would never ask
        again: the next head update is the moment to read once more (review 0929 F07). */
     if (!this.closed && !this.value.busy && this.value.error && !this.installed) {
@@ -89,7 +94,7 @@ export class TranscriptSession<Native = ChatBody, Imported = ImportedEntry, Head
   }
   open() {
     if (!this.closed) return;
-    this.closed = false; const lifetime = ++this.lifetime;
+    this.closed = false; this.progress = beginReceive("body"); const lifetime = ++this.lifetime;
     this.stop = this.source.subscribe(this.chatId, () => {
       if (!this.value.busy && (this.value.error || this.value.state === "pending")) void this.latest();
     }, () => this.update({ error: true }));
@@ -107,6 +112,9 @@ export class TranscriptSession<Native = ChatBody, Imported = ImportedEntry, Head
   private install(page: SessionPage<Native, Imported>, after: number, readFor: Head | undefined) {
     const newest = page.messages.reduce((top, body) => Math.max(top, this.rows.nativeSeq(body)), after);
     this.installed = { incarnationId: page.incarnationId, epoch: readFor?.rewriteEpoch ?? page.revision, seq: Math.max(page.headSeq ?? newest, newest) };
+    // The delivery head can be ahead of this window; diagnostics name only rows actually loaded.
+    this.progress?.update({ phase: "body-installed", ...(page.messages.length ? {
+      installedBodySeq: page.messages.reduce((top, body) => Math.max(top, this.rows.nativeSeq(body)), 0) } : {}) });
   }
   /** After any read: a tail on screen that is behind the observed head in the same epoch reads the difference. */
   private catchUp() {
@@ -124,6 +132,7 @@ export class TranscriptSession<Native = ChatBody, Imported = ImportedEntry, Head
     private current(request: AbortController) { return !this.closed && request === this.request && !request.signal.aborted; }
   private begin(latest: boolean) {
     this.request?.abort(); const request = new AbortController(); this.request = request;
+    this.progress?.update({ phase: "reading-body" });
     this.update({ busy: true, error: false, latest }); return request;
   }
   async seek(messageId: string, location?: { segment: "native" | "imported"; seq: number }) {
@@ -216,5 +225,5 @@ export class TranscriptSession<Native = ChatBody, Imported = ImportedEntry, Head
       }
     }
   }
-  close() { this.closed = true; ++this.lifetime; this.request?.abort(); this.stop?.(); this.stop = null; }
+  close() { this.progress?.close(); this.closed = true; ++this.lifetime; this.request?.abort(); this.stop?.(); this.stop = null; }
 }

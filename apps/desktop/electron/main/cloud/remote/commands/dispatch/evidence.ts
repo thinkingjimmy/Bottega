@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on original ledger admissions/results, SQLite terminal receipts and exact live TurnRegistry recovery ownership.
- * [OUTPUT]: Exports durable command admission independently of result storage, and projects canonical status with conservative recovery. A first message's admission names the message its create-app writes (U06 Q7-c).
+ * [OUTPUT]: Exports durable command admission independently of result storage, and projects canonical status with conservative recovery. A first message's admission names the message its create-app writes (U06 Q7-c). Queue takeover proof survives intent compaction and never revives the original input.
  * [POS]: apps/desktop/electron/main/cloud/remote/commands/dispatch; Read-only command receipt projection; it neither finalizes transcript content nor launches retries.
  */
 import { canonicalHash } from "../../../../sections/coordinator/coordinator-values";
@@ -16,6 +16,9 @@ export async function commandEvidence(context: RemoteContext, ports: { ledger: R
   const id = context.origin.commandId;
   const terminal = (state: "done" | "error" | "cancelled"): RemoteCommandReport => ({ state, admission, result: null, reason: state === "error" ? "execution-failed" : null });
   const withdrawal = ports.ledger.remote.control(requireWithdrawalId(context));
+  if (ports.ledger.read(state => state.manualIntents[id]?.queueTakenBy || state.intentTombstones[id]?.queueTakenBy)) {
+    ports.current(); return { state: "cancelled", admission, result: null, reason: null, output: { kind: "queue-withdrawal", unpersisted: true } };
+  }
   if (withdrawal?.state === "applied" && withdrawal.output?.kind === "queue-withdrawal") {
     ports.current(); return { state: "cancelled", admission, result: null, reason: null, output: withdrawal.output };
   }

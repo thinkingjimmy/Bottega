@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Authenticated manifest entries and an owned Home target.
- * [OUTPUT]: Read-only content/mode equality evidence with a final inode and parent identity check.
+ * [OUTPUT]: Read-only content/mode equality evidence with optional completed-byte progress and a final inode and parent identity check.
  * [POS]: Incremental restore policy; cached equality never bypasses current Home or filesystem authority.
  */
 import { createHash } from "node:crypto";
@@ -45,7 +45,7 @@ export async function matchingHomeFile(target: HomeTarget, raw: Extract<HomeEntr
       for (let offset = 0; offset < before.size;) {
         signal.throwIfAborted(); const { bytesRead } = await file.read(buffer, 0, Math.min(buffer.length, before.size - offset), offset);
         if (!bytesRead) throw new Error("HOME_RESTORE_DESTINATION_CHANGED");
-        hash.update(buffer.subarray(0, bytesRead)); offset += bytesRead;
+        hash.update(buffer.subarray(0, bytesRead)); offset += bytesRead; target.advanced?.();
       }
       if (!same(before, await file.stat())) throw new Error("HOME_RESTORE_DESTINATION_CHANGED");
       await verify(); return hash.digest("hex") === entry.blob.sha256 ? verify : null;

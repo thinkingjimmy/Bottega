@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on authenticated account admission, durable binding, actual inventory and a scoped synchronization run.
- * [OUTPUT]: Owns durable consent/status projection including opt-in status-transition diagnostics, the scanned byte total a synced pass is held to, setup-scoped failures and inventory-bound cleanup with identity fences and a retryable cleanup failure; a run the scope's suspension closed resumes on the next admission even when the account state did not change (TASK-20 F2).
+ * [OUTPUT]: Owns Library-confirmed remote readiness independently of historical upload completion, retries only the existing content run, and owns durable consent/status projection including opt-in status-transition diagnostics, the scanned byte total a synced pass is held to, setup-scoped failures and inventory-bound cleanup with identity fences and a retryable cleanup failure; a run the scope's suspension closed resumes on the next admission even when the account state did not change (TASK-20 F2).
  * [POS]: Main lifecycle coordinator; durable business state remains in the four existing Stores.
  */
 import { randomUUID } from "node:crypto";
@@ -12,11 +12,11 @@ import type { SyncBindingStore } from "../account/binding";
 import type { AccountScopeLifecycle } from "../account/cleanup/lifecycle";
 import { captureScopeCleanup, type CleanupOwners } from "../account/cleanup/plan";
 import { scanInitialSync } from "./scan";
-type Run = { start(): Promise<void>; close(): Promise<void>; openChat?(chatId: string): Promise<void> };
+type Run = { start(): Promise<void>; retry?(): Promise<void>; remoteReady?(): boolean; close(): Promise<void>; openChat?(chatId: string): Promise<void> };
 type CleanupPurpose = "disabled" | "account-switch";
 type Ports = { config: CloudBuildConfig; userData: string; binding: SyncBindingStore; scope: AccountScopeLifecycle; owners: CleanupOwners;
   account(): CloudAccountState; changed(value: SyncProgress): void;
-  createRun(changed: (value: Partial<SyncProgress>) => void): Run };
+  createRun(changed: (value: Partial<SyncProgress>) => void, remoteReadyChanged: () => void): Run };
 export class InitialSyncController {
   private generation = 0;
   private closed = false;
@@ -24,6 +24,7 @@ export class InitialSyncController {
   private cleanup: { userId: string; value: SyncCleanupReview; digest: string; generation: number; purpose: CleanupPurpose; inspectedAt: number } | null = null;
   private scanning: AbortController | null = null;
   private run: Run | null = null;
+  private readonly remoteReadyListeners = new Set<() => void>();
   private identity = "";
   private progress = syncProgressSchema.parse({ status: "not-connected" });
   private readonly stopAdmission: () => void;
@@ -45,6 +46,14 @@ export class InitialSyncController {
     if (this.closed || account.status !== "ready" || !account.profile || !account.deviceId) throw new Error("SYNC_ACCOUNT_UNAVAILABLE");
     return account.profile.userId;
   }
+  remoteReady() {
+    const account = this.ports.account(), binding = this.ports.binding.snapshot();
+    return Boolean(!this.closed && account.status === "ready" && binding && binding.phase !== "closing" && !binding.paused &&
+      account.profile?.userId === binding.userId && account.deviceId === binding.deviceId &&
+      this.ports.scope.canSynchronize(binding.userId, binding.deviceId) && this.run?.remoteReady?.());
+  }
+  onRemoteReady(listener: () => void) { this.remoteReadyListeners.add(listener); return () => { this.remoteReadyListeners.delete(listener); }; }
+  private remoteReadyChanged() { for (const listener of this.remoteReadyListeners) listener(); }
   async openChat(chatId: string) { await this.run?.openChat?.(chatId); }
   async inspect() {
     const userId = this.ready(), generation = this.generation;
@@ -105,9 +114,10 @@ export class InitialSyncController {
       this.publish({ status: binding.phase === "initializing" ? "initializing" : "offline" }); return;
     }
     const generation = ++this.generation; this.interrupted = false;
-    const run = this.ports.createRun(value => { if (this.run === run && generation === this.generation) this.publish(value); });
+    const run = this.ports.createRun(value => { if (this.run === run && generation === this.generation) this.publish(value); },
+      () => { if (this.run === run && generation === this.generation) this.remoteReadyChanged(); });
     let release = () => {};
-    const activity = { close: async () => { await run.close(); if (this.run === run) this.run = null; release();
+    const activity = { close: async () => { const closing = run.close(); this.remoteReadyChanged(); await closing; if (this.run === run) this.run = null; release();
       queueMicrotask(() => { if (!this.closed) { this.interrupted = true; this.resume(); } }); } };
     try { release = this.ports.scope.own(activity); this.run = run; }
     catch (error) { void run.close(); throw error; }
@@ -120,7 +130,10 @@ export class InitialSyncController {
     const binding = this.ports.binding.snapshot();
     // A cleanup that failed leaves the binding closing; disconnect is idempotent and keeps its operation.
     if (binding?.phase === "closing") { await this.disconnect(binding.cleanup!.reason); await this.readmit(); return "disconnected"; }
-    await this.ports.scope.pause(true); await this.ports.scope.pause(false); this.resume(); return "resumed";
+    // A content retry does not suspend the account, remote command intake or accepted turns.
+    if (this.run) await (this.run.retry?.() ?? this.run.start());
+    else this.resume();
+    return "resumed";
   }
   /** Runs a cleanup and, on failure, states that this account is still being disconnected. */
   private async disconnect(reason: Parameters<AccountScopeLifecycle["disconnect"]>[0], beforeCleanup?: () => Promise<void>) {
@@ -176,5 +189,5 @@ export class InitialSyncController {
     await this.disconnect("disabled", () => this.confirmCleanup(reviewId, "disabled"));
     await this.readmit();
   }
-  async close() { this.closed = true; this.stopAdmission(); this.generation++; this.scanning?.abort(); this.review = null; await this.run?.close(); this.run = null; }
+  async close() { this.closed = true; this.stopAdmission(); this.generation++; this.scanning?.abort(); this.review = null; await this.run?.close(); this.run = null; this.remoteReadyListeners.clear(); }
 }

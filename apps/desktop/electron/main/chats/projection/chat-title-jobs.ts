@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ChatStore, title fallback, generators/connect ports and ChatsEvent release ports
- * [OUTPUT]: Runs durable title jobs with typed authentication deferral bounded by a first-deferral deadline, original receipt CAS, coalesced eligibility wakes, finite drain and lifecycle-controlled subscription.
+ * [OUTPUT]: Recovers missing first-message title receipts and runs durable title jobs with bounded authentication deferral, original receipt CAS, coalesced eligibility wakes, finite drain and lifecycle-controlled subscription.
  * [POS]: apps/desktop/electron/main/chats/projection; Title outbox worker for chats; ChatStore owns the durable job and ChatsService only triggers delivery
  */
 
@@ -83,16 +83,21 @@ export class ChatTitleJobs {
     }
   }
 
-  /* 只有还挂着 pending 的那几条才值得回一趟数据库：整库启动时逐条问
-     「第一条用户消息是什么」，等于为一件根本不会发生的事付全表的钱。 */
+  /* Read message bodies only for pending jobs or fallback titles whose first-message
+     receipt was lost. Empty, named, completed and read-only Chats do not need recovery. */
   async recover() {
     for (const summary of this.store.list()) {
+      if (this.closed) return;
       const record = this.store.getMetadata(summary.id);
-      if (record?.titleJob.state !== "pending") continue;
+      if (!record || record.readOnlyReason) continue;
+      const missing = record.titleJob.state === "none" && record.startState.kind === "started-exact" &&
+        (record.titleSource === "local-fallback" || record.titleSource === "app-fallback");
+      if (record.titleJob.state !== "pending" && !missing) continue;
       const firstUser = await this.store.getNativeMessage(summary.id, {
         kind: "first-user",
       });
-      if (firstUser) this.schedule(record, firstUser.content);
+      if (this.closed) return;
+      if (firstUser) this.schedule(missing ? await this.store.ensureTitleJob(record, firstUser) : record, firstUser.content);
     }
   }
 

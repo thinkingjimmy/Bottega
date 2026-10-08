@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on original local Chat outboxes, frozen manual admissions and the existing ledger handoff.
- * [OUTPUT]: Captures owner-scoped turns (never a package Provider's local-only Chat) from a turn-scoped outbox scan and transfers result evidence, including prepared results arriving after cloud settlement.
+ * [OUTPUT]: Captures owner-scoped turns (never a package Provider's local-only Chat) from a turn-scoped outbox scan and transfers result evidence, including prepared results arriving after cloud settlement, with per-intent failure isolation.
  * [POS]: Local-only adapter: every mutation targets the profile's SQLite worker, with no network transport.
  */
 import { hashChatContent } from "@ai-chat/cloud-protocol/chats/transcript/body";
@@ -15,7 +15,7 @@ import { cloudActionSchema, handoffIdentity, type CloudAction } from "../../chat
 import { localTurnAdmissionSchema, type LocalTurnAdmission } from "../../chats/sqlite/cloud/delivery/turns/model";
 import { messageSchema, subagentsSchema } from "../../chats/schema/chat-schema";
 import { cloudRequestHash } from "../../chats/store/sync/api";
-import { handoffLedgerTurn, recoverLedgerHandoffs } from "../../chats/store/sync/ledger-handoff";
+import { handoffLedgerTurn } from "../../chats/store/sync/ledger-handoff";
 import { readOutboxSource, type ChatOutboxItem, type ChatSyncStore } from "../sync/chats/sources";
 async function readOutboxPages(store: ChatSyncStore, scope: SyncScope, filter: { entityKind?: "turn"; chatId?: string }) {
   const items: ChatOutboxItem[] = []; let afterId: string | null = null;
@@ -42,8 +42,10 @@ export async function captureTurnAdmissions(ports: TurnSourcePorts, items: ChatO
     return value;
   };
   const intents = Object.values(ports.ledger.snapshot().manualIntents).filter(intent => intent.payload && intent.userSeq && intent.assistantSeq && intent.requestId && !existing.has(intent.requestId));
+  const failures: unknown[] = [];
   for (const intent of intents) {
     ports.current();
+    try {
     /* A package Provider's Chat stays on this computer (S3-b): never captured for live publication, whatever its outbox holds (d5). */
     if (chatSyncExclusion({ agent: (intent.payload as PreparedManualTurn).turn?.turnOptions.backend ?? "" })) continue;
     const receipt = await ports.store.sync.read(ports.scope, { type: "turn-receipt", turnId: intent.requestId! });
@@ -78,12 +80,17 @@ export async function captureTurnAdmissions(ports: TurnSourcePorts, items: ChatO
         { type: "capture-live-turn", sourceId: item.id, payloadDigest: item.payload_digest, admission });
       break;
     }
+    } catch (error) { ports.current(); failures.push(error); }
   }
+  if (failures.length) throw new AggregateError(failures, "TURN_ADMISSION_CAPTURE_FAILED");
 }
 export type HandoffEvidence = Extract<CloudAction, { type: "handoff-turn" }>["evidence"];
 type HandoffAdmission = Pick<LocalTurnAdmission, "ledgerIntentId" | "turnId" | "sequences" | "user" | "assistantMessageId"> & { chat: { id: string } };
 export async function transferTurnEvidence(ports: TurnSourcePorts, admission: HandoffAdmission, live: boolean) {
-  await recoverLedgerHandoffs(ports.ledger, ports.store); ports.current();
+  // Recover only this intent: another Chat's old handoff cannot prevent this result from becoming durable.
+  const pending = ports.ledger.snapshot().manualIntents[admission.ledgerIntentId]?.cloudHandoff;
+  if (pending?.state === "pending") await handoffLedgerTurn(ports.ledger, ports.store, admission.ledgerIntentId, pending.command);
+  ports.current();
   const state = ports.ledger.snapshot(), intent = state.manualIntents[admission.ledgerIntentId];
   if (!intent) return;
   const result = state.manualResultOutbox[intent.id], available = result && ["stored", "empty"].includes(result.outcome);
@@ -108,8 +115,9 @@ export async function transferTurnEvidence(ports: TurnSourcePorts, admission: Ha
   ports.current(); await handoffLedgerTurn(ports.ledger, ports.store, intent.id, { ...command, requestHash: cloudRequestHash(command) });
 }
 export async function recoverLateTurnEvidence(ports: TurnSourcePorts) {
-  const state = ports.ledger.snapshot();
+  const state = ports.ledger.snapshot(), failures: unknown[] = [];
   for (const intent of Object.values(state.manualIntents)) {
+    try {
     /* A settled handoff keeps only the user message's id and hash (C-04): there is nothing late to recover, and nothing to parse. */
     if (!intent.requestId || !intent.userMessage || !state.manualResultOutbox[intent.id] || intent.cloudHandoff?.state === "settled") continue;
     ports.current(); const local = await ports.store.sync.read(ports.scope, { type: "turn-receipt", turnId: intent.requestId });
@@ -120,5 +128,7 @@ export async function recoverLateTurnEvidence(ports: TurnSourcePorts) {
     await transferTurnEvidence(ports, { ledgerIntentId: intent.id, turnId: receipt.turnId, chat: { id: receipt.chatId }, user,
       assistantMessageId: receipt.assistantMessageId,
       sequences: { noticeSeq: intent.noticeSeq, userSeq: receipt.userSeq, assistantSeq: receipt.assistantSeq } }, false);
+    } catch (error) { ports.current(); failures.push(error); }
   }
+  if (failures.length) throw new AggregateError(failures, "LATE_TURN_RECOVERY_FAILED");
 }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the durable state of the ledger-schema, terminal time and the constants of the unified retained window
- * [OUTPUT]: Compacts terminal custody and aged control receipts while retaining original remote envelopes and unconfirmed SQLite results.
+ * [OUTPUT]: Compacts terminal custody and aged control receipts while retaining original remote envelopes and unconfirmed SQLite results. Terminal tombstones retain queue takeover identities.
  * [POS]: Pure compaction unit of coordinator/state; performs no file IO, and retention decisions rely only on terminalAt already committed to state, never inferred side-effect completion
  */
 
@@ -231,6 +231,7 @@ export function compactLedgerState(state: LedgerState, now: number) {
     if (markedManuals.has(id)) continue;
     state.intentTombstones[id] = {
       hash: intent.submissionHash!,
+      ...(intent.queueTakenBy ? { queueTakenBy: intent.queueTakenBy } : {}),
       ...(intent.remoteSubmission ? { remoteSubmission: structuredClone(intent.remoteSubmission) } : {}),
       outcome: intent.phase,
       custody: state.submissionOutcomes[id]?.custody === "chat-persisted" || intent.phase === "settled" ? "chat-persisted" : "main-journal",

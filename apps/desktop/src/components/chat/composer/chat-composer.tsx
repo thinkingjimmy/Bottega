@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React/router, runtime controller, Agent submission custody, cloud account predicates, idle chunk prefetch, queue capacity, Chat i18n, workspace hooks, Gallery/Sketch custody, modal keyboard ownership, the per-Chat submission gate, unavailable draft images, the Agent connection warm-up client, startup marks, PromptInputProvider and RichInput.
- * [OUTPUT]: Native rich submission, Agent-menu availability recovery without a duplicate status/manage/recheck strip, preserved drafts and image warnings, queued Plan/authentication retry, prepare-failure recovery, Sketch and account-owned remote draft execution.
+ * [OUTPUT]: Native rich submission, model and permission edits for later submissions during an active turn, Agent-menu availability recovery without a duplicate status/manage/recheck strip, preserved drafts and image warnings, queued Plan/authentication retry, prepare-failure recovery, Sketch and account-owned remote draft execution.
  * [POS]: Chat command surface; candidate projection is read-only while drafts, attachments, and Gallery custody remain in the per-Chat store
  */
 import { ChatAddMenu } from "./input/add-menu";
@@ -136,6 +136,8 @@ function ChatComposerContent({
   const editingLock = controller.composerLock ?? (controller.inputDisabled ? "session-pending" : controller.pendingAgent?.submitting || controller.pendingAgent?.stale
     ? "agent-switching" : branchBusy ? "branch-busy" : authorizationPending > 0 ? "authorization-pending" : workspaceSelectionPending ? "workspace-selecting" : null);
   const editingDisabled = editingLock !== null;
+  // An admitted turn keeps its captured options; these edits configure a later submission.
+  const turnOptionsDisabled = editingDisabled || submissionPending;
   const turnControlsDisabled =
     controller.turnControlsDisabled ||
     Boolean(controller.pendingAgent?.submitting) ||
@@ -611,7 +613,7 @@ function ChatComposerContent({
                 controller.selectedBackend?.displayName ?? "Agent"
               }
               saving={controller.settingsSaving}
-              disabled={turnControlsDisabled}
+              disabled={turnOptionsDisabled}
               onChange={(permissionMode) =>
                 controller.updateTurnOptions({
                   ...builtinOptions,
@@ -683,7 +685,7 @@ function ChatComposerContent({
                 settingsError={controller.settingsError}
                 saving={controller.settingsSaving}
                 streaming={isGenerating}
-                disabled={turnControlsDisabled}
+                disabled={turnOptionsDisabled}
                 onChange={controller.updateTurnOptions}
                 onRetryModels={controller.retryModels}
               />
@@ -699,7 +701,7 @@ function ChatComposerContent({
                 settingsError={controller.settingsError}
                 saving={controller.settingsSaving}
                 streaming={isGenerating}
-                disabled={turnControlsDisabled}
+                disabled={turnOptionsDisabled}
                 onChange={controller.updateTurnOptions}
                 onRetryModels={controller.retryModels}
               />

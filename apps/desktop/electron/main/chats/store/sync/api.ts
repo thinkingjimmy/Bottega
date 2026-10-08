@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ChatStore's shared queue/state and the strict worker cloud protocol.
- * [OUTPUT]: Provides scoped synchronization, durable operation-receipt reads, recovered Chat commits, terminal Home and outbox-append hooks whose explicit notifier names the Chat a business metadata edit touched, and device-name projections.
+ * [OUTPUT]: Provides observed queue operations for scoped synchronization, durable operation-receipt reads, recovered Chat commits, terminal Home and outbox-append hooks whose explicit notifier names the Chat a business metadata edit touched, and device-name projections.
  * [POS]: Main-only Chat facade collaborator; publication follows durable receipt confirmation, and an action about one Chat refreshes only that Chat's metadata (A-13).
  */
 import { hashCanonical } from "@ai-chat/cloud-protocol";
@@ -81,7 +81,7 @@ export class ChatSyncApi {
   read(scope: SyncScope | null, query: CloudQuery) {
     return this.state.queue.enqueue(() => this.state.requireDatabase().execute({
       kind: "cloud-read", deviceId: this.state.requireDeviceId(), scope, query,
-    }));
+    }), "sync-read");
   }
   mutate(scope: SyncScope | null, operationId: string, action: CloudAction) {
     return this.state.queue.enqueue(async () => {
@@ -112,7 +112,7 @@ export class ChatSyncApi {
       this.state.activeRecord = undefined;
       this.state.touch();
       return receipt;
-    });
+    }, "sync-write");
   }
 }
 /** The one Chat an action changes, for the actions a hydrate repeats; anything else refreshes every Chat. */

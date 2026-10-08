@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the database protocol's command, request, response, and failure types
- * [OUTPUT]: Validates closed worker envelopes, prepared replay sealing, nullable-session continuation notices, ownership commits, optional App retention identity, and a new workflow Chat's transient role on upsert-record (R-35).
+ * [OUTPUT]: Validates closed worker envelopes, atomic message/title-job writes, prepared replay sealing, nullable-session continuation notices, ownership commits, optional App retention identity, and a new workflow Chat's transient role on upsert-record (R-35).
  * [POS]: Runtime codec for the main/worker trust boundary; protocol types remain declarative in database-protocol.ts
  */
 
@@ -111,14 +111,14 @@ const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
     expectedAggregateRevision: number,
     facts: object,
   }),
-  "append-message": command({ ...op, ...chatDevice, message: object, ...messageRevisions }, { ownerCommit: object }),
+  "append-message": command({ ...op, ...chatDevice, message: object, ...messageRevisions }, { ownerCommit: object, titleJob: object }),
   "commit-turn": command({
     ...op,
     ...chatDevice,
     message: nullable(object),
     subagents: object,
     ...messageRevisions,
-  }),
+  }, { titleJob: object }),
   "update-readonly-presentation": command({
     ...op,
     ...chatDevice,

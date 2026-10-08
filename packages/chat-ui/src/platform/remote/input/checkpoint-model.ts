@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on opaque plugin source metadata and closed remote attachment, reference, creation and command schemas; no DOM or draft-store code.
- * [OUTPUT]: RemoteDraftCheckpointPort (host-implemented encrypted storage), the closed DraftCheckpoint (with the ruling 12 local queue and Stop waiting ids) / CheckpointFile shapes, parseCheckpoint and blobKey.
+ * [OUTPUT]: RemoteDraftCheckpointPort (host-implemented encrypted storage), the closed DraftCheckpoint (with frozen queued sends and original cancellation custody) / CheckpointFile shapes, parseCheckpoint and blobKey. Full queued settings, complete recovery identities and immutable queue-operation journals survive reload.
  * [POS]: DOM-free half of the W23 recovery contract, so platform contracts (also compiled into the desktop main process) never pull the draft store or canvas code; checkpoint.ts adds the binder.
  */
 import { z } from "zod";
@@ -9,6 +9,7 @@ import { remoteAttachmentSchema, remotePermissionModeSchema } from "@ai-chat/clo
 import { remoteFileReferenceSchema, remoteSkillReferenceSchema } from "@ai-chat/cloud-protocol/remote/input/references";
 import { remoteCommandInputSchema, remoteCreationReceiptSchema, remoteTurnOptionsSchema } from "@ai-chat/cloud-protocol/remote/model";
 import { frozenRemoteCommandSchema, frozenRemoteCreationSchema, remoteCreationInputSchema } from "@ai-chat/cloud-protocol/remote/encrypted";
+import { LOCAL_QUEUE_LIMIT, DRAFT_CUSTODY_LIMIT } from "./limits";
 /** Host storage for one account and encrypted space. Blobs are immutable per key, so a host may skip re-encrypting a key it already holds. */
 export interface RemoteDraftCheckpointPort {
   read(key: string): Promise<{ checkpoint: unknown; blobs: ReadonlyMap<string, Blob> } | null>;
@@ -17,7 +18,10 @@ export interface RemoteDraftCheckpointPort {
   /** Called before the key's session ends (a biometric pause); the returned function unregisters. Optional per host. */
   beforeEnd?(settle: () => Promise<void>): () => void;
 }
+const positionSchema = z.object({ afterCommandId: z.string().optional(), afterTurnId: z.string().optional() }).strict();
 const uuid = z.string().uuid();
+const queueIdentity = z.string().min(1).max(256);
+const settingsSchema = z.object({ backend: remoteCreationInputSchema.shape.backend, permissionMode: remotePermissionModeSchema, options: remoteTurnOptionsSchema.optional() }).strict();
 const referenceSchema = z.object({ id: z.string().min(1).max(256), label: z.string().max(1024),
   value: z.discriminatedUnion("kind", [remoteFileReferenceSchema, remoteSkillReferenceSchema]) }).strict();
 /* processed: the fixed File is held; source: the picked image is held and is processed again; reselect: nothing is held. */
@@ -31,16 +35,25 @@ const checkpointSchema = z.object({ version: z.literal(1), text: z.string().max(
   dismissedPlans: z.array(z.string().max(256)).max(64), files: z.array(fileSchema).max(8),
   creation: z.object({ input: remoteCreationInputSchema, commandId: uuid, text: z.string().max(1_048_576), permissionMode: remotePermissionModeSchema, planMode: z.boolean(),
     options: remoteTurnOptionsSchema.optional(), references: z.array(referenceSchema.shape.value).max(32).optional(), frozen: frozenRemoteCreationSchema.optional(),
-    receipt: remoteCreationReceiptSchema.optional() }).strict().nullable(),
-  submitted: z.array(z.object({ commandId: uuid, text: z.string().max(1_048_576), references: z.array(referenceSchema).max(32), files: z.array(fileSchema).max(8) }).strict()).max(16),
-  commands: z.array(z.object({ input: remoteCommandInputSchema, frozen: frozenRemoteCommandSchema.optional() }).strict()).max(16),
-  /* Ruling 12: this controller's held messages and the commands it stopped waiting for (ids leave once terminal). */
+    receipt: remoteCreationReceiptSchema.optional(), commandStarted: z.boolean().optional() }).strict().nullable(),
+  submitted: z.array(z.object({ commandId: queueIdentity, text: z.string().max(1_048_576), references: z.array(referenceSchema).max(32), files: z.array(fileSchema).max(8), settings: settingsSchema.optional(), planMode: z.boolean().optional(), settlementId: queueIdentity.optional() }).strict()).max(DRAFT_CUSTODY_LIMIT),
+  commands: z.array(z.object({ input: remoteCommandInputSchema, frozen: frozenRemoteCommandSchema.optional(), position: positionSchema.optional(), stopRequested: z.boolean().optional(), cancelCommandId: uuid.optional(), pauseQueue: z.boolean().optional() }).strict()).max(DRAFT_CUSTODY_LIMIT),
+  recoveries: z.array(queueIdentity).max(DRAFT_CUSTODY_LIMIT).optional(),
+  queueOperations: z.array(z.object({ input: remoteCommandInputSchema, kind: z.enum(["edit", "steer", "remove", "control", "admit"]), originalId: queueIdentity.optional(), draftVersion: z.number().int(), replacement: z.boolean().optional() }).strict()).max(1).optional(),
+  /* Held messages retain their submitted settings and predecessor across reload. */
   local: z.object({ items: z.array(z.object({ commandId: uuid, text: z.string().max(1_048_576), attachments: z.array(remoteAttachmentSchema).max(8),
-    references: z.array(referenceSchema.shape.value).max(32), planMode: z.boolean(), incarnationId: z.string().min(1).max(256), ownerDeviceId: z.string().min(1).max(256) }).strict()).max(20),
+    references: z.array(referenceSchema.shape.value).max(32), planMode: z.boolean(), incarnationId: z.string().min(1).max(256), ownerDeviceId: z.string().min(1).max(256), position: positionSchema.optional(),
+    settings: settingsSchema.optional() }).strict()).max(LOCAL_QUEUE_LIMIT),
     gate: uuid.nullable(), paused: z.string().min(1).max(256).nullable() }).strict().optional(),
-  stoppedWaiting: z.array(uuid).max(64).optional(),
 }).strict();
 export type DraftCheckpoint = z.infer<typeof checkpointSchema>;
 export type CheckpointFile = z.infer<typeof fileSchema>;
-export const parseCheckpoint = (value: unknown) => checkpointSchema.parse(value);
+export const parseCheckpoint = (value: unknown) => {
+  // Retired local-only waiting flags must not invalidate an otherwise valid saved draft.
+  if (value && typeof value === "object" && "stoppedWaiting" in value) {
+    const { stoppedWaiting: _retired, ...saved } = value;
+    return checkpointSchema.parse(saved);
+  }
+  return checkpointSchema.parse(value);
+};
 export const blobKey = (file: Pick<CheckpointFile, "id" | "kind">) => `${file.id}.${file.kind === "source" ? "source" : "file"}`;

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Chat schemas/commit normalization, App Project membership facts, monotonic Chat/title/start revisions, and main/errors
- * [OUTPUT]: Provides Chat record creation, App Project placement mutation, superseded-branch pruning, and fact/commit revision advancement
+ * [OUTPUT]: Provides Chat record creation, App Project placement mutation, superseded-branch pruning, fact/commit revisions and the shared pending title-job policy for first messages and recovery.
  * [POS]: apps/desktop/electron/main/chats/lifecycle; Pure Chat record lifecycle policy; ChatStore retains queue and I/O ownership while delegating record construction and transitions
  */
 
@@ -245,6 +245,17 @@ export function withFactRevision<T extends ChatFacts>(
   return { ...candidate, chatRecordRevision: current.chatRecordRevision + 1 };
 }
 
+export function pendingTitleJob(
+  current: Pick<ChatFacts, "id" | "titleSource" | "titleJob">,
+  firstUser: Pick<ChatMessage, "id" | "createdAt">,
+  recordRevision: number
+): ChatRecord["titleJob"] {
+  if (current.titleJob.state !== "none" ||
+    (current.titleSource !== "app-fallback" && current.titleSource !== "local-fallback")) return current.titleJob;
+  return { state: "pending", jobId: `title:${current.id}:${firstUser.id}`,
+    expectedRecordRevision: recordRevision, expectedTitleSource: current.titleSource, createdAt: firstUser.createdAt };
+}
+
 export function withCommitRevisions(
   current: ChatRecord,
   candidate: ChatRecord,
@@ -262,20 +273,7 @@ export function withCommitRevisions(
         firstUserMessageSeq: firstUser.seq,
       };
     }
-    if (
-      firstUser &&
-      titleJob.state === "none" &&
-      (candidate.titleSource === "app-fallback" ||
-        candidate.titleSource === "local-fallback")
-    ) {
-      titleJob = {
-        state: "pending",
-        jobId: `title:${candidate.id}:${firstUser.id}`,
-        expectedRecordRevision: chatRecordRevision,
-        expectedTitleSource: candidate.titleSource,
-        createdAt: firstUser.createdAt,
-      };
-    }
+    if (firstUser) titleJob = pendingTitleJob(candidate, firstUser, chatRecordRevision);
   }
   return {
     ...candidate,

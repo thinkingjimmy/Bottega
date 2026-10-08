@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node crypto, ProductFailure, chat lifecycle/projection collaborators, device identity, the typed SQLite worker client, and the shared ChatStoreState cell with read, history, fork, transition, and persistence collaborators; the provider catalog's default provider
- * [OUTPUT]: Provides receipt-gated Chat APIs with frozen execution admission, readonly-safe Project detachment and App transcript retention, opened through the two-phase open()/adopt() startup split that initialize() composes.
+ * [OUTPUT]: Provides receipt-gated Chat APIs with frozen execution admission, durable title-job recovery, readonly-safe Project detachment and App transcript retention, opened through the two-phase open()/adopt() startup split that initialize() composes.
  * [POS]: Main-process Chat domain queue and metadata owner; durable writes, fork construction, pure transitions, read projections, and import/continuation sagas live in focused composed siblings
  */
 import { type ChatStoreDependencies, type ChatSqliteRuntimeFacts, sessionKey, requestHash } from "./store-contracts";
@@ -38,6 +38,7 @@ import { assertChatId } from "./chat-guards";
 import type { ChatTitleJob } from "../../../shared/placement/facts";
 import {
   createChatRecord,
+  pendingTitleJob,
   withCommitRevisions,
   withFactRevision,
   type ChatCreateIdentity,
@@ -491,6 +492,14 @@ export class ChatStore {
     return this.updateFacts(chatId, (current) =>
       setGeneratedTitleRecord(current, title, receipt, this.state.now())
     );
+  }
+
+  ensureTitleJob(record: Pick<ChatFacts, "id" | "incarnationId">, firstUser: Pick<ChatMessage, "id" | "createdAt">) {
+    return this.updateFacts(record.id, current => {
+      if (current.incarnationId !== record.incarnationId || current.readOnlyReason) return current;
+      const titleJob = pendingTitleJob(current, firstUser, current.chatRecordRevision + 1);
+      return titleJob === current.titleJob ? current : { ...current, titleJob };
+    });
   }
 
   has(chatId: string) {

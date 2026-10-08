@@ -12,6 +12,7 @@
     "./server-time": "./src/platform/presentation/server-time.ts",
     "./model": "./src/platform/model.ts",
     "./transcript-session": "./src/platform/transcript-session.ts",
+    "./receive-diagnostics": "./src/platform/transcript/receive-snapshot.ts",
     "./live-source": "./src/platform/live-source.ts",
     "./read-source": "./src/platform/read-source.ts",
     "./read-budget": "./src/platform/transcript/parallel.ts",

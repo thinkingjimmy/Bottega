@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Depends on bounded Zod and Convex error-code diagnostics, approved binding, the four Store outboxes, artifact publication and formal entity/file publishers.
- * [OUTPUT]: Claims this folder for this computer before offering a byte and stops the run for good when the server says it belongs to another, delivers deletions before uploads, runs the first Chat upload cheapest-first behind the Base-owning identities the Bases phase requires, sums the plaintext this pass delivers and every file transfer it starts into one uploaded figure, publishes a named Chat's metadata on its own fast lane, sends a Base's queued work as soon as a local commit queues it, completes recovered native body/import/Home publication through convergence and isolates entity failures within bounded lanes. U06-d: each App's build status is published as it changes and again after its surface in every pass.
+ * [OUTPUT]: Exposes current-run remote readiness only after the Library ownership receipt and local marker are confirmed, wakes content retry without suspending the account, claims this folder for this computer before offering a byte and stops the run for good when the server says it belongs to another, delivers deletions before uploads, runs the first Chat upload cheapest-first behind the Base-owning identities the Bases phase requires, sums the plaintext this pass delivers and every file transfer it starts into one uploaded figure, publishes a named Chat's metadata on its own fast lane, sends a Base's queued work as soon as a local commit queues it, completes recovered native body/import/Home publication through convergence and isolates entity failures within bounded lanes. U06-d: each App's build status is published as it changes and again after its surface in every pass.
  * [POS]: Main synchronization composition; an entity remains pending until every required content component is confirmed, and the byte figures belong to the initial upload alone. A pass holds at most one outbox window (2,000 rows, A-14) and counts the rest as pending.
  */
+import { recoveryDiagnostics } from "../../runtime/diagnostics/timeline";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ZodError } from "zod";
 import { ConvexError } from "convex/values";
@@ -67,7 +68,7 @@ export class DesktopSyncRun {
   private turnTimer: ReturnType<typeof setInterval> | null = null;
   private flight: Promise<void> | null = null;
   private closed = false;
-  private readonly retry = new RetrySchedule(FLUSH_INTERVAL, FLUSH_CEILING);
+  private readonly retrySchedule = new RetrySchedule(FLUSH_INTERVAL, FLUSH_CEILING);
   private failureDigest: string | null = null;
   /** Set once the server refuses this folder. It is the end of the run: the folder cannot change without a restart. */
   private refused = false;
@@ -120,6 +121,7 @@ export class DesktopSyncRun {
     recorder?: LocalTurnRecorder; promotion?: BasePromotionService; retireApp?: AppRetirement; recovery?: Pick<RecoverySave, "save">; assertIdle?(chatId: string): void;
     /** This profile's Bottega folder and this computer's key: without both there is nothing to publish ownership of. */
     folder?: { id(): string | null; root(): string | null; machineIdHash(): Promise<string | null> };
+    remoteReadyChanged?(): void;
     /** U06-d: each App's build status as the App service tracks it; null before Apps load. */
     plugins?(): PluginSurfaceSource | null;
     buildStatus?(): { status(appId: string): AppBuildStatus | null; onChange(listener: (appId: string) => void): () => void } | null;
@@ -229,13 +231,15 @@ export class DesktopSyncRun {
     const queued = (await this.readOutbox()).filter(item => item.metadata_status === "queued" && item.kind !== "initialize");
     for (const chatId of new Set(queued.map(chatIdOf))) this.wakeMetadata(chatId);
   }
-  private schedule(delay = this.retry.delay) {
+  private schedule(delay = this.retrySchedule.delay) {
     if (this.closed || this.refused) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => { void this.flush().catch(() => {}); }, delay); this.timer.unref();
   }
   // New work that lands mid-pass is not lost: the pass in flight may already have read past it.
-  wake() { if (this.refused) return; this.retry.reset(); if (this.flight) { this.woken = true; return; } this.schedule(WAKE_DELAY); }
+  wake() { if (this.refused) return; this.retrySchedule.reset(); if (this.flight) { this.woken = true; return; } this.schedule(WAKE_DELAY); }
+  retry() { this.wake(); this.wakeTurns(); return Promise.resolve(); }
+  remoteReady() { return !this.closed && !this.refused && this.published; }
   private wakeTurns() {
     if (this.turnWake || this.closed || this.refused) return;
     this.turnWake = setTimeout(() => { this.turnWake = null; void this.turns.flush().catch(() => {}); }, 200);
@@ -299,7 +303,7 @@ export class DesktopSyncRun {
   private flush() {
     if (this.closed || this.refused) return Promise.resolve(); if (this.flight) return this.flight;
     const failures = { all: [] as Error[], required: [] as Error[], participant: true };
-    const flight = this.failures.run(failures, () => this.deliver()).then(() => { this.failureDigest = null; this.retry.reset(); }, error => {
+    const flight = this.failures.run(failures, () => this.deliver()).then(() => { this.failureDigest = null; this.retrySchedule.reset(); }, error => {
       // A pass that keeps failing the same way must not flip the row between syncing and error on every retry.
       const value = String(error instanceof Error ? error.message : error);
       if (process.env.BOTTEGA_SYNC_DIAGNOSTICS === "1") console.warn("[cloud-sync-failure]", {
@@ -314,7 +318,8 @@ export class DesktopSyncRun {
         }))].slice(0, 16),
       });
       if (!this.closed && !this.refused && value !== this.failureDigest) this.input.changed({ status: "error", error: "upload-failed" });
-      this.failureDigest = value; this.retry.failed(); throw error;
+      recoveryDiagnostics.record({ stage: "sync", code: "failed" });
+      this.failureDigest = value; this.retrySchedule.failed(); throw error;
     });
     this.flight = flight; this.woken = false;
     void flight.finally(() => {
@@ -330,13 +335,17 @@ export class DesktopSyncRun {
   private async publishLibrary() {
     const folder = this.input.folder, libraryId = folder?.id() ?? null, root = folder?.root() ?? null;
     if (this.published || !folder || !libraryId || !root) return;
-    if (!await folder.machineIdHash()) return;
+    const machineIdHash = await folder.machineIdHash(); this.assertCurrent();
+    if (!machineIdHash) return;
     try {
       const owner = await this.input.transport.mutate("libraries:publish", { ...protocolHeader(this.input.config),
         expectedUserId: this.scope.userId, libraryId });
+      this.assertCurrent();
+      if (owner.libraryId !== libraryId || owner.ownerDeviceId !== this.input.deviceId || owner.machineIdHash !== machineIdHash) throw new Error("LIBRARY_OWNERSHIP_RECEIPT_CHANGED");
       // The marker is part of publishing, not a side effect of it: a folder that could not record its owner claims again next pass.
       await writePublisher(root, { machineIdHash: owner.machineIdHash, deviceId: owner.ownerDeviceId, host: owner.host, publishedAt: owner.publishedAt });
-      this.published = true;
+      this.assertCurrent(); this.published = true; this.input.remoteReadyChanged?.();
+      recoveryDiagnostics.record({ stage: "remote", code: "ready" });
     } catch (error) {
       const refusal = libraryRefusal(error);
       if (!refusal) throw error;
@@ -445,7 +454,7 @@ export class DesktopSyncRun {
       if (!await checkpoints.get("native-complete")) throw new Error("CHAT_INITIAL_INCOMPLETE");
       this.input.changed({ phase: "chats" }); await this.imports.publish(item, snapshot, head, this.signal.signal);
       this.input.changed({ phase: "homes" }); await this.homes.publish(item, head, this.signal.signal);
-      await this.input.recorder?.flush();
+      await this.input.recorder?.flush().catch(isolate);
       const recovered = await this.chats.recoveredHead(item);
       if (recovered) {
         if (!this.convergence) throw new Error("CHAT_CONVERGENCE_UNAVAILABLE");
@@ -491,7 +500,7 @@ export class DesktopSyncRun {
     const queuedNow = await this.outbox();
     const generations = queuedNow.filter(item => item.entity_kind === "generation").sort((a, b) => a.seq_or_revision - b.seq_or_revision || a.created_at - b.created_at || a.id.localeCompare(b.id));
     await forEachIsolated(generations, 1, async item => { this.assertCurrent(); await this.imports.deliver(item, this.signal.signal); }, isolate);
-    await this.input.recorder?.flush();
+    await this.input.recorder?.flush().catch(isolate);
     // A stuck turn must not stop Home delivery, downlink reads or retirement for everything else.
     await this.turns.flush().catch(isolate);
     if (generations.length) this.stale();
@@ -532,6 +541,8 @@ export class DesktopSyncRun {
         apps: owners.apps.portable.publication.list(this.scope) };
       for (const participant of ["projects", "chats", "bases", "apps", "files", "homes"] as const) await this.checkpoint(participant, evidence);
     }
+    this.input.changed({ pending: pending + downloading, waiting: read.waiting, conflicts, appIssues,
+      phase: null, completed, total: initial.length, ...(initializing ? { uploadedBytes: this.uploaded } : {}) });
     /* A read superseded by a newer one (a Base whose confirmed owner moved mid-pass) is collateral: the pass still fails and
        retries, but it reports the cause behind it, so "Response lost" is not shown as "cloud-request-superseded". */
     if (failures.all.length) throw failures.all.find(error => error.message !== "cloud-request-superseded") ?? failures.all[0];

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on account-scoped paths, authenticated owner receipts and closed encrypted file descriptors.
- * [OUTPUT]: Persists bounded owner receipts with the verified file fingerprint and re-hashes cached bytes only when that fingerprint moved.
+ * [OUTPUT]: Persists bounded owner receipts with the verified file fingerprint and re-hashes cached bytes only when that fingerprint moved, with optional completed-byte progress.
  * [POS]: Private file cache verification; receipts are created only by a completed authorized download.
  */
 import { createHash, randomUUID } from "node:crypto";
@@ -32,7 +32,7 @@ export async function retainCacheReceipt(root: string, path: string, descriptor:
   finally { await handle.close(); }
   await rename(temporary, target);
 }
-export async function readVerifiedCache(root: string, path: string, descriptor: BlobDescriptor, owner: BeginBlobUpload["owner"], signal?: AbortSignal) {
+export async function readVerifiedCache(root: string, path: string, descriptor: BlobDescriptor, owner: BeginBlobUpload["owner"], signal?: AbortSignal, advanced?: () => void) {
   signal?.throwIfAborted();
   const snapshot = encryptedFileDescriptorSchema.parse(descriptor);
   if (snapshot.encryption.owner.kind !== owner.kind || snapshot.encryption.owner.id !== owner.id) return null;
@@ -48,7 +48,7 @@ export async function readVerifiedCache(root: string, path: string, descriptor: 
       while (offset < actual.byteLength) {
         signal?.throwIfAborted();
         const { bytesRead } = await handle.read(actual, offset, actual.byteLength - offset, offset);
-        if (!bytesRead) break; offset += bytesRead;
+        if (!bytesRead) break; offset += bytesRead; advanced?.();
       }
       if (offset > budget) return null;
       let parsed: unknown;
@@ -66,7 +66,7 @@ export async function readVerifiedCache(root: string, path: string, descriptor: 
       const hash = createHash("sha256"), buffer = Buffer.alloc(Math.min(1024 * 1024, snapshot.bytes));
       for (let offset = 0; offset < snapshot.bytes;) {
         signal?.throwIfAborted(); const { bytesRead } = await file.read(buffer, 0, Math.min(buffer.length, snapshot.bytes - offset), offset);
-        if (!bytesRead) return null; hash.update(buffer.subarray(0, bytesRead)); offset += bytesRead;
+        if (!bytesRead) return null; hash.update(buffer.subarray(0, bytesRead)); offset += bytesRead; advanced?.();
       }
       const after = await file.stat({ bigint: true }); signal?.throwIfAborted();
       return before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs && hash.digest("hex") === snapshot.sha256 ? { path, descriptor: snapshot } : null;

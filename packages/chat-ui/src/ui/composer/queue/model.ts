@@ -1,9 +1,9 @@
 /**
  * [INPUT]: Platform queue projections with independent native or remote custody.
- * [OUTPUT]: Minimal queue view item (with an optional host-rendered note) and its editability policy.
+ * [OUTPUT]: Minimal queue view item (with an optional host-rendered note) and its editability policy. Per-row Steer visibility leaves other sources' existing controls intact.
  * [POS]: The composer queue's presentation-only boundary; payloads remain in the owner port.
  */
-export type QueueItem = { id: string; prompt: { displayText: string }; state: "queued" | "submitting" | "steering" | "ambiguous"; workspaceInvalidated?: true; readOnlyEdit?: boolean; /** Host-rendered explanation shown under the row, e.g. a held item's missing file. */ note?: string };
+export type QueueItem = { id: string; prompt: { displayText: string }; state: "queued" | "submitting" | "steering" | "ambiguous"; workspaceInvalidated?: true; readOnlyEdit?: boolean; readOnlySteer?: boolean; /** Host-rendered explanation shown under the row, e.g. a held item's missing file. */ note?: string };
 export const editableItem = (item: QueueItem) => item.state === "queued" && !item.workspaceInvalidated;
 
 /** Mixed moves require the admission barrier before one coordinator transaction. */

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on relay/state ledgers, Chat and Settings services, exact-submission recovery, SQLite unknown-outcome classification, Agent main bridge, memory/bootstrap ports, manual-turn helpers, and the canonical residence index, and the startup recovery gate
- * [OUTPUT]: Provides sole FIFO admission, trusted remote entry, terminal Home capture that never blocks settling the turn, Memory authorization at settlement for a person's turn only (never a workflow step's), exact recovery, holding every start while startup recovery is closed, and quiescent shutdown. Projects queued counts and active request identities for exact App disable confirmation.
+ * [OUTPUT]: Provides sole FIFO admission, trusted remote entry, terminal Home capture that never blocks settling the turn, Memory authorization at settlement for a person's turn only (never a workflow step's), exact recovery, holding every start while startup recovery is closed, and quiescent shutdown. Projects queued counts and active request identities for exact App disable confirmation. Remote source pause and queue claims share the admission and dispatch critical section.
  * [POS]: Sections coordinator arbiter; renderer and MCP callers submit intents while this module alone advances Chat commits and Agent claims
  */
 
@@ -81,10 +81,13 @@ export class ConversationCoordinator {
   onPendingChanged(listener: () => void) { return this.dispatches.onChanged(listener); }
   async editRemoteQueue(command: import("@ai-chat/cloud-protocol/remote/model").RemoteCommand,
     context: import("./remote/model").RemoteContext, current: () => void) {
+    return this.mutateRemoteQueue(context, current, valid => this.dependencies.ledger.remote.editQueue(command, context, valid));
+  }
+  async mutateRemoteQueue<T>(context: import("./remote/model").RemoteContext, current: () => void, mutate: (valid: () => void) => Promise<T>) {
     const result = await this.dependencies.withWorkspaceLifecycle(() => this.conversations.run(context.chatId, async () => {
       current(); const authority = this.dependencies.ledger.remote.authority(context);
       await authority.validate(); current();
-      return this.dependencies.ledger.remote.editQueue(command, context, authority.current);
+      return mutate(authority.current);
     }));
     this.kick(context.chatId); return result;
   }
@@ -710,6 +713,7 @@ export class ConversationCoordinator {
       return true;
     }
     if (deliverable.kind === "manual") {
+      if (deliverable.intent.queueClaim) return false;
       if (!["queued", "appended"].includes(deliverable.intent.phase)) {
         return true;
       }

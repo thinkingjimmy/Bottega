@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on nothing.
- * [OUTPUT]: Provides the cloud account, Chat, cloud App, Base sync, conversion and remote-control channel names.
+ * [OUTPUT]: Provides the cloud account and diagnostic export, Chat, cloud App, Base sync, conversion and remote-control channel names.
  * [POS]: Zod-free IPC channel names (OPT-34): preload imports these so no schema module enters its bundle; the owning contract modules re-export them unchanged.
  */
 export const CLOUD_CHANNEL = { getAccountState: "cloud:get-account-state", startLogin: "cloud:start-login", cancelLogin: "cloud:cancel-login",
@@ -12,6 +12,7 @@ export const CLOUD_CHANNEL = { getAccountState: "cloud:get-account-state", start
   revokeDevice: "cloud:revoke-device", accountChanged: "cloud:account-changed",
   getComputers: "cloud:get-computers", computersChanged: "cloud:computers-changed", renameComputer: "cloud:rename-computer",
   inspectSync: "cloud:inspect-sync", cancelSyncReview: "cloud:cancel-sync-review", approveSync: "cloud:approve-sync",
+  exportSyncDiagnostics: "cloud:export-sync-diagnostics",
   retrySync: "cloud:retry-sync", inspectCleanup: "cloud:inspect-cleanup", disableSync: "cloud:disable-sync",
   inspectAccountSwitch: "cloud:inspect-account-switch", switchAccount: "cloud:switch-account", openAccountDeletion: "cloud:open-account-deletion",
   setupEncryption: "cloud:setup-encryption", unlockEncryption: "cloud:unlock-encryption",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on SerialQueue, ChatStoreProjection, the typed SQLite client, Chat metadata/record types, and ChatNotFoundError
- * [OUTPUT]: Provides ChatStoreState, shared metadata/revision/queue ownership, and canonical refresh that invalidates the matching aggregate cache after durable saga mutations
+ * [OUTPUT]: Provides ChatStoreState, shared metadata/revision/observed queue ownership, and canonical refresh that invalidates the matching aggregate cache after durable saga mutations
  * [POS]: The composition root of chats/store; collaborators receive this object instead of inheriting from one another
  */
 
@@ -21,7 +21,7 @@ type PublishedRecord = Readonly<{
    ChatHistorySagaApi 走 import/continuation 命令。以前它们靠继承互相摸到
    对方的字段——十三个 protected abstract 只是把耦合写成了类型。 */
 export class ChatStoreState {
-  readonly queue = new SerialQueue();
+  readonly queue = new SerialQueue("chat-store");
   readonly listeners = new Set<() => void>();
   readonly metadata = new Map<string, ChatMetadata>();
   readonly messageRevisions = new Map<string, number>();

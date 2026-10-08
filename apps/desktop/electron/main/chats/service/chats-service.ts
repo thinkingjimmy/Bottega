@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron, shared chat contracts, typed service options, outcome-aware ChatStore/AttachmentStore, the focused fork service, ChatTitleJobs, renderer IPC/event adapters, pure guards, main/errors, and deletion/removal controllers, lifecycle/attachment-commit.
- * [OUTPUT]: Provides Chat admission, canonical trusted remote user provenance, events and existing execution/removal APIs. U06 Q7-c: createAppChat takes a remote first message's origin and, under the App Project's lock, refuses a second Edit Chat (APP_EDIT_FILLED).
+ * [OUTPUT]: Provides Chat admission, canonical trusted remote user provenance, events, durable session binding/replacement publication and existing execution/removal APIs. U06 Q7-c: createAppChat takes a remote first message's origin and, under the App Project's lock, refuses a second Edit Chat (APP_EDIT_FILLED).
  * [POS]: apps/desktop/electron/main/chats/service; Main-process Chat service boundary; every new or adopted executable Chat is owned by a Chat Home creation saga
  */
 
@@ -399,14 +399,14 @@ export class ChatsService {
     );
   }
   async handleSessionBound(scope: AgentScope, session: SessionRef) {
-    await this.store.bindSession(scope.conversationId, session);
+    this.publishRecord(await this.store.bindSession(scope.conversationId, session));
   }
   async replaceSession(
     scope: AgentScope,
     expected: SessionRef,
     next: SessionRef | null
   ) {
-    await this.store.replaceSession(scope.conversationId, expected, next);
+    this.publishRecord(await this.store.replaceSession(scope.conversationId, expected, next));
   }
   async assignProject(chatId: string, projectId: string) {
     if (this.options.isAppProject?.(projectId)) {

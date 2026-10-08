@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Depends on approved account scope, original SQLite outboxes, verified bodies and formal turn RPCs.
- * [OUTPUT]: Publishes ordered turns from turn-scoped outbox scans with frozen final watermarks, and seals replaced unknown turns against the next durable admission; a wake during a flush reruns that flush (bounded).
+ * [OUTPUT]: Publishes ordered turns from turn-scoped outbox scans with per-Chat source failure isolation and frozen final watermarks, and seals replaced unknown turns against the next durable admission; a wake during a flush reruns that flush (bounded).
  * [POS]: Main synchronization publisher; it never starts or stops Agents and never renews an execution lease.
  */
+import { recoveryDiagnostics } from "../runtime/diagnostics/timeline";
 import { protocolHeader, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
 import { hashChatContent, type ChatBody } from "@ai-chat/cloud-protocol/chats/transcript/body";
 import { readChatBody } from "@ai-chat/cloud-protocol/chats/transcript/reader";
@@ -22,7 +23,7 @@ import type { AccountTransport } from "../runtime/transport/transport";
 import { ChatDeliveryCheckpoints } from "../sync/chats/checkpoints";
 import { projectNativeBody, type ChatBodyBytePorts } from "../sync/chats/bodies";
 import { stageChatBody } from "../sync/chats/body-publisher";
-import { readOutboxSource, type ChatSyncStore, type ChatOutboxItem, type NativeSnapshot } from "../sync/chats/sources";
+import { chatIdOf, readOutboxSource, type ChatSyncStore, type ChatOutboxItem, type NativeSnapshot } from "../sync/chats/sources";
 import { TurnReceiptConsumer } from "../sync/turn-receipt-consumer";
 import { readChatOutbox, readTurnOutbox, type HandoffEvidence } from "./sources";
 import { messageSchema, subagentsSchema } from "../../chats/schema/chat-schema";
@@ -65,17 +66,30 @@ export class LiveTurnPublisher {
   private async deliver() {
     const items = await readTurnOutbox(this.ports.store, this.ports.scope), blocked = new Set<string>(), failures: unknown[] = [];
     const admissions = items.filter(item => item.kind === "live-turn").sort((a, b) => a.seq_or_revision - b.seq_or_revision || a.id.localeCompare(b.id));
-    const nextById = new Map<string, ChatOutboxItem>(), following = new Map<string, ChatOutboxItem>();
+    const nextById = new Map<string, ChatOutboxItem>(), following = new Map<string, ChatOutboxItem>(), chatById = new Map<string, string>();
     for (let index = admissions.length - 1; index >= 0; index--) {
-      const item = admissions[index]!, chatId = JSON.parse(item.payload_json).chatId, next = following.get(chatId);
+      const item = admissions[index]!; let chatId: string;
+      try { chatId = chatIdOf(item); }
+      catch (error) {
+        // Retained ownership is independent of the damaged envelope. It only closes this Chat's publication gate.
+        const owner = await this.ports.store.read(this.ports.scope, { type: "outbox-chat", id: item.id }); this.current();
+        if (owner.type !== "outbox-chat" || !owner.value) throw new Error("OUTBOX_CHAT_IDENTITY_UNAVAILABLE");
+        failures.push(error); blocked.add(owner.value); continue;
+      }
+      chatById.set(item.id, chatId); const next = following.get(chatId);
       if (next) nextById.set(item.id, next); following.set(chatId, item);
     }
     for (const item of admissions) {
-      this.current(); const admission = localTurnAdmissionSchema.parse((await readOutboxSource(this.ports.store, this.ports.scope, item)).payload);
-      if (blocked.has(admission.chat.id)) continue;
-      const next = nextById.get(item.id);
-      try { const settled = await this.deliverTurn(item, admission, next); if (!settled) blocked.add(admission.chat.id); }
-      catch (error) { failures.push(error); blocked.add(admission.chat.id); }
+      this.current(); const chatId = chatById.get(item.id);
+      if (!chatId) continue;
+      if (blocked.has(chatId)) continue;
+      try {
+        const source = await readOutboxSource(this.ports.store, this.ports.scope, item);
+        const admission = localTurnAdmissionSchema.parse(source.payload);
+        if (admission.chat.id !== chatId || source.chatId !== chatId) throw new Error("TURN_SOURCE_IDENTITY_CHANGED");
+        const settled = await this.deliverTurn(item, admission, nextById.get(item.id));
+        if (!settled) blocked.add(chatId);
+      } catch (error) { this.current(); recoveryDiagnostics.record({ stage: "settlement", code: "failed", objectId: item.entity_id }); failures.push(error); blocked.add(chatId); }
     }
     if (failures.length === 1) throw failures[0];
     if (failures.length) throw new AggregateError(failures, "TURN_PUBLICATION_FAILED");
@@ -113,8 +127,10 @@ export class LiveTurnPublisher {
         return { ...saved, ciphertextHash: canonical.message.bodyHash };
       }
     }
+    recoveryDiagnostics.record({ stage: "body", code: "started", objectId: admission.turnId });
     this.current(); const cipher = await stageChatBody({ checkpoints, body: saved.body, bodyHash: saved.bodyHash, outboxId: item.id, bytes, header: this.header, transport, signal,
       identity: { chatId: admission.chat.id, incarnationId: admission.chat.incarnationId } });
+    recoveryDiagnostics.record({ stage: "body", code: "ready", objectId: admission.turnId });
     return { ...saved, ciphertextHash: cipher.ciphertextHash };
   }
   private async evidence(admission: LocalTurnAdmission, items: ChatOutboxItem[]): Promise<ResultEvidence | null> {
@@ -240,6 +256,7 @@ export class LiveTurnPublisher {
       if (frozen.kind !== "encrypted-turn-chunk" || frozen.plaintextHash !== chunk.chunk.payloadHash) throw new Error("TURN_CIPHER_CHUNK_CHANGED");
       const ciphertext = validateTurnChunk(this.crypto.scope, identity, frozen.chunk);
       this.current(); state = await transport.mutate("turns/api:append", { ...this.header, turn: identity, chunk: ciphertext });
+      recoveryDiagnostics.record({ stage: "chunks", code: "progress", objectId: admission.turnId, progress: seq });
     }
     if (!final && evidence?.resultKind === "pending" && evidence.dispatch !== "not-started") {
       if (!evidence.terminal && state.state !== "unknown") { this.current(); await transport.mutate("turns/api:unconfirmed", { ...this.header, turn: identity }); }
@@ -273,7 +290,7 @@ export class LiveTurnPublisher {
   private resultHash(body: ChatBody) { if (body.message.role !== "assistant" || !body.message.resultHash) throw new Error("TURN_RESULT_HASH_MISSING"); return body.message.resultHash; }
   private async finish(item: ChatOutboxItem, admission: LocalTurnAdmission, receipt: EncryptedTurnReceipt) {
     if (item.entity_id !== admission.turnId || receipt.turnId !== admission.turnId) throw new Error("TURN_RECEIPT_IDENTITY_CHANGED");
-    await this.consumer.consume(receipt); this.current(); if (this.replay?.id === item.id) this.replay = null;
+    await this.consumer.consume(receipt); this.current(); recoveryDiagnostics.record({ stage: "settlement", code: "ready", objectId: admission.turnId }); if (this.replay?.id === item.id) this.replay = null;
   }
   async close() { this.replay = null; this.controller.abort(new Error("TURN_PUBLISHER_CLOSED")); await this.flight?.catch(() => {}); }
 }

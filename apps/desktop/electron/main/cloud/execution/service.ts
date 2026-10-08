@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Depends on explicit first-sync consent, current account identity and existing local execution/Home owners.
- * [OUTPUT]: Owns preparation, exact frozen-initial custody for remotely created Chats, bounded sanitized execution views and the Home snapshot Retry/Skip actions.
+ * [INPUT]: Depends on explicit first-sync consent, current account identity, completed content/part reads and existing local execution/Home owners.
+ * [OUTPUT]: Owns preparation with an inactivity deadline, cancellation fences and retained per-Chat capacity until actual settlement, exact frozen-initial custody for remotely created Chats, bounded sanitized execution views and the Home snapshot Retry/Skip actions.
  * [POS]: Main-only preparation service for Chats this computer owns; lost responses reconcile authority before any retry.
  */
+import { recoveryDiagnostics } from "../runtime/diagnostics/timeline";
 import { protocolHeader, type BlobTransferPorts, type CloudBuildConfig, type CloudFunctionArgs } from "@ai-chat/cloud-protocol";
 import { openChatHeadForRequest, prepareRemoteChatInitialization } from "@ai-chat/cloud-protocol/chats/encrypted/client";
 import { frozenRemoteChatInitializationSchema, type EncryptedChatHead } from "@ai-chat/cloud-protocol/chats/encrypted";
@@ -31,7 +32,8 @@ import type { LocalHomeCapture } from "../sync-home/capture";
 const preparationReady = (head: CloudChatHead, deviceId: string) => head.executionPreparation === null ||
   head.executionPreparation.deviceId === deviceId && head.executionPreparation.state === "ready";
 type Progress = Pick<ExecutionView, "phase" | "reason" | "homeOmitted">;
-type Flight = { userId: string; promise: Promise<void>; abort: AbortController };
+const PREPARATION_IDLE_MS = 120_000;
+type Flight = { userId: string; promise: Promise<void>; abort: AbortController; deadline: ReturnType<typeof setTimeout> };
 type Ports = { config: CloudBuildConfig; userData: string; deviceId: string; owners: Pick<CleanupOwners, "chats" | "homes" | "projects">; journal: LifecycleIntentStore; gate: AdmissionGate;
   attachments: AttachmentStore; projectGate: ProjectPreparationGate; runtime: { ledger: TurnRuntimePorts["ledger"]; turns: Pick<TurnRuntimePorts["turns"], "liveEntries"> }; binding: Pick<SyncBindingStore, "snapshot">;
   account: Pick<CloudAccountService, "snapshot" | "subscribe">; transport: Pick<AccountTransport, "query" | "mutate">;
@@ -64,6 +66,8 @@ export class CloudExecutionService {
       ledgerActivityReason(this.input.runtime.ledger, chatId)) throw new Error("LOCAL_EXECUTION_UNCONFIRMED");
   }
   private update(chatId: string, value: Progress) {
+    const active = this.flights.get(chatId);
+    if (active && !active.abort.signal.aborted) active.deadline.refresh?.();
     this.progress.delete(chatId); this.progress.set(chatId, value);
     for (const id of this.progress.keys()) { if (this.progress.size <= 100) break; if (!this.flights.has(id)) this.progress.delete(id); }
     this.input.changed();
@@ -120,17 +124,40 @@ export class CloudExecutionService {
     // Register cancellation before the first asynchronous read can begin.
     const disown = this.input.own({ close: async () => { abort.abort(); await flight.promise; } });
     const promise = Promise.resolve().then(() => this.run(chatId, identity, abort.signal)).finally(() => {
-      disown(); this.flights.delete(chatId); this.input.changed();
+      clearTimeout(flight.deadline); disown(); this.flights.delete(chatId); this.input.changed();
     });
-    const flight: Flight = { userId: identity.userId, promise, abort }; this.flights.set(chatId, flight); return promise;
+    const deadline = setTimeout(() => {
+      if (abort.signal.aborted || this.flights.get(chatId) !== flight) return;
+      abort.abort(new Error("EXECUTION_PREPARATION_DEADLINE"));
+      recoveryDiagnostics.record({ stage: "preparation", code: "timed-out", objectId: chatId });
+      try {
+        if (hashChatContent(this.scope(true)) === hashChatContent(identity)) this.update(chatId, { phase: "blocked", reason: "body-unavailable", homeOmitted: 0 });
+      } catch { /* A superseded owner cannot publish into the replacement scope. */ }
+    }, PREPARATION_IDLE_MS);
+    deadline.unref();
+    const flight: Flight = { userId: identity.userId, promise, abort, deadline }; this.flights.set(chatId, flight);
+    recoveryDiagnostics.record({ stage: "preparation", code: "started", objectId: chatId });
+    return promise;
   }
   private async run(chatId: string, identity: ReturnType<CloudExecutionService["scope"]>, signal: AbortSignal) {
-    const { config, deviceId, transport, owners } = this.input;
+    const { config, deviceId, owners } = this.input;
     const crypto = this.input.filePorts(identity.userId).crypto();
     const scope = { environment: identity.environment, userId: identity.userId }, header = { ...protocolHeader(config), expectedUserId: identity.userId,
       encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint } };
     let remoteHead: EncryptedChatHead | null = null;
     const current = () => { signal.throwIfAborted(); if (this.input.filePorts(identity.userId).crypto().session.sessionId !== crypto.session.sessionId || hashChatContent(this.scope(true)) !== hashChatContent(identity)) throw new Error("EXECUTION_ACCOUNT_CHANGED"); };
+    const advanced = () => {
+      current(); const flight = this.flights.get(chatId);
+      if (flight?.abort.signal === signal) flight.deadline.refresh();
+    };
+    const observed = async <T>(pending: Promise<T>) => { const result = await pending; advanced(); return result; };
+    const transport: Pick<AccountTransport, "query" | "mutate"> = {
+      query: (name, args) => {
+        const pending = this.input.transport.query(name, args);
+        return name === "chats/metadata:head" ? pending : observed(pending);
+      },
+      mutate: (name, args) => observed(this.input.transport.mutate(name, args)),
+    };
     const read = async () => { current(); const head = await transport.query("chats/metadata:head", { ...header, chatId }); current(); if (!head) throw new Error("EXECUTION_IDENTITY_CHANGED"); remoteHead = head;
       const opened = await openChatHeadForRequest(head, chatId, crypto, signal); current(); return opened; };
     const accept = async (head: CloudChatHead) => { current(); await owners.chats.sync.mutate(scope, hashChatContent(["execution-head", scope, head]), { type: "put-mirror-head", head }); current(); this.input.changed(); };
@@ -169,8 +196,11 @@ export class CloudExecutionService {
       if (preparationReady(head, deviceId) && owners.chats.getMetadata(chatId) && owners.chats.getMetadata(chatId)?.readOnlyReason !== "external-readonly") {
         this.update(chatId, { phase: "ready", reason: null, homeOmitted: 0 }); return;
       }
-      files = new DesktopBlobStore(this.input.userData, { ...config, userId: scope.userId }, this.input.filePorts(scope.userId));
-      const materializer = new CloudChatMaterializer({ ...this.input, ...owners, crypto: () => this.input.filePorts(identity.userId).crypto(), scope, files, signal, current, assertIdle: id => this.assertIdle(id),
+      const filePorts = this.input.filePorts(scope.userId);
+      files = new DesktopBlobStore(this.input.userData, { ...config, userId: scope.userId }, { ...filePorts,
+        readPlan: (...args) => observed(filePorts.readPlan(...args)), readPart: (...args) => observed(filePorts.readPart(...args)),
+      }, advanced);
+      const materializer = new CloudChatMaterializer({ ...this.input, ...owners, crypto: () => this.input.filePorts(identity.userId).crypto(), scope, files, transport, signal, current, advanced, assertIdle: id => this.assertIdle(id),
         progress: phase => { current(); this.update(chatId, { phase, reason: null, homeOmitted: 0 }); } });
       const result = await materializer.ensureExecutionReady(head); current();
       this.update(chatId, { phase: "ready", reason: null, homeOmitted: result.home.omitted.length });

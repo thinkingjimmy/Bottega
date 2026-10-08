@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on exact owner/request identity, original Agent bridge handlers and the existing Steer outbox.
- * [OUTPUT]: Applies closed remote controls with immutable retry evidence and original deadlines after asynchronous validation; a Steer receipt carries `consumed`, or `transferred` once its next-turn intent is durable, and an image the next turn cannot take fails `input-unsupported`; a control this computer already settled for another controller reports the winning device with its already-resolved result.
+ * [OUTPUT]: Applies closed remote controls with immutable retry evidence and original deadlines after asynchronous validation; a Steer receipt carries `consumed`, or `transferred` once its next-turn intent is durable, and an image the next turn cannot take fails `input-unsupported`; a control this computer already settled for another controller reports the winning device with its already-resolved result. Queued Steer claims share the dispatch lock; Stop persists the authenticated source pause before cancellation.
  * [POS]: apps/desktop/electron/main/cloud/remote/commands/dispatch; Intake control adapter; approvals, user input, cancellation and steering retain their original main handlers.
  */
 import { builtinAgent } from "../../../../../../shared/chat-agent/options";
@@ -27,15 +27,17 @@ import { remoteRequest } from "../transport-error";
 import { remoteText, remoteWorkspace } from "./submission";
 import type { TrustedManualTurnSubmission } from "../../../../../../shared/ipc/content/sections-ipc";
 import { backendRuntimeRegistry } from "../../../../backends";
+import { steerDerivedIntentId } from "../../../../sections/coordinator/admission/steer-projection";
 type TrustedSteerAdmission = SteerAdmission & Pick<TrustedManualTurnSubmission, "remoteInput">;
 type Ports = { references?: RemoteWorkspaceService | null; config: CloudBuildConfig; ledger: RelayLedger; store: ChatStore; projects: Pick<ProjectStore, "get">;
+  queueMutation?<T>(mutate: (current: () => void) => Promise<T>): Promise<T>;
   turns: Pick<TurnRegistry<AgentTurn>, "byRequest">; transport: Pick<AccountTransport, "query">;
   crypto(): RemoteCipherPort; clock(): ServerClock; handlers(): AgentBridgeIpcHandlers; projectAvailable(projectId: string): boolean;
   prepareFiles?(command: RemoteCommand, current: () => void): Promise<NonNullable<TrustedManualTurnSubmission["remoteInput"]>> };
 // Only durable Steer custody names the outcome: transferred means the next-turn intent is already committed.
 function steerOutput(ledger: RelayLedger, id: string): RemoteOutput | null {
   const phase = ledger.read(state => state.steerIntents[id]?.phase ?? state.intentTombstones[id]?.outcome);
-  return phase === "persisted" ? { kind: "steer", outcome: "consumed" } : phase === "transferred" ? { kind: "steer", outcome: "transferred" } : null;
+  return phase === "persisted" ? { kind: "steer", outcome: "consumed" } : phase === "transferred" ? { kind: "steer", outcome: "transferred", intentId: steerDerivedIntentId(id) } : null;
 }
 export function controlReport(receipt: ControlReceipt): RemoteCommandReport {
   if (receipt.state === "not-dispatched") return { state: "claimed", noAdmission: true };
@@ -45,7 +47,7 @@ export function controlReport(receipt: ControlReceipt): RemoteCommandReport {
   return receipt.state === "applied" ? { state: receipt.output?.kind === "fork-error" ? "error" : "done", admission, result: receipt.result, ...resolvedBy, ...(receipt.output ? { output: receipt.output } : {}), reason: receipt.output?.kind === "fork-error" ? "fork-failed" : null } : { state: "outcome-unknown", admission, reason: "outcome-unknown" };
 }
 export async function applyRemoteControl(command: RemoteCommand, context: RemoteContext, current: () => void, ports: Ports): Promise<RemoteCommandReport> {
-  if (isRemoteTurnPayload(command.payload) || command.payload.kind === "fork-chat" || command.payload.kind === "list-workspace-files" || command.payload.kind === "read-workspace-file" || command.payload.kind === "withdraw-queued" || command.payload.kind === "reorder-queue") throw new Error("admission-failed");
+  if (isRemoteTurnPayload(command.payload) || command.payload.kind === "fork-chat" || command.payload.kind === "list-workspace-files" || command.payload.kind === "read-workspace-file" || command.payload.kind === "withdraw-queued" || command.payload.kind === "reorder-queue" || command.payload.kind === "take-queued" || command.payload.kind === "set-queue-paused") throw new Error("admission-failed");
   const { payload } = command, prior = ports.ledger.remote.control(command.commandId);
   if (prior) {
     if (!prior.remote || canonicalHash(prior.remote) !== canonicalHash(context)) throw new Error("REMOTE_CONTROL_ID_CONFLICT");
@@ -80,6 +82,10 @@ export async function applyRemoteControl(command: RemoteCommand, context: Remote
     await authority.validate(); current(); authority.current();
   };
   await validate();
+  if (payload.kind === "cancel" && payload.pauseQueue) {
+    if (!ports.queueMutation) throw new Error("input-unsupported");
+    await ports.queueMutation(valid => ports.ledger.remote.pauseQueue(context, valid));
+  }
   const renewed = ports.ledger.remote.authority(context);
   // Recovery inherits only the already admitted turn's permission choice, under fresh account/epoch authority.
   const fullAccess = (entry as typeof entry & { payload?: { turnOptions: { permissionMode: string } } }).payload?.turnOptions.permissionMode === "full-access";
@@ -118,15 +124,24 @@ export async function applyRemoteControl(command: RemoteCommand, context: Remote
       }
       if (!input.remoteInput?.length) validateSteerInput(input);
       await ports.clock().assertBeforeEffect(command.expiresAt); current();
-      await ports.ledger.remote.reserveControl({ id: command.commandId, conversationId: context.chatId, incarnationId: context.incarnationId, requestId: payload.requestId,
+      const reserve = () => ports.ledger.remote.reserveControl({ id: command.commandId, conversationId: context.chatId, incarnationId: context.incarnationId, requestId: payload.requestId,
         generation, key: `steer:${command.commandId}`, payload: input, payloadHash: canonicalHash(input), remote: context });
+      if (payload.queued) {
+        if (!ports.queueMutation) throw new Error("input-unsupported");
+        await ports.queueMutation(valid => { valid(); return reserve(); });
+      } else await reserve();
       let invoked = false;
       let result;
       try {
         await validate(); invoked = true; result = await handlers.steer(input, trusted); current();
       } catch (error) {
+        if (payload.queued) await ports.ledger.remote.releaseUnstartedQueueSteer(command.commandId);
         if (!invoked) await ports.ledger.remote.settleControl(command.commandId, "not-dispatched");
         throw error;
+      }
+      if (result.outcome === "failed" && payload.queued && !ports.ledger.read(state => state.steerIntents[command.commandId] || state.intentTombstones[command.commandId])) {
+        await ports.ledger.remote.releaseUnstartedQueueSteer(command.commandId);
+        throw new Error(result.reason);
       }
       if (result.outcome === "failed" && ports.ledger.remote.control(command.commandId)?.state === "not-dispatched") throw new Error(result.reason);
       const output = steerOutput(ports.ledger, command.commandId);

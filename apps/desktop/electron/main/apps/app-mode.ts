@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Apps/Projects/Chats/Bases services, profile-local share staging, lifecycle, current locale, SkillsCatalog, settings/archive, package import/share, Agent turn control, and the extension trust anchor (Electron's packaged flag and resources path)
  * [OUTPUT]: Provides shared lifecycle admission, conversion and install recovery, and separate local App removal using the existing drain, Chat, grant and data participants. U06-d: configures the Apps service's Edit Chat notice for a declined extension. Binds enablement to active Chat cancellation, retained queue wakeup, notices, window closure and managed-preview cleanup across all historical App Chats.
- * [POS]: Apps-domain composition root; wires Project grant commits to durable Project publication
+ * [POS]: Apps-domain composition root; wires Project grant commits to durable Project publication; ChatsService owns session record publication
  */
 
 import { queuedComposerDraft } from "../composer/drafts/runtime";
@@ -618,7 +618,6 @@ async function rotateSession(
   dependencies.releaseThreadScope(chat.id);
   const current = dependencies.chatStore.getMetadata(chat.id);
   if (!current) return;
-  dependencies.chats.publishRecord(current);
   dependencies.chats.publishSessionInvalidated(current);
 }
 
@@ -646,8 +645,6 @@ async function restoreSession(
     session
   );
   dependencies.bindThreadScope(session, chat.id);
-  const restored = dependencies.chatStore.getMetadata(chat.id);
-  if (restored) dependencies.chats.publishRecord(restored);
 }
 
 function sameSession(left: SessionRef | null, right: SessionRef | null) {

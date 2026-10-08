@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on admitted crypto, complete authenticated Home metadata and current owned filesystem evidence.
+ * [INPUT]: Depends on admitted crypto, complete authenticated Home metadata, current owned filesystem evidence and optional completed-work progress.
  * [OUTPUT]: Applies complete authenticated snapshots, removes missing managed files and preserves untracked local files with cancellation and path/byte checks.
  * [POS]: Local execution preparation collaborator; it never claims execution or starts an Agent.
  */
@@ -20,7 +20,7 @@ export class HomeSnapshotRestorer {
   private active = new Map<string, Promise<HomeRestoreResult>>();
   private stop = new AbortController();
   constructor(private input: { userData: string; config: CloudBuildConfig; userId: string; deviceId: string; crypto(): FileCipherPort; homes: ChatHomeService; files: Pick<DesktopBlobStore, "read">;
-    transport: Pick<AccountTransport, "query">; current(head: CloudChatHead): Promise<void> }) {}
+    transport: Pick<AccountTransport, "query">; current(head: CloudChatHead): Promise<void>; advanced?(): void }) {}
   restore(head: CloudChatHead, signal?: AbortSignal) {
     const existing = this.active.get(head.chat.id); if (existing) return Promise.reject(new Error("HOME_RESTORE_IN_PROGRESS"));
     const combined = signal ? AbortSignal.any([this.stop.signal, signal]) : this.stop.signal;
@@ -31,7 +31,7 @@ export class HomeSnapshotRestorer {
     const record = this.input.homes.ledger.get(head.chat.id);
     if (!record || record.incarnationId !== head.chat.incarnationId) throw new Error("HOME_OWNERSHIP_UNAVAILABLE");
     const original = await this.input.homes.committedCreationEvidence(head.chat.id, record.intentId), root = await realpath(record.homeDir);
-    return { root, worktree: record.worktree?.relativePath, verify: async () => {
+    return { root, worktree: record.worktree?.relativePath, advanced: this.input.advanced, verify: async () => {
       signal.throwIfAborted(); await this.input.current(head); signal.throwIfAborted();
       const current = await this.input.homes.committedCreationEvidence(head.chat.id, record.intentId);
       if (canonicalJson(current) !== canonicalJson(original) || await realpath(record.homeDir) !== root) throw new Error("HOME_IDENTITY_CHANGED");
@@ -45,14 +45,14 @@ export class HomeSnapshotRestorer {
     const target = await this.target(head, signal); await target.verify();
     for (const entry of snapshot?.entries ?? []) if (entry.kind === "file") {
       signal.throwIfAborted(); await this.input.current(head);
-      const unchanged = await matchingHomeFile(target, entry, signal);
+      const unchanged = await matchingHomeFile(target, entry, signal); this.input.advanced?.();
       if (unchanged) { matched.set(entry.path, unchanged); continue; }
       const descriptor = snapshot?.descriptors.get(entry.path); if (!descriptor) throw new Error("HOME_FILE_MANIFEST_REQUIRED");
       const file = await this.input.files.read(descriptor, { kind: "chat", id: head.chat.id }, signal);
       if (canonicalJson(file.descriptor) !== canonicalJson(descriptor)) throw new Error("HOME_RESTORE_SOURCE_CHANGED");
-      downloaded.set(entry.path, file.path);
+      downloaded.set(entry.path, file.path); this.input.advanced?.();
     }
-    for (const verify of matched.values()) await verify();
+    for (const verify of matched.values()) { await verify(); this.input.advanced?.(); }
     const record = this.input.homes.ledger.get(head.chat.id)!;
     const managed = new ManagedHomeFiles(this.input.userData, [{ environment: this.input.config.environmentId, userId: this.input.userId },
       { id: head.chat.id, incarnationId: head.chat.incarnationId }, record.intentId]);
@@ -66,6 +66,7 @@ export class HomeSnapshotRestorer {
     for (const entry of snapshot?.entries ?? []) if (entry.kind === "file") {
       const verify = matched.get(entry.path);
       if (verify) await verify(); else await restoreHomeFile(target, snapshot!.manifest.snapshotId, entry, downloaded.get(entry.path)!, signal);
+      this.input.advanced?.();
     }
     await target.verify(); await managed.write(next);
     return { snapshotId: snapshot?.manifest.snapshotId ?? null, files: snapshot?.entries.filter(entry => entry.kind === "file").length ?? 0,

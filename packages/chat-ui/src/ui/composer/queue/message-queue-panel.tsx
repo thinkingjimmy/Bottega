@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, dnd-kit pointer/keyboard sensors, Chat composer i18n, QueueItem steering capability, and message-queue-row
- * [OUTPUT]: Provides localized bounded queue scrolling, reorder-lock cleanup, steering, pause/error status, and aria-live movement announcements The host may replace the paused label with its own reason.
+ * [OUTPUT]: Provides localized bounded queue scrolling, reorder-lock cleanup, steering, pause/error status, and aria-live movement announcements The host may replace the paused label with its own reason. Async reorder keeps its drain lock until the host confirms the result; failure announces unchanged position.
  * [POS]: The composer queue's composition root; it receives narrow state/actions and owns list interaction, status and spacing.
  */
 
@@ -61,7 +61,7 @@ export function MessageQueuePanel<Item extends QueueItem>({
   steerSupported: boolean;
   canSteer: (item: Item) => boolean;
   queueError: string | null;
-  onMove(from: number, to: number): void;
+  onMove(from: number, to: number): unknown | Promise<unknown>;
   onRemove(id: string): void;
   onEdit(id: string): void;
   onSteer(id: string): void;
@@ -87,7 +87,7 @@ export function MessageQueuePanel<Item extends QueueItem>({
     },
     []
   );
-  if (!items.length) return null;
+  if (!items.length && !queueError) return null;
   const finish = (announcementText: string) => {
     setActiveId("");
     onReorderLock(false);
@@ -100,15 +100,13 @@ export function MessageQueuePanel<Item extends QueueItem>({
   };
   const dragCancel = (_event: DragCancelEvent) =>
     finish(t("chat.composer.queue.reorderCancelled"));
-  const dragEnd = (event: DragEndEvent) => {
+  const dragEnd = async (event: DragEndEvent) => {
     const from = items.findIndex((item) => item.id === String(event.active.id));
     const to = items.findIndex((item) => item.id === String(event.over?.id ?? ""));
-    if (from >= 0 && to >= 0) onMove(from, to);
-    finish(
-      from >= 0 && to >= 0
-        ? t("chat.composer.queue.moved", { position: to + 1 })
-        : t("chat.composer.queue.unchanged")
-    );
+    let moved = false;
+    try { if (from >= 0 && to >= 0 && from !== to) moved = await onMove(from, to) !== false; }
+    catch { moved = false; }
+    finally { finish(moved ? t("chat.composer.queue.moved", { position: to + 1 }) : t("chat.composer.queue.unchanged")); }
   };
   return (
     <section className="relative z-10 mx-3 -mb-px overflow-hidden rounded-t-xl border bg-background">

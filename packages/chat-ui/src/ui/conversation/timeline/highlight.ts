@@ -1,6 +1,6 @@
 /**
- * [INPUT]: A row id and the live document.
- * [OUTPUT]: Provides findTranscriptTarget, measureOutlineTops (one query for all outline entries), scrollTranscriptTo and highlightTranscriptTarget with reduced-motion emphasis.
+ * [INPUT]: A row id, the live document and the shared MessageContent message-content slot.
+ * [OUTPUT]: Provides findTranscriptTarget, measureOutlineTops (one query for all outline entries), scrollTranscriptTo and highlightTranscriptTarget with bubble-scoped user emphasis and reduced-motion support.
  * [POS]: The timeline's only DOM reach; window.ts decides which row, this file finds and lights it.
  */
 export function findTranscriptTarget(id: string, root: ParentNode = document) {
@@ -43,9 +43,10 @@ export function scrollTranscriptTo(
 }
 
 export function highlightTranscriptTarget(node: HTMLElement) {
-  node.classList.remove("ring-2", "ring-primary/60");
-  void node.offsetWidth;
-  node.classList.add(
+  const target = node.querySelector<HTMLElement>('.is-user > [data-slot="message-content"]') ?? node;
+  target.classList.remove("ring-2", "ring-primary/60");
+  void target.offsetWidth;
+  target.classList.add(
     "rounded-lg",
     "ring-2",
     "ring-primary/60",
@@ -54,6 +55,6 @@ export function highlightTranscriptTarget(node: HTMLElement) {
     "motion-reduce:transition-none"
   );
   window.setTimeout(() => {
-    node.classList.remove("ring-2", "ring-primary/60");
+    target.classList.remove("ring-2", "ring-primary/60");
   }, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 2_000);
 }

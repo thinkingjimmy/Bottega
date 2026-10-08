@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Original-session encrypted Memory intents, account-scope admission and the single local Memory settings writer.
- * [OUTPUT]: MemoryControlBarrier drains the latest intent before remote work, with connection fences and durable receipt replay.
+ * [OUTPUT]: MemoryControlBarrier drains the latest intent before remote work, with owner deadlines, late-effect fences, retained single-flight custody and durable receipt replay.
  * [POS]: Shared reconnect gate for Chat intake, accepted turns, transferred Steer and resource execution; local offline turns stay independent.
  */
+import { recoveryDiagnostics } from "../../runtime/diagnostics/timeline";
 import { hashCanonical } from "@bottega/contracts/core/canonical-json";
 import { openMemoryControl, prepareMemoryControlResult } from "@ai-chat/cloud-protocol/remote/memory-control/client";
 import type { MemoryControlRequest, MemoryControlResult } from "@ai-chat/cloud-protocol/remote/memory-control/model";
@@ -20,9 +21,10 @@ export type MemoryControlPorts = AdmissionPorts & {
   report?(error: unknown): void;
 };
 const same = (left: MemoryControlRequest, right: MemoryControlRequest) => left.requestId === right.requestId && left.revision === right.revision && left.packet.ciphertextHash === right.packet.ciphertextHash;
+const MEMORY_DEADLINE_MS = 30_000;
 export class MemoryControlBarrier {
   private closed = false;
-  private flight: { key: string; promise: Promise<void>; dirty: boolean; accepting: boolean } | null = null;
+  private flight: { key: string; promise: Promise<void>; dirty: boolean; accepting: boolean; abort: AbortController } | null = null;
   private readonly flights = new Set<Promise<void>>();
   private watching: { key: string; stop(): void } | null = null;
   private readonly releases: (() => void)[] = [];
@@ -41,17 +43,32 @@ export class MemoryControlBarrier {
       this.flight.dirty = true;
       return this.join(this.flight);
     }
-    const flight = { key: admitted.key, promise: Promise.resolve(), dirty: false, accepting: true };
+    // Replacement connections fence the previous writer; its retained flight still owns its cleanup.
+    this.flight?.abort.abort(new Error("connection-changed"));
+    const flight = { key: admitted.key, promise: Promise.resolve(), dirty: false, accepting: true, abort: new AbortController() };
     this.flight = flight;
+    const deadline = setTimeout(() => {
+      flight.abort.abort(new Error("MEMORY_CONTROL_DEADLINE"));
+      recoveryDiagnostics.record({ stage: "memory", code: "timed-out" });
+    }, MEMORY_DEADLINE_MS);
+    deadline.unref();
+    recoveryDiagnostics.record({ stage: "memory", code: "started" });
     const promise = this.drain(admitted, flight).finally(() => {
-      this.flights.delete(promise);
+      clearTimeout(deadline); this.flights.delete(promise);
       if (this.flight === flight) this.flight = null;
     });
     flight.promise = promise; this.flights.add(promise);
     return this.join(flight);
   }
   private join(flight: NonNullable<MemoryControlBarrier["flight"]>): Promise<void> {
-    return flight.promise.then(() => {
+    // Callers can stop waiting at the deadline. The owner keeps the drain registered until it actually settles.
+    const waiting = new Promise<void>((resolve, reject) => {
+      const aborted = () => reject(flight.abort.signal.reason);
+      if (flight.abort.signal.aborted) { aborted(); return; }
+      flight.abort.signal.addEventListener("abort", aborted, { once: true });
+      void flight.promise.then(resolve, reject).finally(() => flight.abort.signal.removeEventListener("abort", aborted));
+    });
+    return waiting.then(() => {
       // A watch wake between the final read and promise resolution starts another drain; waiting callers join it too.
       if (this.flight && this.flight !== flight) return this.beforeRemote();
     });
@@ -80,6 +97,7 @@ export class MemoryControlBarrier {
   private stopWatch() { this.watching?.stop(); this.watching = null; }
   private async drain(admitted: Admitted, flight: NonNullable<MemoryControlBarrier["flight"]>) {
     const current = () => {
+      flight.abort.signal.throwIfAborted();
       const value = accountScopeAdmission(this.ports);
       if (this.closed || value.kind !== "admitted" || value.key !== admitted.key) throw new Error("connection-changed");
     };
@@ -92,6 +110,7 @@ export class MemoryControlBarrier {
         if (flight.dirty) continue;
         // Close joining synchronously: a later wake must create another flight, never join a finished read.
         flight.accepting = false;
+        recoveryDiagnostics.record({ stage: "memory", code: "ready" });
         return;
       }
       const request = receipt.request, identity = { ...admitted.header, requestId: request.requestId, revision: request.revision,
@@ -127,7 +146,7 @@ export class MemoryControlBarrier {
     await this.ports.transport.mutate("remote/memory/control:settle", { ...admitted.header, ...identity, state: body.kind, result }); current();
   }
   async close() {
-    this.closed = true; clearInterval(this.timer); this.stopWatch();
+    this.closed = true; this.flight?.abort.abort(new Error("MEMORY_CONTROL_CLOSED")); clearInterval(this.timer); this.stopWatch();
     for (const release of this.releases.splice(0)) release();
     await Promise.allSettled([...this.flights]);
   }

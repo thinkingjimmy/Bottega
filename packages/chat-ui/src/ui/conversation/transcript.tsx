@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on scoped transcript/live sources, optional remote controls, shared localized thinking copy, virtualized native conversation geometry and portable Chat heads.
- * [OUTPUT]: Renders canonical and live messages without duplication, publishes one bounded model, and reports message/detail intents. Settlement proof retires waiting even before the head catches up.
+ * [OUTPUT]: Renders canonical/live messages without duplication and retains original bubbles until this view has loaded their bodies. Publishes one bounded model; settlement retires waiting before the head catches up.
  * [POS]: conversation/'s root transcript over body/ and timeline/ for desktop and Web; missing pages never imply a complete or empty reply.
  */
 import {
@@ -13,6 +13,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { remoteSendPresentation, type SendPresentation } from "../../platform/remote/commands/presentation";
+import { TranscriptFile } from "./body/file";
 import { ConversationUser } from "./turn/user";
 import { turnCopy } from "./turn/copy";
 import { ConversationDraft } from "./turn/draft";
@@ -61,7 +63,7 @@ export function ChatTranscript({
   onFork,
   onEdit,
   remoteFailure,
-  onOpenSubagent, onOpenPlan, expandedPlanId, queuedCommandIds,
+  onOpenSubagent, onOpenPlan, expandedPlanId, queuedCommandIds, sendPresentation,
 }: {
   findEnabled?: boolean;
   outlineEnabled?: boolean;
@@ -80,6 +82,7 @@ export function ChatTranscript({
   onOpenPlan?(id: string): void;
   expandedPlanId?: string | null;
   queuedCommandIds?: readonly string[];
+  sendPresentation?: SendPresentation;
   onEdit?(messageId: string, content: string): Promise<void>;
   onFork?: { label: string; run(anchor: { id: string; seq: number }): void };
   /** A Chat another computer runs: its failed turns are said on the message, naming that computer (see TranscriptMessage). */
@@ -199,16 +202,13 @@ export function ChatTranscript({
   useEffect(() => {
     onCanonicalCommands?.(canonicalCommands);
   }, [canonicalCommands, onCanonicalCommands]);
-  const queuedCommands = new Set([...(head.queue?.items.map(item => item.intentId) ?? []), ...(queuedCommandIds ?? [])]);
-  const pendingMessages = remote?.entries.filter(entry => (entry.optimistic || entry.owned) && !entry.canonical && !entry.resubmittedAs && !entry.rejected &&
-    !canonicalCommands.includes(entry.input.commandId) && !queuedCommands.has(entry.input.commandId) && entry.input.payload.kind === "start-turn" &&
-    !(!entry.receipt?.admission && ["rejected", "expired", "cancelled"].includes(entry.receipt?.state ?? ""))) ?? [];
-  const settledTurn = draft.state?.receipt.settlementState === "settled" ? draft.state.receipt : null;
-  const unansweredCommand = latestMessage?.kind === "native" && latestMessage.body.message.role === "user" && latestMessage.body.message.id !== settledTurn?.userMessageId ? latestMessage.body.message.remoteCommandId : null;
-  const pendingCommands = new Set(pendingMessages.map(entry => entry.input.commandId));
-  const openTurn = head.openTurnId && head.openTurnId !== settledTurn?.turnId;
-  const waitingForReply = !replying && (Boolean(openTurn) || remote?.entries.some(entry => (pendingCommands.has(entry.input.commandId) || entry.input.commandId === unansweredCommand) && !entry.uncertain &&
-    !["done", "error", "cancelled", "rejected", "expired", "outcome-unknown"].includes(entry.receipt?.state ?? "")));
+  const presentation = sendPresentation ?? remoteSendPresentation({ head, live: draft, entries: remote?.entries ?? [], localIds: queuedCommandIds,
+    transcriptReady: value.state === "ready" || value.items.length > 0,
+    completedTurns: value.items.flatMap(item => item.kind === "native" && item.body.message.role === "assistant" && item.body.message.turnId && item.body.message.resultHash ? [item.body.message.turnId] : []),
+    canonical: value.items.flatMap(item => item.kind === "native" && item.body.message.role === "user" && item.body.message.remoteCommandId
+      ? [{ commandId: item.body.message.remoteCommandId, messageId: item.body.message.id }] : []) });
+  const pendingMessages = presentation.pending.filter(entry => !canonicalCommands.includes(entry.input.commandId));
+  const waitingForReply = !replying && presentation.waiting;
   // A body can arrive before its settlement proof. Keep the live row until the two agree, then replace it once.
   const retainedLiveId = replying ? draft.state?.receipt.assistantMessageId : undefined;
   const messages = useMemo(() => timelineRows(value.items.filter(item => item.kind !== "native" || item.body.message.id !== retainedLiveId)), [value.items, retainedLiveId]);
@@ -303,7 +303,9 @@ export function ChatTranscript({
         after={<>
 
           {value.latest && pendingMessages.map(entry => <article key={entry.input.commandId} className="chat-message" data-command-id={entry.input.commandId}>
-            <ConversationUser content={entry.input.payload.kind === "start-turn" ? entry.input.payload.text : ""} showMore={copy.showMore} showLess={copy.showLess}
+            <ConversationUser content={"text" in entry.input.payload ? entry.input.payload.text : ""} showMore={copy.showMore} showLess={copy.showLess}
+              attachments={"attachments" in entry.input.payload && entry.input.payload.attachments?.map(file => <TranscriptFile key={file.attachmentId}
+                chatId={chatId} descriptor={file.blob} name={file.filename} source={source} copy={copy} />)}
               actions={<ConversationActions role="user" copyLabel={copy.copy} copiedLabel={copy.copied} onCopy={() => navigator.clipboard.writeText(entry.input.payload.kind === "start-turn" ? entry.input.payload.text : "")} />} />
           </article>)}
           {value.latest && waitingForReply && <ConversationDraft label={turnCopy(locale).thinking} />}
@@ -311,6 +313,7 @@ export function ChatTranscript({
           {value.latest ? (
             <LiveReply
               value={draft}
+              active={presentation.waiting}
               copy={copy}
               canonicalReady={canonicalReady}
               interactive={Boolean(remote)} locale={locale} onOpenSubagent={onOpenSubagent} onOpenPlan={onOpenPlan} expandedPlanId={expandedPlanId}

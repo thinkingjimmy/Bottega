@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, computer health/recovery and diagnostic export, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -290,7 +290,13 @@ export const cloudCopy = {
 
 
   "computers": {
+    "exportDiagnostics": "接続診断をエクスポート",
+    "diagnosticsDescription": "ローカルの復旧状態と取得時刻を保存します。会話の内容と認証情報は含まれません。",
+    "lastConfirmed": "最終確認：{{when}}",
+    "notConfirmed": "パソコンの状態は未確認です。",
+    "health": {"initializing": "リモート操作を準備中", "locked": "同期キーを利用できません", "recovering": "接続を復旧中", "memory-blocked": "プライバシー設定の確認待ち", "content-error": "リモート操作は可能 · コンテンツの確認が必要"},
     "label": "パソコン",
+    "refreshing": "パソコンの状態を再確認しています…",
     "offlineSince": "オフライン · {{when}}",
     "none": "パソコンで Bottega にログインすると、そのサイドバーがここに表示されます。",
   },

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on dnd-kit draggable/droppable, lucide icons, Chat composer i18n, steering capability, and QueueItem/editableItem
- * [OUTPUT]: Provides localized accessible queue rows with capability-gated Steer, drag, edit, delete, resend, and ambiguity actions, plus the host's optional note under the text
+ * [OUTPUT]: Provides localized accessible queue rows with capability-gated Steer, drag, edit, delete, resend, and ambiguity actions, plus the host's optional note under the text Per-row Steer visibility follows source authority.
  * [POS]: The composer queue's atomic row beside message-queue-panel.tsx; it reads no session controller or external store.
  */
 
@@ -115,7 +115,7 @@ export function MessageQueueRow({
         </>
       ) : (
         <>
-          {steerSupported && (
+          {steerSupported && !item.readOnlySteer && (
             <button
               aria-label={t("chat.composer.queue.steer")}
               className={iconButton}

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared SubmissionContent/Outcome/ACK/lifecycle constants, coordinator-values coded errors, opaque raw payload references, and ledger v7 state/manual-intent schema
- * [OUTPUT]: Attempt outcomes and retry custody (reservations live in ./submission/reservation); enabled synchronization retains terminal payload and result until durable handoff, otherwise a persisted result keeps only terminal and outcome.
+ * [OUTPUT]: Attempt outcomes and retry custody (reservations live in ./submission/reservation); enabled synchronization retains terminal payload and result until durable handoff, otherwise a persisted result keeps only terminal and outcome. Execution failure pauses the remote source; explicit removal and transfer do not introduce a failure pause.
  * [POS]: The durable submission state machine of sections/coordinator; RelayLedger is only responsible for the sequencing clone→persist→publish
  */
 
@@ -20,6 +20,7 @@ import type {
   ManualTurnIntent,
 } from "./state/ledger-schema";
 import { settleCloudHandoff } from "./state/operations/cloud";
+import { setSourceQueuePaused } from "./remote/source-pause";
 
 export function beginAttempt(
   state: LedgerState,
@@ -146,6 +147,8 @@ export function persistManualResult(
     outbox.updatedAt = now;
     transitionAttempt(state, intentId, "result-prepared", "persisted", now);
     intent.phase = "settled";
+    const source = intent.remoteSubmission?.context ?? intent.queueSource;
+    if (outbox.terminal && outbox.terminal !== "done" && source) setSourceQueuePaused(state, source, true);
     intent.terminalAt = now;
     if (!intent.cloudSyncRequired && intent.cloudHandoff?.state !== "pending") {
       delete intent.payload;
@@ -178,9 +181,12 @@ export function failManualWithCapsule(
   state: LedgerState,
   intentId: string,
   mode: "recoverable" | "retry-agent-turn",
-  now: number
+  now: number,
+  pauseQueue = true
 ) {
   const intent = requireIntent(state, intentId);
+  const source = intent.remoteSubmission?.context ?? intent.queueSource;
+  if (pauseQueue && source) setSourceQueuePaused(state, source, true);
   // 终态转换不可失败：capsule 预算满/内容超限时丢 capsule 保终态，
   // 否则归档/取消会被配额劫持，intent 永远无法终结。
   let capsuleInstalled = true;

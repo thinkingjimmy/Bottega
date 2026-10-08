@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ./checkpoint-model for the port and the closed checkpoint shape, and on the draft store's custody view.
- * [OUTPUT]: Persists plugin bytes as bounded blob parts, re-exports the checkpoint model; checkpointOf and DraftCheckpointBinder (read-then-write, debounced, rekey on handoff).
+ * [OUTPUT]: Persists plugin bytes as bounded blob parts, re-exports the checkpoint model; checkpointOf and DraftCheckpointBinder (read-then-write, debounced, rekey on handoff). flushStrict persists queue recovery before a remote mutation; submitted settings and operation journals share the same checkpoint.
  * [POS]: W23 recovery contract of remote drafts; the host owns keys, storage and account cleanup, this file owns what is saved and when.
  */
 import { REMOTE_ATTACHMENT_BYTES } from "@ai-chat/cloud-protocol/remote/input/model";
@@ -26,13 +26,13 @@ export function checkpointOf(custody: DraftCustody): { checkpoint: DraftCheckpoi
   const checkpoint: DraftCheckpoint = { version: 1, text: value.text, retainedText: value.retainedText ?? null, references: value.references,
     permissionMode: value.permissionMode, planMode: value.planMode, options: value.options, dismissedPlans: value.dismissedPlans, files: files(value.files),
     creation: creation ? { ...creation, references: creation.references ? [...creation.references] : undefined } : null,
-    submitted: [...submitted].map(([commandId, draft]) => ({ commandId, text: draft.text, references: draft.references, files: files(draft.files) })),
+    submitted: [...submitted].map(([commandId, draft]) => ({ commandId, ...draft, files: files(draft.files) })),
     commands: [...commands.values()],
+    recoveries: value.recoveries, queueOperations: value.queueOperations,
     ...(value.local && (value.local.items.length || value.local.gate || value.local.paused)
-      ? { local: { items: value.local.items.map(item => ({ ...item, attachments: [...item.attachments], references: [...item.references] })), gate: value.local.gate, paused: value.local.paused } } : {}),
-    ...(value.stoppedWaiting?.length ? { stoppedWaiting: [...value.stoppedWaiting] } : {}) };
+      ? { local: { items: value.local.items.map(item => ({ ...item, attachments: [...item.attachments], references: [...item.references] })), gate: value.local.gate, paused: value.local.paused } } : {}) };
   const empty = !checkpoint.text.trim() && !checkpoint.retainedText && !checkpoint.references.length && !checkpoint.files.length && !checkpoint.creation &&
-    !checkpoint.submitted.length && !checkpoint.commands.length && !checkpoint.local && !checkpoint.stoppedWaiting;
+    !checkpoint.submitted.length && !checkpoint.commands.length && !checkpoint.local && !checkpoint.queueOperations?.length;
   return empty ? null : { checkpoint, blobs };
 }
 /**
@@ -46,8 +46,10 @@ export class DraftCheckpointBinder {
   private ready = false;
   private unsubscribe = () => {};
   private stopEnd = () => {};
+  private starting: Promise<void> | null = null;
   constructor(private readonly store: RemoteDraftStore, private readonly port: RemoteDraftCheckpointPort, private key: string, private readonly delay = 400) {}
-  async start() {
+  start() { return this.starting ??= this.initialize(); }
+  private async initialize() {
     try {
       const saved = await this.port.read(this.key);
       if (saved && !this.stopped) await this.store.recover(parseCheckpoint(saved.checkpoint), saved.blobs);
@@ -74,6 +76,14 @@ export class DraftCheckpointBinder {
     const key = this.key, value = checkpointOf(this.store.custody());
     this.writes = this.writes.then(() => value ? this.port.write(key, value.checkpoint, value.blobs) : this.port.remove(key)).catch(() => {});
     return this.writes;
+  }
+  /** Destructive remote operations require durable recovery before the first network effect. */
+  async flushStrict() {
+    await this.start();
+    if (this.stopped) throw new Error("identity-changed");
+    const key = this.key, value = checkpointOf(this.store.custody());
+    const write = this.writes.then(() => value ? this.port.write(key, value.checkpoint, value.blobs) : this.port.remove(key));
+    this.writes = write.catch(() => {}); await write;
   }
   /** A draft handed to a new route key moves its checkpoint with it. */
   rekey(key: string) {

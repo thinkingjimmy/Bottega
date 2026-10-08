@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared draft reducer, atomic replacement decoder, normalization and safe live events.
- * [OUTPUT]: Provides bounded live replay and deterministic interrupted message/Subagent projection.
+ * [OUTPUT]: Provides bounded live replay that removes older tool details before reply structure, and deterministic interrupted message/Subagent projection. Live replay retains the active turn's explicit steering capability.
  * [POS]: Client projection kernel for encrypted history recovery, remote desktop viewing and browser catch-up.
  */
 import { canonicalJson } from "../encryption/encoding";
@@ -20,7 +20,13 @@ function bounded(draft: TurnDraft) {
   const streaming = [...draft.streaming].slice(-MESSAGE_PART_LIMIT).map(([id, text]) => [id, clipped(text)] as [string, string]);
   const parts = draft.parts.slice(-MESSAGE_PART_LIMIT);
   while (utf8Length(canonicalJson({ parts, streaming })) > MESSAGE_BYTE_LIMIT * 2 && (parts.length || streaming.length > 1)) {
-    if (parts.length) parts.shift(); else streaming.shift();
+    // Tool output must not evict earlier replies when their text and structure still fit.
+    const index = parts.findIndex(part => part.type === "tool" && part.detail);
+    const part = parts[index];
+    if (part?.type === "tool") {
+      const { detail: _detail, ...tool } = part;
+      parts[index] = tool;
+    } else if (parts.length) parts.shift(); else streaming.shift();
   }
   return serializeDraft({ ...draft, parts, streaming: new Map(streaming) });
 }
@@ -38,7 +44,7 @@ export function reduceLiveProjection(previous: LiveProjection, events: LiveEvent
       case "item-delta": draft = applyDelta(draft, event.itemId, event.text); break;
       case "item": draft = applyItem(draft, event.item); break;
       case "item-removed": draft = applyItemRemoved(draft, event.itemId); break;
-      case "phase": state.phase = event.phase; if (event.phase !== "resume-failed") delete state.recovery; break;
+      case "phase": state.phase = event.phase; if (event.steeringSupported !== undefined) state.steeringSupported = event.steeringSupported; if (event.phase !== "resume-failed") delete state.recovery; break;
       case "terminal": state.terminal = event.terminal; delete state.recovery; break;
       case "approval-requested": state.approvals = [...state.approvals.filter(value => value.approvalId !== event.approval.approvalId), event.approval].slice(-20); break;
       case "approval-closed": state.approvals = state.approvals.filter(value => value.approvalId !== event.approvalId); break;

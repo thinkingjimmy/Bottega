@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on strict portable storage contracts, canonical Chat codecs and outbox checkpoint identities.
- * [OUTPUT]: Defines scoped synchronization/removal commands, the initialization manifest with each entry's message count, exact remote admission fact reads, the forward-only receipt cursor and bounded recovery queries.
+ * [OUTPUT]: Defines scoped synchronization/removal commands, the initialization manifest with each entry's message count, exact remote admission fact reads, retained-root outbox Chat identity, the forward-only receipt cursor and bounded recovery queries.
  * [POS]: Local synchronization seam; fake transports are test-owned and never bundled here.
  */
 import { z } from "zod";
@@ -126,6 +126,7 @@ export const cloudQuerySchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("mirror"), chatId: id, afterSeq: rev, limit: rev.positive().max(100) }).strict(),
   z.object({ type: z.literal("outbox"), afterId: outboxId.nullable(), limit: rev.positive().max(100), entityKind: z.enum(["home-snapshot", "tombstone", "turn"]).optional(), id: outboxId.optional(), chatId: id.optional() }).strict(),
   z.object({ type: z.literal("outbox-count") }).strict(),
+  z.object({ type: z.literal("outbox-chat"), id: outboxId }).strict(),
   z.object({ type: z.literal("source"), sourceId: id }).strict(),
   z.object({ type: z.literal("source-blob"), sourceId: id, sha256: hash, offset: rev, length: rev.positive().max(128 * 1024) }).strict(),
   z.object({ type: z.literal("turn-receipt"), turnId: id }).strict(),
@@ -227,7 +228,7 @@ export const cloudResultSchema = z.discriminatedUnion("type", [
   result("state", z.union([z.object({ scopes: rev, outbox: rev, receipts: rev }).strict(), z.object({ environment: id, user_id: id,
     initial_manifest_json: jsonText.nullable(), meta_cursor: z.string().nullable(), body_backfill_cursor: z.string().nullable(),
     paused: z.union([z.literal(0), z.literal(1)]), updated_at: rev }).strict(), z.null()])),
-  result("mirror", mirrorValue), result("outbox", z.array(outboxRow).max(100)), result("outbox-count", rev),
+  result("mirror", mirrorValue), result("outbox", z.array(outboxRow).max(100)), result("outbox-count", rev), result("outbox-chat", id.nullable()),
   result("mirror-catalog", z.object({ items: z.array(portableChatSchema).max(100), cursor: id.nullable(), complete: z.boolean() }).strict()),
   result("source", sourceRef.extend({ payload: z.json() }).strict().nullable()), result("turn-receipt", turnReceiptSchema.nullable()),
   result("source-blob", z.object({ sha256: hash, bytes: rev, offset: rev, data: z.string().max(180000), eof: z.boolean() }).strict()),

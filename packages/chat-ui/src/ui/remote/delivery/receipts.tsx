@@ -1,61 +1,35 @@
 /**
  * [INPUT]: Depends on immutable command entries, receipt recovery actions and shared remote copy.
- * [OUTPUT]: Presents only actionable delivery failures and unknown outcomes through the shared failure view; normal progress renders no card; a received command still exposes its local Stop waiting control. Original-request retry, lookup, Stop waiting and explicit new execution remain distinct.
+ * [OUTPUT]: One shared notice and recovery action for a confirmed delivery failure; normal and uncertain progress render no card.
  * [POS]: Shared delivery feedback; an unknown transport or execution never synthesizes success.
  */
 import { ProductFailureNotice } from "@ai-chat/ui/components/feedback/failure-notice";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { formatCopy } from "@ai-chat/ui/lib/workbench-copy/format";
-import { awaitingReport, awaitingResubmit, type RemoteEntry, type RemoteCommandSession } from "../../../platform/remote/commands/session";
+import { awaitingResubmit, type RemoteEntry, type RemoteCommandSession } from "../../../platform/remote/commands/session";
 import { handledElsewhereBlock } from "../composer/status";
 import type { RemoteCopy } from "../../../i18n/messages/remote";
-export const needsDeliveryRecovery = (entry: RemoteEntry, computerUnavailable = false) => !entry.resubmittedAs &&
-  (entry.receipt?.reason === "connection-changed" && !entry.receipt.admission || !awaitingResubmit(entry) &&
-    (entry.uncertain || Boolean(entry.rejected) || ["outcome-unknown", "error", "expired", "rejected"].includes(entry.receipt?.state ?? "") || computerUnavailable && awaitingReport(entry)));
-export function RemoteReceipts({ entries, session, copy, computer, computerUnavailable, reexecute, sendAsNew, sentAsNew, disabled, reexecuteDisabled, stopped, stopWaiting }: {
+export const needsDeliveryRecovery = (entry: RemoteEntry, _computerUnavailable = false) => !entry.resubmittedAs && !awaitingResubmit(entry) &&
+  (Boolean(entry.rejected) || ["error", "expired", "rejected"].includes(entry.receipt?.state ?? ""));
+export function RemoteReceipts({ entries, copy, computer, reexecute, sendAsNew, sentAsNew, disabled, reexecuteDisabled }: {
   entries: RemoteEntry[]; session: RemoteCommandSession; copy: RemoteCopy; locale: string; disabled?: boolean; reexecuteDisabled?: boolean; reexecute(entry: RemoteEntry): void;
-  /** The owning computer's name, which a command it has not admitted waits for. */
-  computer?: string | null;
-  computerUnavailable?: boolean;
-  /** Resends a guidance message whose turn had ended as a new message, reusing its uploaded files. */
+  computer?: string | null; computerUnavailable?: boolean;
   sendAsNew?(entry: RemoteEntry): void; sentAsNew?: ReadonlySet<string>;
-  /** Ruling 12: commands this controller stopped waiting for, and the local-only action that adds one. */
-  stopped?: ReadonlySet<string>; stopWaiting?(entry: RemoteEntry): void;
 }) {
-  // Normal command progress belongs to the turn and queue. Receipts only supply recovery.
-  const attention = entries.filter(entry => needsDeliveryRecovery(entry, computerUnavailable) && !sentAsNew?.has(entry.input.commandId));
-  const waiting = computer && stopWaiting ? entries.filter(entry => awaitingReport(entry) && !entry.resubmittedAs &&
-    !sentAsNew?.has(entry.input.commandId) && !needsDeliveryRecovery(entry, computerUnavailable)) : [];
-  if (!attention.length && !waiting.length) return null;
-  return <div className="mb-3 space-y-2" data-delivery-recovery="">
-    {waiting.map(entry => {
-      const isStopped = Boolean(stopped?.has(entry.input.commandId));
-      return <div key={entry.input.commandId} data-command-id={entry.input.commandId} className="space-y-2 text-xs text-muted-foreground">
-        {isStopped && <p role="status">{formatCopy(copy.stoppedWaiting, { name: computer! })}</p>}
-        <p>{formatCopy(copy.stopWaitingWarning, { name: computer! })}</p>
-        {!isStopped && <Button type="button" variant="outline" size="sm" onClick={() => stopWaiting!(entry)}>{copy.stopWaiting}</Button>}
-      </div>;
-    })}
-    {attention.map(entry => {
-    const receipt = entry.receipt, state = receipt?.state, retryable = !receipt || entry.uncertain || state === "pending" || state === "claimed";
-    const resending = awaitingResubmit(entry), connection = connectionNotice(entry, copy, computer);
-    const canReexecute = !resending && entry.input.payload.kind === "start-turn" && (Boolean(entry.rejected) || !receipt?.admission && ["expired", "rejected"].includes(state ?? ""));
-    const canSendAsNew = Boolean(sendAsNew) && steerTurnEnded(entry) && !sentAsNew?.has(entry.input.commandId);
-    const waiting = Boolean(computer) && awaitingReport(entry), isStopped = waiting && Boolean(stopped?.has(entry.input.commandId));
-    const explanation = steerTurnEnded(entry) ? copy.turnEnded : connection ?? (receipt?.reason ? reasonCopy(receipt.reason, copy) : entry.rejected ? rejectionCopy(entry.rejected, copy) : "");
-    const title = receiptStatus(entry, copy, computer, isStopped);
-    const resolution = waiting ? formatCopy(copy.stopWaitingWarning, { name: computer! }) : state === "outcome-unknown" ? copy.unknownDetail : "";
+  const attention = entries.filter(entry => needsDeliveryRecovery(entry) && !sentAsNew?.has(entry.input.commandId));
+  if (!attention.length) return null;
+  return <div className="mb-3 space-y-2" data-delivery-recovery="">{attention.map(entry => {
+    const receipt = entry.receipt, state = receipt?.state;
+    const canReexecute = entry.input.payload.kind === "start-turn" && (Boolean(entry.rejected) || !receipt?.admission && ["expired", "rejected"].includes(state ?? ""));
+    const canSendAsNew = Boolean(sendAsNew) && steerTurnEnded(entry);
+    const title = receiptStatus(entry, copy), explanation = steerTurnEnded(entry) ? copy.turnEnded
+      : connectionNotice(entry, copy, computer) ?? (receipt?.reason ? reasonCopy(receipt.reason, copy) : entry.rejected ? rejectionCopy(entry.rejected, copy) : "");
     return <div key={entry.input.commandId} data-command-id={entry.input.commandId}>
-      <ProductFailureNotice compact tone={entry.uncertain || waiting || state === "outcome-unknown" ? "warning" : "danger"}
-        copy={{ title, explanation: explanation === title ? "" : explanation,
-          resolution: resolution === title || resolution === explanation ? "" : resolution }}>
-      <div className="flex flex-wrap gap-2 pt-1">
-        {!entry.rejected && (retryable || state === "outcome-unknown") && <Button type="button" variant="outline" disabled={entry.busy || disabled} onClick={() => void session.check(entry.input.commandId)}>{copy.check}</Button>}
-        {retryable && <Button type="button" variant="outline" disabled={entry.busy || disabled} onClick={() => void session.retry(entry.input.commandId)}>{copy.retry}</Button>}
-        {canReexecute && <Button type="button" variant="outline" disabled={entry.busy || disabled || reexecuteDisabled} onClick={() => reexecute(entry)}>{copy.executeAgain}</Button>}
-        {waiting && !isStopped && stopWaiting && <Button type="button" variant="outline" onClick={() => stopWaiting(entry)}>{copy.stopWaiting}</Button>}
-        {canSendAsNew && <Button type="button" variant="outline" disabled={entry.busy || disabled || reexecuteDisabled} onClick={() => sendAsNew!(entry)}>{copy.sendAsNew}</Button>}
-      </div>
+      <ProductFailureNotice compact tone="danger" copy={{ title, explanation: explanation === title ? "" : explanation, resolution: "" }}>
+        {(canReexecute || canSendAsNew) && <div className="flex flex-wrap gap-2 pt-1">
+          {canReexecute && <Button type="button" variant="outline" disabled={entry.busy || disabled || reexecuteDisabled} onClick={() => reexecute(entry)}>{copy.retry}</Button>}
+          {canSendAsNew && <Button type="button" variant="outline" disabled={entry.busy || disabled || reexecuteDisabled} onClick={() => sendAsNew!(entry)}>{copy.sendAsNew}</Button>}
+        </div>}
       </ProductFailureNotice>
     </div>;
   })}</div>;
@@ -70,12 +44,8 @@ export function steerTurnEnded(entry: Pick<RemoteEntry, "input" | "receipt">): b
   return entry.input.payload.kind === "steer" && !entry.receipt?.admission && entry.receipt?.state === "rejected" && entry.receipt.reason === "request-not-active";
 }
 /** A guidance message the running turn could not take is already queued on the computer as the next turn. */
-export function receiptStatus(entry: Pick<RemoteEntry, "receipt" | "busy" | "rejected">, copy: RemoteCopy, computer?: string | null, stopped = false): string {
+export function receiptStatus(entry: Pick<RemoteEntry, "receipt" | "busy" | "rejected">, copy: RemoteCopy, _computer?: string | null): string {
   const receipt = entry.receipt, state = receipt?.state;
-  /* B-01 (ruling 12): until its computer admits it, a command waits for that computer by name; only an admitted one has an
-     outcome to be unknown. */
-  if (computer && receipt && !receipt.admission && (state === "pending" || state === "claimed" || state === "outcome-unknown"))
-    return formatCopy(stopped ? copy.stoppedWaiting : copy.awaitingReport, { name: computer });
   if (state === "done" && receipt?.output?.kind === "steer" && receipt.output.outcome === "transferred") return copy.steerTransferred;
   return handledElsewhereBlock(copy, receipt)?.reason ?? (state ? copy[state] : entry.busy ? copy.sending : entry.rejected ? rejectionCopy(entry.rejected, copy) : copy.receiptUnknown);
 }

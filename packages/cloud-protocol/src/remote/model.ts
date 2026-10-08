@@ -1,10 +1,12 @@
 /**
- * [INPUT]: Depends on closed protocol identities, portable Agent options and canonical content hashing.
- * [OUTPUT]: Provides the closed remote reasons (plan refusals included), bounded remote commands (including catalog-backed model, effort and speed choices), execution evidence carrying the device that produced it, the steer outcome (consumed / transferred) in the encrypted receipt, the shared interaction-source identity, `handledElsewhere`, target capabilities with each Agent's model catalog, and content-free deleted creation receipts. Names disabled App first-message reservation refusals.
+ * [INPUT]: Depends on closed protocol identities, portable Agent options, canonical content hashing and standalone interaction contracts.
+ * [OUTPUT]: Provides the closed remote reasons (plan refusals included), bounded remote commands (including catalog-backed model, effort and speed choices), execution evidence carrying the device that produced it, the steer outcome (consumed / transferred) in the encrypted receipt, the shared interaction-source identity, `handledElsewhere`, target capabilities with each Agent's model catalog, and content-free deleted creation receipts. Names disabled App first-message reservation refusals. Protocol 16 binds atomic queue exchange, queued Steer and source-pausing cancellation to immutable commands.
  * [POS]: Shared remote control boundary; local sessions, paths, grants and execution recovery have no command representation.
  */
 import { remoteMemoryStatusSchema } from "./memory/memory-status";
-import { queueControlSchemas } from "./queue";
+import { queueControlSchemas, queuedInputSchema } from "./queue";
+import { interactionSourceSchema, remoteApprovalDecisionSchema } from "./input/interactions";
+export { interactionSourceSchema, remoteApprovalDecisionSchema, type InteractionSource } from "./input/interactions";
 import { z } from "zod";
 import { remotePluginCatalogSchema } from "../surfaces/plugin/catalog";
 import { REMOTE_REASONS } from "./reasons";
@@ -27,7 +29,6 @@ export const REMOTE_LIMITS = Object.freeze({ pageRows: 20, textBytes: MESSAGE_BY
   controlReservedPerTarget: 4 });
 export const remoteReasonSchema = z.enum(REMOTE_REASONS);
 export type RemoteReason = z.infer<typeof remoteReasonSchema>;
-export const remoteApprovalDecisionSchema = z.union([z.enum(["accept", "accept-for-session", "decline"]), z.string().regex(/^choice:(?:0|[1-9][0-9]{0,5})$/)]);
 export const remoteTurnOptionsSchema = z.object({ model: turnOptionValueSchema.optional(), reasoningEffort: turnOptionValueSchema.optional(), serviceTier: turnOptionValueSchema.optional() }).strict()
   .refine(value => value.model !== undefined || value.reasoningEffort !== undefined || value.serviceTier !== undefined, "remote-turn-options-empty");
 export type RemoteTurnOptions = z.infer<typeof remoteTurnOptionsSchema>;
@@ -41,6 +42,7 @@ const text = z.string().refine(value => utf8Length(value) <= REMOTE_LIMITS.textB
 const itemId = z.string().min(1).max(256);
 export const remotePayloadSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.enum(["start-turn", "edit-message", "retry-authentication"]), text, expectedAgentRevision: rev,
+    queueExchange: queuedInputSchema.optional(),
     revision: z.object({ supersedesUserMessageId: id, throughSeqEnd: rev.positive() }).strict().optional(),
     attachments: remoteAttachmentsSchema.optional(), references: remoteReferencesSchema.optional(), permissionMode: remotePermissionModeSchema.optional(), planMode: z.boolean().optional(),
     fullAccessConsent: remoteFullAccessConsentSchema.optional(),
@@ -51,16 +53,17 @@ export const remotePayloadSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("list-workspace-files"), query: z.string().max(256) }).strict(),
   z.object({ kind: z.literal("read-workspace-file"), reference: remoteFileReferenceSchema }).strict(),
   z.object({ kind: z.literal("fork-chat"), fromMessageId: id, execution: z.enum(["same-workspace", "managed-worktree"]), checkOnly: z.literal(true).optional() }).strict(),
-  z.object({ kind: z.literal("cancel"), requestId: itemId }).strict(),
+  z.object({ kind: z.literal("cancel"), requestId: itemId, pauseQueue: z.literal(true).optional() }).strict(),
   z.object({ kind: z.literal("retry-without-session"), requestId: itemId, retryToken: itemId, generation: rev.positive() }).strict(),
   z.object({ kind: z.literal("retry-same-session"), requestId: itemId, retryToken: itemId, generation: rev.positive() }).strict(),
   z.object({ kind: z.literal("abandon-fatal-turn"), requestId: itemId, retryToken: itemId, generation: rev.positive() }).strict(),
-  z.object({ kind: z.literal("steer"), requestId: itemId, text, attachments: remoteAttachmentsSchema.optional(), references: remoteReferencesSchema.optional() }).strict(),
+  z.object({ kind: z.literal("steer"), requestId: itemId, text, queued: queuedInputSchema.optional(), attachments: remoteAttachmentsSchema.optional(), references: remoteReferencesSchema.optional() }).strict(),
   z.object({ kind: z.literal("respond-approval"), requestId: itemId, approvalId: itemId, decision: remoteApprovalDecisionSchema }).strict(),
   z.object({ kind: z.literal("respond-user-input"), requestId: itemId, userInputId: itemId,
     answers: z.record(itemId, z.object({ answers: z.array(z.string().max(MESSAGE_BYTE_LIMIT)).max(50) }).strict())
       .refine(value => Object.keys(value).length <= 20 && utf8Length(JSON.stringify(value)) <= MESSAGE_BYTE_LIMIT, "remote-answer-budget") }).strict(),
-]).refine(value => !("revision" in value) && value.kind !== "edit-message" || (value.kind === "edit-message") === Boolean("revision" in value && value.revision), "remote-revision-required")
+]).refine(value => !("queueExchange" in value) || !value.queueExchange || value.kind === "start-turn", "remote-queue-exchange-kind")
+.refine(value => !("revision" in value) && value.kind !== "edit-message" || (value.kind === "edit-message") === Boolean("revision" in value && value.revision), "remote-revision-required")
 .refine(value => !("text" in value) || Boolean(value.text.trim() || value.attachments?.length || value.references?.length), "remote-input-empty");
 export const remoteCommandInputSchema = z.object({ commandId: id, chatId: id, incarnationId: id, targetDeviceId: id,
   intent: z.object({ baselineAgent: agentBackendIdSchema, creation: z.uuid().optional() }).strict().optional(), payload: remotePayloadSchema }).strict();
@@ -102,18 +105,13 @@ export function remoteIntentIdentity(value: RemoteCommandInput) {
 }
 const remoteAdmissionSchema = z.object({ intentId: id, submissionHash: sha256Schema, requestId: itemId, userMessageId: id.nullable() }).strict();
 export type RemoteAdmission = z.infer<typeof remoteAdmissionSchema>;
-/* The device that carried out an interaction. One definition: `turns/live` re-exports it for live results, and a
-   command receipt carries it so a second controller's answer can name the computer that got there first. */
-export const interactionSourceSchema = z.object({ sourceDeviceId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
-  sourceDeviceName: z.string().min(1).max(120) }).strict();
-export type InteractionSource = z.infer<typeof interactionSourceSchema>;
 export const remoteStateSchema = z.enum(["awaiting-preparation", "delivered", "pending", "claimed", "accepted", "running", "done", "cancelled", "error", "outcome-unknown", "expired", "rejected"]);
 export const remoteBlockedBySchema = z.enum(["relay-queue", "chain-paused", "app-transition"]);
 export const remoteOutputSchema = z.discriminatedUnion("kind", [
   remoteWorkspaceOutputSchema,
   z.object({ kind: z.literal("queue-withdrawal"), unpersisted: z.literal(true) }).strict(),
   // transferred: the running turn could not take the input, which is durably queued as the next turn.
-  z.object({ kind: z.literal("steer"), outcome: z.enum(["consumed", "transferred"]) }).strict(),
+  z.object({ kind: z.literal("steer"), outcome: z.enum(["consumed", "transferred"]), intentId: itemId.optional() }).strict(),
   z.object({ kind: z.literal("fork-chat"), chatId: id, incarnationId: id }).strict(),
   z.object({ kind: z.literal("fork-preflight"), worktree: z.object({ supported: z.boolean(), dirty: z.object({
     staged: z.boolean(), unstaged: z.boolean(), untracked: z.boolean(), ignored: z.boolean() }).strict() }).strict().optional() }).strict(),

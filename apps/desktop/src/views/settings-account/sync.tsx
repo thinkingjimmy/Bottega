@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on main-owned sync progress and encryption state, five-language copy, the shared encryption error mapper, settings primitives, the unlock button, the handshake retry action and the router.
- * [OUTPUT]: Provides AccountSync — the settings page's single Sync row (badge, one sentence, a byte-led progress bar that falls back to whole items, and only the action the state itself needs) — and AppPackagesSection for blocked App packages.
+ * [OUTPUT]: Provides AccountSync — the settings page's single Sync row (badge, one sentence, a byte-led progress bar that falls back to whole items, its state action, and offline diagnostic export) — and AppPackagesSection for blocked App packages.
  * [POS]: Settings sync projection; signing in is what publishes this computer, so the row carries no switch — unlock retains its dialog through key derivation, an unavailable handshake keeps its own retry, and cancelled discovery or an unfinished disconnect retains a retry exit.
  */
 import { useState, type ReactNode } from "react";
@@ -31,7 +31,7 @@ function Track({ sync }: { sync: SyncProgress }) {
 
 export function AccountSync({ state }: { state: CloudAccountState }) {
   const { t, i18n } = useAppTranslation(), copy = getCloudEncryptionCopy(i18n.language);
-  const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
+  const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), [exporting, setExporting] = useState(false);
   const sync = state.sync, encryption = state.encryption, ready = state.status === "ready";
   const unavailable = cloudHandshakeFailed(state);
   const action = (run: () => Promise<void>) => {
@@ -39,6 +39,10 @@ export function AccountSync({ state }: { state: CloudAccountState }) {
     void run().catch(() => setFailed(true)).finally(() => setBusy(false));
   };
   const retrySync = () => <SettingsButton disabled={!ready || busy} onClick={() => action(() => cloudAccountClient().retrySync())}>{t("cloud.retry")}</SettingsButton>;
+  const exportDiagnostics = () => {
+    if (exporting) return; setExporting(true); setFailed(false);
+    void cloudAccountClient().exportSyncDiagnostics().catch(() => setFailed(true)).finally(() => setExporting(false));
+  };
   const waiting = [sync.pending > 0 && t("cloud.syncReview.pending", { count: sync.pending }), sync.conflicts > 0 && t("cloud.syncReview.conflicts", { count: sync.conflicts }),
     sync.waiting > 0 && t("cloud.syncReview.waitingOnOwner", { count: sync.waiting })]
     .filter(Boolean).map(text => ` · ${text}`).join("");
@@ -81,7 +85,11 @@ export function AccountSync({ state }: { state: CloudAccountState }) {
     default: break;
   }
   return <SettingsSection title={t("cloud.sync")} alert={failed ? t("cloud.actionFailed") : undefined}>
-    <SettingsList><SettingsRow label={t("cloud.sync")} badge={<SettingsBadge tone={tone}>{badge}</SettingsBadge>} description={description} control={control} /></SettingsList>
+    <SettingsList><SettingsRow label={t("cloud.sync")} badge={<SettingsBadge tone={tone}>{badge}</SettingsBadge>} description={<>{description}{state.remoteHealth && state.remoteHealth.status !== "ready" &&
+        <span role="status" className="mt-1 block text-muted-foreground">{t(`cloud.computers.health.${state.remoteHealth.status}`)}</span>}</>} control={control} />
+      <SettingsRow label={t("cloud.computers.exportDiagnostics")} description={t("cloud.computers.diagnosticsDescription")}
+        control={<SettingsButton variant="ghost" disabled={exporting} onClick={exportDiagnostics}>{t("cloud.computers.exportDiagnostics")}</SettingsButton>} />
+    </SettingsList>
   </SettingsSection>;
 }
 

@@ -1,11 +1,12 @@
 /**
  * [INPUT]: Depends on React subscriptions, page visibility and the six injected account/execution platform contracts.
- * [OUTPUT]: Provides current account, bounded visible-surface device refresh, the account's computers with a live presence deadline, and generation-fenced execution reads; computer presence on the host server clock with a single onlineUntil deadline timer (T20-9).
+ * [OUTPUT]: Provides current account, bounded device refresh, shared recovering computer lists with freshness and a server-clock presence deadline, and generation-fenced execution reads.
  * [POS]: Shared presentation adapter; retained display facts never become execution or account authority.
  */
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import type { CloudComputer, CloudDevice } from "@ai-chat/cloud-protocol";
+import type { CloudDevice } from "@ai-chat/cloud-protocol";
 import type { AccountFacade, ExecutionFacade, ExecutionView } from "../contracts";
+import { accountComputerSubscription } from "./computers";
 export function useChatAccount(account: AccountFacade) {
   return useSyncExternalStore(account.subscribe, account.snapshot, account.snapshot);
 }
@@ -46,34 +47,27 @@ export function useAccountDevices(account: AccountFacade) {
  * has not wired the subscription — so a caller can tell "not known yet" from "this account has none".
  */
 export function useAccountComputers(account: AccountFacade) {
-  const snapshot = useChatAccount(account), userId = snapshot.profile?.userId;
-  const [value, setValue] = useState<{ account: AccountFacade; userId: string; computers: CloudComputer[] } | null>(null);
+  const owner = accountComputerSubscription(account);
+  const value = useSyncExternalStore(owner.subscribe, owner.snapshot, owner.snapshot);
   // D15: presence is judged on server time when the host has a server clock, so a skewed device clock cannot misjudge it.
   const serverNow = useCallback(() => account.serverNow?.() ?? Date.now(), [account]);
-  const [now, setNow] = useState(serverNow);
+  const [, tick] = useState(0), now = serverNow();
   useEffect(() => {
-    if (!userId || snapshot.state !== "ready" || !account.computers) return;
-    let active = true;
-    const stop = account.computers(computers => { if (active) { setValue({ account, userId, computers }); setNow(serverNow()); } },
-      () => { /* Keep the last confirmed list through a temporary outage; the deadline below still retires it. */ });
-    return () => { active = false; stop(); };
-  }, [account, snapshot.state, userId, serverNow]);
-  useEffect(() => {
-    const resume = () => { if (document.visibilityState === "visible") setNow(serverNow()); };
+    const resume = () => { if (document.visibilityState === "visible") tick(value => value + 1); };
     document.addEventListener("visibilitychange", resume); window.addEventListener("pageshow", resume);
     return () => { document.removeEventListener("visibilitychange", resume); window.removeEventListener("pageshow", resume); };
   }, [serverNow]);
-  const current = value?.account === account && value.userId === userId ? value.computers : null;
+  const current = value.computers;
   /* No periodic tick (R-06): offline arrives as a server transition, and one timer at the earliest onlineUntil is the safety
      net for a stalled sweep. */
   const deadline = current?.reduce<number | null>((next, computer) => computer.online && computer.onlineUntil !== null && computer.onlineUntil > now
     ? Math.min(next ?? computer.onlineUntil, computer.onlineUntil) : next, null) ?? null;
   useEffect(() => {
     if (deadline === null) return;
-    const timer = setTimeout(() => setNow(serverNow()), Math.max(250, deadline - now));
+    const timer = setTimeout(() => tick(value => value + 1), Math.max(250, deadline - now));
     return () => clearTimeout(timer);
   }, [deadline, now, serverNow]);
-  return { computers: current, now };
+  return { ...value, now, retry: owner.retry };
 }
 export function useChatExecution(chatId: string, execution: ExecutionFacade) {
   const [value, setValue] = useState<{ chatId: string; execution: ExecutionFacade; view: ExecutionView | null; failed: boolean } | null>(null);

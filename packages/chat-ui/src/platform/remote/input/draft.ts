@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Account/key lifetime, browser files, the shared image pipeline, scoped upload ports, an optional encrypted checkpoint port and exact submitted command descriptors.
- * [OUTPUT]: Atomically admits opaque plugin output and retains complete drafts (submitted custody moves to a command's one resend via transfer) and ruling 12's local queue (enqueue/remove/reorder/begin/pause/resume, gate settling in track) with Stop waiting ids pruned once terminal; and unsent first-message text across routes; images pass source admission, a cancellable processing state and one fixed processed File; unsent uploads older than DRAFT_UPLOAD_TTL_MS (20 h) turn into expired failed tiles and upload again; clears only accepted revisions without replacing a newer draft; tracks in-flight commands for W23 recovery.
+ * [OUTPUT]: Atomically admits opaque plugin output and retains complete drafts (submitted custody moves to a command's one resend via transfer) and ruling 12's local queue (enqueue/remove/reorder/begin/pause/resume, gate settling in track) with frozen send settings and confirmed cancellation custody; and unsent first-message text across routes; images pass source admission, a cancellable processing state and one fixed processed File; unsent uploads older than DRAFT_UPLOAD_TTL_MS (20 h) turn into expired failed tiles and upload again; clears only accepted revisions without replacing a newer draft; tracks in-flight commands for W23 recovery. Complete queue swaps and separate recoveries preserve files, opaque sources and settings; editor versions protect later typing and reloaded local queues pause.
  * [POS]: Draft custody. Page memory is the live copy; checkpoint.ts persists it through a host port (never localStorage) and recovers it after the page is gone.
  */
 import { restorePluginSources, hasStoredPluginSources } from "../../../plugins/checkpoint";
@@ -11,14 +11,15 @@ import { REMOTE_ATTACHMENT_BYTES, type RemoteAttachment, type RemoteConsentScope
 import type { RemoteTurnOptions } from "@ai-chat/cloud-protocol/remote/model";
 import type { ChatPlatform } from "../../contracts";
 import { assertRemoteFile, type RemoteAttachmentPort } from "./upload";
-import type { RemoteCreated, RemoteCreateInput, RemoteCommandInput } from "../contracts";
-import type { FrozenRemoteCommand, FrozenRemoteCreation } from "@ai-chat/cloud-protocol/remote/encrypted";
+import type { RemoteCreated, RemoteCreateInput } from "../contracts";
+import type { FrozenRemoteCreation } from "@ai-chat/cloud-protocol/remote/encrypted";
 import { awaitingRemoteAdmission, type RemoteEntry } from "../commands/session";
-import { LOCAL_QUEUE_LIMIT, emptyLocalQueue, pruneStopped, settleLocalGate, type LocalQueue, type LocalQueued } from "./local-queue";
+import { LOCAL_QUEUE_LIMIT, emptyLocalQueue, settleLocalGate, type LocalQueue, type LocalQueued, type FrozenSendSettings } from "./local-queue";
+import type { RemoteCommandInput } from "../contracts";
 import { admitImageSource, isImageSource, processImage, type ImageCodec } from "./image/pipeline";
 import { canvasImageCodec } from "./image/canvas";
 import { blobKey, DraftCheckpointBinder, type DraftCheckpoint, type CheckpointFile } from "./checkpoint";
-type DraftCreation = { input: RemoteCreateInput; commandId: string; text: string; permissionMode: RemotePermissionMode; planMode: boolean; options?: RemoteTurnOptions; references?: readonly RemoteReference[]; frozen?: FrozenRemoteCreation; receipt?: RemoteCreated;
+type DraftCreation = { input: RemoteCreateInput; commandId: string; text: string; permissionMode: RemotePermissionMode; planMode: boolean; options?: RemoteTurnOptions; references?: readonly RemoteReference[]; frozen?: FrozenRemoteCreation; receipt?: RemoteCreated; commandStarted?: boolean;
   /** Restored from a checkpoint: its result must be looked up before anything is sent again. */
   recovered?: boolean };
 /** A model choice belongs to the Agent it was made for; switching Agents drops it. */
@@ -32,15 +33,16 @@ export type DraftFile = { id: string; file: File; preview: string; image: boolea
 /* The service keeps an unreferenced upload for 24 h; an unsent one is retired at 20 h so a send never carries a descriptor about to vanish (R4). */
 export const DRAFT_UPLOAD_TTL_MS = 20 * 60 * 60_000;
 export type DraftReference = { id: string; label: string; value: RemoteReference };
-export type TrackedCommand = { input: RemoteCommandInput; frozen?: FrozenRemoteCommand };
+export type TrackedCommand = Pick<RemoteEntry, "input" | "frozen" | "position" | "stopRequested" | "cancelCommandId" | "pauseQueue">;
+export type QueueOperation = { input: RemoteCommandInput; kind: "edit" | "steer" | "remove" | "control" | "admit"; originalId?: string; draftVersion: number; replacement?: boolean };
 export type ComposerDraft = { references: DraftReference[]; text: string; files: DraftFile[]; permissionMode: RemotePermissionMode | null; planMode: boolean; options: DraftModelChoice | null;
   consent: RemoteConsentScope | null; revision: number; dismissedPlans: string[]; creation?: DraftCreation | null; retainedText?: string | null;
   submittedPlan?: { commandId: string; planId: string; planMode: boolean } | null;
   /** Commands restored from a checkpoint that the Chat's command session must adopt and look up — never resend as new messages. */
   recovered?: readonly TrackedCommand[];
-  /** Ruling 12: new messages held here while a command waits for its computer, and the commands this controller stopped waiting for. */
-  local?: LocalQueue; stoppedWaiting?: readonly string[] };
-type SubmittedDraft = Pick<ComposerDraft, "text" | "files" | "references">;
+  /** New messages held behind an original in-flight command. */
+  local?: LocalQueue; queueOperations?: QueueOperation[]; recoveries?: string[]; queueLocked?: boolean };
+export type SubmittedDraft = Pick<ComposerDraft, "text" | "files" | "references"> & { settings?: FrozenSendSettings; planMode?: boolean; settlementId?: string };
 export type DraftCustody = { value: ComposerDraft; submitted: ReadonlyMap<string, SubmittedDraft>; commands: ReadonlyMap<string, TrackedCommand> };
 const empty = (): ComposerDraft => ({ references: [], text: "", files: [], permissionMode: null, planMode: false, options: null, consent: null, revision: 0, dismissedPlans: [] });
 const errorCode = (error: unknown) => error instanceof Error && /^attachment-[a-z]+$/.test(error.message) ? error.message : "attachment-format";
@@ -55,12 +57,75 @@ export class RemoteDraftStore {
   private submitted = new Map<string, SubmittedDraft>();
   private expiry: ReturnType<typeof setTimeout> | null = null;
   private commands: ReadonlyMap<string, TrackedCommand> = new Map();
+  private editorVersion = 0;
   checkpoint: DraftCheckpointBinder | null = null;
   constructor(private readonly codec: ImageCodec = canvasImageCodec) {}
   snapshot = () => this.value;
+  draftVersion = () => this.editorVersion;
   custody = (): DraftCustody => ({ value: this.value, submitted: this.submitted, commands: this.commands });
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
-  update(patch: Partial<Omit<ComposerDraft, "revision">>) { this.value = { ...this.value, ...patch, revision: this.value.revision + 1 }; this.listeners.forEach(listener => listener()); }
+  update(patch: Partial<Omit<ComposerDraft, "revision">>) {
+    if (["text", "files", "references", "permissionMode", "planMode", "options"].some(key => key in patch)) this.editorVersion++;
+    this.value = { ...this.value, ...patch, revision: this.value.revision + 1 }; this.listeners.forEach(listener => listener());
+  }
+  capture(settings?: FrozenSendSettings): SubmittedDraft {
+    const choice = this.value.options, { backend: _backend, ...options } = choice ?? {};
+    return { text: this.value.text, files: this.value.files, references: this.value.references, planMode: this.value.planMode,
+      settings: settings ?? (choice ? { backend: choice.backend, permissionMode: this.value.permissionMode ?? "approve-for-me", options } : undefined) };
+  }
+  retain(commandId: string, value: SubmittedDraft) { if (!this.submitted.has(commandId)) this.submitted.set(commandId, value); }
+  queueOwns(id: string) { return this.value.queueOperations?.some(op => op.originalId === id || op.input.commandId === id) ?? false; }
+  lockQueue(locked: boolean) { if (Boolean(this.value.queueLocked) !== locked) this.update({ queueLocked: locked }); }
+  private installDraft(value: SubmittedDraft) {
+    this.update({ text: value.text, files: value.files, references: value.references, planMode: value.planMode ?? false,
+      ...(value.settings ? { permissionMode: value.settings.permissionMode, options: { backend: value.settings.backend, ...value.settings.options } } : {}) });
+    this.sweep();
+  }
+  private hasDraft() { return Boolean(this.value.text || this.value.files.length || this.value.references.length); }
+  /** Retained messages keep their own settings and files; they never merge into an unrelated draft. */
+  restoreRecovery(id: string, settings?: FrozenSendSettings) {
+    const value = this.submitted.get(id); if (!value) return;
+    if (this.hasDraft()) this.submitted.set(id, this.capture(settings)); else this.submitted.delete(id);
+    this.update({ recoveries: this.submitted.has(id) ? this.value.recoveries : this.value.recoveries?.filter(key => key !== id) });
+    this.installDraft(value);
+  }
+  editLocal(id: string, settings: FrozenSendSettings) {
+    const queue = this.localQueue, index = queue.items.findIndex(item => item.commandId === id), original = this.submitted.get(id);
+    if (index < 0 || !original) throw new Error("queue-changed");
+    const items = [...queue.items], replacement = this.capture(settings), hasInput = this.hasDraft();
+    if (hasInput) {
+      if (replacement.files.some(file => file.state !== "ready" || !file.attachment)) throw new Error("attachment-unavailable");
+      const commandId = crypto.randomUUID(); this.submitted.set(commandId, replacement);
+      items[index] = { ...items[index]!, commandId, text: replacement.text, attachments: replacement.files.map(file => file.attachment!),
+        references: replacement.references.map(reference => reference.value), settings, planMode: replacement.planMode ?? false };
+    } else items.splice(index, 1);
+    this.submitted.delete(id);
+    this.update({ local: { ...queue, items, paused: items.length || queue.gate ? queue.paused : null } });
+    this.installDraft(original);
+  }
+  beginQueueOperation(operation: Omit<QueueOperation, "draftVersion">, replacement?: SubmittedDraft) {
+    if (this.value.queueOperations?.length) throw new Error("outcome-unknown");
+    if (replacement) { this.submitted.set(operation.input.commandId, replacement); this.update({ text: "", files: [], references: [] }); }
+    const saved = { ...operation, draftVersion: this.editorVersion, replacement: Boolean(replacement) };
+    this.update({ queueOperations: [saved] }); return saved;
+  }
+  finishQueueOperation(operation: QueueOperation, success: boolean, taken = false) {
+    if (!this.value.queueOperations?.some(op => op.input.commandId === operation.input.commandId)) return;
+    const id = operation.originalId, version = operation.draftVersion;
+    this.update({ queueOperations: this.value.queueOperations.filter(op => op.input.commandId !== operation.input.commandId) });
+    if (success && id) {
+      const local = this.localQueue, items = local.items.filter(item => item.commandId !== id);
+      this.update({ local: { ...local, items, paused: items.length || local.gate ? local.paused : null } });
+      if (operation.kind === "edit") this.restore(id, version); else if (operation.kind !== "admit") this.confirmed(id);
+    } else {
+      if (operation.replacement) this.restore(operation.input.commandId, version);
+      if (operation.kind === "admit" && id) {
+        const local = this.localQueue;
+        if (local.gate === id) this.update({ local: { ...local, gate: null } });
+        if (!local.items.some(item => item.commandId === id)) this.restore(id, version);
+      } else if (taken && id) this.restore(id, version);
+    }
+  }
   text = (text: string) => this.update({ text });
   handoffCreation(submitted: boolean) {
     const original = this.value.creation?.text;
@@ -69,6 +134,9 @@ export class RemoteDraftStore {
   }
   restoreText() {
     if (this.value.retainedText) this.update({ text: this.value.retainedText, retainedText: this.value.text || null });
+  }
+  restoreFrozenText(text: string) {
+    this.update(this.value.text ? { retainedText: text } : { text });
   }
   /** Source admission reserves the slots synchronously; images then process one at a time while their tiles show progress. */
   add(files: readonly File[], sketch?: unknown, replaceId?: string) {
@@ -160,16 +228,16 @@ export class RemoteDraftStore {
   /** Mirrors the session's draft-bearing commands that are not yet admitted, so a checkpoint can recover them by their original commandId. */
   track(entries: readonly RemoteEntry[]) {
     const next = new Map<string, TrackedCommand>();
-    for (const entry of entries) if (DRAFT_KINDS.has(entry.input.payload.kind) && awaitingRemoteAdmission(entry)) next.set(entry.input.commandId, { input: entry.input, ...(entry.frozen ? { frozen: entry.frozen } : {}) });
+    for (const entry of entries) if (DRAFT_KINDS.has(entry.input.payload.kind) && (awaitingRemoteAdmission(entry) || entry.owned && !entry.cancelledBeforeSend && !entry.rejected && !["done", "error", "cancelled", "expired", "rejected"].includes(entry.receipt?.state ?? ""))) next.set(entry.input.commandId, { input: entry.input, frozen: entry.frozen, position: entry.position, stopRequested: entry.stopRequested, cancelCommandId: entry.cancelCommandId, pauseQueue: entry.pauseQueue });
     // A recovered command stays saved until its session holds it; once adopted, the session entry is the one tracked.
     const waiting = (this.value.recovered ?? []).filter(pending => !entries.some(entry => entry.input.commandId === pending.input.commandId));
     for (const pending of waiting) next.set(pending.input.commandId, pending);
-    const same = next.size === this.commands.size && [...next].every(([id, value]) => this.commands.get(id)?.input === value.input && this.commands.get(id)?.frozen === value.frozen);
+    const same = next.size === this.commands.size && [...next].every(([id, value]) => this.commands.get(id)?.input === value.input && this.commands.get(id)?.frozen === value.frozen && this.commands.get(id)?.position === value.position && this.commands.get(id)?.stopRequested === value.stopRequested && this.commands.get(id)?.cancelCommandId === value.cancelCommandId && this.commands.get(id)?.pauseQueue === value.pauseQueue);
     if (!same) this.commands = next;
-    const stopped = this.value.stoppedWaiting ?? [], local = this.value.local;
-    const settled = local && settleLocalGate(local, entries, new Set(stopped)), kept = pruneStopped(stopped, entries);
+    const local = this.value.local;
+    const settled = local && settleLocalGate(local, entries);
     const patch = { ...(this.value.recovered && waiting.length !== this.value.recovered.length ? { recovered: waiting.length ? waiting : undefined } : {}),
-      ...(settled !== local ? { local: settled } : {}), ...(kept.length !== stopped.length ? { stoppedWaiting: kept.length ? kept : undefined } : {}) };
+      ...(settled !== local ? { local: settled } : {}) };
     if (Object.keys(patch).length) this.update(patch);
     else if (!same) this.listeners.forEach(listener => listener());
   }
@@ -183,7 +251,8 @@ export class RemoteDraftStore {
   /** Remove discards the message: its files leave custody like an admitted one's. */
   removeLocal(commandId: string) {
     const local = this.localQueue;
-    this.update({ local: { ...local, items: local.items.filter(item => item.commandId !== commandId) } });
+    const items = local.items.filter(item => item.commandId !== commandId);
+    this.update({ local: { ...local, items, paused: items.length || local.gate ? local.paused : null } });
     this.confirmed(commandId);
   }
   reorderLocal(commandIds: readonly string[]) {
@@ -194,22 +263,31 @@ export class RemoteDraftStore {
   /** Taken off the queue and gated on before the first await, so no second drain can send it again. */
   beginLocal(commandId: string) {
     const local = this.localQueue;
-    if (local.items[0]?.commandId !== commandId || local.gate || local.paused) throw new Error("queue-changed");
+    if (local.items[0]?.commandId !== commandId || local.gate || local.paused || this.value.queueLocked || this.value.queueOperations?.length) throw new Error("queue-changed");
     this.update({ local: { ...local, items: local.items.slice(1), gate: commandId } });
   }
-  pauseLocal(reason: string) { this.update({ local: { ...this.localQueue, gate: null, paused: reason } }); }
+  pauseLocal(reason: string) { this.update({ local: { ...this.localQueue, paused: reason } }); }
   resumeLocal() { if (this.localQueue.paused) this.update({ local: { ...this.localQueue, paused: null } }); }
-  /** Local only: no server call, no resend, nothing cancelled on the computer; the receipt keeps being watched. */
-  stopWaiting(commandId: string) {
-    const stopped = this.value.stoppedWaiting ?? [];
-    if (!stopped.includes(commandId)) this.update({ stoppedWaiting: [...stopped, commandId] });
-  }
-  awaiting(commandId: string, text: string, attachments: readonly RemoteAttachment[] = [], references: readonly RemoteReference[] = []) {
+  awaiting(commandId: string, text: string, attachments: readonly RemoteAttachment[] = [], references: readonly RemoteReference[] = [], preserveText = false, settings?: FrozenSendSettings, planMode = this.value.planMode) {
     if (this.submitted.has(commandId)) return;
     const ids = new Set(attachments.map(file => file.attachmentId)), keys = new Set(references.map(reference => JSON.stringify(reference)));
-    this.submitted.set(commandId, { text, files: this.value.files.filter(file => ids.has(file.id)),
+    this.submitted.set(commandId, { text, settings, planMode, files: this.value.files.filter(file => ids.has(file.id)),
       references: this.value.references.filter(reference => keys.has(JSON.stringify(reference.value))) });
-    this.accepted(text, attachments, references, false);
+    this.accepted(text, attachments, references, false, preserveText);
+  }
+  submittedDraft(commandId: string) { return this.submitted.get(commandId); }
+  async prepareSubmitted(commandId: string, chatId: string, port: RemoteAttachmentPort | undefined, signal: AbortSignal) {
+    const original = this.submitted.get(commandId); if (!original) throw new Error("attachment-missing");
+    const files: DraftFile[] = [];
+    for (const file of original.files) {
+      if (["reselect", "processing", "rejected"].includes(file.state) || !file.file.size) throw new Error("attachment-unavailable");
+      if (file.state === "ready" && file.attachment && this.fresh(file)) { files.push(file); continue; }
+      if (!port) throw new Error("attachment-unavailable");
+      const uploadId = crypto.randomUUID(), attachment = await port.stage({ chatId, attachmentId: file.id, uploadId, file: file.file }, signal, () => {});
+      files.push({ ...file, uploadId, attachment, state: "ready", readyAt: Date.now() });
+    }
+    const next = { ...original, files }; this.submitted.set(commandId, next);
+    return next;
   }
   confirmed(commandId: string) {
     const original = this.submitted.get(commandId); if (!original) return;
@@ -217,24 +295,27 @@ export class RemoteDraftStore {
     this.submitted.delete(commandId); this.listeners.forEach(listener => listener());
   }
   /** A resend under a new id takes over the original's custody, so its refusal restores the draft and its admission releases it. */
-  transfer(fromCommandId: string, toCommandId: string) {
+  transfer(fromCommandId: string, toCommandId: string, settlementId?: string) {
     const original = this.submitted.get(fromCommandId); if (!original || this.submitted.has(toCommandId)) return false;
-    this.submitted.delete(fromCommandId); this.submitted.set(toCommandId, original); return true;
+    this.submitted.delete(fromCommandId); this.submitted.set(toCommandId, { ...original, ...(settlementId ? { settlementId } : {}) }); return true;
   }
-  restore(commandId: string) {
+  confirmAliases(commandId: string) {
+    for (const [id, value] of this.submitted) if (value.settlementId === commandId && !this.queueOwns(id) && !this.value.recoveries?.includes(id)) this.confirmed(id);
+  }
+  restore(commandId: string, version?: number) {
     const original = this.submitted.get(commandId); if (!original) return false;
+    if (this.hasDraft() || version !== undefined && version !== this.editorVersion) {
+      if (!this.value.recoveries?.includes(commandId)) this.update({ recoveries: [...this.value.recoveries ?? [], commandId] });
+      return true;
+    }
     this.submitted.delete(commandId);
-    const fileIds = new Set(this.value.files.map(file => file.id)), references = new Set(this.value.references.map(reference => JSON.stringify(reference.value)));
-    this.update({ ...(this.value.text ? { retainedText: original.text || this.value.retainedText } : { text: original.text }),
-      files: [...this.value.files, ...original.files.filter(file => !fileIds.has(file.id))],
-      references: [...this.value.references, ...original.references.filter(reference => !references.has(JSON.stringify(reference.value)))] });
-    this.sweep(); return true;
+    this.installDraft(original); return true;
   }
-  accepted(text: string, attachments: readonly RemoteAttachment[] = [], references: readonly RemoteReference[] = [], release = true) {
+  accepted(text: string, attachments: readonly RemoteAttachment[] = [], references: readonly RemoteReference[] = [], release = true, preserveText = false) {
     const ids = new Set(attachments.map(file => file.attachmentId));
     const files = this.value.files.filter(file => { if (!ids.has(file.id)) return true; if (release) this.release(file); return false; });
     const keys = new Set(references.map(reference => JSON.stringify(reference)));
-    this.update({ text: this.value.text === text ? "" : this.value.text, files, references: this.value.references.filter(reference => !keys.has(JSON.stringify(reference.value))) });
+    this.update({ text: !preserveText && this.value.text === text ? "" : this.value.text, files, references: this.value.references.filter(reference => !keys.has(JSON.stringify(reference.value))) });
   }
   invalidate(attachments: readonly RemoteAttachment[]) {
     const missing = new Set(attachments.map(file => file.blob.blobId));
@@ -262,15 +343,15 @@ export class RemoteDraftStore {
     };
     const current = this.value, pristine = !current.text.trim() && !current.files.length && !current.references.length && !current.creation && !current.retainedText;
     const known = new Set(current.files.map(file => file.id)), files = saved.files.filter(file => !known.has(file.id)).slice(0, Math.max(0, 8 - current.files.length)).map(restore);
-    for (const draft of saved.submitted) if (!this.submitted.has(draft.commandId)) this.submitted.set(draft.commandId, { text: draft.text, references: draft.references, files: draft.files.map(restore) });
+    for (const draft of saved.submitted) if (!this.submitted.has(draft.commandId)) this.submitted.set(draft.commandId, { text: draft.text, references: draft.references, files: draft.files.map(restore), settings: draft.settings, planMode: draft.planMode, settlementId: draft.settlementId });
     const recovered = saved.commands.filter(command => !this.commands.has(command.input.commandId));
     this.commands = new Map([...this.commands, ...recovered.map(command => [command.input.commandId, command] as const)]);
     const local = current.local ?? emptyLocalQueue, savedLocal = saved.local;
     const merged = savedLocal ? { local: { items: [...local.items, ...savedLocal.items.filter(item => !local.items.some(value => value.commandId === item.commandId))].slice(0, LOCAL_QUEUE_LIMIT),
-      gate: local.gate ?? savedLocal.gate, paused: local.paused ?? savedLocal.paused } } : {};
-    const stopped = [...new Set([...current.stoppedWaiting ?? [], ...saved.stoppedWaiting ?? []])];
+      gate: local.gate ?? savedLocal.gate, paused: local.paused ?? (savedLocal.items.length ? "queue-restored" : null) } } : {};
     const references = [...current.references, ...saved.references.filter(reference => !current.references.some(item => JSON.stringify(item.value) === JSON.stringify(reference.value)))];
-    this.update({ files: [...current.files, ...files], references, ...merged, ...(stopped.length ? { stoppedWaiting: stopped } : {}), ...(recovered.length ? { recovered: [...current.recovered ?? [], ...recovered] } : {}),
+    this.update({ files: [...current.files, ...files], references, ...merged, recoveries: saved.recoveries,
+      queueOperations: saved.queueOperations?.map(op => ({ ...op, draftVersion: -1 })), ...(recovered.length ? { recovered: [...current.recovered ?? [], ...recovered] } : {}),
       ...(pristine ? { text: saved.text, retainedText: saved.retainedText, permissionMode: saved.permissionMode, planMode: saved.planMode, options: saved.options as DraftModelChoice | null,
         dismissedPlans: saved.dismissedPlans, creation: saved.creation ? { ...saved.creation, recovered: true } : null }
         : saved.text.trim() && saved.text !== current.text ? { retainedText: saved.text } : {}) });

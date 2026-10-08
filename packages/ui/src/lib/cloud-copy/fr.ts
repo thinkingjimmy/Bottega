@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, computer health/recovery and diagnostic export, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -290,7 +290,13 @@ export const cloudCopy = {
 
 
   "computers": {
+    "exportDiagnostics": "Exporter le diagnostic de connexion",
+    "diagnosticsDescription": "Enregistrez l’état local de récupération et l’heure de capture, sans contenu des conversations ni identifiants de connexion.",
+    "lastConfirmed": "Dernière confirmation : {{when}}",
+    "notConfirmed": "L’état des ordinateurs n’est pas encore confirmé.",
+    "health": {"initializing": "Préparation du contrôle à distance", "locked": "Clé de synchronisation indisponible", "recovering": "Rétablissement de la connexion", "memory-blocked": "En attente des paramètres de confidentialité", "content-error": "Contrôle à distance disponible · Contenu à vérifier"},
     "label": "Ordinateurs",
+    "refreshing": "Vérification de l’état des ordinateurs…",
     "offlineSince": "Hors ligne · {{when}}",
     "none": "Connectez-vous à Bottega sur un ordinateur et sa barre latérale apparaîtra ici.",
   },

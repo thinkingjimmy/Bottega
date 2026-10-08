@@ -1,11 +1,12 @@
 /**
  * [INPUT]: Depends on strict account scope and bounded command identities.
- * [OUTPUT]: Defines durable remote custody with exact scoped Full Access consent and control receipts whose output also carries the Steer outcome.
+ * [OUTPUT]: Defines durable remote custody with exact scoped Full Access consent and control receipts whose output also carries the Steer outcome. Authenticated contexts retain original queue-exchange and queue-Steer references across restart.
  * [POS]: Additive ledger contracts; old manual records keep their original interpretation.
  */
 import { z } from "zod";
 import { remoteReferencesSchema } from "@ai-chat/cloud-protocol/remote/input/references";
 import { remoteOutputSchema } from "@ai-chat/cloud-protocol/remote/model";
+import { queuedInputSchema } from "@ai-chat/cloud-protocol/remote/queue";
 import { interactionSourceSchema } from "@ai-chat/cloud-protocol/turns/live";
 import { encryptedRemoteCommandSchema, encryptedRemoteReportSchema } from "@ai-chat/cloud-protocol/remote/encrypted";
 import { encryptedSpaceSchema } from "@ai-chat/cloud-protocol/spaces";
@@ -16,6 +17,8 @@ export const remoteOriginSchema = z.object({ kind: z.literal("remote"), commandI
   sourceDeviceName: z.string().min(1).max(120), payloadHash: hash, ciphertextHash: hash }).strict();
 export const remoteContextSchema = z.object({ origin: remoteOriginSchema, scope: syncScopeSchema,
   chatId: id, incarnationId: id, targetDeviceId: id,
+  queueExchange: queuedInputSchema.optional(),
+  queueSteer: queuedInputSchema.optional(),
   references: remoteReferencesSchema.readonly().optional(), connectionEpoch: id, expiresAt: z.number().int().positive(), fullAccessConsent: remoteFullAccessConsentSchema.optional() }).strict();
 export const remoteSubmissionSchema = z.object({ context: remoteContextSchema, envelope: z.unknown(), submissionHash: hash }).strict();
 export type RemoteContext = z.infer<typeof remoteContextSchema>;

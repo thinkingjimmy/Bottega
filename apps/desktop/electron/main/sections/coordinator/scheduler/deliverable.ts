@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on RelayLedger's read-only conversation index selector, conversationId, and durable sequence ordering
- * [OUTPUT]: Provides nextDeliverable, isRunnableDeliverable, blockedReceiptFor, and ledgerHasLiveTurn (the one ledger-side liveness rule)
+ * [OUTPUT]: Provides nextDeliverable, isRunnableDeliverable, blockedReceiptFor, and ledgerHasLiveTurn (the one ledger-side liveness rule) Claimed inputs cannot dispatch; a source pause skips only that source while other inputs remain runnable.
  * [POS]: Pure sections/coordinator scheduler selector; it separates FIFO delivery eligibility from execution ordering
  */
 
 import type { RelayLedger } from "../relay-ledger";
+import { sourceQueuePaused } from "../remote/queue-custody";
 
 export function nextDeliverable(
   ledger: RelayLedger,
@@ -22,7 +23,8 @@ export function nextDeliverable(
           relay,
         })),
       ...manualIntents
-        .filter((intent) => !["settled", "failed"].includes(intent.phase))
+        .filter((intent) => !["settled", "failed"].includes(intent.phase) &&
+          !(intent.phase === "queued" && !intent.preparing && !intent.queueClaim && ledger.read(state => sourceQueuePaused(state, intent))))
         .map((intent) => ({
           kind: "manual" as const,
           id: intent.id,
@@ -44,7 +46,7 @@ export function isRunnableDeliverable(
   deliverable: ReturnType<typeof nextDeliverable>
 ) {
   return deliverable?.kind === "manual"
-    ? ["queued", "appended"].includes(deliverable.intent.phase)
+    ? !deliverable.intent.queueClaim && ["queued", "appended"].includes(deliverable.intent.phase)
     : Boolean(
         deliverable &&
         ["queued", "appended"].includes(deliverable.relay.deliveryPhase)

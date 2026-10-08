@@ -1,13 +1,13 @@
 /**
  * [INPUT]: Depends on public cloud display and device schemas by subpath (never the package root, whose function registry would enter the preload), with the `devices:list` shapes checked against the registry at compile time.
- * [OUTPUT]: Provides account and independent sync setup progress, a state-only approval URL, pending sign-out, storage recovery, the closed failed-handshake predicate, this computer's identity, the account computer subscription and closed device/review/rename outcomes.
+ * [OUTPUT]: Provides confirmed coarse remote health, fixed native diagnostic export, account and independent sync setup progress, a state-only approval URL, pending sign-out, storage recovery, the closed failed-handshake predicate, this computer's identity, the account computer subscription and closed device/review/rename outcomes.
  * [POS]: apps/desktop/shared/ipc/settings; Shared main/preload/renderer boundary; exchange codes, proof verifiers and credentials are excluded.
  */
 import { z } from "zod";
 import { syncProgressSchema, type SyncReview, type SyncCleanupReview } from "../../cloud/sync";
 import { syncEncryptionStateSchema, initialEncryptionState, syncSetupStateSchema, initialSyncSetupState, type SyncEncryptionState, type SyncSetupInput } from "../../cloud/encryption";
 /* By subpath, never the package root: the root re-exports the whole function registry, and the preload would carry every domain's schemas. */
-import { accountProfileSchema, cloudIdSchema, computerSchema, deviceNameSchema, deviceSchema, loginMetadataSchema, loginStateSchema, machineIdHashSchema } from "@ai-chat/cloud-protocol/auth/index";
+import { accountProfileSchema, cloudIdSchema, computerSchema, deviceNameSchema, deviceSchema, loginMetadataSchema, loginStateSchema, machineIdHashSchema, remoteHealthSchema } from "@ai-chat/cloud-protocol/auth/index";
 import type { CloudFunctionArgs, CloudFunctionResult } from "@ai-chat/cloud-protocol";
 import { environmentIdSchema } from "@ai-chat/cloud-protocol/config";
 const browserLoginUrlSchema = z.string().max(2048).url().refine(value => {
@@ -36,7 +36,7 @@ export const cloudAccountStateSchema = z.object({ available: z.boolean(), enviro
   /* This computer as the desktop knows it: the key the account groups installations by, and the display name this
      installation registered with. They differ exactly when the server suffixed a name another computer held. */
   machine: z.object({ idHash: machineIdHashSchema, name: deviceNameSchema }).strict().nullable().default(null),
-  error: cloudErrorSchema, sync: syncProgressSchema, encryption: syncEncryptionStateSchema.default(initialEncryptionState),
+  remoteHealth: remoteHealthSchema.optional(), error: cloudErrorSchema, sync: syncProgressSchema, encryption: syncEncryptionStateSchema.default(initialEncryptionState),
   syncSetup: syncSetupStateSchema.default(initialSyncSetupState),
 }).strict();
 export type CloudAccountState = z.infer<typeof cloudAccountStateSchema>;
@@ -106,6 +106,7 @@ export interface CloudBridgeApi {
   cancelSyncReview(): Promise<void>;
   approveSync(input: { reviewId: string }): Promise<void>;
   retrySync(): Promise<void>;
+  exportSyncDiagnostics(): Promise<void>;
   inspectCleanup(): Promise<SyncCleanupReview | null>;
   disableSync(input: { reviewId: string }): Promise<void>;
   inspectAccountSwitch(): Promise<SyncCleanupReview | null>;

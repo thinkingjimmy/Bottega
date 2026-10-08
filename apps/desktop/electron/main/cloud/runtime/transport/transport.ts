@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the pinned Convex SDK/socket factory, Zod validation, public registry and main-only session token provider.
- * [OUTPUT]: Provides bounded socket-first calls, JWT-refreshing HTTP fallback and authenticated subscriptions that are re-attached to each new socket within one account/device scope (a scope change fails them), a socket token retry on a 1/2/5/15/30/60 s ladder that networkOnline cuts short and invalid-session ends (T20-2), a second socket for bulk calls, one at a time, closed with the primary, a queued one settling unsent once close() moves the generation (T20-4, review 0929 R05), per-command hop traces with queue and execution time (traceCommand/commandTrace, T20-5), a server-time offset from HTTP Date headers (T20-9b), including the account's computer list, the account-config revision, per-computer Memory control intent and the Agent-configuration directory.
+ * [OUTPUT]: Provides bounded socket-first calls, JWT-refreshing HTTP fallback and authenticated subscriptions that are re-attached to each new socket within one account/device scope (a scope change fails them), a socket token retry on a 1/2/5/15/30/60 s ladder that networkOnline cuts short and invalid-session ends (T20-2), a separately authenticated bulk socket with the same token retry and bounded readiness, one call at a time, closed with the primary, a queued one settling unsent once close() moves the generation (T20-4, review 0929 R05), per-command hop traces with queue and execution time (traceCommand/commandTrace, T20-5), a server-time offset from HTTP Date headers (T20-9b), including the account's computer list, the account-config revision, per-computer Memory control intent and the Agent-configuration directory.
  * [POS]: apps/desktop/electron/main/cloud/runtime/transport; Main cloud transport; private generated code and credentials never cross IPC.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -13,6 +13,7 @@ import { ZodError } from "zod";
 import { assertHandshake, cloudFunctions, protocolHeader, type AccountAccess, type CloudBuildConfig,
   type CloudFunctionArgs, type CloudFunctionName, type CloudFunctionResult } from "@ai-chat/cloud-protocol";
 import { AuthTransportError } from "../../account/session-client";
+import { SocketAuthentication, tokenRetryDelay } from "./socket-auth";
 import type { ChatQueryName } from "@ai-chat/chat-ui/read-source";
 type Names<K extends "query" | "mutation"> = { [N in CloudFunctionName]: (typeof cloudFunctions)[N]["kind"] extends K ? N : never }[CloudFunctionName];
 type RemoteQueryName = "remote/workspace:inbox" | "remote/queue:awaiting" | "config:get" | "remote/commands:inbox" | "remote/chats:preparations" | "remote/chats:reservations" | "remote/capabilities:targets" | "remote/commands:receipts" | "remote/commands:page";
@@ -45,10 +46,11 @@ export interface AccountTransport {
   networkOnline?(): void;
   /** T20-2: no socket, or an unauthenticated one: only a reconnect helps. */
   needsReconnect?(): boolean;
+  /** The independently owned upload lane is recovering, even when control remains available. */
+  uploadRecovering?(): boolean;
   close(): void;
 }
 /** TASK-20 T20-2: a socket token fetch that failed transiently retries on this ladder (±20 %) instead of closing the socket. */
-const TOKEN_RETRY_MS = [1_000, 2_000, 5_000, 15_000, 30_000, 60_000] as const;
 /* TASK-20 T20-4 (R-08, client transport, no wire): Convex orders mutations per client, so these large, slow calls get their
    own socket and run one at a time; the primary socket carries only control (commands, claims, reports, time, heartbeats,
    watches). Initial sync's lanes share this bound because they all stage through it. */
@@ -85,10 +87,13 @@ export class CloudTransport implements AccountTransport {
   private socket: ConvexClient | null = null;
   private authenticated = false;
   private connected = false;
-  private pending = new Set<() => void>();
+  private pending = new Map<() => void, ConvexClient>();
   private live = new Set<LiveSubscription>();
   private scopeKey: string | null = null;
-  private tokenWake: AbortController | null = null;
+  private primaryAuth: SocketAuthentication | null = null;
+  private primaryFailure: ((error: unknown) => void) | null = null;
+  private bulkAuth: SocketAuthentication | null = null;
+  private bulkUnready = false;
   private bulk: ConvexClient | null = null;
   private bulkTail: Promise<unknown> = Promise.resolve();
   constructor(private readonly config: CloudBuildConfig, private readonly token: (force?: boolean) => Promise<string | null>,
@@ -96,12 +101,13 @@ export class CloudTransport implements AccountTransport {
     private readonly createSocket = () => new ConvexClient(config.convexUrl, { logger: false }),
     private readonly timing: TransportTiming = realTiming) {}
   static tokenRetryDelay(attempt: number, random: number) {
-    return Math.round(TOKEN_RETRY_MS[Math.min(attempt, TOKEN_RETRY_MS.length - 1)]! * (0.8 + 0.4 * random));
+    return tokenRetryDelay(attempt, random);
   }
   /** The network came back (or the machine woke): a token retry waiting on the ladder goes now. */
-  networkOnline() { this.tokenWake?.abort(); }
+  networkOnline() { this.primaryAuth?.networkOnline(); this.bulkAuth?.networkOnline(); }
   /** No socket, or one that is not authenticated: only a reconnect helps, not the SDK's own retry. */
   needsReconnect() { return !this.socket || !this.authenticated; }
+  uploadRecovering() { return this.bulkUnready; }
   /* T20-9b: every HTTP response main reads (the handshake at least) is a server-time sample for account-level presence. */
   private readonly serverTime = new ServerTimeOffset();
   serverTimeOffset() { return this.serverTime.offset(); }
@@ -140,9 +146,11 @@ export class CloudTransport implements AccountTransport {
         /* A queued call belongs to the generation that queued it: once close() moved on, it settles here, before a bulk socket
            of the new generation could open for it and carry its old arguments. */
         const generation = this.generation;
-        const run = this.bulkTail.catch(() => undefined).then(() => {
+        const run = this.bulkTail.catch(() => undefined).then(async () => {
           if (generation !== this.generation) throw new Error("cloud-request-superseded");
-          sent(); return this.socketCall(this.bulkSocket(), kind, name, args);
+          const socket = await this.bulkSocket();
+          if (generation !== this.generation) throw new Error("cloud-request-superseded");
+          sent(); return this.socketCall(socket, kind, name, args);
         });
         this.bulkTail = run; return run;
       });
@@ -167,15 +175,31 @@ export class CloudTransport implements AccountTransport {
     }
     throw new AuthTransportError("temporarily-offline");
   }
-  /** The bulk socket shares the token source; it opens on the first bulk call and closes with the primary one. */
-  private bulkSocket() {
-    if (this.bulk) return this.bulk;
-    const client = this.createSocket(), generation = this.generation;
-    client.setAuth(async ({ forceRefreshToken }) => {
-      if (generation !== this.generation) return null;
-      try { return await this.token(forceRefreshToken); } catch { return null; }
-    }, () => {});
-    return this.bulk = client;
+  /** Each bulk owner must authenticate before accepting work. Failed owners are never cached for reuse. */
+  private async bulkSocket() {
+    if (!this.bulk) {
+      const client = this.createSocket(), generation = this.generation;
+      this.bulk = client; this.bulkUnready = true;
+      const current = () => generation === this.generation && this.bulk === client;
+      const auth = new SocketAuthentication(this.token, this.timing, ready => { if (current()) this.bulkUnready = !ready; }, error => {
+        if (!current()) return;
+        this.bulkUnready = true;
+        if (error instanceof AuthTransportError && error.kind === "invalid-session") { this.primaryFailure?.(error); return; }
+        this.closeBulk();
+      }, "bulk-auth");
+      this.bulkAuth = auth; client.setAuth(auth.fetch, auth.accept);
+    }
+    const client = this.bulk, auth = this.bulkAuth;
+    if (!client || !auth) throw new AuthTransportError("temporarily-offline");
+    await auth.waitUntilReady();
+    if (client !== this.bulk || !auth.ready()) throw new Error("cloud-request-superseded");
+    return client;
+  }
+  private closeBulk() {
+    const client = this.bulk; this.bulk = null;
+    this.bulkAuth?.close(); this.bulkAuth = null;
+    for (const [cancel, owner] of this.pending) if (owner === client) cancel();
+    if (client) void client.close();
   }
   private socketCall(socket: ConvexClient, kind: "query" | "mutation", name: string, args: Record<string, Value>) {
     const query = makeFunctionReference<"query", Record<string, Value>, unknown>(name);
@@ -185,7 +209,7 @@ export class CloudTransport implements AccountTransport {
       // Socket mutations share the SDK's ordered queue per client, which is why bulk calls have their own socket.
       const timeout = setTimeout(() => { cleanup(); reject(new AuthTransportError("temporarily-offline")); }, kind === "mutation" ? 120_000 : 15_000);
       const cleanup = () => { clearTimeout(timeout); this.pending.delete(cancel); };
-      this.pending.add(cancel);
+      this.pending.set(cancel, socket);
       try {
         const result = kind === "query" ? socket.query(query, args) : socket.mutation(mutation, args);
         void result.then(value => { cleanup(); resolve(value); }, error => { cleanup(); reject(error); });
@@ -301,51 +325,35 @@ export class CloudTransport implements AccountTransport {
       // its signed-out query result can discard a still-valid persistent bearer.
       this.close(); failure(error);
     };
-    /* A socket waiting on its token retry is connected but unusable: the service hears it as a blip (ready through the grace,
-       then offline, T20-1), and hears the connection back once a token is accepted. */
-    let tokenFailing = false, previous: boolean | undefined;
+    let previous: boolean | undefined, reported: boolean | undefined;
+    const reportConnection = () => {
+      if (!current() || previous === undefined) return;
+      const ready = previous && !this.primaryAuth?.isRetrying();
+      if (ready !== reported) { reported = ready; connected(ready); }
+    };
     const client = this.createSocket(); this.socket = client;
+    this.primaryFailure = authenticationFailed;
     for (const entry of this.live) this.attach(entry);
-    client.setAuth(async ({ forceRefreshToken }) => {
-      for (let attempt = 0; ; attempt++) {
-        try {
-          const token = await this.token(forceRefreshToken);
-          if (!current()) return null;
-          if (!token) authenticationFailed(new AuthTransportError("temporarily-offline"));
-          return token;
-        } catch (error) {
-          if (!current()) return null;
-          // Only a rejected session ends it; a transient failure keeps the socket (and its subscriptions) and tries again.
-          if (error instanceof AuthTransportError && error.kind === "invalid-session") { authenticationFailed(error); return null; }
-          if (!tokenFailing) { tokenFailing = true; if (previous) connected(false); }
-          const wake = new AbortController(); this.tokenWake = wake;
-          await this.timing.wait(CloudTransport.tokenRetryDelay(attempt, this.timing.random()), wake.signal);
-          if (this.tokenWake === wake) this.tokenWake = null;
-          if (!current()) return null;
-        }
-      }
-    }, value => {
+    const auth = new SocketAuthentication(this.token, this.timing, ready => {
       if (!current()) return;
-      this.authenticated = value;
-      if (value && tokenFailing) { tokenFailing = false; if (previous) connected(true); }
-      // Socket JWT rejection does not prove that the original HTTP session ended.
-      if (!value) authenticationFailed(new AuthTransportError("temporarily-offline"));
-    });
+      this.authenticated = ready; reportConnection();
+    }, authenticationFailed);
+    this.primaryAuth = auth; client.setAuth(auth.fetch, auth.accept);
     client.onUpdate(reference("account:getAccessState"), protocolHeader(this.config), value => {
       if (!current() || !this.authenticated) return;
       try { changed(cloudFunctions["account:getAccessState"].result.parse(value)); }
       catch (error) { failed(error); }
     }, failed);
     client.subscribeToConnectionState(state => {
-      if (current() && state.isWebSocketConnected !== previous) { previous = state.isWebSocketConnected; this.connected = previous; if (!tokenFailing) connected(previous); }
+      if (current() && state.isWebSocketConnected !== previous) { previous = state.isWebSocketConnected; this.connected = previous; reportConnection(); }
     });
   }
   close() {
     this.verifiedConfig = null;
     this.generation++; this.authenticated = false; this.connected = false;
-    for (const cancel of this.pending) cancel();
-    this.tokenWake?.abort(); this.tokenWake = null;
-    const bulk = this.bulk; this.bulk = null; this.bulkTail = Promise.resolve(); if (bulk) void bulk.close();
+    for (const cancel of this.pending.keys()) cancel();
+    this.primaryAuth?.close(); this.primaryAuth = null; this.primaryFailure = null;
+    this.closeBulk(); this.bulkUnready = false; this.bulkTail = Promise.resolve();
     for (const entry of this.live) this.detach(entry);
     const client = this.socket; this.socket = null; if (client) void client.close();
   }

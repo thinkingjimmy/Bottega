@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on closed portable items, product failures and draft part grammars.
- * [OUTPUT]: Provides safe live events with exact remote approval decisions and semantic plan choice kinds (PLAN_CHOICE_KINDS; a label only as the adapter's fallback), replacement staging, projections and bounded chunk identities.
+ * [INPUT]: Depends on closed portable items, product failures, draft part grammars and standalone interaction contracts.
+ * [OUTPUT]: Provides safe live events with exact remote approval decisions and semantic plan choice kinds (PLAN_CHOICE_KINDS; a label only as the adapter's fallback), replacement staging, projections and bounded chunk identities. Phase events and projections carry actual steeringSupported capability.
  * [POS]: Shared network boundary excludes backend sessions, local paths, grants and Skill receipts.
  */
 import { z } from "zod";
-import { interactionSourceSchema, remoteApprovalDecisionSchema } from "../remote/model";
+import { interactionSourceSchema, remoteApprovalDecisionSchema } from "../remote/input/interactions";
 import { versionSchema as rev } from "../scalars";
 import { sha256Schema } from "../blobs";
 import { hashChatContent } from "../chats/transcript/body";
@@ -35,9 +35,10 @@ const liveInputSchema = z.object({ userInputId: itemId, itemId, questions: z.arr
 const liveSubagentSchema = z.object({ meta: liveSubagentMetaSchema, detailState: z.enum(["available", "unavailable"]), draft: serializedDraftSchema.optional() }).strict();
 export const interactionResultSchema = z.object({ kind: z.enum(["approval", "input"]), interactionId: itemId,
   resolvedBy: interactionSourceSchema }).strict();
-export { interactionSourceSchema, type InteractionSource } from "../remote/model";
+export { interactionSourceSchema, type InteractionSource } from "../remote/input/interactions";
 export type InteractionResult = z.infer<typeof interactionResultSchema>;
 export const liveProjectionContentSchema = z.object({ draft: serializedDraftSchema, approvals: z.array(liveApprovalSchema).max(20),
+  steeringSupported: z.boolean().optional(),
   userInputs: z.array(liveInputSchema).max(20), interactionResults: z.array(interactionResultSchema).max(20).optional(), subagents: z.array(liveSubagentSchema).max(SUBAGENT_DRAFT_LIMIT),
   recovery: z.object({ retryToken: itemId, generation: rev.positive(), allowedActions: z.object({ sameSession: z.boolean(), freshSession: z.boolean(), abandon: z.boolean() }).strict() }).strict().optional(),
   phase: z.enum(["starting", "active", "resume-failed", "retry-claiming"]), terminal: z.enum(["done", "error", "cancelled"]).nullable() }).strict();
@@ -60,7 +61,7 @@ export const liveEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("subagent-update"), agent: liveSubagentMetaSchema, detailState: z.enum(["available", "unavailable"]) }).strict(),
   z.object({ type: z.literal("subagent-item"), agentThreadId: itemId, agent: liveSubagentMetaSchema, item: agentTurnItemSchema }).strict(),
   z.object({ type: z.literal("subagent-item-delta"), agentThreadId: itemId, agent: liveSubagentMetaSchema, itemId, text }).strict(),
-  z.object({ type: z.literal("phase"), phase: liveProjectionSchema.shape.phase }).strict(),
+  z.object({ type: z.literal("phase"), phase: liveProjectionSchema.shape.phase, steeringSupported: z.boolean().optional() }).strict(),
   z.object({ type: z.literal("terminal"), terminal: z.enum(["done", "error", "cancelled"]) }).strict(),
 ]);
 export const LIVE_TURN_LIMITS = { chunkBytes: 64 * 1024, chunkEvents: 32, pageChunks: 3, checkpointBytes: 16 * 1024 * 1024,

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Exact encrypted commands, current account/clock, existing coordinator evidence and original ledger custody.
- * [OUTPUT]: Claims and decrypts bounded commands, settles a command refused or unreadable before it is frozen as `rejected + noAdmission` (provably never admitted), freezes hash mappings before admission and reports immutable encrypted evidence without rejecting accepted work when result reads fail; each command runs in its hop trace and reuses a live Chat head, reading it fresh only when the cache disagrees (T20-5). A headless command is taken only as a reservation's first message, which materialises its Chat (U06 Q7-c).
+ * [OUTPUT]: Claims and decrypts bounded commands, settles a command refused or unreadable before it is frozen as `rejected + noAdmission` (provably never admitted), freezes hash mappings before admission and reports immutable encrypted evidence without rejecting accepted work when result reads fail; each command runs in its hop trace and reuses a live Chat head, reading it fresh only when the cache disagrees (T20-5). A headless command is taken only as a reservation's first message, which materialises its Chat (U06 Q7-c). Frozen contexts bind queue exchange and Steer references; definite pre-outbox refusal releases the claim.
  * [POS]: Main-only intake; current authority and calibrated deadlines gate effects independently from historical receipt recovery.
  */
 import type { ReservedFirst } from "../resources/reservations";
@@ -146,6 +146,8 @@ export class RemoteCommandIntake {
       sourceDeviceName: command.sourceDeviceName, payloadHash: command.payloadHash, ciphertextHash: command.ciphertextHash }, scope: connection.scope,
       chatId: command.chatId, incarnationId: command.incarnationId, targetDeviceId: command.targetDeviceId,
       connectionEpoch: command.connectionEpoch, expiresAt: command.expiresAt,
+      ...(command.payload.kind === "start-turn" && command.payload.queueExchange ? { queueExchange: command.payload.queueExchange } : {}),
+      ...(command.payload.kind === "steer" && command.payload.queued ? { queueSteer: command.payload.queued } : {}),
       ...("references" in command.payload && command.payload.references?.length ? { references: command.payload.references } : {}),
       ...(isRemoteTurnPayload(command.payload) && command.payload.fullAccessConsent ? { fullAccessConsent: command.payload.fullAccessConsent } : {}) };
     await this.ports.ledger.remote.freezeCommand({ context, command: wire, encryptedSpace: header.encryptedSpace }); current();
@@ -201,6 +203,7 @@ export class RemoteCommandIntake {
       }
     } catch (error) {
       if (error instanceof RemoteTransportFailure) throw error;
+      if (context.queueSteer) await this.ports.ledger.remote.releaseUnstartedQueueSteer(command.commandId);
       current(); const evidence = isRemoteTurnPayload(command.payload) ? await this.ports.evidence(context, current).catch(() => null) : null;
       const control = this.ports.ledger.remote.control(command.commandId);
       const admission = isRemoteTurnPayload(command.payload) ? commandAdmission(context, this.ports.ledger) : null;

@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Depends on the built-in Provider catalog's narrowing (the stored order is published as built-ins only until S5–S7), confirmed account connections, existing execution preparation, runtime availability, the shared Memory reconnect barrier and coordinator/control ports.
- * [OUTPUT]: Receives commands with paced independent pagination, verified preparation, Project/Agent publication (changed Project facts in batched pages), the phone Memory facade status (TASK-28, R-33), the claim of this computer's App Edit reservations (U06 Q7-b) and scoped authority; scans reuse pushed workspace-inbox and reservation pages and pass live Chat heads to intake (T20-5).
+ * [OUTPUT]: Receives commands with paced independent pagination, bounded independent Chat preparation, observation and capability publication before the execution-only Memory barrier, Project/Agent publication (changed Project facts in batched pages), the phone Memory facade status (TASK-28, R-33), the claim of this computer's App Edit reservations (U06 Q7-b) and scoped authority; scans reuse pushed workspace-inbox and reservation pages and pass live Chat heads to intake (T20-5). Queue mutations reuse coordinator authority and conversation locking.
  * [POS]: Remote composition lifetime remains active while product windows are closed; logout and reconnect fence every operation.
  */
+import { recoveryDiagnostics } from "../../runtime/diagnostics/timeline";
 import { answerProjectQuery } from "./input/project-query";
 import { RemoteQueuePublisher } from "./queue/publisher";
 import { isQueueControl } from "@ai-chat/cloud-protocol/remote/queue";
@@ -85,6 +86,8 @@ export type RemoteRuntimePorts = { crypto(): RemoteCipherPort; clock(): ServerCl
   publishRecord?(record: Awaited<ReturnType<ChatStore["patchOptions"]>>): void;
   coordinator: ConversationCoordinator; ledger: RelayLedger; turns: TurnRegistry<AgentTurn>; execution: CloudExecutionService;
   account: CloudAccountService; transport: CloudTransport; binding: SyncBindingStore; files(userId: string): DesktopBlobStore;
+  remoteReady?(): boolean;
+  onRemoteReady?(listener: () => void): () => void;
   own(activity: { close(): Promise<void> }): () => void };
 export class RemoteCommandRuntime {
   readonly intake: RemoteCommandIntake;
@@ -94,6 +97,8 @@ export class RemoteCommandRuntime {
   private baseKey = "";
   private closed = false;
   private active = false;
+  private memoryReady = false;
+  private capabilitiesReady = false;
   private flight: Promise<void> | null = null;
   private pending = false;
   private continuation: ReturnType<typeof setTimeout> | null = null;
@@ -117,6 +122,9 @@ export class RemoteCommandRuntime {
   private reservationPage: CloudFunctionResult<"remote/chats:reservations"> | null = null;
   private readonly answeredQueries = new Set<string>();
   private capabilityFlight: Promise<void> | null = null;
+  private readonly preparations = new Map<string, Promise<void>>();
+  private readonly preparationQueue = new Map<string, { current(): void; generation: number }>();
+  private readonly releaseRemoteReady: () => void;
   private capabilityDirty = false;
   /* Agent capabilities are rebuilt only when an input changed: a runtime or settings event, a quota reading, the connection
      or key, or a ten-minute tick for model catalogs; every scan (even one this runtime caused) used to rebuild them (B-17). */
@@ -161,7 +169,7 @@ export class RemoteCommandRuntime {
         : command.payload.kind === "fork-chat"
         ? applyRemoteFork(command, context, current, { ledger, store, forks: ports.forks })
         : applyRemoteControl(command, context, current,
-        { ...mapping, prepareFiles: (command, current) => this.prepareFiles(command, current), crypto: ports.crypto, clock: ports.clock, config, transport, turns, handlers: currentAgentControlHandlers }) });
+        { ...mapping, queueMutation: action => coordinator.mutateRemoteQueue(context, current, action), prepareFiles: (command, current) => this.prepareFiles(command, current), crypto: ports.crypto, clock: ports.clock, config, transport, turns, handlers: currentAgentControlHandlers }) });
     this.releaseTransferred = ledger.remote.configureTransferredBarrier(() => ports.memoryBarrier?.beforeTransferred() ?? Promise.resolve());
     this.releaseAuthority = ledger.remote.configureExecutionAuthority(context => {
       const authority = this.intake.authority(context), current = () => {
@@ -183,6 +191,7 @@ export class RemoteCommandRuntime {
     });
     this.queues = new RemoteQueuePublisher({ ...ports, connection: () => this.connection() });
     this.releaseAccount = ports.account.subscribeIdentity(() => this.wake());
+    this.releaseRemoteReady = ports.onRemoteReady?.(() => this.wake()) ?? (() => {});
     const bump = () => { this.agentInputs += 1; };
     // A Memory change only republishes the capability packet; it never costs an inbox scan.
     let facadeOn = ports.settings.get().memoryPhoneFacade;
@@ -206,15 +215,26 @@ export class RemoteCommandRuntime {
   }
   private baseConnection() {
     const account = this.ports.account.connectionIdentity(), local = this.ports.binding.snapshot(), epoch = this.ports.account.remoteConnection();
-    if (this.closed || account.status !== "ready" || !epoch || !local || local.phase !== "active" || local.paused ||
+    if (this.closed || account.status !== "ready" || !epoch || !local || local.phase === "closing" || local.paused ||
+      !(this.ports.remoteReady?.() ?? local.phase === "active") ||
       account.profile?.userId !== local.userId || account.deviceId !== this.ports.deviceId || local.deviceId !== this.ports.deviceId) return null;
-    try { const crypto = this.ports.crypto(); if (crypto.session.userId !== local.userId || crypto.session.deviceId !== this.ports.deviceId) return null; } catch { return null; }
+    try {
+      const crypto = this.ports.crypto();
+      if (crypto.session.userId !== local.userId || crypto.session.deviceId !== this.ports.deviceId ||
+        local.encryption && (hashChatContent(local.encryption.scope) !== hashChatContent(crypto.scope) || local.encryption.keyPackageFingerprint !== crypto.keyPackageFingerprint)) return null;
+    } catch { return null; }
     return { scope: { environment: this.ports.config.environmentId, userId: local.userId }, connectionEpoch: epoch, manifestId: local.manifestId };
   }
   private connection() {
     return this.active && this.selected && hashChatContent(this.baseConnection()) === this.baseKey ? this.selected : null;
   }
+  health(): "ready" | "initializing" | "recovering" | "memory-blocked" {
+    if (!this.baseConnection()) return this.ports.binding.snapshot()?.phase === "initializing" ? "initializing" : "recovering";
+    if (!this.active || !this.selected?.enabled || !this.capabilitiesReady) return "recovering";
+    return this.memoryReady ? "ready" : "memory-blocked";
+  }
   private stop() {
+    this.memoryReady = false; this.capabilitiesReady = false; this.preparationQueue.clear();
     this.lifetimeGeneration++; this.active = false; this.selected = null; this.baseKey = ""; this.configValue = null; this.inboxPage = null; this.preparationPage = null; this.workspaceInbox = null; this.reservationPage = null; this.answeredQueries.clear();
     for (const release of this.listeners.splice(0)) release(); this.publication.clear(); this.agentsKey = null; this.failures.clear(); this.intake.reset();
     this.inboxCursor = null; this.preparationCursor = null;
@@ -248,6 +268,8 @@ export class RemoteCommandRuntime {
     });
   }
   private reportFailure(operation: "scan" | "agents" | "projects", error: unknown) {
+    if (operation === "agents") this.capabilitiesReady = false;
+    recoveryDiagnostics.record({ stage: operation === "agents" ? "capabilities" : "remote", code: "failed" });
     if (process.env.BOTTEGA_SYNC_DIAGNOSTICS !== "1") return;
     const message = error instanceof Error ? error.message : "";
     const code = error instanceof Error && error.name === "ZodError" ? "validation-failed" :
@@ -262,7 +284,7 @@ export class RemoteCommandRuntime {
     try { currentAgentControlHandlers(); } catch { return; }
     const key = hashChatContent(base), lifetime = this.lifetimeGeneration;
     const current = () => { if (this.lifetimeGeneration !== lifetime || hashChatContent(this.baseConnection()) !== key) throw new Error("connection-changed"); };
-    const { config, transport, execution } = this.ports, crypto = this.ports.crypto(), header = { ...protocolHeader(config), expectedUserId: base.scope.userId,
+    const { config, transport } = this.ports, crypto = this.ports.crypto(), header = { ...protocolHeader(config), expectedUserId: base.scope.userId,
       encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint } };
     if (!this.active) {
       current(); this.selected = { ...base, enabled: false, lifetimeGeneration: this.lifetimeGeneration }; this.baseKey = key; this.active = true;
@@ -292,13 +314,20 @@ export class RemoteCommandRuntime {
     const publicConfig = this.configValue ?? await transport.query("config:get", protocolHeader(config)); current();
     this.configValue = publicConfig;
     this.selected = { ...base, enabled: publicConfig.remoteControlEnabled, lifetimeGeneration: this.lifetimeGeneration };
+    // Status and read-only inbox observation must survive a failed privacy reconciliation.
+    if (!continuing) this.publishLater(current);
+    const observedInbox = this.selected.enabled && (!continuing || this.moreInbox)
+      ? ((!this.inboxCursor && this.inboxPage) || await transport.query("remote/commands:inbox", { ...header, connectionEpoch: base.connectionEpoch, cursor: this.inboxCursor })) : null;
+    current();
+    this.memoryReady = false;
     await this.ports.memoryBarrier?.beforeRemote(); current();
+    this.memoryReady = true; recoveryDiagnostics.record({ stage: "remote", code: "ready" });
     this.queues.wake();
     if (this.selected?.enabled && (!continuing || this.morePreparations)) {
       const preparations = (!this.preparationCursor && this.preparationPage) || await transport.query("remote/chats:preparations", { ...header, connectionEpoch: base.connectionEpoch, cursor: this.preparationCursor }); current();
       if (!preparations.complete && (!preparations.cursor || preparations.cursor === this.preparationCursor)) throw new Error("remote-preparation-cursor");
       for (const head of preparations.items) {
-        current(); if (head.ownerDeviceId === this.ports.deviceId && head.executionPreparation?.state === "pending") await execution.prepare(head.chat.id);
+        current(); if (head.ownerDeviceId === this.ports.deviceId && head.executionPreparation?.state === "pending") this.prepareLater(head.chat.id, current);
         current();
       }
       this.morePreparations = !preparations.complete;
@@ -322,7 +351,7 @@ export class RemoteCommandRuntime {
       }
     }
     if (continuing && !this.moreInbox) return;
-    const page = (!this.inboxCursor && this.inboxPage) || await transport.query("remote/commands:inbox", { ...header, connectionEpoch: base.connectionEpoch, cursor: this.inboxCursor }); current();
+    const page = observedInbox!; current();
     if (!page.complete && (!page.cursor || page.cursor === this.inboxCursor)) throw new Error("remote-inbox-cursor");
     const results = await Promise.allSettled(page.items.map(receipt => this.intake.receive(receipt)));
     current();
@@ -330,10 +359,29 @@ export class RemoteCommandRuntime {
     for (const failure of rejected) this.reportFailure("scan", failure.reason);
     /* One command that keeps failing is retried on its own; it must never stop this computer from publishing
        its Agents and folders, or every Chat on every other device reads "no Agent". */
-    if (rejected.length) { this.moreInbox = true; if (!continuing) this.publishLater(current); return false; }
+    if (rejected.length) { this.moreInbox = true; return false; }
     this.inboxCursor = page.complete ? null : page.cursor;
     this.moreInbox = !page.complete;
-    if (!continuing) this.publishLater(current);
+  }
+  private prepareLater(chatId: string, current: () => void) {
+    if (this.preparations.has(chatId) || this.preparationQueue.has(chatId) || this.preparationQueue.size >= REMOTE_LIMITS.pageRows) return;
+    this.preparationQueue.set(chatId, { current, generation: this.lifetimeGeneration });
+    this.drainPreparations();
+  }
+  private drainPreparations() {
+    while (this.preparations.size < 4 && this.preparationQueue.size) {
+      const [chatId, { current, generation }] = this.preparationQueue.entries().next().value!;
+      this.preparationQueue.delete(chatId);
+      if (generation !== this.lifetimeGeneration || this.closed) continue;
+      // The execution owner owns cancellation and persistence. A failed slot drains the next Chat, never its own immediate retry.
+      const flight = Promise.resolve().then(() => { current(); return this.ports.execution.prepare(chatId); }).then(() => {
+        current(); this.preparationPage = null; this.wake();
+      }).catch(error => { if (this.lifetimeGeneration === generation) this.reportFailure("scan", error); }).finally(() => {
+        if (this.preparations.get(chatId) === flight) this.preparations.delete(chatId);
+        this.drainPreparations();
+      });
+      this.preparations.set(chatId, flight);
+    }
   }
   private republish() {
     if (this.closed || !this.connection()) return;
@@ -426,7 +474,7 @@ export class RemoteCommandRuntime {
         await transport.mutate("remote/capabilities:publish", { ...header, agents: encrypted, unlocked: true, memory, plugins }); current();
         this.publishedHeader = header; this.publication.set("agents", digest);
       }
-      this.agentsKey = agentsKey;
+      this.agentsKey = agentsKey; this.capabilitiesReady = true;
       this.failures.delete("agents");
     } catch (error) { current(); this.reportFailure("agents", error); }
   }
@@ -446,5 +494,5 @@ export class RemoteCommandRuntime {
       await this.ports.transport.mutate("remote/capabilities:publish", { ...header, agents: [], unlocked: false }).catch(error => this.reportFailure("agents", error));
     await this.intake.settled();
   }
-  async close() { this.closed = true; await this.queues.close(); clearInterval(this.timer); this.releaseAccount(); this.releaseAgentInputs(); this.releaseConnection(); this.releaseAuthority(); this.releaseTransferred(); await this.suspend(); await this.flight; await this.capabilityFlight; await this.intake.settled(); }
+  async close() { this.closed = true; await this.queues.close(); clearInterval(this.timer); this.releaseAccount(); this.releaseRemoteReady(); this.releaseAgentInputs(); this.releaseConnection(); this.releaseAuthority(); this.releaseTransferred(); await this.suspend(); await this.flight; await this.capabilityFlight; await this.intake.settled(); }
 }

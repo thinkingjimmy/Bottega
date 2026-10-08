@@ -16,8 +16,9 @@ import { ConversationSubagent } from "../turn/subagent";
 import { capPartMarkdown } from "../turn/projection";
 import { planTranslation, turnCopy } from "../turn/copy";
 
-export function LiveReply({ value, copy, canonicalReady, locale = "en", interactive, onOpenSubagent, onOpenPlan, expandedPlanId }: {
+export function LiveReply({ value, copy, canonicalReady, active: activeOverride, locale = "en", interactive, onOpenSubagent, onOpenPlan, expandedPlanId }: {
   value: ChatLiveView; copy: ChatCopy; canonicalReady: boolean; locale?: string; interactive?: boolean;
+  active?: boolean;
   onOpenSubagent?(id: string): void; onOpenPlan?(id: string): void; expandedPlanId?: string | null;
 }) {
   const state = value.state, projection = value.projection;
@@ -28,7 +29,7 @@ export function LiveReply({ value, copy, canonicalReady, locale = "en", interact
   const streaming = [...(draft?.streaming ?? [])].filter(([id, text]) => text && id !== plan?.itemId && !parts.some(part => part.itemId === id));
   const capped = capPartMarkdown(parts, [...streaming.map(([id, markdown]) => ({ id, markdown })), ...(plan ? [{ id: plan.itemId, markdown: plan.content }] : [])]);
   const text = (id: string, fallback: string) => capped.fragments.find(fragment => fragment.id === id)?.markdown ?? fallback;
-  const active = state.state === "running" && state.receipt.settlementState === "open" && !projection?.terminal;
+  const active = activeOverride !== false && state.receipt.settlementState !== "settled" && !projection?.terminal;
   const hasContent = Boolean(parts.length || streaming.length || plan), planId = state.receipt.assistantMessageId;
   const render = (values: typeof parts) => values.length > 0 && <ConversationParts parts={values} streamingIds={new Set(draft?.streaming.keys())}
     subagent={part => {

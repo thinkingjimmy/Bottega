@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, canonical hashes, bounded remote provenance/control receipts, the workflow role vocabulary and original Agent/relay vocabulary.
- * [OUTPUT]: Defines ledger v7 unsequenced manual/steer custody (manual, remote or workflow origin), legacy injected sequence recovery, preparation pins and frozen handoff proofs.
+ * [OUTPUT]: Defines ledger v7 unsequenced manual/steer custody (manual, remote or workflow origin), legacy injected sequence recovery, preparation pins and frozen handoff proofs. Durable queue claims, takeover identities and per-incarnation source pause scopes are additive ledger fields.
  * [POS]: Source of truth for the coordinator/state durable wire format; RelayLedger is responsible only for sequencing atomic mutations and file IO
  */
 
@@ -11,7 +11,7 @@ import { handoffSchema } from "../../../../../shared/chat-agent/history-schema";
 import { agentBackendIdSchema } from "../../../../../shared/platform/agent-schema";
 import { canonicalHash } from "../coordinator-values";
 import { WORKFLOW_ROLES } from "@ai-chat/cloud-protocol/contracts/workflow/recipe";
-import { remoteOriginSchema, remoteSubmissionSchema, controlReceiptSchema, remoteCiphertextSchema } from "../remote/model";
+import { remoteOriginSchema, remoteContextSchema, remoteSubmissionSchema, controlReceiptSchema, remoteCiphertextSchema } from "../remote/model";
 import { relayActionSchema } from "./pause-saga";
 import { submissionContentV1Schema } from "../../../../../shared/content/submission/submission";
 
@@ -211,6 +211,7 @@ export const manualIntentSchema = z
     conversationId: z.string().min(1).max(128),
     origin: z.union([z.object({ kind: z.literal("manual") }).strict(), remoteOriginSchema, workflowOriginSchema]).default({ kind: "manual" }),
     remoteSubmission: remoteSubmissionSchema.optional(),
+    queueSource: remoteContextSchema.optional(),
     payload: z.unknown().optional(),
     submissionHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     requestId: z.string().min(1).max(128).optional(),
@@ -219,6 +220,8 @@ export const manualIntentSchema = z
     ackedAt: z.number().int().nonnegative().optional(),
     cloudSyncRequired: z.literal(true).optional(),
     preparing: z.literal(true).optional(),
+    queueClaim: z.string().min(1).max(128).optional(),
+    queueTakenBy: z.string().min(1).max(128).optional(),
     cloudHandoff: z.union([
       z.object({ command: cloudMutationSchema, state: z.enum(["pending", "confirmed"]), proof: handoffProofSchema.nullable() }).strict()
         .refine(value => (value.state === "confirmed") === Boolean(value.proof)),
@@ -340,6 +343,7 @@ export const steerIntentSchema = z
 const intentTombstoneSchema = z
   .object({
     hash: z.string().regex(/^[a-f0-9]{64}$/),
+    queueTakenBy: z.string().min(1).max(128).optional(),
     remoteSubmission: remoteSubmissionSchema.optional(),
     outcome: z.string().min(1).max(64),
     custody: z.enum(["main-journal", "chat-persisted"]).optional(),
@@ -431,6 +435,7 @@ export const ledgerSchema = z
     relays: z.record(z.string(), relaySchema),
     createIntents: z.record(z.string(), createIntentSchema),
     manualIntents: z.record(z.string(), manualIntentSchema),
+    remoteQueuePauses: z.array(z.object({ chatId: z.string(), incarnationId: z.string(), sourceDeviceId: z.string() }).strict()).max(4096).default([]),
     remoteCiphertexts: z.record(z.string(), remoteCiphertextSchema).default({}),
     controlReceipts: z.record(z.string(), controlReceiptSchema).default({}),
     steerIntents: z.record(z.string(), steerIntentSchema).default({}),
@@ -499,6 +504,7 @@ export const emptyLedgerState = (): LedgerState => ({
   relays: {},
   createIntents: {},
   manualIntents: {},
+  remoteQueuePauses: [],
   remoteCiphertexts: {},
   controlReceipts: {},
   steerIntents: {},

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, computer health/recovery and diagnostic export, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -290,7 +290,13 @@ export const cloudCopy = {
 
 
   "computers": {
+    "exportDiagnostics": "导出连接诊断",
+    "diagnosticsDescription": "保存本机恢复状态和采集时间，不包含对话内容和凭据。",
+    "lastConfirmed": "最近确认：{{when}}",
+    "notConfirmed": "尚未确认电脑状态。",
+    "health": {"initializing": "正在准备远控", "locked": "同步密钥不可用", "recovering": "正在恢复连接", "memory-blocked": "正在等待隐私设置确认", "content-error": "远控可用 · 部分内容需要处理"},
     "label": "电脑",
+    "refreshing": "正在重新确认电脑状态…",
     "offlineSince": "离线 · {{when}}",
     "none": "在一台电脑上登录 Bottega 后，这里会出现它的侧栏。",
   },

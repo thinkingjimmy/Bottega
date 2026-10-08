@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React content slots, horizontal resize and host-supplied geometry and labels.
- * [OUTPUT]: SidePanelShell with animated visibility, accessible resize rail and optional full-content takeover.
+ * [OUTPUT]: SidePanelShell with a state-bearing side-panel slot, animated visibility, accessible resize rail and optional full-content takeover.
  * [POS]: Shared desktop/browser side-panel frame; hosts own intent, persistence and contents.
  */
 import type { CSSProperties, ReactNode } from "react";
@@ -26,6 +26,7 @@ export function SidePanelShell({ open, width, minWidth, maxWidth, onWidthChange,
   return (
     <div
       className={cn("relative z-10 isolate w-0 shrink-0 transition-[width] ease-linear motion-reduce:transition-none data-[resizing=true]:transition-none data-[state=open]:w-[var(--chat-side-panel-width)]", takeover && "absolute inset-0 !w-full", className)}
+      data-slot="side-panel"
       data-takeover={takeover || undefined}
       data-resizing={resize.active ? "true" : undefined}
       data-state={open ? "open" : "closed"}

@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Depends on main-owned binding, bounded event/replacement capture, the ledger and Chat SQLite facade.
- * [OUTPUT]: Persists immutable live batches and ledger evidence, recovering incomplete frames independently of transport pause; an explicit wake during capture drains a bounded follow-up round in the same flight; a capture buffer lives only while its live-turn row waits or the registry holds its turn.
+ * [OUTPUT]: Persists immutable live batches and ledger evidence, recovering incomplete frames independently of transport pause; per-turn failures do not block unrelated captures; an explicit wake during capture drains a bounded follow-up round in the same flight; a capture buffer lives only while its live-turn row waits or the registry holds its turn.
  * [POS]: Local capture lifetime is independent of transport; account identity and cleanup fences guard every write.
  */
+import { recoveryDiagnostics } from "../runtime/diagnostics/timeline";
 import type { CloudBuildConfig } from "@ai-chat/cloud-protocol";
 import { LIVE_TURN_LIMITS } from "@ai-chat/cloud-protocol/turns/live";
 import type { TurnRegistry } from "../../agent/turns/turn/turn-registry";
@@ -64,12 +65,17 @@ export class LocalTurnRecorder {
     const assertCurrent = () => { const latest = binding.snapshot();
       if (!latest || latest.userId !== scope.userId || latest.manifestId !== current.manifestId || latest.phase === "closing") throw new Error("cloud-request-superseded"); };
     const ports = { store, ledger, scope, deviceId, current: assertCurrent };
-    await recoverLateTurnEvidence(ports); assertCurrent();
+    const failures: unknown[] = [];
+    const isolate = (error: unknown) => { assertCurrent(); failures.push(error); };
+    await recoverLateTurnEvidence(ports).catch(isolate); assertCurrent();
     const original = await readTurnOutbox(store.sync, scope); assertCurrent();
-    await captureTurnAdmissions(ports, original); assertCurrent();
+    await captureTurnAdmissions(ports, original).catch(isolate); assertCurrent();
     const items = await readTurnOutbox(store.sync, scope);
     const kept = new Set<string>();
     for (const item of items.filter(item => item.kind === "live-turn")) {
+      // Retain even an unreadable row's buffer until its source can be recovered.
+      kept.add(item.entity_id);
+      try {
       assertCurrent(); const admission = localTurnAdmissionSchema.parse((await readOutboxSource(store.sync, scope, item)).payload);
       kept.add(admission.turnId);
       const existing = await store.sync.read(scope, { type: "turn-receipt", turnId: admission.turnId });
@@ -99,12 +105,16 @@ export class LocalTurnRecorder {
       }
       const live = turns.liveEntries().some(entry => entry.conversationId === admission.chat.id && entry.requestId === admission.turnId && !entry.effectiveTerminal);
       assertCurrent(); await transferTurnEvidence(ports, admission, live);
+      recoveryDiagnostics.record({ stage: "capture", code: "progress", objectId: admission.turnId, progress: highSeq });
+      } catch (error) { recoveryDiagnostics.record({ stage: "capture", code: "failed", objectId: item.entity_id }); isolate(error); }
     }
     /* A buffer lives while its live-turn row waits or the registry still holds its turn (released 5 minutes after the end).
        Settlement deletes the row in the same transaction as the receipt, and relay, App and unsynced turns never get one,
        so anything else is a finished turn nobody will flush again (C-04). Read at prune time so a turn that just started keeps its events. */
     for (const entry of turns.liveEntries()) kept.add(entry.requestId);
     for (const turnId of this.buffered.keys()) if (!kept.has(turnId)) this.buffered.delete(turnId);
+    if (failures.length === 1) throw failures[0];
+    if (failures.length) throw new AggregateError(failures, "TURN_CAPTURE_FAILED");
   }
   async close() { clearInterval(this.timer); this.unsubscribe(); await this.flush().catch(() => {}); this.closed = true; this.buffered.clear(); }
 }

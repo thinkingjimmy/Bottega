@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the sole worker database, scope mode, canonical readers/writers and lifecycle-specific deletion custody.
- * [OUTPUT]: Routes original synchronization/removal transactions (a local Chat enrolls only through enrollChat, TASK-11 S3-b) and exact worker-owned remote admission snapshots.
+ * [OUTPUT]: Routes original synchronization/removal transactions (a local Chat enrolls only through enrollChat, TASK-11 S3-b) and exact worker-owned remote admission snapshots and retained-root outbox Chat identity.
  * [POS]: Composed ChatRepository collaborator; every mutation shares its existing operation receipt transaction.
  */
 import { isAbsolute } from "node:path";
@@ -293,8 +293,19 @@ export class ChatCloudRepository {
         receipts: Number((this.db.prepare("SELECT COUNT(*) n FROM cloud_turn_receipts").get() as Row).n) }; break;
       case "mirror": value = this.mirrors.read(query.chatId, scope!, query.afterSeq, query.limit); break;
       case "outbox": value = this.db.prepare(`SELECT * FROM cloud_outbox WHERE environment=? AND user_id=? AND id>?
-        AND (? IS NULL OR entity_kind=?) AND (? IS NULL OR id=?) AND (? IS NULL OR json_extract(payload_json,'$.chatId')=?) ORDER BY id LIMIT ?`)
+        AND (? IS NULL OR entity_kind=?) AND (? IS NULL OR id=?) AND (? IS NULL OR EXISTS (
+          SELECT 1 FROM chat_retention_roots r JOIN chat_retained_sources s ON s.source_id=r.source_id
+          WHERE r.root_id='outbox:'||cloud_outbox.id AND s.chat_id=? AND s.environment=cloud_outbox.environment AND s.user_id=cloud_outbox.user_id
+        )) ORDER BY id LIMIT ?`)
         .all(scope!.environment, scope!.userId, query.afterId ?? "", query.entityKind ?? null, query.entityKind ?? null, query.id ?? null, query.id ?? null, query.chatId ?? null, query.chatId ?? null, query.limit); break;
+      case "outbox-chat": {
+        const owners = this.db.prepare(`SELECT DISTINCT s.chat_id FROM cloud_outbox o
+          JOIN chat_retention_roots r ON r.root_id='outbox:'||o.id JOIN chat_retained_sources s ON s.source_id=r.source_id
+          WHERE o.environment=? AND o.user_id=? AND o.id=? AND s.environment=o.environment AND s.user_id=o.user_id LIMIT 2`)
+          .all(scope!.environment, scope!.userId, query.id) as Row[];
+        if (owners.length > 1) throw new Error("OUTBOX_CHAT_IDENTITY_AMBIGUOUS");
+        value = owners.length ? String(owners[0]!.chat_id) : null; break;
+      }
       case "outbox-count": value = Number((this.db.prepare("SELECT COUNT(*) n FROM cloud_outbox WHERE environment=? AND user_id=?")
         .get(scope!.environment, scope!.userId) as Row).n); break;
       case "receipt-cursor": {

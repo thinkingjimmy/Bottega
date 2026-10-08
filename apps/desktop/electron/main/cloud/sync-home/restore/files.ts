@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on verified Home ownership, immutable cache descriptors and bounded filesystem operations.
- * [OUTPUT]: Restores files atomically and prunes empty managed parent directories while rejecting links, worktrees and changed identities.
+ * [OUTPUT]: Restores files atomically with optional completed-byte progress and prunes empty managed parent directories while rejecting links, worktrees and changed identities.
  * [POS]: Home write boundary; only same-name manifest files are replaced, and extra local files remain intact.
  */
 import { createHash } from "node:crypto";
@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { HOME_RESTORE_TEMP_PREFIX, homePathSchema, homeEntrySchema, type HomeEntry } from "@ai-chat/cloud-protocol/chats/home/model";
 import { hashChatContent } from "@ai-chat/cloud-protocol/chats/transcript/body";
 import { syncDirectory } from "../../../persistence/durable-json";
-export type HomeTarget = { root: string; worktree?: string; verify(): Promise<void> };
+export type HomeTarget = { root: string; worktree?: string; advanced?(): void; verify(): Promise<void> };
 const same = (a: Stats, b: Stats) => a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
 async function optionalStat(path: string) { try { return await lstat(path); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; return null; } }
 async function parents(target: HomeTarget, relative: string) {
@@ -61,7 +61,7 @@ export async function restoreHomeFile(target: HomeTarget, snapshotId: string, en
       const { bytesRead } = await source.read(buffer, 0, Math.min(buffer.length, entry.blob.bytes - offset), offset);
       if (!bytesRead) throw new Error("HOME_RESTORE_SOURCE_CHANGED"); hash.update(buffer.subarray(0, bytesRead));
       for (let written = 0; written < bytesRead;) { const part = await output.write(buffer, written, bytesRead - written); if (!part.bytesWritten) throw new Error("HOME_RESTORE_WRITE_FAILED"); written += part.bytesWritten; }
-      offset += bytesRead;
+      offset += bytesRead; target.advanced?.();
     }
     if (!same(sourceBefore, await source.stat()) || hash.digest("hex") !== entry.blob.sha256) throw new Error("HOME_RESTORE_SOURCE_CHANGED");
     await output.chmod(entry.mode); await output.sync(); await output.close(); output = null;
@@ -96,7 +96,7 @@ export async function removeManagedHomeFile(target: HomeTarget, relative: string
   signal.throwIfAborted(); await verify();
   const current = await optionalStat(path);
   if (!current || !same(before, current)) throw new Error("HOME_RESTORE_DESTINATION_CHANGED");
-  await unlink(path); await syncDirectory(dirname(path)); await verify();
+  await unlink(path); await syncDirectory(dirname(path)); await verify(); target.advanced?.();
 }
 
 /** Only empty ancestors of removed managed files may be pruned; never recurse into local extras. */
@@ -125,5 +125,6 @@ export async function pruneManagedHomeDirectories(target: HomeTarget, removed: s
     await rmdir(path).then(() => syncDirectory(dirname(path)), error => {
       if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
     });
+    target.advanced?.();
   }
 }

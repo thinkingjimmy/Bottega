@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on UI Button/Tooltip, host-injected UI text, streamdown/CJK, MessageRendererContext, and the message plugin loader
- * [OUTPUT]: Provides Message/MessageContent layout, MessageActions/MessageAction, MessageResponse and messageRehypePlugins (repairs unfinished Markdown only while streaming, parses raw HTML only when the text has a tag, re-renders on any prop change); stabilizes locale-key/plugin detection, streams code-only rendering while Math/Mermaid stay available, and applies syntax highlighting once in a single pass after streaming settles
+ * [OUTPUT]: Provides Message/MessageContent layout with a message-content slot for bubble-scoped navigation emphasis, MessageActions/MessageAction, MessageResponse and messageRehypePlugins (repairs unfinished Markdown only while streaming, parses raw HTML only when the text has a tag, re-renders on any prop change); stabilizes locale-key/plugin detection, streams code-only rendering while Math/Mermaid stay available, and applies syntax highlighting once in a single pass after streaming settles
  * [POS]: ai-elements' message-display family; a Message never overflows its parent content list, and MessageResponse only auto-links http/mailto and hides behind a full skeleton until its plugins are chosen. Links render as real anchors (target="_blank" rel="noopener noreferrer") with no in-page confirmation, so a host may intercept the click and route the URL into its own surface. The default Markdown heading scale is re-anchored here to the text-sm body size (h1-h4 keep distinct sizes, h5/h6 collapse onto text-sm); other rendering contexts need their own scale. className is always merged last through cn's tw-merge so a caller's class wins without needing to guess specificity
  */
 
@@ -53,6 +53,7 @@ export const MessageContent = ({
   ...props
 }: MessageContentProps) => (
   <div
+    data-slot="message-content"
     className={cn(
       "is-user:dark flex w-full min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm group-[.is-user]:w-fit",
       "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",

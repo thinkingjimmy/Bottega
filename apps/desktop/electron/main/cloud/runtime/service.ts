@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the credential vault, login flow, closed transport, installation identity and account scope lifecycle.
- * [OUTPUT]: Provides recoverable login admission, binding-fenced offline identity, machine-keyed device registration, one account-generation computer subscription and machine-wide rename, pending-delivery display and localIdentityReady, account-fenced bounded sync setup retries, cleanup-fenced inspection, pending sign-out, subscription-only heartbeats that exist only while an account is stored (signed out, availability is checked at launch, on settingsOpened and on sign-in — never on a timer), connection-fenced wake recovery independent of account operations, single-flight handshake re-checks on a bounded backoff and SavedLoginReviewExpired; a Dock activation keeps the socket, token and scope, and a socket blip keeps the scope and the ready state until the grace (blipGraceMs) ends (TASK-20 T20-1); the transport's subscriptions are bound to the current account/device scope (T20-1b); networkChanged wakes the token ladder, re-checks a failing handshake and reconnects only a lost or unauthenticated socket (T20-2); publishes serverClockOffset from the transport's Date samples (T20-9b).
+ * [INPUT]: Depends on the credential vault, login flow, closed transport, installation identity, asynchronous presence snapshots and account scope lifecycle.
+ * [OUTPUT]: Provides Store-independent heartbeats with account-fenced timestamped pending-count sampling and presence diagnostics, recoverable login admission, binding-fenced offline identity, machine-keyed device registration, one account-generation computer subscription and machine-wide rename, pending-delivery display and localIdentityReady, account-fenced bounded sync setup retries, cleanup-fenced inspection, pending sign-out, subscription-only heartbeats that exist only while an account is stored (signed out, availability is checked at launch, on settingsOpened and on sign-in — never on a timer), connection-fenced wake recovery independent of account operations, single-flight handshake re-checks on a bounded backoff and SavedLoginReviewExpired; a Dock activation keeps the socket, token and scope, and a socket blip keeps the scope and the ready state until the grace (blipGraceMs) ends (TASK-20 T20-1); the transport's subscriptions are bound to the current account/device scope (T20-1b); networkChanged wakes the token ladder, re-checks a failing handshake and reconnects only a lost or unauthenticated socket (T20-2); publishes serverClockOffset from the transport's Date samples (T20-9b).
  * [POS]: Sync and encryption operations are delegated to SyncControls (../encryption/sync-controls), which reads this account's state and generation live. Owns the connection epoch for the life of this process (new only at start, account change and a wake after a reported sleep). Account owner consumed by Electron composition and trusted IPC; local Stores remain authoritative.
  */
 import type { SyncEncryptionController } from "../encryption/controller";
@@ -8,7 +8,7 @@ import { SyncControls } from "../encryption/sync-controls";
 import type { SyncEncryptionState, SyncSetupInput } from "../../../../shared/cloud/encryption";
 import { randomUUID } from "node:crypto";
 import { ConvexError } from "convex/values";
-import { CLOUD_LIMITS, protocolHeader, type AccountAccess, type CloudBuildConfig, type LoginReturnMode } from "@ai-chat/cloud-protocol";
+import { CLOUD_LIMITS, protocolHeader, type AccountAccess, type CloudBuildConfig, type LoginReturnMode, type RemoteHealthStatus } from "@ai-chat/cloud-protocol";
 import { cloudAccountStateSchema, cloudHandshakeFailed, COMPUTER_RENAME_REASONS, type CloudAccountState, type CloudComputerRenameReason, type CloudComputerRenameResult, type CloudComputersResult, type CloudError, type PendingLoginProjection } from "../../../../shared/ipc/settings/cloud-ipc";
 import { CredentialStore, type CloudCredentials } from "../account/credential-store";
 import { credentialError, StorageSuperseded } from "../account/storage/access";
@@ -21,6 +21,7 @@ import type { SyncProgress } from "../../../../shared/cloud/sync";
 import { ChangeNotifier } from "./transport/notifier";
 import { rememberOfflineIdentity, restoreOfflineIdentity, restorePendingLogin } from "./offline/identity";
 import type { SyncBindingStore } from "../sync/account/binding";
+import { PendingCountSnapshot } from "./presence/pending-snapshot";
 type Ports = { returnMode: LoginReturnMode; config: CloudBuildConfig; vault: CredentialStore; http: SessionClient; transport: AccountTransport;
   binding?: Pick<SyncBindingStore, "snapshot">; deviceId: string; version: string; platform: "macos" | "windows" | "linux";
   /** This computer's key; the server groups this account's installations by it. Resolved once, with registration. */
@@ -28,6 +29,7 @@ type Ports = { returnMode: LoginReturnMode; config: CloudBuildConfig; vault: Cre
   /** The Bottega folder this installation holds; the server admits its publications against that folder's owner. */
   libraryId?(): string | null;
   name(): Promise<string>; openBrowser(url: string): Promise<void>;
+  remoteHealth?(): RemoteHealthStatus;
   deviceNames?(userId: string, devices: import("@ai-chat/cloud-protocol").CloudDevice[]): void;
   scope?: Pick<AccountScopeLifecycle, "initialize" | "admit" | "disconnectAccount" | "pendingCount" | "suspend">;
   /** How long a dropped socket keeps the ready state before the normal offline state shows; CLOUD_LIMITS.offlineAfterMs by default. */
@@ -138,7 +140,8 @@ export class CloudAccountService {
   subscribe = this.listeners.subscribe;
   private set(change: Partial<CloudAccountState>) {
     if (this.closed) return;
-    if (change.status && change.status !== "ready") this.confirmConnection(null);
+    if (change.status && change.status !== "ready") { this.confirmConnection(null); change = { ...change, remoteHealth: undefined }; }
+    if ("profile" in change && change.profile?.userId !== this.value.profile?.userId) change = { ...change, remoteHealth: undefined };
     if ("profile" in change && (change.profile?.userId !== this.value.profile?.userId || change.profile?.avatarUrl !== this.value.profile?.avatarUrl)) change = { ...change, avatarDataUrl: null };
     const next = cloudAccountStateSchema.parse({ ...this.value, signOutPending: this.signOutPending, ...change });
     if (JSON.stringify(next) === JSON.stringify(this.value)) { this.notifyIdentity(); this.watchComputers(); return; }
@@ -416,13 +419,14 @@ export class CloudAccountService {
   }
   private presenceStopped = false;
   private heartbeatFlight: Promise<void> | null = null;
+  private readonly pendingSnapshot = new PendingCountSnapshot(CLOUD_LIMITS.heartbeatMs);
   reportOffline(reason: "sleep" | "quit"): Promise<void> {
     this.presenceStopped = true;
     const epoch = this.connectionEpoch, generation = this.generation;
     const flight = Promise.resolve(this.heartbeatFlight).catch(() => {}).then(async () => {
       if (this.closed || !this.presenceStopped || this.value.status !== "ready" || this.connectionEpoch !== epoch || this.generation !== generation) return;
       await this.ports.transport.mutate("devices:heartbeat", { ...protocolHeader(this.ports.config),
-        connectionEpoch: epoch, previousConnectionEpoch: epoch, outboxPending: 0, lastSeenReason: reason, ...this.machineKey() });
+        connectionEpoch: epoch, previousConnectionEpoch: epoch, ...this.outboxSnapshot(), lastSeenReason: reason, ...this.machineKey() });
     }).finally(() => { if (this.heartbeatFlight === flight) this.heartbeatFlight = null; });
     this.heartbeatFlight = flight; return flight;
   }
@@ -430,6 +434,24 @@ export class CloudAccountService {
     const libraryId = this.ports.libraryId?.() ?? null;
     return { ...(this.machineIdHash ? { machineIdHash: this.machineIdHash } : {}), ...(libraryId ? { libraryId } : {}) };
   }
+  private outboxSnapshot(sample = false) {
+    const identity = this.syncIdentity(), generation = this.generation;
+    const owner = identity ? JSON.stringify([generation, identity]) : null;
+    if (!sample || !owner || !this.ports.scope) return this.pendingSnapshot.snapshot(owner);
+    return this.pendingSnapshot.sample(owner, () => this.ports.scope!.pendingCount(),
+      () => generation === this.generation && JSON.stringify(this.syncIdentity()) === JSON.stringify(identity));
+  }
+  remoteHealth(): RemoteHealthStatus {
+    if (!this.syncIdentity()) return "recovering";
+    const encryption = this.value.encryption.status;
+    if (encryption !== "unlocked") return ["checking", "setting-up", "unlocking"].includes(encryption) ? "initializing" : "locked";
+    try {
+      const remote = this.ports.remoteHealth?.() ?? "recovering";
+      if (remote === "ready" && this.ports.transport.uploadRecovering?.()) return "recovering";
+      return remote === "ready" && ["error", "partial"].includes(this.value.sync.status) ? "content-error" : remote;
+    } catch { return "recovering"; }
+  }
+  presenceDiagnostics() { this.outboxSnapshot(); return this.pendingSnapshot.diagnostics(); }
   private heartbeat(): Promise<void> {
     if (this.presenceStopped) return Promise.resolve();
     if (this.heartbeatFlight) return this.heartbeatFlight;
@@ -437,24 +459,28 @@ export class CloudAccountService {
     this.heartbeatFlight = flight; return flight;
   }
   private async sendHeartbeat() {
-    const epoch = this.connectionEpoch, generation = this.generation;
+    const epoch = this.connectionEpoch, generation = this.generation, connectionGeneration = this.connectionGeneration;
+    const current = () => !this.closed && generation === this.generation && connectionGeneration === this.connectionGeneration &&
+      epoch === this.connectionEpoch && !this.presenceStopped && this.syncIdentity() !== null;
     const previousConnectionEpoch = this.serverConnectionEpoch;
-    const outboxPending = await this.ports.scope?.pendingCount() ?? 0;
-    if (this.closed || generation !== this.generation || epoch !== this.connectionEpoch || this.presenceStopped) return;
+    if (!current()) return;
+    const outbox = this.outboxSnapshot(true), health = { status: this.remoteHealth(), sampledAt: Date.now() };
     try {
       await this.ports.transport.mutate("devices:heartbeat", {
-        ...protocolHeader(this.ports.config), connectionEpoch: epoch, previousConnectionEpoch, outboxPending, ...this.machineKey() });
+        ...protocolHeader(this.ports.config), connectionEpoch: epoch, previousConnectionEpoch, ...outbox, remoteHealth: health.status, ...this.machineKey() });
     } catch (error) {
       /* The server holds another epoch for this device (another process of it, or a presence the sweep replaced): this
          process becomes present again under a new epoch (OPT-10 epoch table). The reconcile that follows reads the epoch
          the server holds, so the next heartbeat's CAS names it instead of failing the same way again. */
-      if (!(error instanceof ConvexError && error.data === "connection-changed") || generation !== this.generation || epoch !== this.connectionEpoch) throw error;
+      if (!(error instanceof ConvexError && error.data === "connection-changed") || !current()) throw error;
       this.connectionEpoch = randomUUID(); this.serverConnectionEpoch = null; this.confirmConnection(null);
       queueMicrotask(() => { void this.refresh(); });
       return;
     }
-    if (generation === this.generation && epoch === this.connectionEpoch && this.value.status === "ready") {
+    if (current()) {
       this.serverConnectionEpoch = epoch; this.confirmConnection(epoch);
+      const previous = this.value.remoteHealth;
+      if (!previous || previous.status !== health.status || health.sampledAt - previous.sampledAt >= 7 * 60_000) this.set({ remoteHealth: health });
     }
   }
   private reconcile(credentials?: CloudCredentials): Promise<void> {
@@ -747,5 +773,5 @@ export class CloudAccountService {
     await this.ports.transport.mutate("devices:revoke", { ...protocolHeader(this.ports.config), deviceId });
     if (this.ports.deviceNames) void this.refreshDeviceNames().catch(() => {});
   }
-  close() { if (this.blipTimer) clearTimeout(this.blipTimer); this.syncControls.setup.cancel(); this.storageUnsubscribe(); this.closed = true; this.confirmConnection(null); this.watchComputers(); if (this.recheckTimer) clearTimeout(this.recheckTimer); this.generation++; this.accessRevision++; this.login.stop(); this.closeTransport(); this.ports.http.clear(); if (this.timer) clearInterval(this.timer); this.listeners.clear(); this.identityListeners.clear(); this.connectionListeners.clear(); this.computerListeners.clear(); }
+  close() { if (this.blipTimer) clearTimeout(this.blipTimer); this.syncControls.setup.cancel(); this.storageUnsubscribe(); this.closed = true; this.pendingSnapshot.close(); this.confirmConnection(null); this.watchComputers(); if (this.recheckTimer) clearTimeout(this.recheckTimer); this.generation++; this.accessRevision++; this.login.stop(); this.closeTransport(); this.ports.http.clear(); if (this.timer) clearInterval(this.timer); this.listeners.clear(); this.identityListeners.clear(); this.connectionListeners.clear(); this.computerListeners.clear(); }
 }

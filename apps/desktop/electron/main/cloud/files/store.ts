@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on file handles, the shared cheap persistence directory guard, private account-scoped paths, admitted crypto transfer ports and verified encrypted offline receipts.
- * [OUTPUT]: Provides scoped verified files and drains both cached reads and downloads before account cleanup.
+ * [OUTPUT]: Provides scoped verified files, optional completed-byte progress and drains both cached reads and downloads before account cleanup.
  * [POS]: Main-only BlobStore; failed downloads keep previous bytes and remove only their own temporary file.
  */
 import { createHash, randomUUID } from "node:crypto";
@@ -37,7 +37,7 @@ export class DesktopBlobStore {
   private readonly namespace: string;
   private closed = false;
   private active = new Set<Promise<unknown>>();
-  constructor(private readonly userData: string, scope: { environmentId: string; deploymentId: string; userId: string }, private readonly ports: BlobTransferPorts) {
+  constructor(private readonly userData: string, scope: { environmentId: string; deploymentId: string; userId: string }, private readonly ports: BlobTransferPorts, private readonly advanced?: () => void) {
     this.namespace = scopeDigest(scope); this.transfer = new EncryptedBlobTransfer(ports);
   }
   download(descriptor: EncryptedFileDescriptor, owner: BeginBlobUpload["owner"], progress?: (value: FileProgress) => void, signal?: AbortSignal) {
@@ -56,8 +56,9 @@ export class DesktopBlobStore {
     await directory(join(this.userData, "cloud-files"));
     const root = join(this.userData, "cloud-files", this.namespace);
     await directory(root);
-    const cached = await readVerifiedCache(root, join(root, digest(descriptor.blobId) + ".bin"), descriptor, owner, signal);
+    const cached = await readVerifiedCache(root, join(root, digest(descriptor.blobId) + ".bin"), descriptor, owner, signal, this.advanced);
     if (this.closed) throw new Error("file-transfer-closed");
+    if (cached) this.advanced?.();
     return cached ?? this.download(descriptor, owner, undefined, signal);
   }
   private async downloadFile(descriptor: EncryptedFileDescriptor, owner: BeginBlobUpload["owner"], progress?: (value: FileProgress) => void, signal?: AbortSignal) {
@@ -72,7 +73,7 @@ export class DesktopBlobStore {
     let closed = false;
     const close = async () => { if (!closed) { closed = true; await handle.close(); } };
     return this.transfer.readFile(descriptor, crypto, {
-      write: async bytes => { let offset = 0; while (offset < bytes.byteLength) { const { bytesWritten } = await handle.write(bytes, offset, bytes.byteLength - offset); if (!bytesWritten) throw new Error("file-cache-write-failed"); offset += bytesWritten; } },
+      write: async bytes => { let offset = 0; while (offset < bytes.byteLength) { const { bytesWritten } = await handle.write(bytes, offset, bytes.byteLength - offset); if (!bytesWritten) throw new Error("file-cache-write-failed"); offset += bytesWritten; this.advanced?.(); } },
       commit: async descriptor => {
         await handle.sync(); await close(); await directory(root);
         if (this.closed) throw new Error("file-transfer-closed");

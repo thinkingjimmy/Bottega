@@ -1,11 +1,12 @@
 /**
  * [INPUT]: Exact creation receipt, frozen send intent, account identity and six platform ports.
- * [OUTPUT]: Waits only for local head identity (an App Edit reservation's text-only first message waits for none and names its creation), then durably submits the first intent before target preparation; `rejectionReason` names an admission refusal (plan, attachment or capacity); a failure caused by the files, or by a command too large to seal, before anything was stored is flagged `attachments`.
+ * [OUTPUT]: Waits for exact head identity (except App Edit reservations), then submits the original intent and passes its confirmed head to the destination handoff; admission/file refusals retain their structured recovery.
  * [POS]: Shared first-send continuation; cancellation ends automatic submission without erasing the Chat or draft.
  */
 import { assertRemoteReferenceTarget, type RemoteReference } from "@ai-chat/cloud-protocol/remote/input/references";
 import { awaitChatHead } from "../commands/await-head";
 import type { ChatPlatform } from "../../contracts";
+import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { RemoteCreated, RemoteCreateInput } from "../contracts";
 import { remoteCommandSession } from "../commands/registry";
 import type { RemoteDraftStore } from "../input/draft";
@@ -27,7 +28,7 @@ function refused(rejected: string | undefined, receipt?: { reason?: string | nul
 export function rejectionReason(rejected: string): RemoteReason {
   return rejected === "attachment-unavailable" || rejected === "entitlement-required" || rejected === "quota-exceeded" ? rejected : "capacity-exceeded";
 }
-export type FirstMessageIntent = { text: string; commandId: string; creation: RemoteCreateInput; draftStore?: RemoteDraftStore; permissionMode?: RemotePermissionMode; planMode?: boolean; options?: RemoteTurnOptions; references?: readonly RemoteReference[] };
+export type FirstMessageIntent = { text: string; commandId: string; creation: RemoteCreateInput; draftStore?: RemoteDraftStore; permissionMode?: RemotePermissionMode; planMode?: boolean; options?: RemoteTurnOptions; references?: readonly RemoteReference[]; onSubmitted?(head: CloudChatHead | null): void };
 export async function sendFirstMessage(platform: Pick<ChatPlatform, "account" | "chats" | "commands" | "execution">, receipt: RemoteCreated, intent: FirstMessageIntent, signal: AbortSignal,
   confirm?: (scope: RemoteConsentScope) => Promise<RemoteConsentScope | null>) {
   const owner = platform.account.snapshot(), abort = new AbortController();
@@ -45,9 +46,11 @@ export async function sendFirstMessage(platform: Pick<ChatPlatform, "account" | 
     if (!session) fail("remote-disabled");
     const previous = session.snapshot().entries.find(entry => entry.input.commandId === intent.commandId);
     if (previous) {
-      const receipt = previous.receipt ?? await session.retry(intent.commandId);
-      if (!receipt) refused(previous.rejected);
-      if (["expired", "rejected", "outcome-unknown"].includes(receipt.state)) refused(undefined, receipt);
+      if (!previous.receipt) await session.check(intent.commandId);
+      const latest = session.snapshot().entries.find(entry => entry.input.commandId === intent.commandId)!;
+      const receipt = latest.receipt;
+      if (!receipt) { if (latest.rejected) refused(latest.rejected); return null; }
+      if (["expired", "rejected"].includes(receipt.state)) refused(undefined, receipt);
       return receipt;
     }
     /* U06 Q7-d: an App Edit reservation has no head until this very message materialises its Chat, so nothing waits for one; the
@@ -90,18 +93,30 @@ export async function sendFirstMessage(platform: Pick<ChatPlatform, "account" | 
         ...(intent.planMode !== undefined ? { planMode: intent.planMode } : {}), ...(intent.options ? { options: intent.options } : {}), ...(fullAccessConsent ? { fullAccessConsent } : {}) } };
     // Too large to seal stores nothing: the draft unlocks so references can be removed, and the retry is a new message.
     try { assertRemoteCommandBudget(command); } catch { fail("input-unsupported", true); }
-    const submitted = await session.submit(command, abort.signal);
+    intent.draftStore?.awaiting(command.commandId, intent.text, attachments, references, true);
+    const creation = intent.draftStore?.snapshot().creation;
+    if (creation) intent.draftStore?.update({ creation: { ...creation, commandStarted: true } });
+    await intent.draftStore?.checkpoint?.flush();
+    if (!valid()) fail("identity-changed");
+    session.open();
+    const sending = session.submit(command, platform.commands.remote?.lifetime, {});
+    intent.draftStore?.track(session.snapshot().entries);
+    intent.onSubmitted?.(head);
+    const submitted = await sending;
+    intent.draftStore?.track(session.snapshot().entries);
     if (!valid()) fail("identity-changed");
     if (!submitted) {
-      refused(session.snapshot().entries.find(entry => entry.input.commandId === intent.commandId)?.rejected);
+      const rejected = session.snapshot().entries.find(entry => entry.input.commandId === intent.commandId)?.rejected;
+      if (rejected) refused(rejected);
+      return null;
     }
-    if (["expired", "rejected", "outcome-unknown"].includes(submitted.state)) refused(undefined, submitted);
+    if (["expired", "rejected"].includes(submitted.state)) refused(undefined, submitted);
     return submitted;
   } catch (error) {
     if (error instanceof FirstMessageFailure) throw error;
     if (!valid()) throw new FirstMessageFailure("identity-changed");
     const reason = remoteReasonSchema.safeParse(error && typeof error === "object" && "data" in error ? error.data : error instanceof Error ? error.message : error);
-    throw new FirstMessageFailure(reason.success ? reason.data : "execution-not-ready");
+    throw new FirstMessageFailure(reason.success ? reason.data : "outcome-unknown");
   } finally {
     stopAccount(); signal.removeEventListener("abort", cancel);
     platform.commands.remote?.lifetime?.removeEventListener("abort", cancel);

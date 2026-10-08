@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Closed file, Home, turn and remote routing identities with ciphertext references.
- * [OUTPUT]: Stream bindings, pre-allocation Chat creation identity and immutable remote result linkage.
+ * [OUTPUT]: Stream bindings, pre-allocation Chat creation identity and immutable remote result linkage. Protocol 16 AAD admits only the closed take-queued and set-queue-paused kinds with null request IDs.
  * [POS]: Authenticated transport boundaries; these fields never confer execution or ownership authority.
  */
 import { z } from "zod";
@@ -25,12 +25,12 @@ export const remoteCreationTargetSchema = z.object({ kind: z.literal("app-edit")
 export const remoteCreationBindingSchema = z.object({ sourceDeviceId: id, targetDeviceId: id, connectionEpoch: id, agent,
   expectedAgentRevision: version, projectId: nullableId, protocolVersion: version.positive().max(65535), createdAt: version,
   target: remoteCreationTargetSchema.optional() }).strict().refine(value => !value.target || value.projectId === null, "remote-creation-target-project");
-const remoteFields = { kind: z.enum(["withdraw-queued", "reorder-queue", "list-workspace-files", "read-workspace-file", "start-turn", "edit-message", "retry-authentication", "cancel", "steer", "respond-approval", "respond-user-input", "retry-without-session", "retry-same-session", "abandon-fatal-turn", "fork-chat"]),
+const remoteFields = { kind: z.enum(["withdraw-queued", "reorder-queue", "take-queued", "set-queue-paused", "list-workspace-files", "read-workspace-file", "start-turn", "edit-message", "retry-authentication", "cancel", "steer", "respond-approval", "respond-user-input", "retry-without-session", "retry-same-session", "abandon-fatal-turn", "fork-chat"]),
   sourceDeviceId: id, targetDeviceId: id, chatId: id, incarnationId: id, connectionEpoch: id,
   attachmentBlobIds: z.array(z.uuid()).max(8).refine(values => new Set(values).size === values.length).optional(),
   requestId: z.string().min(1).max(256).nullable(), protocolVersion: version.positive().max(65535), expectedAgentRevision: version, expectedChatVersion: version, expiresAt: version.positive() };
 const requestMatches = (value: { kind: string; requestId: string | null; attachmentBlobIds?: string[] }) =>
-  (["withdraw-queued", "reorder-queue", "list-workspace-files", "read-workspace-file", "start-turn", "edit-message", "retry-authentication", "fork-chat"].includes(value.kind)) === (value.requestId === null) &&
+  (["withdraw-queued", "reorder-queue", "take-queued", "set-queue-paused", "list-workspace-files", "read-workspace-file", "start-turn", "edit-message", "retry-authentication", "fork-chat"].includes(value.kind)) === (value.requestId === null) &&
   (["start-turn", "edit-message", "retry-authentication", "steer"].includes(value.kind) || !value.attachmentBlobIds?.length);
 export const remoteCommandBindingSchema = z.object(remoteFields).strict().refine(requestMatches);
 export const remoteResultBindingSchema = z.object({ ...remoteFields, commandCiphertextHash: digest, resultRevision: version,

@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Depends on the trusted main-frame registrar, closed IPC schemas and account service.
- * [OUTPUT]: Registers trusted account actions, closed review results, the pushed account computer list, front-window handshake re-checks, forwarded page online/offline changes (T20-2) and window-exit cancellation of unfinished password work.
+ * [OUTPUT]: Registers offline-safe native diagnostic export and trusted account actions, closed review results, the pushed account computer list, front-window handshake re-checks, forwarded page online/offline changes (T20-2) and window-exit cancellation of unfinished password work.
  * [POS]: Electron IPC boundary; child frames and auxiliary windows receive no account authority.
  */
+import { exportRecoveryDiagnostics } from "./diagnostics/export";
 import type { BrowserWindow } from "electron";
 import { z } from "zod";
 import { CLOUD_CHANNEL, cloudAccountStateSchema, cloudComputerRenameResultSchema, cloudComputerRenameSchema, cloudComputersResultSchema, cloudDevicesPageSchema, cloudDevicesQuerySchema, cloudRenameSchema, cloudRevokeSchema, savedLoginDiscardResultSchema, savedLoginDiscardReviewSchema } from "../../../../shared/ipc/settings/cloud-ipc";
@@ -14,6 +15,7 @@ import { SavedLoginReviewExpired, type CloudAccountService } from "./service";
 export function registerCloudAccount(service: CloudAccountService, window: BrowserWindow, rendererUrl: string) {
   const ipc = rendererIpc(rendererUrl, "Cloud account access denied").roles("main");
   const noArgs = z.tuple([]);
+  ipc.handle(CLOUD_CHANNEL.exportSyncDiagnostics, (...args) => { noArgs.parse(args); return exportRecoveryDiagnostics(window, service); });
   /* Each reply leaves main in its contract's exact shape (OPT-34); actions without an entry reply with nothing the renderer reads. */
   const replies: Partial<Record<string, z.ZodType>> = {
     getAccountState: cloudAccountStateSchema, startLogin: cloudAccountStateSchema, cancelLogin: cloudAccountStateSchema, abandonLogin: cloudAccountStateSchema,

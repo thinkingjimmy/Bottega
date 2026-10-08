@@ -2,6 +2,7 @@
  * [INPUT]: Depends on Node os/path, sandbox/sbpl path and translation native language, barrier declaration table, HeadlessJob and HeadlessExecutionSpec; the provider host traits (which providers need a dedicated credential root)
  * [OUTPUT]: Builds SBPL and sandbox-exec launches (interactive turns in workspace-write or read-only mode, the latter refused through read-only.ts when a kept write root overlaps the workspace) with own/foreign credential fences, explicit quota authentication write grants, protected config roots and bounded runtime read access.; HOST_SANDBOX_MARKER / withHostSandboxMarker, the env marker (seatbelt | seatbelt-read-only | seatbelt-read-only-full-access) that tells an adapter its process is already fenced; a Chat plan turn (`plan`) gets the read-only fence even under full access
  * Explicit deniedReadRoots isolate native resource discovery, including full-access turns.
+ * Default fences permit signals only between processes in the same sandbox, so owned previews can stop without host signal access.
  * [POS]: The default macOS OS fence translation layer for backends/sandbox; The path is true in fences.ts, the SBPL source is in sbpl.ts, and the file does not recognize any directory layout of a CLI
  */
 
@@ -187,6 +188,7 @@ export function buildSeatbeltProfile(
     "(deny default)",
     '(import "system.sb")',
     "(allow process*)",
+    "(allow signal (target same-sandbox))",
     "(allow mach-lookup",
     ...SYSTEM_MACH_SERVICES.map((name) => `  (global-name ${sbplString(name)})`),
     ")",

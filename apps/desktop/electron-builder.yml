@@ -1,6 +1,6 @@
 # [INPUT]: Depends on electron-vite output, the electronFuses flip (RunAsNode, NODE_OPTIONS and inspect off, ad-hoc re-sign; TASK-35 slice 6), the afterPack bundled-Node step (scripts/node-runtime/after-pack.mjs), the out/system-dock native helpers and recovery LaunchAgent plist, test-receipt exclusion, the keep-node-module-types hook, root LICENSE, original sumo ISC notice, system skills, immutable Design factory payload, Base GUI SDK/toolchain/component/Starter resources, compiler native payloads, icons, entitlements, and pinned react-grab assets
 # [OUTPUT]: Produces, without npm sourcemaps (OPT-33 A) and with only the UI languages' Chromium locale packs (OPT-33 B), Bottega macOS arm64 DMG (UDBZ) / ZIP (deflate -9), Windows x64 NSIS, and Linux x64 AppImage (gzip squashfs) artifacts whose packaged app.name is Bottega (own userData, never the dev directory), with the pinned Node at Resources/runtime/node/<platform>-<arch> signed with its own entitlements and the runtime manifest beside it (TASK-34), an offline fail-closed App GUI compiler, the seven self-contained runtime entries and their runtime-entries.json unpacked beside the ASAR so a plain Node can run them (TASK-35; non-production builds also unpack the private connectivity smoke), no test-only receipt, TypeScript declaration files kept and the whole node_modules tree unpacked next to the ASAR for the packaged compiler, and no vendored Codex/Claude CLI platform packages (the product only spawns the user's own CLI), and on macOS the signed Bottega Dock helpers under Resources/system-dock/bin, the recovery agent plist under Contents/Library/LaunchAgents, and Apple Events/Downloads usage descriptions
-# [POS]: The only desktop packaging configuration; release signing is fail-closed in release scripts while ordinary CI packaging remains unsigned
+# [POS]: The shared desktop packaging configuration; macOS uses a checked native ICNS, and release signing is fail-closed in release scripts while ordinary CI packaging remains unsigned
 
 appId: com.jimmywong.bottega
 productName: Bottega
@@ -139,7 +139,7 @@ mac:
   # The bundled Node is signed in afterPack with resources/entitlements.node.plist; the app-wide pass must not re-sign it.
   signIgnore:
     - "/Contents/Resources/runtime/node/[^/]+/bin/node$"
-  icon: resources/icon.png
+  icon: resources/icon.icns
 win:
   target:
     - target: nsis

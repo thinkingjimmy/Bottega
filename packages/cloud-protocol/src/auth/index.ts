@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod, the shared environment contract and the entitlement projection.
- * [OUTPUT]: Provides account/device projections (desktop, web and mobile kinds; desktop, browser and ios/android platforms) with the current connection epoch and the ready account's entitlements, the machine key devices register under, the account-level computer projection installations fold into with its client-side presence deadline and installation lookup, immutable login return modes and metadata, and closed product return paths; computers carry R-06 onlineUntil and computerOnline takes server time.
+ * [OUTPUT]: Provides account/device projections (desktop, web and mobile kinds; desktop, browser and ios/android platforms) with the current connection epoch and the ready account's entitlements, the machine key devices register under, the account-level computer projection installations fold into with its client-side presence deadline and installation lookup, immutable login return modes and metadata, and closed product return paths; computers carry allowlisted server-stamped remote health and R-06 onlineUntil and computerOnline takes server time.
  * [POS]: Public authentication contracts; session credentials never enter device or account DTOs.
  */
 import { z } from "zod";
@@ -33,6 +33,9 @@ export const lastSeenReasonSchema = z.enum(["sleep", "quit", "network", "unknown
 /* One physical computer, SHA-256 of a hardware identifier the client never discloses. Installations of the
    same computer (a second profile, a reinstall) share it; a browser or phone has none. */
 export const machineIdHashSchema = z.string().regex(/^[a-f0-9]{64}$/);
+export const remoteHealthStatusSchema = z.enum(["ready", "initializing", "locked", "recovering", "memory-blocked", "content-error"]);
+export type RemoteHealthStatus = z.infer<typeof remoteHealthStatusSchema>;
+export const remoteHealthSchema = z.object({ status: remoteHealthStatusSchema, sampledAt: z.number().int().nonnegative() }).strict();
 export const deviceSchema = z.object({
   deviceId: cloudIdSchema, kind: deviceKindSchema, name: deviceNameSchema,
   platform: devicePlatformSchema, appVersion: z.string().max(100), protocolVersion: z.number().int().positive(),
@@ -50,7 +53,7 @@ export const computerSchema = z.object({
      `lastSeenAt` the time of the last online/offline transition, so neither moves with each heartbeat. */
   machineIdHash: machineIdHashSchema, name: deviceNameSchema, online: z.boolean(), onlineUntil: z.number().nullable(),
   lastSeenAt: z.number().nullable(), lastSeenReason: lastSeenReasonSchema,
-  installations: z.array(computerInstallationSchema).min(1).max(100),
+  installations: z.array(computerInstallationSchema).min(1).max(100), remoteHealth: remoteHealthSchema.optional(),
 }).strict();
 export type CloudComputer = z.infer<typeof computerSchema>;
 /**

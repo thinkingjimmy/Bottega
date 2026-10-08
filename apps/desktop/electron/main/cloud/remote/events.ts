@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on local Agent events and shared closed live-output contracts.
- * [OUTPUT]: Projects bounded live events and exact approval decisions (plan choices by kind, the adapter's label only for an unknown option) while excluding local paths and option identifiers.
+ * [OUTPUT]: Projects bounded live events and exact approval decisions (plan choices by kind, the adapter's label only for an unknown option) while excluding local paths and option identifiers. Phase events and replacement snapshots carry the active turn's actual steeringSupported capability.
  * [POS]: Main-only live publication adapter; response authority is separately validated by command intake.
  */
 import type { AgentEvent, TurnSnapshot } from "../../../../shared/ipc/agent/agent-ipc";
@@ -26,7 +26,7 @@ export function projectLiveEvent(event: AgentEvent): LiveEvent[] {
   let value: unknown;
   switch (event.type) {
     case "session": case "service-tier-effective": return [];
-    case "turn-state-changed": return [liveEventSchema.parse({ type: "phase", phase: event.turn.phase }),
+    case "turn-state-changed": return [liveEventSchema.parse({ type: "phase", phase: event.turn.phase, steeringSupported: event.turn.steeringSupported === true }),
       ...(event.turn.terminal ? [liveEventSchema.parse({ type: "terminal", terminal: event.turn.terminal })] : [])];
     case "turn-persisted": return [{ type: "terminal", terminal: event.terminal }];
     case "item": value = { type: event.type, item: item(event.item) }; break;
@@ -76,7 +76,7 @@ export function* projectBoundedEvents(event: AgentEvent): Generator<LiveEvent> {
 }
 function snapshotEvents(turn: TurnSnapshot): LiveEvent[] {
   turn = redactImageDetails(turn);
-  const events: LiveEvent[] = [{ type: "phase", phase: turn.phase }];
+  const events: LiveEvent[] = [{ type: "phase", phase: turn.phase, steeringSupported: turn.steeringSupported === true }];
   for (const part of turn.draft.parts) {
     if (part.type === "text") events.push({ type: "item", item: item({ itemId: part.itemId, kind: part.kind === "plan" ? "plan" : "agent-message", title: "", text: part.text, status: "completed" }) });
     else if (part.type === "tool") events.push({ type: "item", item: item({ itemId: part.itemId, kind: part.tool, title: part.title, detail: part.detail, status: part.status, failure: part.failure, severity: part.severity }) });

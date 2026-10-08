@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared SubmissionContent and capsule limits, coordinator-values coded errors, the ledger v7 state and manual-intent schema, and submission/reservation-payload for raw references and prepared intents
- * [OUTPUT]: Submission reservations: reserve, prepare, promote into main-journal custody, recover, release (plain and raw) and list pending ones, and a failed raw recovery settled with a bounded capsule
+ * [OUTPUT]: Submission reservations: reserve, prepare, promote into main-journal custody, recover, release (plain and raw) and list pending ones, and a failed raw recovery settled with a bounded capsule Promotion exchanges queue identity at its original position; reserved replacement capacity and claim release preserve rollback.
  * [POS]: The reservation half of the coordinator's submission state machine; ../submission-outcome.ts owns attempts and outcomes after admission, RelayLedger sequences both
  */
 
@@ -18,6 +18,7 @@ import type {
   ManualTurnIntentInput,
 } from "../state/ledger-schema";
 import { manualIntentSchema } from "../state/ledger-schema";
+import { releaseQueuedInput, transferQueuedInput } from "../remote/queue-custody";
 import {
   isReservationKind,
   preparedReservationIntent,
@@ -64,6 +65,7 @@ export function reserveSubmission(
     conversationId: string;
     submissionHash: string;
     payload: unknown;
+    replacesIntentId?: string;
   },
   now: number
 ) {
@@ -121,6 +123,7 @@ export function reserveSubmission(
       protectedIntents.add(reservation.intentId);
     }
   }
+  if (input.replacesIntentId) protectedIntents.delete(input.replacesIntentId);
   if (protectedIntents.size >= SUBMISSION_CAPSULE_CHAT_LIMIT) {
     throw codedError("CAPSULE_LIMIT");
   }
@@ -193,6 +196,8 @@ export function promoteSubmissionReservation(
     throw codedError("RESERVATION_CONFLICT");
   }
   state.manualIntents[intentId] = intent;
+  const context = intent.remoteSubmission?.context;
+  if (context?.queueExchange) intent.sequence = transferQueuedInput(state, context, context.queueExchange, now);
   installSubmissionCustody(state, intent, now);
   return intent;
 }
@@ -219,6 +224,7 @@ export function releaseSubmissionReservation(
   // admission 前拒绝没有需要保留的 durable 事实；直接删除既避免
   // payload 泄漏，也让同 intentId 的合法修正重试重新取得 custody。
   delete state.submissionReservations[intentId];
+  releaseQueuedInput(state, intentId);
   return true;
 }
 
@@ -236,6 +242,7 @@ export function releaseRawSubmissionReservation(
     return false;
   }
   delete state.submissionReservations[intentId];
+  releaseQueuedInput(state, intentId);
   return true;
 }
 
@@ -284,6 +291,7 @@ export function failRawSubmissionRecovery(
     state: "recoverable",
   };
   reservation.state = "released";
+  releaseQueuedInput(state, input.intentId);
   reservation.updatedAt = now;
   const current = state.submissionOutcomes[input.intentId];
   state.submissionOutcomes[input.intentId] = {

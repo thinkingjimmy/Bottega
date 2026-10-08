@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Durable coordinator changes, confirmed local execution heads and the active account connection.
- * [OUTPUT]: Publishes content-free accepted queue heads, including the transition to empty, and ignores ledger mutations that leave the queue unchanged.
+ * [OUTPUT]: Publishes content-free accepted queue heads, including the transition to empty, and ignores ledger mutations that leave the queue unchanged. Queue revisions include preparation locks and durable source pauses, including empty queues.
  * [POS]: Background queue adapter independent of renderer lifetime and command intake retries.
  */
 import { protocolHeader, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
@@ -25,9 +25,9 @@ export class RemoteQueuePublisher {
   }
   /** Cheap fingerprint of everything queuedProjection can observe, across chats. */
   private signature() {
-    return canonicalHash(this.ports.ledger.read(state => Object.values(state.manualIntents)
-      .map(intent => [intent.conversationId, intent.id, intent.sequence, intent.phase, intent.attempts.map(attempt => attempt.phase)])
-      .sort((left, right) => String(left[1]).localeCompare(String(right[1])))));
+    return canonicalHash(this.ports.ledger.read(state => ({ pauses: state.remoteQueuePauses, items: Object.values(state.manualIntents)
+      .map(intent => [intent.conversationId, intent.id, intent.sequence, intent.phase, intent.preparing, intent.userSeq, intent.queueClaim, intent.attempts.map(attempt => attempt.phase)])
+      .sort((left, right) => String(left[1]).localeCompare(String(right[1]))) })));
   }
   wake() {
     if (this.closed) return;
@@ -45,6 +45,7 @@ export class RemoteQueuePublisher {
     const current = () => { if (this.closed || JSON.stringify(this.ports.connection()) !== identity) throw new Error("connection-changed"); };
     const ids = new Set(this.ports.ledger.read(state => Object.values(state.manualIntents)
       .map(intent => intent.conversationId)));
+    for (const pause of this.ports.ledger.read(state => state.remoteQueuePauses)) ids.add(pause.chatId);
     for (const id of this.published.keys()) ids.add(id);
     for (const chatId of ids) {
       current(); const value = this.ports.ledger.remote.queue(chatId);

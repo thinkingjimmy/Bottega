@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron's isolated bridge and closed cloud account IPC contracts.
- * [OUTPUT]: Installs credential-free progress, the account computer subscription and discard/expiry results alongside fixed account/content/remote bridges.
+ * [OUTPUT]: Installs native diagnostic export, credential-free progress, the account computer subscription and discard/expiry results alongside fixed account/content/remote bridges.
  * [POS]: apps/desktop/electron/preload/cloud; Cloud preload surface; callers cannot choose endpoints, IPC channels or browser URLs. It carries no schemas (OPT-34): main parses every request and sends every reply and event in its contract's exact shape, dropping pushed values that do not match.
  */
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
@@ -38,6 +38,7 @@ export function installCloudBridge() {
     inspectSync: async () => ipcRenderer.invoke(CLOUD_CHANNEL.inspectSync),
     cancelSyncReview: () => ipcRenderer.invoke(CLOUD_CHANNEL.cancelSyncReview),
     approveSync: input => ipcRenderer.invoke(CLOUD_CHANNEL.approveSync, input),
+    exportSyncDiagnostics: () => ipcRenderer.invoke(CLOUD_CHANNEL.exportSyncDiagnostics).then(() => undefined),
     retrySync: () => ipcRenderer.invoke(CLOUD_CHANNEL.retrySync),
     inspectCleanup: async () => ipcRenderer.invoke(CLOUD_CHANNEL.inspectCleanup),
     disableSync: input => ipcRenderer.invoke(CLOUD_CHANNEL.disableSync, input),

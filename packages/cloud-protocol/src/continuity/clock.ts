@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on an authenticated mutation port, monotonic time and explicit lifecycle invalidation.
- * [OUTPUT]: Provides single-flight fresh server time and conservative immutable command deadlines.
+ * [OUTPUT]: Provides single-flight fresh server time and conservative immutable command deadlines. Protocol 16 take and source-pause controls use the bounded control deadline.
  * [POS]: Shared desktop/browser clock; query results and persisted clocks are never accepted.
  */
 import { sampleTimeResultSchema, continuityIdentitySchema, type ContinuityIdentity } from "./functions";
@@ -17,7 +17,7 @@ interface ClockPort {
 export const CLOCK_MAX_RTT_MS = 5_000;
 const CLOCK_MAX_AGE_MS = 30_000;
 const commandTtl = { intent: 30 * 60_000, "list-workspace-files": 60_000, "read-workspace-file": 60_000, "start-turn": 120_000, "edit-message": 120_000, "retry-authentication": 120_000, steer: 120_000, cancel: 60_000,
-  "withdraw-queued": 60_000, "reorder-queue": 60_000,
+  "withdraw-queued": 60_000, "reorder-queue": 60_000, "take-queued": 60_000, "set-queue-paused": 60_000,
   "fork-chat": 60_000, "retry-without-session": 60_000, "retry-same-session": 60_000, "abandon-fatal-turn": 60_000,
   "respond-approval": 60_000, "respond-user-input": 60_000 } as const;
 const identityFields = ["environmentId", "deploymentId", "userId", "sessionId", "deviceId", "restoreGeneration"] as const;

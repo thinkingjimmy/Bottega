@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Chat records, the typed SQLite client, and mutation outcome errors
- * [OUTPUT]: Persists aggregate and narrow writes with internal frozen owner evidence in the existing receipt transaction.
+ * [OUTPUT]: Persists aggregate and narrow writes with frozen owner evidence and first-message title-job transitions in the same receipt transaction.
  * [POS]: Durable write adapter beneath ChatStore; queueing, metadata publication, and domain transitions remain in the coordinator
  */
 
@@ -108,6 +108,7 @@ export async function persistAppendedMessageToStorage(input: {
     chatId: input.record.id,
     deviceId,
     message: input.message,
+    ...(input.current.titleJob.state !== input.record.titleJob.state ? { titleJob: input.record.titleJob } : {}),
     expectedAggregateRevision: input.current.chatRecordRevision,
     expectedMessageRevision: input.current.chatMessageRevision,
     nextAggregateRevision: input.record.chatRecordRevision,
@@ -137,6 +138,7 @@ export async function persistTurnCommitToStorage(input: {
     chatId: input.record.id,
     deviceId,
     message: input.message,
+    ...(input.current.titleJob.state !== input.record.titleJob.state ? { titleJob: input.record.titleJob } : {}),
     subagents: input.record.subagents ?? {},
     expectedAggregateRevision: input.current.chatRecordRevision,
     expectedMessageRevision: input.current.chatMessageRevision,

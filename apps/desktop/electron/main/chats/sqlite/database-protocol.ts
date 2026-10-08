@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Chat/adoption contracts, Chat metadata, Chat facts, and connection modes
- * [OUTPUT]: Defines closed SQLite commands/results with nullable-session replay sealing, atomic continuation notices, owner commits, and App transcript retention.
+ * [OUTPUT]: Defines closed SQLite commands/results with atomic message/title-job writes, nullable-session replay sealing, continuation notices, owner commits, and App transcript retention.
  * [POS]: Trust boundary between Electron main and the sole SQLite owner; arbitrary SQL can never cross this port
  */
 
@@ -255,6 +255,8 @@ export type DatabaseCommand =
     }
   | {
       kind: "append-message";
+      /** A title-job transition committed atomically with this message. Omission preserves the existing job. */
+      titleJob?: ChatRecord["titleJob"];
       ownerCommit?: import("./cloud/execution/commit").OwnerCommit;
       operationId: string;
       requestHash: string;
@@ -272,6 +274,7 @@ export type DatabaseCommand =
     }
   | {
       kind: "commit-turn";
+      titleJob?: ChatRecord["titleJob"];
       operationId: string;
       requestHash: string;
       chatId: string;

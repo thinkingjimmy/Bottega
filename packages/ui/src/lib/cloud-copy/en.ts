@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, the account computer strip and its no-computer sentence, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy, the Web gate's verifying/revoked/restricted next steps and its slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, the account computer strip, stale-status recovery, coarse health, diagnostic export and its no-computer sentence, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy, the Web gate's verifying/revoked/restricted next steps and its slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 export const cloudCopy = {
@@ -289,7 +289,13 @@ export const cloudCopy = {
 
 
   "computers": {
+    "exportDiagnostics": "Export connection diagnostics",
+    "diagnosticsDescription": "Save the local recovery state and capture time. Conversation content and credentials are excluded.",
+    "lastConfirmed": "Last confirmed: {{when}}",
+    "notConfirmed": "Computer status has not been confirmed.",
+    "health": {"initializing": "Preparing remote control", "locked": "Sync key unavailable", "recovering": "Recovering connection", "memory-blocked": "Waiting for privacy settings", "content-error": "Remote control available · Content needs attention"},
     "label": "Computers",
+    "refreshing": "Refreshing computer status…",
     "offlineSince": "Offline · {{when}}",
     "none": "Sign in to Bottega on a computer and its sidebar appears here.",
   },
@@ -424,4 +430,5 @@ export const cloudCopy = {
     "connection-failed": "Waiting for your connection…"
   }
 };
-export type CloudCopy = { [K in keyof typeof cloudCopy]: typeof cloudCopy[K] extends string ? string : { [P in keyof typeof cloudCopy[K]]: string } };
+type LocalizedCopy<T> = T extends string ? string : { [Key in keyof T]: LocalizedCopy<T[Key]> };
+export type CloudCopy = LocalizedCopy<typeof cloudCopy>;

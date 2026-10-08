@@ -1,11 +1,12 @@
 /**
  * [INPUT]: Depends on the existing RelayLedger transaction ports and canonical submission reservation mutations and a connected-only Memory barrier for locally transferred Steer.
- * [OUTPUT]: Preserves exact remote submissions (create-app only for a first message's own App Edit Chat at its creation's derived ids, U06 Q7-c), trusted file custody, inherited Steer authority, the local authority of a transferred Steer's next turn (inheriting only the steered turn's Full Access) and immutable control decisions.
+ * [OUTPUT]: Preserves exact remote submissions (create-app only for a first message's own App Edit Chat at its creation's derived ids, U06 Q7-c), trusted file custody, inherited Steer authority, the local authority of a transferred Steer's next turn (inheriting only the steered turn's Full Access) and immutable control decisions. Atomic source claims fence exchanges and existing Steer outboxes; known unstarted failures release custody.
  * [POS]: Ledger collaborator; all records commit through the original single writer.
  */
 import { remoteCreationIdentity } from "@ai-chat/cloud-protocol/remote/encrypted";
 import type { TrustedTurnAuthority } from "../../../backends/types";
 import { queuedProjection, editQueued, withdrawUnpersisted } from "./queue";
+import { claimQueuedInput, releaseQueuedInput, setSourceQueuePaused } from "./queue-custody";
 import type { TrustedManualTurnSubmission } from "../../../../../shared/ipc/content/sections-ipc";
 import { SUBMISSION_CAPSULE_BYTE_LIMIT } from "../../../../../shared/content/submission/submission";
 import { canonicalHash } from "../coordinator-values";
@@ -22,6 +23,17 @@ export class RemoteLedger {
   private executionAuthority: ((context: RemoteContext) => TrustedTurnAuthority) | null = null;
   constructor(private readonly ports: Ports) {}
   queue(chatId: string) { return this.ports.read(state => queuedProjection(state, chatId)); }
+  pauseQueue(context: RemoteContext, current: () => void) {
+    return this.ports.mutate(state => { current(); setSourceQueuePaused(state, context, true); });
+  }
+  releaseUnstartedQueueSteer(commandId: string) {
+    return this.ports.mutate((state, now) => {
+      if (state.steerIntents[commandId] || state.intentTombstones[commandId]) return;
+      releaseQueuedInput(state, commandId);
+      const receipt = state.controlReceipts[commandId];
+      if (receipt?.state === "prepared") { receipt.state = "not-dispatched"; receipt.updatedAt = now; }
+    });
+  }
   editQueue(command: import("@ai-chat/cloud-protocol/remote/model").RemoteCommand, context: RemoteContext, current: () => void) {
     return this.ports.mutate((state, now) => { current();
       const binding = state.remoteCiphertexts[command.commandId];
@@ -139,8 +151,9 @@ export class RemoteLedger {
       }
       const prior = state.submissionReservations[submission.intentId]?.remoteSubmission;
       if (prior && canonicalHash(prior) !== canonicalHash(remote)) throw new Error("REMOTE_COMMAND_PAYLOAD_CONFLICT");
+      if (context.queueExchange) claimQueuedInput(state, context, context.queueExchange);
       const reservation = reserveSubmission(state, { intentId: submission.intentId, conversationId: context.chatId,
-        submissionHash: remote.submissionHash, payload: { kind: "submission", value: submission } }, now);
+        submissionHash: remote.submissionHash, payload: { kind: "submission", value: submission }, replacesIntentId: context.queueExchange?.intentId }, now);
       reservation.remoteSubmission = remote;
       return reservation;
     });
@@ -162,6 +175,7 @@ export class RemoteLedger {
       if (winner && winner.state !== "applied") throw new Error("outcome-unknown");
       const receipt = controlReceiptSchema.parse({ ...input, state: winner ? "applied" : "prepared", result: winner ? "already-resolved" : null,
         resolvedBy: winner?.resolvedBy ?? input.resolvedBy, createdAt: original?.createdAt ?? now, updatedAt: now });
+      if (!winner && input.remote?.queueSteer) claimQueuedInput(state, input.remote, input.remote.queueSteer);
       state.controlReceipts[input.id] = receipt; return receipt;
     });
   }
@@ -169,6 +183,7 @@ export class RemoteLedger {
     return this.ports.mutate((state, now) => {
       const receipt = state.controlReceipts[id]; if (!receipt) throw new Error("REMOTE_CONTROL_UNAVAILABLE");
       if (receipt.state === "prepared") { receipt.state = result; receipt.result = result === "applied" ? "applied" : null; receipt.updatedAt = now; if (output) receipt.output = output; }
+      if (result === "not-dispatched") releaseQueuedInput(state, id);
       return receipt;
     });
   }

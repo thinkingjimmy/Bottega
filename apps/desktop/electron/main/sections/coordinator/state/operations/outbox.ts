@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the ledger v7 manual/steer schema and mutable LedgerState draft
- * [OUTPUT]: Provides durable preparation pins, atomic prepared-payload/sequence binding, ACK bookkeeping, Steer transitions and staging-owner resolution
+ * [OUTPUT]: Provides durable preparation pins, atomic prepared-payload/sequence binding, ACK bookkeeping, Steer transitions and staging-owner resolution Steer journaling atomically retires its original queued input; preparation refuses a claimed input.
  * [POS]: Manual/steer mutation unit of coordinator/state; RelayLedger wraps these calls with persistence and indexing
  */
 
@@ -15,6 +15,7 @@ import type { DeepReadonly } from "../readonly-ledger";
 import { installSubmissionCustody } from "../../submission/reservation";
 import type { PreparedManualTurn } from "../../admission/prepared-manual-turn";
 import { assertPreparedContentHash } from "../../admission/prepared/staging";
+import { transferQueuedInput } from "../../remote/queue-custody";
 
 export function stagingOwner(payload: unknown, fallback: string) {
   const directory =
@@ -27,7 +28,7 @@ export function stagingOwner(payload: unknown, fallback: string) {
 
 export function pinManualPreparation(state: LedgerState, intentId: string) {
   const intent = state.manualIntents[intentId];
-  if (!intent || intent.phase !== "queued" || intent.attempts.length) throw new Error("already-dispatched");
+  if (!intent || intent.phase !== "queued" || intent.queueClaim || intent.attempts.length) throw new Error("already-dispatched");
   intent.preparing = true;
   return intent;
 }
@@ -106,6 +107,8 @@ export function putSteerIntent(state: LedgerState, input: SteerIntent) {
     return existing;
   }
   state.steerIntents[intent.outboxRef] = intent;
+  const context = (intent.stagedSnapshot as PreparedManualTurn).remoteContext;
+  if (context?.queueSteer) transferQueuedInput(state, context, context.queueSteer, intent.createdAt);
   return intent;
 }
 
@@ -156,6 +159,8 @@ export function transferSteerToManual(
     state.manualIntents[manual.id] ??
     manualIntentSchema.parse({ ...manual, sequence: state.nextSequence++ });
   state.manualIntents[intent.id] = intent;
+  const remote = (steer.stagedSnapshot as PreparedManualTurn).remoteContext;
+  if (remote) intent.queueSource = remote;
   // 派生的 manual intent 与直接提交同权：必须同时安装 reservation/
   // outcome custody，否则 settle/恢复路径会踩到缺失的 reservation。
   installSubmissionCustody(state, intent, now);

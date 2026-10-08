@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on confirmed execution identity, the existing Home/lifecycle/Store owners and private file transport.
+ * [INPUT]: Depends on confirmed execution identity, the existing Home/lifecycle/Store owners, private file transport and optional completed-work progress.
  * [OUTPUT]: Prepares explicitly claimed native/imported Chats and acknowledges ready after canonical content and local files are verified.
  * [POS]: Shared local continuation driver; it never chooses an owner, starts an Agent or requires the prior backend to be installed.
  */
@@ -29,7 +29,7 @@ export type ProjectPreparationGate = { runExclusive<T>(task: () => Promise<T>): 
 type Ports = { userData: string; crypto(): FileCipherPort; config: CloudBuildConfig; scope: SyncScope; deviceId: string; chats: ChatStore; homes: ChatHomeService; projects: ProjectStore;
   attachments: AttachmentStore; journal: LifecycleIntentStore; gate: AdmissionGate; projectGate: ProjectPreparationGate;
   files: DesktopBlobStore; transport: Pick<AccountTransport, "query" | "mutate">; signal: AbortSignal; recovery?: Pick<RecoverySave, "save">;
-  current(): void; assertIdle(chatId: string): void; progress(phase: PreparationPhase): void; changed(): void };
+  current(): void; advanced?(): void; assertIdle(chatId: string): void; progress(phase: PreparationPhase): void; changed(): void };
 export class CloudChatMaterializer {
   private readonly header;
   constructor(private input: Ports) { const crypto = input.crypto(); this.header = { ...protocolHeader(input.config), expectedUserId: input.scope.userId,
