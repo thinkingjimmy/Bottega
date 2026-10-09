@@ -124,7 +124,7 @@
     {"path":"electron/main/apps/gui-build/native/linux/locator.ts","bytes":6985,"sha256":"sha256:99f0dcd458db12c6349e2613e25f66f84a04db386c7e784342b933b3e5b5c1d8"},
     {"path":"electron/main/apps/gui-build/native/linux/profile.ts","bytes":984,"sha256":"sha256:5f8c01fc9e3e99b66e6343c78f7fa3058f6553f6a6c08b8f2d42523d49c075c5"},
     {"path":"electron/main/apps/gui-build/native/linux/trust.ts","bytes":6006,"sha256":"sha256:5ad5d5e58465bc9d2a20affb3765d52bfecc99e0e98507fec5dc9c1c10724792"},
-    {"path":"electron/main/apps/gui-build/native/probe-control.ts","bytes":1214,"sha256":"sha256:51617ad8167d5d1a9984a80bf7dd2c2974f8bb5868617f3a4f3ef5b238dee0cf"},
+    {"path":"electron/main/apps/gui-build/native/probe-control.ts","bytes":1677,"sha256":"sha256:e6e336baf6e1393c8226ea17bcfedc2ebed4a6f3b62b651e4ba599cee7d11108"},
     {"path":"electron/main/apps/gui-build/pipeline/compiler.ts","bytes":31935,"sha256":"sha256:9cfc5b76df81e761d84c96cfbebaec5fa1b329d4c50ddc9a9f5272923438b185"},
     {"path":"electron/main/apps/gui-build/pipeline/dynamic-code-policy.ts","bytes":14508,"sha256":"sha256:120c88b300f8ef40e139e565181fcceb4789916edee1158767fcbda4726669e3"},
     {"path":"electron/main/apps/gui-build/pipeline/portable.ts","bytes":8857,"sha256":"sha256:9c11e0261ea07233f8e8418b5af4e4921d113ef1a3c34ec369cfcead317ba824"},
