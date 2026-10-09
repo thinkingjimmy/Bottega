@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the SurfaceResidence ledger, WindowRegistry, durable App Use switch fences, exact chat surfaces, and injected migration/publication ports
- * [OUTPUT]: Provides App Use residence fence capture/assertion, source revoke, target claim, and return-to-main focus orchestration
+ * [INPUT]: Depends on the SurfaceResidence ledger, WindowRegistry, durable App Use switch fences, exact chat surfaces, and injected migration/hydrated-target/publication ports
+ * [OUTPUT]: Provides App Use residence fence capture/assertion, source revoke, target claim, mutation-free hydrated-target confirmation, and return-to-main focus orchestration
  * [POS]: App Use surface residence owner; SurfaceWindowController delegates the residence saga while retaining generic window migration mechanics
  */
 
@@ -41,6 +41,7 @@ type Ports = Readonly<{
   assertAdmission: () => void;
   assertStudio: (context: TrustedRendererContext, appId: string) => void;
   isMigrating: (surface: SurfaceKey) => boolean;
+  isHydratedTarget: (windowId: string, surfaces: readonly SurfaceKey[]) => boolean;
   canClaim: (
     context: TrustedRendererContext,
     appId: string,
@@ -200,7 +201,14 @@ export class AppUseResidenceController {
           input.next.incarnationId
         )
       : null;
-    for (const surface of [appStudioSurface(appId), previous, next]) {
+    const studio = appStudioSurface(appId);
+    const nextResidence = next ? this.residence.get(next) : null;
+    if (
+      input?.previous === undefined && next && nextResidence &&
+      this.ports.isHydratedTarget(context.windowId, [studio, next]) &&
+      this.ports.canClaim(context, appId, input?.next, nextResidence)
+    ) return nextResidence;
+    for (const surface of [studio, previous, next]) {
       if (surface && this.ports.isMigrating(surface)) {
         throw new Error("Surface migration in progress; use-chat sync rejected");
       }
@@ -209,7 +217,6 @@ export class AppUseResidenceController {
     if (previous && !this.isResident(context, this.residence.get(previous))) {
       throw new Error("Window intent rejected for a surface resident elsewhere");
     }
-    const nextResidence = next ? this.residence.get(next) : null;
     if (
       nextResidence &&
       !this.ports.canClaim(context, appId, input?.next, nextResidence)

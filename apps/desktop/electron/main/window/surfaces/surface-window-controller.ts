@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on process-global renderer IPC, trusted WindowRegistry identities, exact App Studio route helpers, residence/migration state machines, durable App Use switch fences, canonical/durable-draft App-chat identity, and main-owned attachment/capability cleanup ports
+ * [INPUT]: Depends on process-global renderer IPC, trusted WindowRegistry identities, exact App Studio route helpers, residence/migration state machines with exact hydrated-target confirmation, durable App Use switch fences, canonical/durable-draft App-chat identity, and main-owned attachment/capability cleanup ports
  * [OUTPUT]: Provides surfaceWindowController for navigation-generation-fenced show, create/focus/reclaim/use-chat sync (a new App window loads only after its move has made it resident), assertStudioRead for App-window reads, exact App-window chat projections, capsule transfer with its image side channel, crash cleanup, a listener-ready, incarnation-bound pre-quit draft flush of every window, and quit reconciliation Guards App focus/open and closes its window through draft-preserving migration.
  * Broadcasts resume-drafts when quit is cancelled so every renderer can edit again.
  * [POS]: Window-surfaces policy root; quit stops before reclamation when a window has not confirmed its drafts, naming that window for recovery.
@@ -166,6 +166,8 @@ export class SurfaceWindowController {
         assertStudio: (context, appId) =>
           this.assertAppStudioMutation(context, appId),
         isMigrating: (surface) => this.migration.isMigrating(surface),
+        isHydratedTarget: (windowId, surfaces) =>
+          this.migration.isHydratedTarget(windowId, surfaces),
         canClaim: (context, appId, chat, residence) =>
           this.canClaimUseChat(context, appId, chat, residence),
       }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on SurfaceResidenceLedger CAS, a main-validated target route, and bounded SurfaceCapsuleV1 exchange ports
- * [OUTPUT]: Provides surfaceMigrationCoordinator with export→main-route normalization→CAS→hydrate→onClaimed (residences published)→source-retire ordering, pre-hydrate rollback, transaction fencing, and drain
+ * [OUTPUT]: Provides surfaceMigrationCoordinator with export→main-route normalization→CAS→hydrate→onClaimed (residences published)→source-retire ordering, exact hydrated-target confirmation, pre-hydrate rollback, transaction fencing, and drain
  * [POS]: Window surfaces core migration state machine; successful target hydrate is the no-rollback ownership point, while source retirement is cleanup
  */
 
@@ -67,8 +67,14 @@ export type SurfaceMigrationResult = Readonly<{
   targetRoute: string;
 }>;
 
+type HydratedTarget = Readonly<{
+  windowId: string;
+  residences: readonly SurfaceResidence[];
+}>;
+
 export class SurfaceMigrationCoordinator {
   private readonly active = new Map<SurfaceKey, Promise<SurfaceMigrationResult>>();
+  private readonly hydratedTargets = new Map<SurfaceKey, HydratedTarget>();
 
   constructor(
     private readonly residence: SurfaceResidenceLedger,
@@ -83,7 +89,9 @@ export class SurfaceMigrationCoordinator {
     }
     const operation = this.drive(input).finally(() => {
       for (const surface of surfaces) {
-        if (this.active.get(surface) === operation) this.active.delete(surface);
+        if (this.active.get(surface) !== operation) continue;
+        this.active.delete(surface);
+        this.hydratedTargets.delete(surface);
       }
     });
     for (const surface of surfaces) this.active.set(surface, operation);
@@ -100,6 +108,25 @@ export class SurfaceMigrationCoordinator {
 
   isMigrating(surface: SurfaceKey) {
     return this.active.has(surface);
+  }
+
+  isHydratedTarget(windowId: string, surfaces: readonly SurfaceKey[]) {
+    const first = surfaces[0];
+    if (!first) return false;
+    const target = this.hydratedTargets.get(first);
+    const operation = this.active.get(first);
+    if (!target || !operation || target.windowId !== windowId) return false;
+    return surfaces.every((surface) => {
+      if (
+        this.active.get(surface) !== operation ||
+        this.hydratedTargets.get(surface) !== target
+      ) return false;
+      const claimed = target.residences.find((item) => item.surface === surface);
+      if (!claimed) return false;
+      const current = this.residence.get(surface);
+      return current.windowId === claimed.windowId &&
+        current.claimRevision === claimed.claimRevision;
+    });
   }
 
   private async drive(input: SurfaceMigrationInput) {
@@ -166,6 +193,9 @@ export class SurfaceMigrationCoordinator {
       await this.restoreSource(input, transactionId, capsule);
       throw cause;
     }
+    // The target may confirm its carried chat as soon as claims are published, before source retirement completes.
+    const target = { windowId: input.targetWindowId, residences: claimed };
+    for (const residence of claimed) this.hydratedTargets.set(residence.surface, target);
     input.onClaimed?.(claimed);
     await this.ports.commitSource(
       input.sourceWindowId,
