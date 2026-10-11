@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on a single versioned, 1 MiB length-prefixed stdin compiler/probe request, a supervisor-owned live loopback control port, Node crypto/process primitives, the trusted GUI transform kernel, and OS sandbox authority supplied by the parent supervisor
- * [OUTPUT]: Emits one bounded compiler outcome or authority/resource probe report, including readable executable denial, observed Linux AppArmor profile and detached-session escape attempts, whose detached children it owns and reaps on every exit path; a macOS compiler exits when its supervisor disappears
+ * [OUTPUT]: Emits one bounded compiler outcome or authority/resource probe report, including readable executable denial, observed Linux AppArmor profile and detached-session escape attempts, whose detached children watch the compiler PID captured before spawn and are reaped on every observable exit path; a macOS compiler exits when its supervisor disappears
  * [POS]: apps/desktop/electron/main/workers; Explicit Electron main utility entry for compiled App GUI work; it never runs App-authored code, chooses filesystem/network authority, or outlives the processes its custody probe spawns
  */
 
@@ -83,14 +83,16 @@ async function runResourceProbe(kind: "rss" | "cpu" | "timeout", checkSupervisor
 }
 
 /* The custody probe spawns detached children on purpose: escaping the session is
-   the very authority the supervisor has to contain. Nothing in the OS ties their
-   lifetime to this process, so two independent reapers do it instead - each child
-   watches its own parent pid, and the probe kills what it spawned on every exit
-   path it can observe. */
+   the very authority the supervisor has to contain. Bind the watched parent before
+   spawn so a late-starting child cannot adopt init as its owner. Each child checks
+   that parent immediately and periodically; the probe also reaps its children
+   on every exit path it can observe. */
 const CUSTODY_CHILD_SCRIPT = [
-  "setInterval(() => {}, 1000);",
-  "const parent = process.ppid;",
-  "setInterval(() => { try { process.kill(parent, 0); } catch (error) { if (error.code === \"ESRCH\") process.exit(0); } }, 200);",
+  "const parent = Number(process.argv[1]);",
+  "if (!Number.isSafeInteger(parent) || parent <= 1) process.exit(1);",
+  "const check = () => { if (process.ppid !== parent) process.exit(0); try { process.kill(parent, 0); } catch (error) { if (error.code === \"ESRCH\") process.exit(0); } };",
+  "check();",
+  "setInterval(check, 200);",
 ].join("");
 
 /* A safety net, not a budget: the parent supervises this probe with a 2 s wall
@@ -121,7 +123,7 @@ async function runCustodyProbe(processCount: number) {
   }
   for (let index = 0; index < processCount + 2; index += 1) {
     try {
-      const child = spawn(process.execPath, ["-e", CUSTODY_CHILD_SCRIPT], {
+      const child = spawn(process.execPath, ["-e", CUSTODY_CHILD_SCRIPT, String(process.pid)], {
         detached: true,
         stdio: "ignore",
         windowsHide: true,

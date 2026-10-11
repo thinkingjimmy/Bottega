@@ -161,7 +161,7 @@
     {"path":"electron/main/apps/install/manifest-schema.ts","bytes":300,"sha256":"sha256:01b401e55df1ef26257fa5fd98eee1e926747552c7f76e29241a1ea7a20d1b1d"},
     {"path":"electron/main/apps/share/package/command-sources.ts","bytes":1789,"sha256":"sha256:46884c3187ef6159b35295bf99f50a0656c2474174f6a466cd4786ef87af222d"},
     {"path":"electron/main/apps/share/package/package-contract.ts","bytes":23326,"sha256":"sha256:ef6ac1ce359abc1f49845023772b9eeb737a88b9d3582c27fa242b8574a3df1a"},
-    {"path":"electron/main/workers/app-gui-compiler-entry.ts","bytes":10732,"sha256":"sha256:bfaecb5f48c082047f6e5cbd55287c4ecd6a6a8c9a28e3379d5e7f7969e50955"},
+    {"path":"electron/main/workers/app-gui-compiler-entry.ts","bytes":10956,"sha256":"sha256:8d62633067bab379b916668bee4e8c8e462366c2856efb55937dc3f9d8196a52"},
     {"path":"resources/app-gui-toolchain/native/linux-x64/NOTICE.txt","bytes":3388,"sha256":"sha256:229a402fddba5c81005950f28de162359383cba731f5b859b8f82a03c338bf01"},
     {"path":"resources/app-gui-toolchain/native/linux-x64/bwrap","bytes":72160,"sha256":"sha256:52231e1caf55bcbc667b269f49c63599a6f7db4767ae6a039580d0ff853db712"},
     {"path":"resources/app-gui-toolchain/native/linux-x64/bwrap.apparmor","bytes":311,"sha256":"sha256:b0b487a962997c7c6fc9d46e5e38c5521c068fea517f311926b0ec644d74010f"},
