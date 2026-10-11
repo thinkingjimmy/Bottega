@@ -1,17 +1,17 @@
 /**
- * [INPUT]: Typed startup failures, bundled desktop dialogs, renderer development identity and explicit SQLite rebuild ownership.
- * [OUTPUT]: Pre-renderer recovery with durable saves, development restart instructions and packaged relaunch.
+ * [INPUT]: Typed startup failures, shared locale negotiation/native catalog loading, bundled desktop dialogs, renderer development identity and explicit SQLite rebuild ownership.
+ * [OUTPUT]: Pre-renderer recovery with one initialized locale or coherent English fallback across the dialog, durable saves, development restart instructions and packaged relaunch.
  * [POS]: The composition root's failure boundary; no development-server dependency or diagnostic text in the page.
  */
 import { app, dialog } from "electron";
 import { devRendererUrl } from "../../window/security/frame-guard";
-import type { AppLocale } from "@ai-chat/ui/lib/locale";
+import { resolveAppLocale, type AppLocale } from "@ai-chat/ui/lib/locale";
 import { libraryErrorCode } from "../../library/errors";
 import { recoveryCopy, socketBudgetMessage } from "./copy";
 import { canRebuildFromFolder, preserveClosedDatabase } from "./sqlite";
 import { MainWindowUnavailableError } from "../../presence/lifecycle/main-window-readiness";
 import { UserDataSocketBudgetError } from "../../custody/socket-budget";
-import { translate } from "../../../../shared/i18n/native";
+import { loadNativeCatalog, translate } from "../../../../shared/i18n/native";
 import { startupPresentation } from "../dialogs/presentation";
 import { openDesktopDialog } from "../dialogs/surface/window";
 import { dialogFeedback, supportActions } from "../dialogs/surface/feedback";
@@ -39,9 +39,9 @@ async function finishRecovery(locale: AppLocale) {
   app.exit(0);
 }
 
-export async function showStartupRecovery(input: { error:Error; userData:string; libraryRoot:string | null; locale:string;
+async function showStartupRecovery(input: { error:Error; userData:string; libraryRoot:string | null; locale:AppLocale;
   closeDatabase():Promise<void>; library?:StartupRecoveryLibrary | null }) {
-  const locale = input.locale as AppLocale;
+  const locale = input.locale;
   if (input.library && libraryErrorCode(input.error)) {
     await recoverFolder({ error:input.error, library:input.library, userData:input.userData, locale });
     app.quit(); return;
@@ -84,7 +84,15 @@ export async function recoverStartupFailure(input: { error:Error; userData:strin
   if (input.quitting && input.error instanceof MainWindowUnavailableError) {
     console.info("[main] startup ended by quit before the main window was ready"); return;
   }
-  const retry = async () => { await input.closeDatabase(); await finishRecovery(input.locale as AppLocale); };
+  let locale = resolveAppLocale(input.locale);
+  try {
+    // Socket admission can fail before settings and the active catalog are initialized.
+    await loadNativeCatalog(locale);
+  } catch (cause) {
+    console.warn("[startup] recovery locale unavailable; using English", cause);
+    locale = "en";
+  }
+  const retry = async () => { await input.closeDatabase(); await finishRecovery(locale); };
   await showStartupRecovery({ error:input.error, userData:input.userData, libraryRoot:input.settings?.get().libraryRoot ?? null,
-    locale:input.locale, closeDatabase:input.closeDatabase, library:input.settings ? { settings:input.settings, retry } : null });
+    locale, closeDatabase:input.closeDatabase, library:input.settings ? { settings:input.settings, retry } : null });
 }
