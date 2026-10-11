@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Electron packaging, the shared development root, Node fs and the frozen legacy SDK digest verifier.
- * [OUTPUT]: Provides digest-verified in-memory legacy SDK serving, a ReactGrab injection renderer whose 685 KB of script and CSS stay resident as Buffers rather than JS strings, and the renderer-side injection script
+ * [INPUT]: Depends on Electron packaging, the shared development root, Node fs, pinned React Grab assets/public initialization API, and the frozen legacy SDK digest verifier.
+ * [OUTPUT]: Provides digest-verified legacy SDK serving and shared offline React Grab injection; trusted vendor bytes use system font fallback and explicit telemetry-free initialization while remaining resident as Buffers
  * [POS]: AppGateway frozen-asset leaf; the route authority owns admission and CSP while this module owns trusted byte custody
  */
 
@@ -15,6 +15,35 @@ import type { ReactGrabInjection } from "../base-gui/gateway-file-server";
 import { readVerifiedLegacyBaseGuiSdk } from "../gui-build/metadata";
 
 const DISABLED: ReactGrabInjection = { enabled: false, render: () => "" };
+const REACT_GRAB_FONT_IMPORT =
+  '@import url("https://fonts.googleapis.com/css2?family=Geist:wght@500&display=swap");';
+
+function prepareReactGrab(script: Buffer) {
+  const source = script.toString("utf8");
+  const start = source.indexOf(REACT_GRAB_FONT_IMPORT);
+  if (start < 0 || source.indexOf(REACT_GRAB_FONT_IMPORT, start + REACT_GRAB_FONT_IMPORT.length) !== -1) {
+    throw new Error("Unsupported React Grab font asset");
+  }
+  // This pinned shadow-root import has no public option; keep the bundled system font fallback.
+  const offlineSource = source.replace(REACT_GRAB_FONT_IMPORT, "");
+  return Buffer.from(`(() => {
+    if (window.__REACT_GRAB__) return;
+    const hadDisabled = Object.prototype.hasOwnProperty.call(window, "__REACT_GRAB_DISABLED__");
+    const disabled = window.__REACT_GRAB_DISABLED__;
+    window.__REACT_GRAB_DISABLED__ = true;
+    try {
+      ${offlineSource}
+    } finally {
+      if (hadDisabled) window.__REACT_GRAB_DISABLED__ = disabled;
+      else delete window.__REACT_GRAB_DISABLED__;
+    }
+    if (disabled) return;
+    const module = globalThis.__REACT_GRAB_MODULE__;
+    const api = module.init({ telemetry: false });
+    module.setGlobalApi(api);
+    window.dispatchEvent(new CustomEvent("react-grab:init", { detail: api }));
+  })();`);
+}
 
 /* ── 一份字节，一次驻留 ──────────────────────────────────────────
  * react-grab 的 script + CSS 是 685 KB。从前它们以四份 JS 字符串常驻：
@@ -43,7 +72,7 @@ export class GatewayFrozenAssets {
         readFile(join(root, "index.global.js")),
         readFile(join(root, "styles.css")),
       ]);
-      this.adoptReactGrab(script, style);
+      this.adoptReactGrab(prepareReactGrab(script), style);
     } catch (cause) {
       this.script = null;
       this.style = null;

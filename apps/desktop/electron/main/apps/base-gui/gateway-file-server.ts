@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical static/Base GUI roots, Node fs/path/streams, gateway MIME/CSP policy, and an on-demand ReactGrab injection renderer
- * [OUTPUT]: Provides contained no-follow static artifact delivery, Base GUI CSP delivery, HEAD handling, and nonce-bound non-Base HTML instrumentation
+ * [OUTPUT]: Provides contained no-follow static artifact delivery, Base GUI CSP delivery, HEAD handling, and nonce-bound non-Base HTML instrumentation that preserves injected asset bytes literally
  * [POS]: Base GUI gateway file-serving leaf; AppGateway owns route/admission while this module owns byte projection
  */
 
@@ -100,8 +100,9 @@ function injectReactGrab(
 ) {
   if (!assets.enabled) return html;
   const injection = assets.render(nonce);
+  // A replacement string would expand dollar sequences inside the injected JavaScript.
   return html.includes("</head>")
-    ? html.replace("</head>", `${injection}</head>`)
+    ? html.replace("</head>", () => `${injection}</head>`)
     : `${injection}${html}`;
 }
 
