@@ -64,7 +64,7 @@ Choose a prebuilt desktop release or run Bottega directly from source. Before la
 
 0.2.4 ships for **macOS on Apple silicon only**. Automatic updates are disabled for this prerelease; download and replace the app manually. Quit Bottega and back up your Bottega folder and application data before upgrading.
 
-This release keeps **protocol 16**. Update the computer that runs your Agents to 0.2.4 to receive the remote-control and sync fixes, then reload Bottega Web. No cloud-data reset, sync-password change or account-key replacement is required. See the [0.2.4 changelog](./docs/changelog/README.md#2026-10-11--v024) and [upgrade guide](./docs/getting-started/README.md#upgrading-to-024).
+This release keeps **protocol 16**. Update the computer that runs your Agents to 0.2.4 to receive the remote-control and sync fixes, then reload Bottega Web. No cloud-data reset, sync-password change or account-key replacement is required. See the [0.2.4 changelog](./docs/changelog/README.md#2026-10-12--v024) and [upgrade guide](./docs/getting-started/README.md#upgrading-to-024).
 
 The package has **ad-hoc signatures**, with no Developer ID signature or Apple notarization. Download the DMG or ZIP and `release-manifest.json` from the release page. Run `shasum -a 256` on the installer and compare the output with that installer's `sha256` in the manifest, then copy Bottega into `Applications`. See the [installation guide](./docs/getting-started/README.md#download-and-install) if macOS blocks the verified download.
 

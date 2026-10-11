@@ -63,7 +63,7 @@ Authenticate with the CLI provider before starting Bottega. Bottega never asks f
 
 This release keeps **protocol 16**. Update the computer that runs your Agents to 0.2.4 to receive the remote-control, reply-publication and sync fixes, then reload Bottega Web. Existing 0.2.3 clients use the same protocol; clients on protocol 15 or earlier still need to upgrade. No cloud-data reset, sync-password change or account-key replacement is required.
 
-Quit Bottega completely, back up your Bottega folder and application data, then install the verified 0.2.4 download. Replace the app in `Applications` and keep your existing Bottega folder. This macOS Apple silicon prerelease requires manual updates. It uses ad-hoc signatures, has no Developer ID signature or Apple notarization, and is excluded from GitHub Latest. See [download and install](#download-and-install) for checksum and installation steps, and the [0.2.4 changelog](../changelog/README.md#2026-10-11--v024) for the changes.
+Quit Bottega completely, back up your Bottega folder and application data, then install the verified 0.2.4 download. Replace the app in `Applications` and keep your existing Bottega folder. This macOS Apple silicon prerelease requires manual updates. It uses ad-hoc signatures, has no Developer ID signature or Apple notarization, and is excluded from GitHub Latest. See [download and install](#download-and-install) for checksum and installation steps, and the [0.2.4 changelog](../changelog/README.md#2026-10-12--v024) for the changes.
 
 ## Upgrading to 0.2.3
 

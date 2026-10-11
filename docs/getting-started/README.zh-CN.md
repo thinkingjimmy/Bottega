@@ -63,7 +63,7 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 本次继续使用**协议 16**。请将运行 Agent 的电脑更新到 0.2.4，以获得远程控制、回复发布与同步修复，然后重新加载 Bottega Web。0.2.3 客户端使用相同协议；协议 15 或更早的客户端仍需升级。无需清空云端数据、更改同步密码或替换账号密钥。
 
-请完全退出 Bottega，备份 Bottega 文件夹与应用数据，再安装已核验的 0.2.4 下载。替换 `Applications` 中的应用，继续使用原有 Bottega 文件夹。本次 Apple 芯片 macOS 预发布仅支持手动更新，使用 ad-hoc 签名，没有 Developer ID 签名，也未经 Apple 公证，不进入 GitHub Latest。校验与安装步骤见[下载与安装](#下载与安装)，功能变化见 [0.2.4 更新日志](../changelog/README.zh-CN.md#2026-10-11--v024)。
+请完全退出 Bottega，备份 Bottega 文件夹与应用数据，再安装已核验的 0.2.4 下载。替换 `Applications` 中的应用，继续使用原有 Bottega 文件夹。本次 Apple 芯片 macOS 预发布仅支持手动更新，使用 ad-hoc 签名，没有 Developer ID 签名，也未经 Apple 公证，不进入 GitHub Latest。校验与安装步骤见[下载与安装](#下载与安装)，功能变化见 [0.2.4 更新日志](../changelog/README.zh-CN.md#2026-10-12--v024)。
 
 ## 升级到 0.2.3
 
