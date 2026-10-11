@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, computer health/recovery and diagnostic export, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, computer health, diagnostics, Sync settings, consent, credential recovery, browser sign-in, approval and footer copy.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -219,13 +219,9 @@ export const cloudCopy = {
     "historyUnavailable": "クラウドのレコード変更履歴はまだ利用できません。",
     "original": "元の値",
     "source": "変更元のデバイス",
-    "readUpdating": "Base の更新中です。完全なデータを待っています…",
     "readError": "レコードを読み込めませんでした。下書きは保持されています。"
   },
   "recovery": {
-    "retrying": "一部のコンテンツを読み込めませんでした。{{seconds}} 秒後に再試行します…",
-    "stalled": "Bottega Cloud にまだ接続できません。",
-    "retryNow": "今すぐ再試行",
     "reload": "ページを再読み込み",
     "unavailable": "この項目は利用できません。"
   },
@@ -260,7 +256,6 @@ export const cloudCopy = {
   "cloudLogin": "Bottega にログイン",
   "verificationCodeNote": "確認コードは要求を識別するもので、ログイン認証情報ではありません。",
   "deletingDescription": "アカウントの削除中はクラウドへのアクセスが停止されます。",
-  "verifyingDescription": "ログインを確認しています。",
   "revokedDescription": "ログアウトしてから再度ログインしてください。",
   "restrictedCloudDescription": "このアカウントのクラウドへのアクセスは制限されています。",
   "title": "アカウント",
@@ -296,9 +291,7 @@ export const cloudCopy = {
     "notConfirmed": "パソコンの状態は未確認です。",
     "health": {"initializing": "リモート操作を準備中", "locked": "同期キーを利用できません", "recovering": "接続を復旧中", "memory-blocked": "プライバシー設定の確認待ち", "content-error": "リモート操作は可能 · コンテンツの確認が必要"},
     "label": "パソコン",
-    "refreshing": "パソコンの状態を再確認しています…",
     "offlineSince": "オフライン · {{when}}",
-    "none": "パソコンで Bottega にログインすると、そのサイドバーがここに表示されます。",
   },
   "devices": "デバイス",
   "lastSeen": "最終確認: {{when}}",
@@ -317,7 +310,6 @@ export const cloudCopy = {
   "loadFailed": "セッションを読み込めませんでした。再試行してください。",
   "actionFailed": "変更を保存できませんでした。接続を確認して再試行してください。",
   "signOutFailed": "サインアウトできませんでした。接続を確認して再試行してください。",
-  "skillsLoadFailed": "Skills を読み込めませんでした。接続を確認して再試行してください。",
   "conflictsLoadFailed": "確認が必要な変更を読み込めませんでした。接続を確認して再試行してください。",
   "openBaseFailed": "この Project の Base を開けませんでした。接続を確認して再試行してください。",
   "secureStorageDescription": "macOS が、このコンピューターのログイン情報を保護するためにキーチェーンへのアクセスを求める場合があります。",
@@ -376,9 +368,6 @@ export const cloudCopy = {
   "startAgain": "Bottega でもう一度開始してください。",
   "approvalDescription": "このコンピューターの Bottega で開始した要求のみ許可してください。確認コードがデスクトップのウィンドウと一致することを確かめてください。",
   "approvalFailed": "要求を更新できませんでした。再試行してください。",
-  "loading": {
-    "slow": "ワークスペースを開いています。通信が遅い場合は少し時間がかかります。"
-  },
   "status": {
     "deleted": "クラウドアカウントは削除されました",
     "account-switch-required": "アカウントの切り替えを確認して続行してください",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, computer health/recovery and diagnostic export, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, computer health, diagnostics, Sync settings, consent, credential recovery, browser sign-in, approval and footer copy.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -219,13 +219,9 @@ export const cloudCopy = {
     "historyUnavailable": "L’historique des enregistrements cloud n’est pas encore disponible.",
     "original": "Valeur d’origine",
     "source": "Appareil source",
-    "readUpdating": "Cette Base est en cours de modification. En attente des données complètes…",
     "readError": "Les enregistrements n’ont pas pu être chargés. Votre brouillon est conservé."
   },
   "recovery": {
-    "retrying": "Certains contenus n’ont pas pu être chargés. Nouvelle tentative dans {{seconds}} s…",
-    "stalled": "Toujours impossible de joindre Bottega Cloud.",
-    "retryNow": "Réessayer maintenant",
     "reload": "Recharger la page",
     "unavailable": "Cet élément n’est pas disponible."
   },
@@ -260,7 +256,6 @@ export const cloudCopy = {
   "cloudLogin": "Se connecter à Bottega",
   "verificationCodeNote": "Le code identifie la demande ; ce n’est pas un identifiant de connexion.",
   "deletingDescription": "L’accès au cloud est suspendu pendant la suppression de votre compte.",
-  "verifyingDescription": "Vérification de votre connexion.",
   "revokedDescription": "Déconnectez-vous puis reconnectez-vous pour continuer.",
   "restrictedCloudDescription": "L’accès au cloud est restreint pour ce compte.",
   "title": "Compte",
@@ -296,9 +291,7 @@ export const cloudCopy = {
     "notConfirmed": "L’état des ordinateurs n’est pas encore confirmé.",
     "health": {"initializing": "Préparation du contrôle à distance", "locked": "Clé de synchronisation indisponible", "recovering": "Rétablissement de la connexion", "memory-blocked": "En attente des paramètres de confidentialité", "content-error": "Contrôle à distance disponible · Contenu à vérifier"},
     "label": "Ordinateurs",
-    "refreshing": "Vérification de l’état des ordinateurs…",
     "offlineSince": "Hors ligne · {{when}}",
-    "none": "Connectez-vous à Bottega sur un ordinateur et sa barre latérale apparaîtra ici.",
   },
   "devices": "Appareils",
   "lastSeen": "Vu {{when}}",
@@ -317,7 +310,6 @@ export const cloudCopy = {
   "loadFailed": "Impossible de charger les sessions. Réessayez.",
   "actionFailed": "La modification n’a pas été enregistrée. Vérifiez votre connexion et réessayez.",
   "signOutFailed": "Impossible de se déconnecter. Vérifiez votre connexion et réessayez.",
-  "skillsLoadFailed": "Impossible de charger vos Skills. Vérifiez votre connexion et réessayez.",
   "conflictsLoadFailed": "Impossible de charger les modifications à vérifier. Vérifiez votre connexion et réessayez.",
   "openBaseFailed": "Impossible d’ouvrir la Base de ce Project. Vérifiez votre connexion et réessayez.",
   "secureStorageDescription": "macOS peut demander l’accès au trousseau pour protéger votre connexion sur cet ordinateur.",
@@ -376,9 +368,6 @@ export const cloudCopy = {
   "startAgain": "Recommencez dans Bottega.",
   "approvalDescription": "N’autorisez cette demande que si vous l’avez lancée dans Bottega sur cet ordinateur. Vérifiez que le code de vérification correspond à la fenêtre de l’application.",
   "approvalFailed": "Impossible de mettre à jour la demande. Réessayez.",
-  "loading": {
-    "slow": "Ouverture de votre espace de travail en cours. Une connexion lente peut prendre un moment."
-  },
   "status": {
     "deleted": "Votre compte cloud a été supprimé",
     "account-switch-required": "Confirmez le changement de compte pour continuer",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, the account computer strip, stale-status recovery, coarse health, diagnostic export and its no-computer sentence, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy, the Web gate's verifying/revoked/restricted next steps and its slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, computer health, diagnostics, Sync settings, consent, credential recovery, browser sign-in, approval and footer copy.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 export const cloudCopy = {
@@ -218,13 +218,9 @@ export const cloudCopy = {
     "historyUnavailable": "Cloud record history is not available yet.",
     "original": "Original value",
     "source": "Source device",
-    "readUpdating": "This Base is changing. Waiting for a complete update…",
     "readError": "Records could not be loaded. Your draft is kept."
   },
   "recovery": {
-    "retrying": "Some content couldn’t load. Retrying in {{seconds}} s…",
-    "stalled": "Still can’t reach Bottega Cloud.",
-    "retryNow": "Retry now",
     "reload": "Reload page",
     "unavailable": "This item is not available."
   },
@@ -259,7 +255,6 @@ export const cloudCopy = {
   "cloudLogin": "Sign in to Bottega",
   "verificationCodeNote": "The code identifies the request; it is not a login credential.",
   "deletingDescription": "Cloud access is paused while your account is being removed.",
-  "verifyingDescription": "Verifying your sign-in.",
   "revokedDescription": "Sign out and sign in again to continue.",
   "restrictedCloudDescription": "Cloud access for this account is restricted.",
   "title": "Account",
@@ -295,9 +290,7 @@ export const cloudCopy = {
     "notConfirmed": "Computer status has not been confirmed.",
     "health": {"initializing": "Preparing remote control", "locked": "Sync key unavailable", "recovering": "Recovering connection", "memory-blocked": "Waiting for privacy settings", "content-error": "Remote control available · Content needs attention"},
     "label": "Computers",
-    "refreshing": "Refreshing computer status…",
     "offlineSince": "Offline · {{when}}",
-    "none": "Sign in to Bottega on a computer and its sidebar appears here.",
   },
   "devices": "Devices",
   "lastSeen": "Last seen {{when}}",
@@ -316,7 +309,6 @@ export const cloudCopy = {
   "loadFailed": "Could not load sessions. Please retry.",
   "actionFailed": "The change could not be saved. Check your connection and try again.",
   "signOutFailed": "Could not sign out. Check your connection and try again.",
-  "skillsLoadFailed": "Could not load your Skills. Check your connection and try again.",
   "conflictsLoadFailed": "Could not load the changes to review. Check your connection and try again.",
   "openBaseFailed": "Could not open this Project’s Base. Check your connection and try again.",
   "secureStorageDescription": "macOS may request Keychain access to protect your sign-in on this computer.",
@@ -375,9 +367,6 @@ export const cloudCopy = {
   "startAgain": "Start again in Bottega.",
   "approvalDescription": "Only allow this request if you started it in Bottega on this computer. Check that the verification code matches the desktop window.",
   "approvalFailed": "The request could not be updated. Please retry.",
-  "loading": {
-    "slow": "Still opening your workspace. Slow connections can take a moment."
-  },
   "status": {
     "deleted": "Your cloud account has been deleted",
     "account-switch-required": "Confirm the account switch to continue",

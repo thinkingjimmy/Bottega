@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, computer health/recovery and diagnostic export, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, computer health, diagnostics, Sync settings, consent, credential recovery, browser sign-in, approval and footer copy.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -219,13 +219,9 @@ export const cloudCopy = {
     "historyUnavailable": "El historial de registros en la nube aún no está disponible.",
     "original": "Valor original",
     "source": "Dispositivo de origen",
-    "readUpdating": "Esta Base está cambiando. Esperando una actualización completa…",
     "readError": "No se pudieron cargar los registros. Se conserva tu borrador."
   },
   "recovery": {
-    "retrying": "Parte del contenido no se pudo cargar. Reintentando en {{seconds}} s…",
-    "stalled": "Todavía no se puede conectar con Bottega Cloud.",
-    "retryNow": "Reintentar ahora",
     "reload": "Recargar la página",
     "unavailable": "Este elemento no está disponible."
   },
@@ -260,7 +256,6 @@ export const cloudCopy = {
   "cloudLogin": "Iniciar sesión en Bottega",
   "verificationCodeNote": "El código identifica la solicitud; no es una credencial de acceso.",
   "deletingDescription": "El acceso a la nube está pausado mientras se elimina tu cuenta.",
-  "verifyingDescription": "Verificando tu inicio de sesión.",
   "revokedDescription": "Cierra sesión y vuelve a iniciarla para continuar.",
   "restrictedCloudDescription": "El acceso a la nube está restringido para esta cuenta.",
   "title": "Cuenta",
@@ -296,9 +291,7 @@ export const cloudCopy = {
     "notConfirmed": "El estado de los ordenadores aún no se ha confirmado.",
     "health": {"initializing": "Preparando el control remoto", "locked": "Clave de sincronización no disponible", "recovering": "Restableciendo la conexión", "memory-blocked": "Esperando la configuración de privacidad", "content-error": "Control remoto disponible · Revisar el contenido"},
     "label": "Ordenadores",
-    "refreshing": "Comprobando el estado de los ordenadores…",
     "offlineSince": "Sin conexión · {{when}}",
-    "none": "Inicia sesión en Bottega en un ordenador y su barra lateral aparecerá aquí.",
   },
   "devices": "Dispositivos",
   "lastSeen": "Visto {{when}}",
@@ -317,7 +310,6 @@ export const cloudCopy = {
   "loadFailed": "No se pudieron cargar las sesiones. Inténtalo de nuevo.",
   "actionFailed": "No se pudo guardar el cambio. Comprueba tu conexión e inténtalo de nuevo.",
   "signOutFailed": "No se pudo cerrar la sesión. Comprueba tu conexión e inténtalo de nuevo.",
-  "skillsLoadFailed": "No se pudieron cargar tus Skills. Comprueba tu conexión e inténtalo de nuevo.",
   "conflictsLoadFailed": "No se pudieron cargar los cambios por revisar. Comprueba tu conexión e inténtalo de nuevo.",
   "openBaseFailed": "No se pudo abrir la Base de este Project. Comprueba tu conexión e inténtalo de nuevo.",
   "secureStorageDescription": "macOS puede solicitar acceso al llavero para proteger tu inicio de sesión en este ordenador.",
@@ -376,9 +368,6 @@ export const cloudCopy = {
   "startAgain": "Empieza de nuevo en Bottega.",
   "approvalDescription": "Permite esta solicitud solo si la has iniciado en Bottega en este ordenador. Comprueba que el código de verificación coincide con la ventana de la aplicación.",
   "approvalFailed": "No se pudo actualizar la solicitud. Inténtalo de nuevo.",
-  "loading": {
-    "slow": "Seguimos abriendo tu espacio de trabajo. Con una conexión lenta puede tardar un momento."
-  },
   "status": {
     "deleted": "Tu cuenta en la nube se ha eliminado",
     "account-switch-required": "Confirma el cambio de cuenta para continuar",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Account/target capabilities, frozen first-message custody, original command settlement and host destination preparation/navigation.
- * [OUTPUT]: RemoteCreateChat and destination/context contracts: immediate user bubble, editable next draft and continuous Thinking through prepared route handoff; confirmed Stop/completion ends activity. Definite file refusals unlock the original files; pending attempts retain their custody. App Edit creation remains text only and follows an existing Edit Chat unsent.
+ * [OUTPUT]: RemoteCreateChat and destination/context contracts: immediate user bubble, editable next draft and continuous Thinking through prepared route handoff; confirmed Stop/completion ends activity. Definite file refusals unlock the original files; pending attempts retain their custody. An absent remote port shows disconnected feedback; a present pending subscription keeps loading. App Edit creation remains text only and follows an existing Edit Chat unsent.
  * [POS]: Shared creation form; each App owns a separate draft and attempt, account-fenced original IDs own recovery, and the created Chat owns upload retries and destination handoff.
  */
 import { useRemoteReferences } from "./composer/input/references";
@@ -226,7 +226,7 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
   /* Targets still arriving is not "sync is disconnected": the card waits until the account or the port has actually failed. */
   const syncDisconnected = remoteBlockedReason === copy.disconnected && !(targets.value === null && connected);
   const connectionLost = account.state === "offline" || targets.error;
-  const connectionLoading = !connectionLost && (computer === undefined || targets.value === null || target?.reason === "local-facts-pending");
+  const connectionLoading = Boolean(port) && !connectionLost && (computer === undefined || targets.value === null || target?.reason === "local-facts-pending");
   const connectionUnavailable = connectionLost || connectionLoading || Boolean(computer?.block?.replacesComposer);
   /* The computer is named by the sidebar, so this composer only speaks when it cannot take the message. */
   const block = computer?.block ?? null;

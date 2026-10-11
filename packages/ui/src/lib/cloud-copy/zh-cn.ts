@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, computer health/recovery and diagnostic export, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs guidance, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, computer health, diagnostics, Sync settings, consent, credential recovery, browser sign-in, approval and footer copy.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -219,13 +219,9 @@ export const cloudCopy = {
     "historyUnavailable": "云端暂不提供记录修改历史。",
     "original": "原值",
     "source": "来源设备",
-    "readUpdating": "此 Base 正在变化，等待完整更新…",
     "readError": "无法加载记录，已保留当前草稿。"
   },
   "recovery": {
-    "retrying": "部分内容未能加载，{{seconds}} 秒后重试…",
-    "stalled": "仍然无法连接 Bottega Cloud。",
-    "retryNow": "立即重试",
     "reload": "刷新页面",
     "unavailable": "此内容当前不可用。"
   },
@@ -260,7 +256,6 @@ export const cloudCopy = {
   "cloudLogin": "登录 Bottega",
   "verificationCodeNote": "核对码用于辨认此请求，不是登录凭据。",
   "deletingDescription": "账号删除期间，云端访问已暂停。",
-  "verifyingDescription": "正在验证你的登录。",
   "revokedDescription": "退出登录后重新登录即可继续。",
   "restrictedCloudDescription": "此账号的云端访问已受限。",
   "title": "账号",
@@ -296,9 +291,7 @@ export const cloudCopy = {
     "notConfirmed": "尚未确认电脑状态。",
     "health": {"initializing": "正在准备远控", "locked": "同步密钥不可用", "recovering": "正在恢复连接", "memory-blocked": "正在等待隐私设置确认", "content-error": "远控可用 · 部分内容需要处理"},
     "label": "电脑",
-    "refreshing": "正在重新确认电脑状态…",
     "offlineSince": "离线 · {{when}}",
-    "none": "在一台电脑上登录 Bottega 后，这里会出现它的侧栏。",
   },
   "devices": "设备",
   "lastSeen": "上次在线：{{when}}",
@@ -317,7 +310,6 @@ export const cloudCopy = {
   "loadFailed": "无法加载会话，请重试。",
   "actionFailed": "更改未能保存。请检查网络后重试。",
   "signOutFailed": "没能退出登录。请检查网络后重试。",
-  "skillsLoadFailed": "没能读取你的 Skills。请检查网络后重试。",
   "conflictsLoadFailed": "没能读取需要核对的改动。请检查网络后重试。",
   "openBaseFailed": "没能打开这个 Project 的 Base。请检查网络后重试。",
   "secureStorageDescription": "macOS 可能请求钥匙串授权，用于保护这台电脑上的登录信息。",
@@ -376,9 +368,6 @@ export const cloudCopy = {
   "startAgain": "请在 Bottega 中重新发起。",
   "approvalDescription": "仅允许你在此电脑的 Bottega 中发起的请求。请确认验证码与桌面窗口一致。",
   "approvalFailed": "无法更新此请求，请重试。",
-  "loading": {
-    "slow": "仍在打开你的工作区。网络较慢时可能需要一会儿。"
-  },
   "status": {
     "deleted": "云端账号已删除",
     "account-switch-required": "请确认切换账号后继续",

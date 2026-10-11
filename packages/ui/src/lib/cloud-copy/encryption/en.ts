@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Desktop setup and browser unlock product language.
- * [OUTPUT]: Reference encrypted-sync copy with immediate eight-character unlock validation, the twelve-character creation checklist, the review-expired and connection sentences, the browser gate's checking/unavailable/unsupported/lock-failed headings, and a closed five-language key type.
+ * [OUTPUT]: Reference encrypted-sync copy with immediate eight-character unlock validation, the twelve-character creation checklist, the review-expired and connection sentences, the browser gate's unavailable/unsupported/lock-failed headings, and a closed five-language key type.
  * [POS]: Shared password, local storage and recovery messages; no platform dependencies.
  */
 export const en = {
@@ -30,8 +30,6 @@ export const en = {
   cacheClearFailed: "The saved unlock key could not be removed. Retry to lock remembered access on this browser.",
   lock: "Lock this browser",
   locked: "Synced workspace is locked",
-  offlineTitle: "Connect to unlock your workspace",
-  offlineDescription: "Your browser must verify the account before it can unlock saved content. Your encrypted cache is kept.",
   unavailable: "Encrypted sync could not be checked. Please retry.",
   reviewExpired: "This review has expired. Scan again before confirming.", connectionFailed: "Your connection is unavailable. Encrypted sync will continue once you are back online.",
   retry: "Retry",
@@ -54,7 +52,6 @@ export const en = {
   "sync-operation-cancelled": "Unlocking was cancelled.",
   "sync-operation-busy": "Another encryption operation is running. Wait for it to finish or cancel it.",
   "sync-locked": "Unlock the synced workspace to continue.",
-  checkingDescription: "Looking up this account’s encrypted space.",
   unavailableTitle: "Encrypted sync could not be checked", unavailableDescription: "Retry to check again. Your sign-in is kept.",
   unsupportedTitle: "This browser can’t run encrypted sync", lockFailedTitle: "Lock did not finish",
   cancelledDescription: "Unlocking was cancelled. Enter your sync password to try again.",
