@@ -107,7 +107,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 ## Bottega Dock
 
 - On macOS 15 or later with Apple silicon, keep the Apps you build in Bottega, your other Apps, Finder, Downloads, the Trash, and an AI-limits ring per Agent in one Dock.
-- Enable it from Settings › Plugins › Dock. 0.2.0 supports coexistence with the system Dock; system Dock replacement is unavailable in this prerelease.
+- Enable it from Settings › Plugins › Dock. This prerelease supports coexistence with the system Dock; system Dock replacement is unavailable in this prerelease.
 - Choose the primary display, prefer an external display, or select a specific display, then place the Dock on the left, bottom, or right edge. Display and edge preferences stay on this computer.
 - Use the native glass appearance where supported, with a fallback background when it is unavailable. Turning the plugin off preserves your layout.
 - Keep the same end-to-end encrypted Dock layout on every computer in your account; simultaneous changes merge, and real conflicts ask you.
@@ -151,7 +151,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Rebuild conversations from the folder when the local Chat database cannot be opened, while the previous database is preserved.
 - Move the folder from Settings › General, including to another disk, with every saved path following it; or erase all of Bottega's data on this computer while cloud data stays in your account.
 - Keep a Bottega folder with the computer that published it: the same computer takes it back after a reinstall, a cleared data folder, or a new profile with nothing to confirm, and another computer is refused by name. A folder that has never synchronized opens anywhere.
-- Back up the Bottega folder and complete application data before changing versions. 0.2.0 retains existing cloud content and requires protocol 14; see the [upgrade guide](../getting-started/README.md#upgrading-to-020), including historical migration notes if you are upgrading from an older release.
+- Back up the Bottega folder and complete application data before changing versions. 0.2.4 retains existing cloud content and uses protocol 16; see the [upgrade guide](../getting-started/README.md#upgrading-to-024), including historical migration notes if you are upgrading from an older release.
 
 ## Bundled runtime and Agent boundaries
 
