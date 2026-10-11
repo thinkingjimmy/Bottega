@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared side-panel tablist, the device list's relative moment and host-projected computer facts.
- * [OUTPUT]: Provides ComputerSwitcher with confirmed presence/coarse health, refresh status, local retry/diagnostic actions, computerPresenceLabel and COMPUTER_PANEL_ID.
+ * [OUTPUT]: ComputerSwitcher, computerPresenceLabel and COMPUTER_PANEL_ID; optional showStatus hides health/freshness controls while preserving computer selection.
  * [POS]: The account's computer strip above the sidebar groups, shared by Cloud Web and the desktop; the host owns presence, selection and storage.
  */
 import { SidePanelTabs, type SidePanelTab } from "../workspace/side-panel/tabs";
@@ -28,7 +28,8 @@ export function computerPresenceLabel(computer: SwitchableComputer, copy: Comput
  */
 /* A phone row has width to scroll and fingers to serve: 44px pills, the selected one filled dark, one line that scrolls sideways. */
 const pills = "px-3 pb-2 [&_[role=tab]]:h-11 [&_[role=tab]]:rounded-full [&_[role=tab]]:px-4 [&_[role=tab]]:text-sm [&_[role=tab][aria-selected=true]]:bg-foreground [&_[role=tab][aria-selected=true]]:text-background";
-export function ComputerSwitcher({ computers, selected, onSelect, copy, locale, className, pendingLabel, recovery, diagnostics, variant = "strip" }: {
+export function ComputerSwitcher({ computers, selected, onSelect, copy, locale, className, pendingLabel, recovery, diagnostics, showStatus = true, variant = "strip" }: {
+  showStatus?: boolean;
   computers: readonly SwitchableComputer[];
   selected: string | null;
   onSelect(machineIdHash: string): void;
@@ -48,6 +49,7 @@ export function ComputerSwitcher({ computers, selected, onSelect, copy, locale, 
     {diagnostics && <button type="button" className="min-h-11 py-1 underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={diagnostics.export}>{diagnostics.label}</button>}
   </div>;
   if (computers.length < 2) {
+    if (!showStatus) return null;
     const computer = computers[0];
     const status = pendingLabel ?? (computer && (!computer.online || computer.statusLabel) ? computerPresenceLabel(computer, copy, locale) : undefined);
     return status || diagnostics || recovery ? <div className="px-3 py-1.5">
@@ -59,11 +61,11 @@ export function ComputerSwitcher({ computers, selected, onSelect, copy, locale, 
     const online = !pendingLabel && computer.online;
     return {
       key: computer.machineIdHash, label: computer.name, panelId: COMPUTER_PANEL_ID,
-      selected: computer.machineIdHash === selected, hint: `${computer.name} · ${presence}`,
+      selected: computer.machineIdHash === selected, hint: showStatus ? `${computer.name} · ${presence}` : computer.name,
       /* An offline tab carries its moment as well as its name, so it may take the whole row rather than lose the name. */
       widthClass: variant === "pills" ? "max-w-56" : online ? undefined : "max-w-full",
-      icon: online ? <span aria-label={presence} className="size-2 shrink-0 rounded-full bg-emerald-500" /> : null,
-      actions: online && !computer.statusLabel ? undefined : <span className="shrink-0 text-[10px] leading-none opacity-70">{presence}</span>,
+      icon: showStatus && online ? <span aria-label={presence} className="size-2 shrink-0 rounded-full bg-emerald-500" /> : null,
+      actions: !showStatus || online && !computer.statusLabel ? undefined : <span className="shrink-0 text-[10px] leading-none opacity-70">{presence}</span>,
       select: () => onSelect(computer.machineIdHash),
     };
   });

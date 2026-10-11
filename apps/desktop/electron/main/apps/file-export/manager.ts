@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on native destination selection, durable exact-path intents, Node file/hash custody, node:util's TextDecoder, active surface binding, and side-effect lifecycle ports, and statusError from main/errors
- * [OUTPUT]: Provides begin/write/finalize/cancel/surface-close/crash-recovery for file.export V1 with atomic dialog-slot admission, one-unacknowledged-chunk backpressure, streaming content validation, and 20 MiB integrity limits
+ * [OUTPUT]: Provides begin/write/finalize/cancel/surface-close/crash-recovery for file.export V1 with closure-fenced admission, bounded temporary basenames, one-unacknowledged-chunk backpressure, streaming validation and 20 MiB integrity limits.
  * [POS]: file-export Host authority; App runtimes never receive destination paths or reusable file handles
  */
 
@@ -91,7 +91,8 @@ type FileExportPorts = Readonly<{
 export class FileExportManager {
   private readonly intents: FileExportIntentStore;
   private readonly sessions = new Map<string, Session>();
-  private readonly pendingSurfaces = new Set<string>();
+  private readonly pendingSurfaces = new Map<string, { cancelled: boolean }>();
+  private readonly closingSurfaces = new Map<string, Promise<void>>();
   private readonly now: () => number;
 
   constructor(userData: string, private readonly ports: FileExportPorts) {
@@ -143,12 +144,14 @@ export class FileExportManager {
     if (
       this.sessions.size + this.pendingSurfaces.size >= MAX_GLOBAL ||
       this.hasSurface(input.binding.runtimeSurfaceId) ||
+      this.closingSurfaces.has(input.binding.runtimeSurfaceId) ||
       this.pendingSurfaces.has(input.binding.runtimeSurfaceId)
     ) {
       return { status: "declined", reason: "busy" };
     }
     const suggestedName = validateSuggestedName(request.suggestedName, request.mediaType);
-    this.pendingSurfaces.add(input.binding.runtimeSurfaceId);
+    const pending = { cancelled: false };
+    this.pendingSurfaces.set(input.binding.runtimeSurfaceId, pending);
     let file: FileHandle | null = null;
     let partialPath = "";
     let exportId = "";
@@ -157,11 +160,11 @@ export class FileExportManager {
         suggestedName,
         mediaType: request.mediaType,
       });
-      if (!destinationPath) return { status: "cancelled" };
+      if (!destinationPath || pending.cancelled) return { status: "cancelled" };
       exportId = randomUUID();
       partialPath = join(
         dirname(destinationPath),
-        `.${basename(destinationPath)}.bottega-${exportId}.partial`
+        `.bottega-${exportId}.partial`
       );
       this.ports.startPermit(input.permit);
       await this.intents.add({
@@ -173,7 +176,9 @@ export class FileExportManager {
         partialPath,
         createdAt: this.now(),
       });
+      if (pending.cancelled) throw exportError("FILE_EXPORT_SURFACE_INVALID");
       file = await open(partialPath, "wx", 0o600);
+      if (pending.cancelled) throw exportError("FILE_EXPORT_SURFACE_INVALID");
       const startedAt = this.now();
       const session: Session = {
         exportId,
@@ -288,12 +293,18 @@ export class FileExportManager {
     });
   }
 
-  async closeSurface(runtimeSurfaceId: string) {
-    await Promise.all(
+  closeSurface(runtimeSurfaceId: string) {
+    const current = this.closingSurfaces.get(runtimeSurfaceId);
+    if (current) return current;
+    const pending = this.pendingSurfaces.get(runtimeSurfaceId);
+    if (pending) pending.cancelled = true;
+    const closing = Promise.all(
       [...this.sessions.values()]
         .filter((session) => session.binding.runtimeSurfaceId === runtimeSurfaceId)
         .map((session) => this.cancel(session.exportId, "surface_closed"))
-    );
+    ).then(() => {}).finally(() => { this.closingSurfaces.delete(runtimeSurfaceId); });
+    this.closingSurfaces.set(runtimeSurfaceId, closing);
+    return closing;
   }
 
   async closeApp(appId: string) {

@@ -59,6 +59,12 @@ See the [features guide](../features/README.md) for the product model and its fo
 
 Authenticate with the CLI provider before starting Bottega. Bottega never asks for or imports that credential.
 
+## Upgrading to 0.2.4
+
+This release keeps **protocol 16**. Update the computer that runs your Agents to 0.2.4 to receive the remote-control, reply-publication and sync fixes, then reload Bottega Web. Existing 0.2.3 clients use the same protocol; clients on protocol 15 or earlier still need to upgrade. No cloud-data reset, sync-password change or account-key replacement is required.
+
+Quit Bottega completely, back up your Bottega folder and application data, then install the verified 0.2.4 download. Replace the app in `Applications` and keep your existing Bottega folder. This macOS Apple silicon prerelease requires manual updates. It uses ad-hoc signatures, has no Developer ID signature or Apple notarization, and is excluded from GitHub Latest. See [download and install](#download-and-install) for checksum and installation steps, and the [0.2.4 changelog](../changelog/README.md#2026-10-11--v024) for the changes.
+
 ## Upgrading to 0.2.3
 
 Cloud Sync uses protocol 16 in this release. Update every computer that uses cloud features to 0.2.3, then reload Bottega Web. Protocol 15 clients cannot reconnect after the coordinated service rollout. No cloud-data reset, sync-password change or account-key replacement is required. Quit Bottega completely, back up the Bottega folder and application data, then install the verified 0.2.3 download. Keep the existing folder. This prerelease requires manual updates and uses ad-hoc signatures without Apple notarization.
@@ -69,11 +75,11 @@ Cloud Sync now uses protocol 15. Update all computers that use cloud features to
 
 ## Download and install
 
-[Download 0.2.3](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.3) for **macOS on Apple silicon**. It is a prerelease and is excluded from GitHub Latest. Windows, Linux, and Android distribution are scheduled separately. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
+[Download 0.2.4](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.4) for **macOS on Apple silicon**. It is a prerelease and is excluded from GitHub Latest. Windows, Linux, and Android distribution are scheduled separately. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| macOS (Apple silicon) | `Bottega-0.2.3-arm64.dmg` or `Bottega-0.2.3-arm64-mac.zip` | Manual installation and updates. |
+| macOS (Apple silicon) | `Bottega-0.2.4-arm64.dmg` or `Bottega-0.2.4-arm64-mac.zip` | Manual installation and updates. |
 
 Apple Developer enrollment is pending. These packages use **ad-hoc signatures**, with **no Developer ID signature or Apple notarization**. Automatic updates are disabled: download each new version from the Releases page and replace the installed app manually.
 
@@ -81,7 +87,7 @@ Apple Developer enrollment is pending. These packages use **ad-hoc signatures**,
 2. Download the DMG or ZIP and `release-manifest.json` from the same release. Run the command below and manually compare its output with the matching installer's `sha256` in the manifest. Use the ZIP filename instead if you downloaded the ZIP:
 
 ```bash
-shasum -a 256 Bottega-0.2.3-arm64.dmg
+shasum -a 256 Bottega-0.2.4-arm64.dmg
 ```
 
 3. Open the DMG and drag Bottega into `Applications`, or extract the ZIP and copy the app there.

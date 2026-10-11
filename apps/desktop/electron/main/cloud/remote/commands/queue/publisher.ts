@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Durable coordinator changes, confirmed local execution heads and the active account connection.
- * [OUTPUT]: Publishes content-free accepted queue heads, including the transition to empty, and ignores ledger mutations that leave the queue unchanged. Queue revisions include preparation locks and durable source pauses, including empty queues.
+ * [OUTPUT]: Publishes content-free accepted queue heads with per-Chat failure isolation, including empty queues, preparation locks and durable source pauses. Unchanged ledger mutations do not rescan; failed Chats retry on a later wake.
  * [POS]: Background queue adapter independent of renderer lifetime and command intake retries.
  */
 import { protocolHeader, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
@@ -48,17 +48,22 @@ export class RemoteQueuePublisher {
     for (const pause of this.ports.ledger.read(state => state.remoteQueuePauses)) ids.add(pause.chatId);
     for (const id of this.published.keys()) ids.add(id);
     for (const chatId of ids) {
-      current(); const value = this.ports.ledger.remote.queue(chatId);
-      const row = await this.ports.store.sync.read(connection.scope, { type: "remote-admission", chatId }); current();
-      const head = row.type === "remote-admission" ? row.value?.execution?.head : null;
-      if (!head || head.ownerDeviceId !== this.ports.deviceId) { this.published.delete(chatId); continue; }
-      const stamp = `${head.chat.incarnationId}/${value.revision}`;
-      if (this.published.get(chatId) === stamp) continue;
-      const crypto = this.ports.crypto();
-      await this.ports.transport.mutate("remote/queue:publish", { ...protocolHeader(this.ports.config), expectedUserId: connection.scope.userId,
-        encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint }, connectionEpoch: connection.connectionEpoch,
-        chatId, incarnationId: head.chat.incarnationId, queue: { ...value, deviceId: this.ports.deviceId } }); current();
-      this.published.set(chatId, stamp);
+      try {
+        current(); const value = this.ports.ledger.remote.queue(chatId);
+        const row = await this.ports.store.sync.read(connection.scope, { type: "remote-admission", chatId }); current();
+        const head = row.type === "remote-admission" ? row.value?.execution?.head : null;
+        if (!head || head.ownerDeviceId !== this.ports.deviceId) { this.published.delete(chatId); continue; }
+        const stamp = `${head.chat.incarnationId}/${value.revision}`;
+        if (this.published.get(chatId) === stamp) continue;
+        const crypto = this.ports.crypto();
+        await this.ports.transport.mutate("remote/queue:publish", { ...protocolHeader(this.ports.config), expectedUserId: connection.scope.userId,
+          encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint }, connectionEpoch: connection.connectionEpoch,
+          chatId, incarnationId: head.chat.incarnationId, queue: { ...value, deviceId: this.ports.deviceId } }); current();
+        this.published.set(chatId, stamp);
+      } catch {
+        // An unavailable Chat must not hold later queues stale. Retry it on the next external wake.
+        current();
+      }
     }
     this.observed = signature;
   }

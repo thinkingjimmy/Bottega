@@ -1,15 +1,16 @@
 /**
- * [INPUT]: Depends on immutable command entries, receipt recovery actions and shared remote copy.
- * [OUTPUT]: One shared notice and recovery action for a confirmed delivery failure; normal and uncertain progress render no card.
+ * [INPUT]: Depends on immutable command entries, queue control classification, receipt recovery actions and shared remote copy.
+ * [OUTPUT]: One shared notice and recovery action for a confirmed message delivery failure; queue controls, normal and uncertain progress render no card.
  * [POS]: Shared delivery feedback; an unknown transport or execution never synthesizes success.
  */
 import { ProductFailureNotice } from "@ai-chat/ui/components/feedback/failure-notice";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { formatCopy } from "@ai-chat/ui/lib/workbench-copy/format";
+import { isQueueControl } from "@ai-chat/cloud-protocol/remote/queue";
 import { awaitingResubmit, type RemoteEntry, type RemoteCommandSession } from "../../../platform/remote/commands/session";
 import { handledElsewhereBlock } from "../composer/status";
 import type { RemoteCopy } from "../../../i18n/messages/remote";
-export const needsDeliveryRecovery = (entry: RemoteEntry, _computerUnavailable = false) => !entry.resubmittedAs && !awaitingResubmit(entry) &&
+export const needsDeliveryRecovery = (entry: RemoteEntry, _computerUnavailable = false) => !isQueueControl(entry.input.payload.kind) && !entry.resubmittedAs && !awaitingResubmit(entry) &&
   (Boolean(entry.rejected) || ["error", "expired", "rejected"].includes(entry.receipt?.state ?? ""));
 export function RemoteReceipts({ entries, copy, computer, reexecute, sendAsNew, sentAsNew, disabled, reexecuteDisabled }: {
   entries: RemoteEntry[]; session: RemoteCommandSession; copy: RemoteCopy; locale: string; disabled?: boolean; reexecuteDisabled?: boolean; reexecute(entry: RemoteEntry): void;
@@ -27,7 +28,7 @@ export function RemoteReceipts({ entries, copy, computer, reexecute, sendAsNew, 
     return <div key={entry.input.commandId} data-command-id={entry.input.commandId}>
       <ProductFailureNotice compact tone="danger" copy={{ title, explanation: explanation === title ? "" : explanation, resolution: "" }}>
         {(canReexecute || canSendAsNew) && <div className="flex flex-wrap gap-2 pt-1">
-          {canReexecute && <Button type="button" variant="outline" disabled={entry.busy || disabled || reexecuteDisabled} onClick={() => reexecute(entry)}>{copy.retry}</Button>}
+          {canReexecute && <Button type="button" variant="outline" disabled={entry.busy || disabled || reexecuteDisabled} onClick={() => reexecute(entry)} size="pill">{copy.retry}</Button>}
           {canSendAsNew && <Button type="button" variant="outline" disabled={entry.busy || disabled || reexecuteDisabled} onClick={() => sendAsNew!(entry)}>{copy.sendAsNew}</Button>}
         </div>}
       </ProductFailureNotice>

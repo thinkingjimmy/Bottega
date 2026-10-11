@@ -1,0 +1,100 @@
+diff --git a/dist/useStickToBottom.js b/dist/useStickToBottom.js
+--- a/dist/useStickToBottom.js
++++ b/dist/useStickToBottom.js
+@@ -43,6 +43,7 @@
+     const [isAtBottom, updateIsAtBottom] = useState(options.initial !== false);
+     const [isNearBottom, setIsNearBottom] = useState(false);
+     const optionsRef = useRef(null);
++    const viewport = useRef({ element: undefined, height: 0, observer: undefined });
+     optionsRef.current = options;
+     const isSelecting = useCallback(() => {
+         if (!mouseDown) {
+@@ -231,6 +232,10 @@
+             return;
+         }
+         const { scrollTop, ignoreScrollToTop } = state;
++        const height = scrollRef.current.clientHeight;
++        const clampedByViewport = state.isAtBottom && height > viewport.current.height &&
++            scrollTop >= scrollRef.current.scrollHeight - height;
++        viewport.current.height = height;
+         let { lastScrollTop = scrollTop } = state;
+         state.lastScrollTop = scrollTop;
+         state.ignoreScrollToTop = undefined;
+@@ -262,6 +267,11 @@
+                 setIsAtBottom(false);
+                 return;
+             }
++            // A taller viewport can clamp its old bottom without any user scroll.
++            // Preserve existing follow authority; never acquire it from proximity.
++            if (clampedByViewport && scrollTop < lastScrollTop) {
++                return;
++            }
+             const isScrollingDown = scrollTop > lastScrollTop;
+             const isScrollingUp = scrollTop < lastScrollTop;
+             if (state.animation?.ignoreEscapes) {
+@@ -302,6 +312,32 @@
+         }
+     }, [setEscapedFromLock, setIsAtBottom, state]);
+     const scrollRef = useRefCallback((scroll) => {
++        viewport.current.observer?.disconnect();
++        viewport.current.observer = undefined;
++        if (scroll) {
++            // Ref composition can detach and reattach the same DOM node on render.
++            // Its pending clamp still belongs to the previous viewport geometry.
++            if (viewport.current.element !== scroll) {
++                viewport.current.element = scroll;
++                viewport.current.height = scroll.clientHeight;
++            }
++            let previousHeight = viewport.current.height;
++            viewport.current.observer = new ResizeObserver(() => {
++                if (scroll !== scrollRef.current || scroll.clientHeight === previousHeight) {
++                    return;
++                }
++                previousHeight = scroll.clientHeight;
++                setIsNearBottom(state.isNearBottom);
++                // The viewport changes when the composer or surrounding panels resize.
++                // Keep manual escapes authoritative while following its new bottom.
++                scrollToBottom({
++                    animation: mergeAnimations(optionsRef.current, optionsRef.current.resize),
++                    wait: true,
++                    preserveScrollPosition: true,
++                });
++            });
++            viewport.current.observer.observe(scroll);
++        }
+         scrollRef.current?.removeEventListener("scroll", handleScroll);
+         scrollRef.current?.removeEventListener("wheel", handleWheel);
+         scroll?.addEventListener("scroll", handleScroll, { passive: true });
+@@ -326,11 +362,9 @@
+                 state.scrollTop = state.targetScrollTop;
+             }
+             setIsNearBottom(state.isNearBottom);
+-            if (difference >= 0) {
+-                /**
+-                 * If it's a positive resize, scroll to the bottom when
+-                 * we're already at the bottom.
+-                 */
++            // A replacement can shrink overall while leaving a gap below its anchor.
++            // Keep following an owned lock, but never acquire one from proximity.
++            if (difference >= 0 || state.isAtBottom) {
+                 const animation = mergeAnimations(optionsRef.current, previousHeight
+                     ? optionsRef.current.resize
+                     : optionsRef.current.initial);
+@@ -340,17 +374,6 @@
+                     preserveScrollPosition: true,
+                     duration: animation === "instant" ? undefined : RETAIN_ANIMATION_DURATION_MS,
+                 });
+-            }
+-            else {
+-                /**
+-                 * Else if it's a negative resize, check if we're near the bottom
+-                 * if we are want to un-escape from the lock, because the resize
+-                 * could have caused the container to be at the bottom.
+-                 */
+-                if (state.isNearBottom) {
+-                    setEscapedFromLock(false);
+-                    setIsAtBottom(true);
+-                }
+             }
+             previousHeight = height;
+             /**

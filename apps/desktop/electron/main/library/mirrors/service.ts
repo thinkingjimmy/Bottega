@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on complete saved history, incremental transcript IO, actual session prompt proofs, the export receipt ledger and Library/Chat custody owners.
+ * [INPUT]: Depends on complete saved history, no-follow streamed file hashes, incremental transcript IO, actual session prompt proofs, the export receipt ledger and Library/Chat custody owners.
  * [OUTPUT]: Exports settled content (and MIRROR_NOTICE_KEYS, the catalog key for each notice it raises), opens unchanged folders from receipts, replaces proven stale exports after a durable revision and preserves genuine divergent copies as ordinary Forks. A package Provider's Chat has no mirror this period: skipped by the shared chatSyncExclusion and marked handled (TASK-11 S3-b).
  * [POS]: Backup projection owner above SQLite; mirror failures never roll back an acknowledged Chat commit.
  */
@@ -7,7 +7,8 @@ import { chatSyncExclusion } from "../../../../shared/chat-agent/options";
 import { sessionAssistantHash, sessionBoundary } from "../sessions/boundary";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import { createHash } from "node:crypto";
-import { lstat, readFile, readdir } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import type { ChatStore } from "../../chats/chat-store";
@@ -45,6 +46,19 @@ async function readRegular(path: string, maxBytes: number) {
 async function regularFile(path: string) {
   const info = await lstat(path).catch(() => null);
   return info?.isFile() && !info.isSymbolicLink() ? info : null;
+}
+
+async function regularFileHash(path: string) {
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const before = await file.stat();
+    if (!before.isFile()) throw new Error("LIBRARY_FILE_INVALID");
+    const digest = createHash("sha256");
+    for await (const bytes of file.createReadStream({ autoClose: false })) digest.update(bytes);
+    const after = await file.stat();
+    if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) throw new Error("LIBRARY_FILE_CHANGED");
+    return digest.digest("hex");
+  } finally { await file.close(); }
 }
 
 export class ChatMirrorService {
@@ -234,7 +248,7 @@ export class ChatMirrorService {
     const unknown: string[] = [];
     let bytes = 0;
     for (const chatId of await this.chatDirectories(root)) {
-      if (await this.receipt(chatId) || this.input.chats.getMetadata(chatId)) continue;
+      if (this.input.chats.getMetadata(chatId) || await this.receipt(chatId)) continue;
       unknown.push(chatId);
       bytes += (await regularFile(join(libraryChatPath(root, chatId), "transcript.jsonl")))?.size ?? 0;
     }
@@ -319,11 +333,15 @@ export class ChatMirrorService {
   }
   private async receipt(chatId: string) {
     const saved = this.ledger.entry(chatId);
-    if (!saved) return null;
+    if (!saved?.headHash || !saved.transcriptHash) return null;
     try {
       const directory = libraryChatPath(this.input.library.requireRoot(), chatId);
       const [head, transcript] = await Promise.all([regularFile(join(directory, "chat.json")), regularFile(join(directory, "transcript.jsonl"))]);
-      return head && transcript?.size === saved.transcriptBytes ? saved : null;
+      if (!head || transcript?.size !== saved.transcriptBytes) return null;
+      const [headHash, contentHash] = await Promise.all([
+        regularFileHash(join(directory, "chat.json")), regularFileHash(join(directory, "transcript.jsonl")),
+      ]);
+      return headHash === saved.headHash && contentHash === saved.transcriptHash ? saved : null;
     } catch { return null; }
   }
   private unchanged(chatId: string, saved: MirrorExportEntry, settled: ReadonlySet<string>) {

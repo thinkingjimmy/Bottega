@@ -8,6 +8,8 @@ import type { BlobDescriptor } from "@ai-chat/cloud-protocol";
 import type { TranscriptSource } from "../../../platform/contracts";
 import type { ChatCopy } from "../../../i18n/copy";
 import { useSaveLink } from "@ai-chat/ui/lib/save-blob";
+import { Button } from "@ai-chat/ui/components/ui/button";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 type FileSource = Pick<TranscriptSource, "file">;
 export function TranscriptFile({ chatId, descriptor, name, source, copy, onOpenImage }: { chatId: string; descriptor: BlobDescriptor; name: string; source: FileSource; copy: ChatCopy; onOpenImage?(): void }) {
   const [saved, setView] = useState<{ source?: FileSource; identity?: string; url?: string; busy?: boolean; error?: boolean }>({});
@@ -26,6 +28,8 @@ export function TranscriptFile({ chatId, descriptor, name, source, copy, onOpenI
   return <div className="chat-file">{view.url ? <>
     {descriptor.mime.startsWith("image/") && <>{onOpenImage ? <button type="button" className="min-h-11" onClick={onOpenImage}><img src={view.url} alt={name} loading="lazy" /></button> : <a href={view.url} target="_blank" rel="noopener noreferrer"><img src={view.url} alt={name} loading="lazy" /></a>}</>}
     <a href={view.url} download={name} onClick={save.onClick}>{copy.download} · {name}</a>{save.failed && <p role="alert">{save.failed}</p>}
-  </> : <button type="button" onClick={() => { if (onOpenImage && descriptor.mime.startsWith("image/")) onOpenImage(); else void open(); }} disabled={view.busy} aria-busy={Boolean(view.busy)}>{view.busy ? copy.loading : `${copy.attachment} · ${name}`}</button>}
-    {view.error && <p role="alert">{copy.failedFile}</p>}</div>;
+  </> : view.error ? <div role="status" className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground"><span>{name} · {copy.failedFile}</span><Button type="button" variant="outline" size="pill" onClick={() => void open()}>{copy.retry}</Button></div>
+    : view.busy ? <div role="status" className="flex items-center gap-3 text-sm text-muted-foreground"><Spinner aria-hidden="true" />{copy.loading}</div>
+    : <button type="button" onClick={() => { if (onOpenImage && descriptor.mime.startsWith("image/")) onOpenImage(); else void open(); }}>{copy.attachment} · {name}</button>}
+    </div>;
 }

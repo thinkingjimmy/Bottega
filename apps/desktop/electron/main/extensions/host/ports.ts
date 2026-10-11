@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node crypto/path, the public port schemas and limits (@bottega/contracts/host/ports), durable JSON publication, the serial queue and the public RPC envelope
- * [OUTPUT]: Provides PackagePorts (and re-exports PACKAGE_PORT_LIMITS, isPackagePortOperation): per-package durable storage, contract-scoped
+ * [OUTPUT]: Provides PackagePorts (and re-exports PACKAGE_PORT_LIMITS, isPackagePortOperation): per-package durable storage with literal keys and no inherited entries, contract-scoped
  *           events, background holds with held/release inspection, and settings.get through an attached package-and-host reader. Settings
  *           changed events name only the package's own hosts; host identity lets the runtime preserve each process-start snapshot.
  * [POS]: SDK-06 ports for host packages; a package names keys and contracts, never another package, and everything it holds in memory is released when its host exits
@@ -117,12 +117,12 @@ export class PackagePorts {
     try {
       const parsed = JSON.parse(await readFile(path, "utf8")) as Store;
       if (parsed?.version !== 1 || !parsed.entries || typeof parsed.entries !== "object") throw new Error("storage file invalid");
-      return parsed;
+      return { ...parsed, entries: Object.assign(Object.create(null), parsed.entries) };
     } catch (cause) {
-      if (isErrnoCode(cause, "ENOENT")) return { version: 1, entries: {} };
+      if (isErrnoCode(cause, "ENOENT")) return { version: 1, entries: Object.create(null) };
       /* A torn file is kept as evidence; the package starts from empty instead of failing every call. */
       await quarantineDurableFile(path);
-      return { version: 1, entries: {} };
+      return { version: 1, entries: Object.create(null) };
     }
   }
   private read(caller: Caller) { return this.queue(caller).enqueue(() => this.load(this.path(caller))); }

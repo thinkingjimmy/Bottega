@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the ExcelJS Workbook loaded on first use (never at module evaluation), Node zlib, streamlined decompression, limited file reading, Base JSON business import, shared cellValue/value/XLSX issue, plus the shared statusError constructor from main/errors
- * [OUTPUT]: Provides BaseXlsxService, buildBaseXlsx, parseBaseXlsx/hasExcelTimeToken; Execute the atom report Pre-check, stabilize the issue code/0 Base data line, +2 on the renderer side is the worksheet line, UTC date-only/ISO datetime/cached formula, two-way mapping, type inference and actual decompression bytes/ZIP/dimensional budget
+ * [OUTPUT]: Provides BaseXlsxService, buildBaseXlsx, parseBaseXlsx/hasExcelTimeToken; preserves column and relation identities in cell notes, rejects ambiguous column mappings before commit, and validates dates, formulas, issues and workbook budgets.
  * [POS]: The main-only XLSX format of bases/io; The renderer does not load ExcelJS, complete success reports first through the wire schema, then repeats the CAS in the BaseJsonService transaction
  */
 
@@ -55,6 +55,9 @@ function loadWorkbook() {
 
 const XLSX_FILE_BYTE_LIMIT = 32 * 1024 * 1024;
 const XLSX_DIMENSION_CELL_LIMIT = 2_000_000;
+const ROW_ID_NOTE = "Bottega row ID";
+const COLUMN_ID_NOTE = "Bottega column ID: ";
+const RELATION_NOTE = "Bottega relation: ";
 
 type ZipBudgetLimits = {
   entries: number;
@@ -130,7 +133,9 @@ export async function buildBaseXlsx(snapshot: BaseSnapshot): Promise<Buffer> {
   workbook.creator = "Bottega";
   workbook.created = new Date(0);
   const sheet = workbook.addWorksheet(safeSheetName(snapshot.meta.name));
-  sheet.addRow(["id", ...snapshot.meta.columns.map((column) => column.name)]);
+  const headers = sheet.addRow(["id", ...snapshot.meta.columns.map((column) => column.name)]);
+  headers.getCell(1).note = ROW_ID_NOTE;
+  snapshot.meta.columns.forEach((column, index) => { headers.getCell(index + 2).note = COLUMN_ID_NOTE + column.id; });
   const context = createBaseCellContext({
     columns: snapshot.meta.columns,
     rows: snapshot.rows,
@@ -147,6 +152,9 @@ export async function buildBaseXlsx(snapshot: BaseSnapshot): Promise<Buffer> {
     ]);
     snapshot.meta.columns.forEach((column, index) => {
       const cell = output.getCell(index + 2);
+      if (column.type === "relation" && typeof row.values[column.id] === "string") {
+        cell.note = RELATION_NOTE + JSON.stringify({ rowId: row.values[column.id], label: cell.value });
+      }
       if (column.type === "date" && cell.value instanceof Date) {
         cell.numFmt = typeof values[index] === "string" && values[index].includes("T")
           ? "yyyy-mm-dd hh:mm:ss"
@@ -189,14 +197,23 @@ export async function parseBaseXlsx(buffer: Buffer,
   if (!sheet) throw statusError(400, "XLSX 至少需要一个工作表");
   inspectSheetBudget(sheet);
   const headers = readHeaders(sheet);
-  const idIndex = headers.findIndex((header) => header.toLowerCase() === "id");
+  const notedIdIndex = headers.findIndex((_, index) => cellNote(sheet.getRow(1).getCell(index + 1)) === ROW_ID_NOTE);
+  const idIndex = notedIdIndex >= 0 ? notedIdIndex : headers.findIndex((header) => header.toLowerCase() === "id");
   const sampleRows = worksheetRows(sheet).slice(0, 100);
-  const currentByName = new Map(
-    current.meta.columns.map((column) => [column.name.trim().toLocaleLowerCase(), column])
-  );
+  const usedColumns = new Set<string>();
   const mapped = headers.map((header, index) => {
     if (index === idIndex) return null;
-    const existing = currentByName.get(header.toLocaleLowerCase());
+    const note = cellNote(sheet.getRow(1).getCell(index + 1));
+    const identified = note.startsWith(COLUMN_ID_NOTE)
+      ? current.meta.columns.find(column => column.id === note.slice(COLUMN_ID_NOTE.length)) : undefined;
+    const exact = current.meta.columns.filter(column => column.name.trim() === header);
+    const candidates = identified ? [identified] : exact.length ? exact
+      : current.meta.columns.filter(column => column.name.trim().toLocaleLowerCase() === header.toLocaleLowerCase());
+    if (candidates.length > 1 || candidates[0] && usedColumns.has(candidates[0].id)) {
+      throw statusError(400, `XLSX column "${header}" has an ambiguous match. Give these columns unique names before importing.`);
+    }
+    const existing = candidates[0];
+    if (existing) usedColumns.add(existing.id);
     return existing ?? inferColumn(header, sampleRows.map((row) => row.getCell(index + 1)));
   });
   const columns = [
@@ -334,11 +351,25 @@ function importCellValue(cell: Cell, column: BaseColumn): BaseCellValue | undefi
     const text = String(value);
     return column.options?.find((option) => option.label === text || option.id === text)?.id ?? text;
   }
+  if (column.type === "relation") {
+    const note = cellNote(cell);
+    if (note.startsWith(RELATION_NOTE)) {
+      try {
+        const saved = JSON.parse(note.slice(RELATION_NOTE.length));
+        // An edited cell must not silently restore its former relation.
+        if (saved && saved.label === value && typeof saved.rowId === "string") return saved.rowId;
+      } catch { /* Ordinary workbooks can contain unrelated notes. */ }
+    }
+  }
   if (column.type === "location") {
     const match = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/.exec(String(value));
     return match ? { lat: Number(match[1]), lng: Number(match[2]) } : String(value);
   }
   return String(value);
+}
+
+function cellNote(cell: Cell): string {
+  return typeof cell.note === "string" ? cell.note : cell.note?.texts?.map(part => part.text).join("") ?? "";
 }
 
 function formatExcelDate(cell: Cell, value: Date) {

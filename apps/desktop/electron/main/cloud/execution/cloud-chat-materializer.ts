@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on confirmed execution identity, the existing Home/lifecycle/Store owners, private file transport and optional completed-work progress.
- * [OUTPUT]: Prepares explicitly claimed native/imported Chats and acknowledges ready after canonical content and local files are verified.
+ * [OUTPUT]: Prepares explicitly claimed Chats and acknowledges ready only after complete canonical content and local files are verified; a stale hydration snapshot requires explicit preparation retry.
  * [POS]: Shared local continuation driver; it never chooses an owner, starts an Agent or requires the prior backend to be installed.
  */
 import { setTimeout as delay } from "node:timers/promises";
@@ -78,7 +78,11 @@ export class CloudChatMaterializer {
     const downlink = new DesktopChatDownlink({ ...this.input, store: chats.sync, files: files.transfer, cache: files, current: () => this.active(), changed: this.input.changed,
       beforeReceipts: value => convergence?.reconcile(value, undefined, true) ?? Promise.resolve() });
     const stop = () => { void downlink.close(); }; signal.addEventListener("abort", stop, { once: true });
-    try { if (!await downlink.hydrate(head)) throw new Error("MIRROR_BODY_UNAVAILABLE"); }
+    try {
+      const result = await downlink.hydrate(head);
+      if (result === "stale-head") throw new Error("EXECUTION_CONTENT_CHANGED");
+      if (result !== "complete") throw new Error("MIRROR_BODY_UNAVAILABLE");
+    }
     finally { signal.removeEventListener("abort", stop); await downlink.close(); }
     await this.current(head);
     await this.input.projectGate.runExclusive(async () => {

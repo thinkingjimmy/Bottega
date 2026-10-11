@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on bounded Zod and Convex error-code diagnostics, approved binding, the four Store outboxes, artifact publication and formal entity/file publishers.
  * [OUTPUT]: Exposes current-run remote readiness only after the Library ownership receipt and local marker are confirmed, wakes content retry without suspending the account, claims this folder for this computer before offering a byte and stops the run for good when the server says it belongs to another, delivers deletions before uploads, runs the first Chat upload cheapest-first behind the Base-owning identities the Bases phase requires, sums the plaintext this pass delivers and every file transfer it starts into one uploaded figure, publishes a named Chat's metadata on its own fast lane, sends a Base's queued work as soon as a local commit queues it, completes recovered native body/import/Home publication through convergence and isolates entity failures within bounded lanes. U06-d: each App's build status is published as it changes and again after its surface in every pass.
- * [POS]: Main synchronization composition; an entity remains pending until every required content component is confirmed, and the byte figures belong to the initial upload alone. A pass holds at most one outbox window (2,000 rows, A-14) and counts the rest as pending.
+ * [POS]: Main synchronization composition; an entity remains pending until every required content component is confirmed, and the byte figures belong to the initial upload alone. Stale selected heads defer initial convergence without acknowledgement and wake catalog refresh. A pass holds at most one outbox window (2,000 rows, A-14), invalidates it after turn publication even on partial failure, and counts the rest as pending.
  */
 import { recoveryDiagnostics } from "../../runtime/diagnostics/timeline";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -443,7 +443,11 @@ export class DesktopSyncRun {
         await owners.chats.sync.mutate(this.scope, hashCanonical(["adoption-head", this.scope, head]), { type: "put-mirror-head", head });
         const download = new DesktopChatDownlink({ ...this.input, scope: this.scope, store: owners.chats.sync, files: this.files,
           cache: this.cache, current: () => this.assertCurrent(), changed: this.input.dataChanged, skipReceipts: true });
-        try { if (!await download.hydrate(head)) throw new Error("MIRROR_BODY_UNAVAILABLE"); }
+        try {
+          const result = await download.hydrate(head);
+          if (result === "stale-head") { this.downlink.refreshCatalog(); return; }
+          if (result !== "complete") throw new Error("MIRROR_BODY_UNAVAILABLE");
+        }
         finally { await download.close(); }
         await this.convergence.reconcile(head, item);
         completed++; this.input.changed({ completed, uploadedBytes: this.uploaded }); return;
@@ -461,7 +465,11 @@ export class DesktopSyncRun {
         await owners.chats.sync.mutate(this.scope, hashCanonical(["recovered-initial-head", this.scope, recovered]), { type: "put-mirror-head", head: recovered });
         const download = new DesktopChatDownlink({ ...this.input, scope: this.scope, store: owners.chats.sync, files: this.files,
           cache: this.cache, current: () => this.assertCurrent(), changed: this.input.dataChanged, skipReceipts: true });
-        try { if (!await download.hydrate(recovered)) throw new Error("MIRROR_BODY_UNAVAILABLE"); } finally { await download.close(); }
+        try {
+          const result = await download.hydrate(recovered);
+          if (result === "stale-head") { this.downlink.refreshCatalog(); return; }
+          if (result !== "complete") throw new Error("MIRROR_BODY_UNAVAILABLE");
+        } finally { await download.close(); }
         await this.convergence.reconcile(recovered, item);
         await this.downlink.open(recovered.chat.id);
       } else { this.assertCurrent(); await owners.chats.sync.mutate(this.scope, hashCanonical(["ack-initial", item.id, item.payload_digest]), {
@@ -503,7 +511,8 @@ export class DesktopSyncRun {
     await this.input.recorder?.flush().catch(isolate);
     // A stuck turn must not stop Home delivery, downlink reads or retirement for everything else.
     await this.turns.flush().catch(isolate);
-    if (generations.length) this.stale();
+    // Settlement can retire cached business rows even when another turn fails.
+    this.stale();
     await this.peripheral(async () => { await artifactRuntime()?.publisher.flush().catch(isolate); });
     const homeJobs = (await this.outbox()).filter(item => item.entity_kind === "home-snapshot").sort((a, b) => a.seq_or_revision - b.seq_or_revision || a.id.localeCompare(b.id));
     await forEachIsolated(homeJobs, 1, async item => { this.assertCurrent(); await this.homes.deliver(item, this.signal.signal); }, isolate);

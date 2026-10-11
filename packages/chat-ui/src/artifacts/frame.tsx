@@ -8,6 +8,7 @@ import type { ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-
 import { ARTIFACT_THEME_TOKENS } from "@ai-chat/cloud-protocol/artifacts/theme";
 import { ArtifactFollowUpGuard, artifactMessageSource } from "@ai-chat/cloud-protocol/artifacts/frame-security";
 import { Button } from "@ai-chat/ui/components/ui/button";
+import { LoadingState } from "@ai-chat/ui/components/feedback/loading-state";
 import { MessageResponse } from "@ai-chat/ui/components/ai-elements/message";
 import { useArtifactHost, type ArtifactLease } from "./context";
 import { artifactCopy } from "./copy";
@@ -106,15 +107,14 @@ export function ArtifactFrame({ fence, expanded = false }: { fence: ArtifactFenc
   const waiting = failure === "pending" && automatic < AUTOMATIC_RETRIES;
   const fullHeight = expanded ? height : Math.min(height, viewport * 2);
   return <div ref={root} tabIndex={-1} style={{ minHeight: 80, outlineOffset: 2 }}>
-    {failure ? waiting ? <div role="status" className="px-3 py-2 text-sm text-muted-foreground">{copy.syncing}</div> :
-      <div role="alert" className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">{failure === "pending" ? copy.syncPending : failure === "sync" ? copy.syncRequired : copy.unavailable}
-        <Button variant="outline" size="sm" type="button" className="relative touch-target-44" onClick={retry}>{copy.retry}</Button></div> :
+    {failure ? <LoadingState inline locale={host?.locale ?? "en"} failed={!waiting} retry={retry}
+      title={failure === "sync" ? copy.syncRequired : undefined} /> :
       fence.kind === "markdown" && markdown !== null ? <div style={{ maxHeight: expanded ? undefined : viewport * 2, overflow: "hidden" }}><MessageResponse>{markdown}</MessageResponse></div> :
       admitted && lease && fence.kind === "image" ? <img src={source} alt={fence.title} style={{ display: "block", width: "100%", maxHeight: expanded ? undefined : viewport * 2, objectFit: "contain" }} onError={() => setFailure("failed")} /> :
       admitted && lease && fence.kind !== "markdown" ? <iframe ref={frame} onError={() => setFailure("failed")} src={source} title={fence.title} sandbox={fence.kind === "pdf" ? undefined : lease.sandbox} referrerPolicy="no-referrer"
         allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'" scrolling={fence.kind === "pdf" ? "auto" : "no"}
         style={{ display: "block", border: 0, width: "100%", height: fence.kind === "pdf" ? "75vh" : fullHeight, background: "transparent" }} /> :
-      <div role="status" style={{ height: fullHeight }}>{copy.loading}</div>}
+      <div style={{ height: fullHeight }} className="flex"><LoadingState locale={host?.locale ?? "en"} /></div>}
     {blocked && <p role="status" className="px-3 text-sm text-muted-foreground">{copy.blocked}</p>}
     {!expanded && height > viewport * 2 && <Button variant="ghost" size="sm" type="button" className="relative touch-target-44" onClick={() => { void Promise.resolve(host?.open(fence, host?.followUp)).catch(() => setFailure("failed")); }}>{copy.expand}</Button>}
   </div>;

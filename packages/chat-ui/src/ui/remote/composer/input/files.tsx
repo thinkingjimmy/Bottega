@@ -1,11 +1,12 @@
 /**
  * [INPUT]: Retained browser files, processing/upload state, per-file support facts, locale and owner-controlled actions.
- * [OUTPUT]: Provides RemoteDraftFiles and draftFileFailure — the desktop's 80px image tiles (hover ×, sketch mark, lightbox with a shell-aware save) with Web state as an overlay: a placeholder with a spinner while the image is prepared (× cancels), dimmed while uploading, red with a retry mark when upload failed or expired (draftFileFailure names which), red with the reason when the image was rejected or must be picked again (draftFileProblem names it).
- * [POS]: Shared remote attachment strip for images; other files are chips inside the editor.
+ * [OUTPUT]: RemoteDraftFiles and draftFileFailure with image tiles, processing/upload indicators, named image/file failures and the same visible retry pill.
+ * [POS]: Shared remote attachment feedback; normal non-image files also retain their editor chips.
  */
 import { useState, type ComponentProps } from "react";
-import { ImageIcon, ImageOffIcon, PencilIcon, RotateCcw } from "lucide-react";
-import { AttachmentTile, AttachmentAction, AttachmentActions, AttachmentGroup } from "@ai-chat/ui/components/ui/attachment";
+import { ImageIcon, ImageOffIcon, PencilIcon } from "lucide-react";
+import { AttachmentTile, AttachmentGroup } from "@ai-chat/ui/components/ui/attachment";
+import { Button } from "@ai-chat/ui/components/ui/button";
 import { PromptInputHeader } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import { Dialog, DialogContent, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
@@ -30,7 +31,8 @@ export function RemoteDraftFiles({ draft, locale, disabled, unsupported, remove,
   const images = draft.files.filter(isImageFile), preview = draft.files.find(file => file.id === previewId) ?? null;
   const [lightbox, setLightbox] = useState<DraftFile | null>(null);
   const shown = preview ?? lightbox;
-  if (!images.length && !shown) return null;
+  const failedFiles = draft.files.filter(file => file.state === "failed");
+  if (!images.length && !shown && !failedFiles.length) return null;
   return <>
     {images.length > 0 && <PromptInputHeader className="pb-0" aria-label={copy.attach}><AttachmentGroup>
       {images.map(file => {
@@ -51,13 +53,14 @@ export function RemoteDraftFiles({ draft, locale, disabled, unsupported, remove,
           {processing && <span className="chat-remote-tile-progress" aria-hidden="true"><Spinner className="size-5" /></span>}
           {uploading && <span className="chat-remote-tile-progress" aria-hidden="true"><Spinner className="size-5" />
             <span className="chat-remote-tile-bar"><i style={{ width: `${Math.round(100 * (file.progress?.bytes ?? 0) / Math.max(1, file.progress?.total || file.file.size))}%` }} /></span></span>}
-          {state && <span role="status" className="sr-only">{state}</span>}
-          {failed && <AttachmentActions className="absolute right-1 bottom-1">
-            <AttachmentAction aria-label={copy.retry} size="icon-sm" variant="default" disabled={disabled} className="relative rounded-full border-background shadow-sm after:absolute after:-inset-2.5 after:content-['']" onClick={() => retry(file)}><RotateCcw /></AttachmentAction>
-          </AttachmentActions>}
+          {state && !failed && <span role="status" className="sr-only">{state}</span>}
         </AttachmentTile>;
       })}
     </AttachmentGroup></PromptInputHeader>}
+    {failedFiles.map(file => <div key={file.id} role="alert" className="flex flex-wrap items-center gap-3 px-3 py-2 text-xs text-muted-foreground" data-file-recovery={file.id}>
+      <span className="min-w-0 flex-1 break-words">{file.file.name} · {draftFileFailure(file, copy)}</span>
+      <Button type="button" variant="outline" size="pill" disabled={disabled} onClick={() => retry(file)}>{copy.retry}</Button>
+    </div>)}
     <Dialog open={Boolean(shown)} onOpenChange={open => { if (!open) { setLightbox(null); onPreview(null); } }}><DialogContent><DialogTitle>{shown?.file.name}</DialogTitle>
       {shown && isImageFile(shown) && <img src={shown.preview} alt={shown.file.name} className="max-h-[70dvh] w-full object-contain" />}
       {shown?.pluginSource && !editable(shown.id) && <p role="status">{t("sketch.versionRequired")}</p>}

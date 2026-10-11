@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, six Chat facades, account-fenced remote ports and public target deadlines.
- * [OUTPUT]: Provides stable target subscriptions, epoch/foreground/network reconnection (a foreground keeps the last targets) and server-clock presence re-rendered only at the next deadline (T20-9, no ticker).
+ * [OUTPUT]: Provides stable target subscriptions, epoch/foreground/online-event reconnection (revalidation keeps the last targets) and server-clock presence re-rendered only at the next deadline (T20-9, no ticker).
  * [POS]: Shared reactive composition; scoped target facts and server-clock estimates use one publication path.
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -79,8 +79,8 @@ export function useRemoteTargets(port: RemoteExecutionPort | undefined, chatId: 
   useEffect(() => {
     // A foreground re-reads and keeps showing what it knew; it never blanks the targets it is about to replace (T20-9).
     const resume = () => { if (document.visibilityState === "visible") { epochs.current = null; refresh(value => value + 1); setClock(Date.now()); } };
-    document.addEventListener("visibilitychange", resume); window.addEventListener("pageshow", resume);
-    return () => { document.removeEventListener("visibilitychange", resume); window.removeEventListener("pageshow", resume); };
+    document.addEventListener("visibilitychange", resume); window.addEventListener("pageshow", resume); window.addEventListener("online", resume);
+    return () => { document.removeEventListener("visibilitychange", resume); window.removeEventListener("pageshow", resume); window.removeEventListener("online", resume); };
   }, []);
   const current = state && state.port === port && state.chatId === chatId && state.projectId === projectId ? state : null, value = current?.value ?? null;
   const now = value ? current!.serverNow + Math.max(0, clock - current!.observedAt) : clock;
@@ -94,7 +94,7 @@ export function useRemoteTargets(port: RemoteExecutionPort | undefined, chatId: 
     return () => clearTimeout(timer);
   }, [deadline, now]);
   const items: RemoteTarget[] = value?.items.map(item => ({ ...item, online: item.online && item.offlineAt !== null && now < item.offlineAt,
-    lastSeenReason: item.offlineAt !== null && now >= item.offlineAt && (!item.lastSeenReason || item.lastSeenReason === "unknown") ? "network" : item.lastSeenReason })) ?? [];
+    lastSeenReason: item.lastSeenReason })) ?? [];
   items.sort((a, b) => Number(b.deviceId === value?.localDeviceId) - Number(a.deviceId === value?.localDeviceId) || a.name.localeCompare(b.name));
   return { value, items, now, error: current?.error ?? false, refresh: () => refresh(value => value + 1) };
 }

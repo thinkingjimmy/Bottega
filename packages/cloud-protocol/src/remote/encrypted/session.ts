@@ -1,7 +1,6 @@
 /**
  * [INPUT]: Fixed scoped transport, admitted crypto/clock and original caller-owned attempts.
- * [OUTPUT]: Shared preparation (an App Edit reservation's first message sealed against its opened receipt, U06 Q7-d), exact retry, request-bound
- *           execution replies and closed admission rejection.
+ * [OUTPUT]: Shared preparation with concurrent independent Chat/target reads (an App Edit reservation's first message sealed against its opened receipt, U06 Q7-d), mutation-first exact submission with read-only original-ID recovery on failure, request-bound execution replies and closed admission rejection only after confirmed receipt absence.
  * [POS]: Stateless remote adapter; ciphertext custody belongs to the existing UI attempt or native ledger.
  */
 import { queryProjectFiles } from "../workspace/client";
@@ -48,7 +47,11 @@ export class RemoteClientCodec {
     throw new Error("device-offline");
   }
   async prepare(input: RemoteCommandInput, signal?: AbortSignal) {
-    const head = await this.call(this.ports.transport.query("chats/metadata:head", { ...this.header(), chatId: input.chatId }));
+    // Ordinary commands need both independent snapshots. A reservation may not have a Chat yet, so its target scope waits for the head.
+    const [head, discoveredTarget] = await Promise.all([
+      this.call(this.ports.transport.query("chats/metadata:head", { ...this.header(), chatId: input.chatId })),
+      input.intent?.creation ? Promise.resolve(null) : this.target(input.targetDeviceId, input.chatId),
+    ]);
     const crypto = this.ports.crypto();
     if (!head && input.intent?.creation) {
       /* U06 Q7-d: an App Edit reservation's first message has no head until it materialises the Chat. It is sealed against the reservation's
@@ -61,7 +64,7 @@ export class RemoteClientCodec {
     }
     assertCrypto(head !== null && (input.intent !== undefined || head.remoteCreation === null));
     const opened = await this.call(openChatHeadForRequest(head, input.chatId, crypto, signal));
-    const target = await this.target(input.targetDeviceId, input.chatId);
+    const target = discoveredTarget ?? await this.target(input.targetDeviceId, input.chatId);
     return this.call(prepareRemoteCommand(input, opened, target, this.ports.header, crypto, this.ports.clock(), signal));
   }
   async submit(input: RemoteCommandInput, raw: FrozenRemoteCommand, signal?: AbortSignal) {
@@ -70,10 +73,16 @@ export class RemoteClientCodec {
     assertCrypto(frozen.encryptedSpace.keyPackageFingerprint === crypto.keyPackageFingerprint && frozen.plaintextHash ===
       hashRemoteCommand({ ...input, ...this.ports.header, sourceDeviceId: crypto.session.deviceId }));
     validateRemoteCommand(crypto.scope, frozen.command);
-    const prior = await this.call(this.ports.transport.query("remote/commands:get", { ...this.header(), commandId: input.commandId }));
-    if (prior) { assertCrypto(prior.command.ciphertextHash === frozen.command.ciphertextHash); return this.receipt(prior, signal); }
-    const receipt = await this.admission(this.ports.transport.mutate("remote/commands:submit", { ...this.header(), command: frozen.command }));
-    if ("rejected" in receipt) return receipt;
+    let receipt: EncryptedRemoteReceipt;
+    try { receipt = await this.call(this.ports.transport.mutate("remote/commands:submit", { ...this.header(), command: frozen.command })); }
+    catch (error) {
+      this.ports.current();
+      // A failed mutation may already exist, even when new work is now disabled. Only a successful absent read proves a definite refusal.
+      const prior = await this.call(this.ports.transport.query("remote/commands:get", { ...this.header(), commandId: input.commandId }));
+      if (prior) { assertCrypto(prior.command.ciphertextHash === frozen.command.ciphertextHash); return this.receipt(prior, signal); }
+      const rejected = remoteAdmissionRejection(error); if (rejected) return { rejected };
+      throw error;
+    }
     assertCrypto(receipt.command.ciphertextHash === frozen.command.ciphertextHash); return this.receipt(receipt, signal);
   }
   receipt(value: EncryptedRemoteReceipt, signal?: AbortSignal) { return this.call(openRemoteReceipt(value, this.ports.header, this.ports.crypto(), signal)); }

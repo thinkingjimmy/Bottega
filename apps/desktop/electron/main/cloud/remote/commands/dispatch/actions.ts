@@ -1,15 +1,13 @@
 /**
- * [INPUT]: Depends on exact owner/request identity, original Agent bridge handlers and the existing Steer outbox.
- * [OUTPUT]: Applies closed remote controls with immutable retry evidence and original deadlines after asynchronous validation; a Steer receipt carries `consumed`, or `transferred` once its next-turn intent is durable, and an image the next turn cannot take fails `input-unsupported`; a control this computer already settled for another controller reports the winning device with its already-resolved result. Queued Steer claims share the dispatch lock; Stop persists the authenticated source pause before cancellation.
+ * [INPUT]: Depends on exact owner/request identity, original Agent bridge handlers, exact-command execution authority and the existing Steer outbox.
+ * [OUTPUT]: Applies closed remote controls with immutable retry evidence and original deadlines after asynchronous validation; a Steer receipt carries `consumed`, or `transferred` once its next-turn intent is durable, and an image the next turn cannot take fails `input-unsupported`; a control this computer already settled for another controller reports the winning device with its already-resolved result. Queued Steer claims share the dispatch lock; Stop uses local request preflight, then fresh authority at source pause and both durable cancellation boundaries.
  * [POS]: apps/desktop/electron/main/cloud/remote/commands/dispatch; Intake control adapter; approvals, user input, cancellation and steering retain their original main handlers.
  */
 import { builtinAgent } from "../../../../../../shared/chat-agent/options";
 import type { RemoteWorkspaceService } from "../input/references";
 import { projectRichInput, richInputDisplayText } from "../../../../../../shared/content/rich/rich-input-projection";
-import { isRemoteTurnPayload, remoteExecutableClassification } from "@ai-chat/cloud-protocol/remote/model";
-import type { RemoteCipherPort } from "@ai-chat/cloud-protocol/remote/encrypted/client";
+import { isRemoteTurnPayload } from "@ai-chat/cloud-protocol/remote/model";
 import type { ServerClock } from "@ai-chat/cloud-protocol/continuity/clock";
-import { protocolHeader, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
 import type { RemoteCommand, RemoteCommandReport, RemoteAdmission, RemoteOutput } from "@ai-chat/cloud-protocol/remote/model";
 import type { AgentTurn, } from "../../../../backends/types";
 import type { AgentBridgeIpcHandlers } from "../../../../agent/bridge/bridge-ipc";
@@ -18,21 +16,19 @@ import type { RelayLedger } from "../../../../sections/coordinator/relay-ledger"
 import { canonicalHash } from "../../../../sections/coordinator/coordinator-values";
 import type { ChatStore } from "../../../../chats/chat-store";
 import type { ProjectStore } from "../../../../projects/store/project-store";
-import type { AccountTransport } from "../../../runtime/transport/transport";
 import type { TurnRegistry } from "../../../../agent/turns/turn/turn-registry";
 import type { SteerAdmission } from "../../../../../../shared/ipc/agent/agent-ipc";
 import { isAgentApprovalDecision } from "../../../../../../shared/ipc/agent/agent-ipc";
 import { validateSteerInput } from "../../../../agent/validation";
-import { remoteRequest } from "../transport-error";
 import { remoteText, remoteWorkspace } from "./submission";
 import type { TrustedManualTurnSubmission } from "../../../../../../shared/ipc/content/sections-ipc";
 import { backendRuntimeRegistry } from "../../../../backends";
 import { steerDerivedIntentId } from "../../../../sections/coordinator/admission/steer-projection";
 type TrustedSteerAdmission = SteerAdmission & Pick<TrustedManualTurnSubmission, "remoteInput">;
-type Ports = { references?: RemoteWorkspaceService | null; config: CloudBuildConfig; ledger: RelayLedger; store: ChatStore; projects: Pick<ProjectStore, "get">;
+type Ports = { references?: RemoteWorkspaceService | null; ledger: RelayLedger; store: ChatStore; projects: Pick<ProjectStore, "get">;
   queueMutation?<T>(mutate: (current: () => void) => Promise<T>): Promise<T>;
-  turns: Pick<TurnRegistry<AgentTurn>, "byRequest">; transport: Pick<AccountTransport, "query">;
-  crypto(): RemoteCipherPort; clock(): ServerClock; handlers(): AgentBridgeIpcHandlers; projectAvailable(projectId: string): boolean;
+  turns: Pick<TurnRegistry<AgentTurn>, "byRequest">;
+  clock(): ServerClock; handlers(): AgentBridgeIpcHandlers; projectAvailable(projectId: string): boolean;
   prepareFiles?(command: RemoteCommand, current: () => void): Promise<NonNullable<TrustedManualTurnSubmission["remoteInput"]>> };
 // Only durable Steer custody names the outcome: transferred means the next-turn intent is already committed.
 function steerOutput(ledger: RelayLedger, id: string): RemoteOutput | null {
@@ -67,21 +63,22 @@ export async function applyRemoteControl(command: RemoteCommand, context: Remote
     value.conversationId === entry.conversationId && value.incarnationId === entry.incarnationId && value.requestId === entry.requestId && value.generation === generation &&
     value.key === `recovery:${recovery.retryToken}` && value.state !== "not-dispatched")));
 
-  const validate = async () => {
+  const validateLocal = async () => {
     current();
-    const head = await remoteRequest(() => ports.transport.query("chats/metadata:head", { ...protocolHeader(ports.config), expectedUserId: context.scope.userId, encryptedSpace: { scope: ports.crypto().scope, keyPackageFingerprint: ports.crypto().keyPackageFingerprint }, chatId: context.chatId })); current();
-    if (!head || head.chat.id !== context.chatId || head.remoteCreation || head.chat.incarnationId !== context.incarnationId) throw new Error("chat-incarnation-mismatch");
-    if (head.ownerDeviceId !== context.targetDeviceId) throw new Error("not-owner");
-    if (!remoteExecutableClassification(head.chat.classification) || head.archivedAt !== null) throw new Error("chat-not-executable");
     const local = await ports.store.sync.read(context.scope, { type: "remote-admission", chatId: context.chatId }); current();
     if (local.type !== "remote-admission" || local.value?.execution?.head.ownerDeviceId !== context.targetDeviceId) throw new Error("not-owner");
     if (command.connectionEpoch !== context.connectionEpoch) throw new Error("connection-changed");
     if (ports.turns.byRequest(payload.requestId) !== entry || (!decided() && (entry.generation !== generation || entry.sourceTerminal))) throw new Error("request-not-active");
     await ports.clock().assertBeforeEffect(command.expiresAt); current();
+  };
+  const validate = async () => {
+    await validateLocal();
+    // Exact-command authority also validates the current cloud Chat; a separate head read adds no fence.
     const authority = ports.ledger.remote.authority(context);
     await authority.validate(); current(); authority.current();
   };
-  await validate();
+  // Cancellation authorizes its first effect under the queue lock or in the durable control adapter.
+  await (payload.kind === "cancel" ? validateLocal() : validate());
   if (payload.kind === "cancel" && payload.pauseQueue) {
     if (!ports.queueMutation) throw new Error("input-unsupported");
     await ports.queueMutation(valid => ports.ledger.remote.pauseQueue(context, valid));

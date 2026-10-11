@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on formal bounded native reads, verified private bodies and existing mirror/receipt transactions.
- * [OUTPUT]: Hydrates complete native/imported mirrors across restarts and reconciles owner-independent settled results, resuming receipts after the durable per-Chat settled prefix.
+ * [OUTPUT]: Hydrates native/imported mirrors with explicit complete, owner-wait and stale-head outcomes; reconciles settled receipts after the durable per-Chat prefix.
  * [POS]: Main downlink lifetime; incomplete bodies remain explicitly pending and local authority is never synthesized.
  */
 import { protocolHeader, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
@@ -17,11 +17,12 @@ import type { CloudAction } from "../../../chats/sqlite/cloud/protocol";
 import { TurnReceiptConsumer } from "../turn-receipt-consumer";
 import { hydrateImportedHistory } from "./imported";
 import type { DesktopBlobStore } from "../../files/store";
+export type ChatHydration = "complete" | "waiting" | "stale-head";
 export class DesktopChatDownlink {
   private get header() { const crypto = this.ports.crypto(); return { ...protocolHeader(this.ports.config), expectedUserId: this.ports.scope.userId,
     encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint } }; }
   private readonly controller = new AbortController();
-  private readonly flights = new Map<string, Promise<boolean>>();
+  private readonly flights = new Map<string, { signature: string; task: Promise<ChatHydration> }>();
   private readonly consumer: TurnReceiptConsumer;
   constructor(private readonly ports: { crypto(): FileCipherPort; config: CloudBuildConfig; scope: SyncScope; store: ChatSyncStore; files: Pick<EncryptedBlobTransfer, "readFile">;
     transport: Pick<AccountTransport, "query">; cache?: Pick<DesktopBlobStore, "read">; current(): void; changed(): void;
@@ -33,19 +34,20 @@ export class DesktopChatDownlink {
     this.current(); return this.ports.store.mutate(this.ports.scope, hashChatContent(["mirror-delivery", 3, this.ports.scope, action]), action);
   }
   hydrate(head: CloudChatHead) {
-    const previous = this.flights.get(head.chat.id); if (previous) return previous;
-    const flight = this.read(head); this.flights.set(head.chat.id, flight);
-    void flight.finally(() => { if (this.flights.get(head.chat.id) === flight) this.flights.delete(head.chat.id); }).catch(() => {}); return flight;
+    const signature = hashChatContent(head), previous = this.flights.get(head.chat.id);
+    if (previous) return previous.signature === signature ? previous.task : previous.task.then(() => { this.current(); return "stale-head" as const; });
+    const flight = { signature, task: this.read(head) }; this.flights.set(head.chat.id, flight);
+    void flight.task.finally(() => { if (this.flights.get(head.chat.id) === flight) this.flights.delete(head.chat.id); }).catch(() => {}); return flight.task;
   }
-  private async read(head: CloudChatHead) {
+  private async read(head: CloudChatHead): Promise<ChatHydration> {
     const { store, scope, transport } = this.ports; this.current();
     const cached = await store.read(scope, { type: "mirror-download", chatId: head.chat.id }); this.current();
     const complete = cached.type === "mirror-download" && cached.value?.complete && cached.value.bodyRevision === head.bodyRevision &&
       cached.value.head.chat.incarnationId === head.chat.incarnationId;
     if (!complete) {
       const native = await transport.query("chats/body/reads:head", { ...this.header, chatId: head.chat.id }); this.current();
-      if (native.state !== "ready") return false;
-      if (native.bodyRevision !== head.bodyRevision) throw new Error("MIRROR_HEAD_CHANGED");
+      if (native.state !== "ready") return "waiting";
+      if (native.bodyRevision !== head.bodyRevision) return "stale-head";
     }
     const begin = await this.mutate({ type: "begin-mirror-body", head });
     if (begin.result.type !== "begin-mirror-body") throw new Error("MIRROR_DOWNLOAD_UNAVAILABLE");
@@ -78,10 +80,10 @@ export class DesktopChatDownlink {
       }
       await this.mutate({ type: "complete-mirror-body", chatId: head.chat.id, bodyRevision: head.bodyRevision, beforeSeq }); this.current(); this.ports.changed();
     }
-    if (!await hydrateImportedHistory({ ...this.ports, signal: this.controller.signal }, head)) return false;
+    if (!await hydrateImportedHistory({ ...this.ports, signal: this.controller.signal }, head)) return "waiting";
     await this.ports.afterBody?.(head); this.current();
     await this.ports.beforeReceipts?.(head); this.current();
-    if (this.ports.skipReceipts) return true;
+    if (this.ports.skipReceipts) return "complete";
     /* A settled receipt never changes, so the contiguous settled prefix this device has installed is not read again
        (OPT-10 / A-02): a hydrate with nothing new asks for one receipts page and downloads no body. The cursor moves
        only here, past receipts read in seq order, and stops at the first one that is open or was not installed. */
@@ -95,9 +97,9 @@ export class DesktopChatDownlink {
         if (await this.consumer.consume(receipt) && contiguous) prefix = receipt.assistantSeq; else contiguous = false;
       }
       if (prefix > written) { await this.mutate({ type: "advance-receipt-cursor", chatId: head.chat.id, incarnationId: head.chat.incarnationId, throughSeq: prefix }); written = prefix; }
-      if (page.complete) return true;
+      if (page.complete) return "complete";
       if (page.cursor === null || page.cursor <= afterSeq) throw new Error("TURN_RECEIPT_CURSOR_INVALID"); afterSeq = page.cursor;
     }
   }
-  async close() { this.controller.abort(new Error("DOWNLINK_CLOSED")); await Promise.allSettled(this.flights.values()); }
+  async close() { this.controller.abort(new Error("DOWNLINK_CLOSED")); await Promise.allSettled([...this.flights.values()].map(flight => flight.task)); }
 }

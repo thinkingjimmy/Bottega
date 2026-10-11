@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on main-owned binding, bounded event/replacement capture, the ledger and Chat SQLite facade.
- * [OUTPUT]: Persists immutable live batches and ledger evidence, recovering incomplete frames independently of transport pause; per-turn failures do not block unrelated captures; an explicit wake during capture drains a bounded follow-up round in the same flight; a capture buffer lives only while its live-turn row waits or the registry holds its turn.
+ * [INPUT]: Depends on main-owned binding, bounded event/replacement capture, the ledger, Chat SQLite facade and opt-in closed-code capture diagnostics.
+ * [OUTPUT]: Persists immutable live batches and ledger evidence, recovering incomplete frames independently of transport pause; per-turn failures do not block unrelated captures and can emit fixed phase/code diagnostics without changing retries; an explicit wake during capture drains a bounded follow-up round in the same flight; a capture buffer lives only while its live-turn row waits or the registry holds its turn.
  * [POS]: Local capture lifetime is independent of transport; account identity and cleanup fences guard every write.
  */
 import { recoveryDiagnostics } from "../runtime/diagnostics/timeline";
+import { reportCaptureFailure, type CapturePhase } from "../runtime/diagnostics/capture";
 import type { CloudBuildConfig } from "@ai-chat/cloud-protocol";
 import { LIVE_TURN_LIMITS } from "@ai-chat/cloud-protocol/turns/live";
 import type { TurnRegistry } from "../../agent/turns/turn/turn-registry";
@@ -75,19 +76,26 @@ export class LocalTurnRecorder {
     for (const item of items.filter(item => item.kind === "live-turn")) {
       // Retain even an unreadable row's buffer until its source can be recovered.
       kept.add(item.entity_id);
+      let phase: CapturePhase = "source";
       try {
       assertCurrent(); const admission = localTurnAdmissionSchema.parse((await readOutboxSource(store.sync, scope, item)).payload);
       kept.add(admission.turnId);
+      phase = "receipt";
       const existing = await store.sync.read(scope, { type: "turn-receipt", turnId: admission.turnId });
       if (existing.type === "turn-receipt" && existing.value?.settlementState === "settled") { this.buffered.delete(admission.turnId); continue; }
+      phase = "buffer";
       const checkpoints = new ChatDeliveryCheckpoints(store.sync, scope, item), buffer = this.buffer(admission.turnId);
+      phase = "progress";
       const progress = await store.sync.read(scope, { type: "turn-delivery", id: item.id });
       if (progress.type !== "turn-delivery") throw new Error("TURN_DELIVERY_UNAVAILABLE");
+      phase = "buffer";
       const snapshot = turns.attachSnapshot(admission.chat.id);
       if (!buffer.initialized) {
         let confirmedTerminal = false;
         if (progress.value.highSeq > 0) {
+          phase = "checkpoint-read";
           const last = await checkpoints.get(`turn-chunk:${progress.value.highSeq}`);
+          phase = "buffer";
           if (last?.kind === "turn-chunk") {
             if (last.chunk.events.some(event => event.type === "terminal")) { buffer.confirmedTerminal(); confirmedTerminal = true; }
             const ending = last.chunk.events.at(-1);
@@ -101,12 +109,15 @@ export class LocalTurnRecorder {
       if (!buffer.terminal && terminal) buffer.append({ type: "terminal", terminal });
       let highSeq = progress.value.highSeq;
       for (let chunk = buffer.next(highSeq); chunk; chunk = buffer.next(highSeq, false)) {
-        assertCurrent(); await checkpoints.save({ kind: "turn-chunk", chunk }); buffer.acknowledge(chunk); highSeq = Math.max(highSeq, chunk.seq);
+        phase = "checkpoint-write";
+        assertCurrent(); await checkpoints.save({ kind: "turn-chunk", chunk });
+        phase = "buffer"; buffer.acknowledge(chunk); highSeq = Math.max(highSeq, chunk.seq);
       }
       const live = turns.liveEntries().some(entry => entry.conversationId === admission.chat.id && entry.requestId === admission.turnId && !entry.effectiveTerminal);
+      phase = "handoff";
       assertCurrent(); await transferTurnEvidence(ports, admission, live);
       recoveryDiagnostics.record({ stage: "capture", code: "progress", objectId: admission.turnId, progress: highSeq });
-      } catch (error) { recoveryDiagnostics.record({ stage: "capture", code: "failed", objectId: item.entity_id }); isolate(error); }
+      } catch (error) { reportCaptureFailure(phase, error); recoveryDiagnostics.record({ stage: "capture", code: "failed", objectId: item.entity_id }); isolate(error); }
     }
     /* A buffer lives while its live-turn row waits or the registry still holds its turn (released 5 minutes after the end).
        Settlement deletes the row in the same transaction as the receipt, and relay, App and unsynced turns never get one,

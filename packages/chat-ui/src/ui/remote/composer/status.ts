@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the account's computer list, confirmed remote targets, the chat head's preparation facts, the host's reason remote control cannot be used and remote copy.
- * [OUTPUT]: Provides draftBudget (text over its limit, or references too large for one command), ownerPresence (with the last-seen moment), ownerBlock (an offline owner named with why and when it went dark), ownerCommandBlock and handledElsewhereBlock (why the owning computer cannot take the next message or carry out a command, and the answer when another controller got there first — presence from the account subscription, Project facts from the chat's target), readOnlyGate (the read-only card for an imported chat or a revoked computer), sendAction and the draft budget label.
- * [POS]: Pure presentation rules shared by creation and conversation; both name the computer that owns the chat, and nothing here submits or moves one.
+ * [INPUT]: Account computer presence/health, confirmed targets, preparation facts, host access restrictions and shared remote/connection copy.
+ * [OUTPUT]: Draft budgets, owner presence, temporary composer-cover decisions, permanent read-only gates, command restrictions and send actions.
+ * [POS]: Pure rules for creation and conversation; temporary covers never clear drafts or create commands.
  */
 import { computerOf, computerOnline, type CloudComputer } from "@ai-chat/cloud-protocol";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
@@ -9,10 +9,10 @@ import { handledElsewhere, REMOTE_LIMITS, type RemoteCommandReceipt, type Remote
 import type { RemoteReference } from "@ai-chat/cloud-protocol/remote/input/references";
 import { remoteDraftBytes, REMOTE_COMMAND_PLAINTEXT_BYTES } from "@ai-chat/cloud-protocol/remote/encrypted/client";
 import { utf8Length } from "@ai-chat/cloud-protocol/chats/content/parts";
-import { relativeMoment } from "@ai-chat/ui/components/account/moment";
+import { computerCopy } from "@ai-chat/ui/components/feedback/computer-copy";
 import { backendName, type RemoteCopy } from "../../../i18n/messages/remote";
 /** The owning computer as the account's computer list reports it: presence never comes from a per-chat read. */
-export type OwnerPresence = { name: string; online: boolean; protocolVersion: number; lastSeenReason: CloudComputer["lastSeenReason"]; lastSeenAt: number | null };
+export type OwnerPresence = { name: string; online: boolean; protocolVersion: number; lastSeenReason: CloudComputer["lastSeenReason"]; lastSeenAt: number | null; health?: CloudComputer["remoteHealth"] };
 /**
  * Which computer owns this chat, and whether it is up. The account's list is the authority and retires a stale
  * "online" itself; a host that has not subscribed yet reads the chat's own target, which carries the same four facts.
@@ -26,7 +26,7 @@ export function ownerPresence(input: { computers: CloudComputer[] | null; target
   if (!computer) return null;
   const installation = computer.installations.find(item => item.deviceId === ownerDeviceId)!;
   return { name: computer.name, online: computerOnline(computer, input.now),
-    protocolVersion: installation.protocolVersion, lastSeenReason: computer.lastSeenReason, lastSeenAt: computer.lastSeenAt };
+    protocolVersion: installation.protocolVersion, lastSeenReason: computer.lastSeenReason, lastSeenAt: computer.lastSeenAt, health: computer.remoteHealth };
 }
 export type OwnerBlock = {
   /** The one sentence naming the state: what the Send button's tooltip says. */
@@ -35,6 +35,9 @@ export type OwnerBlock = {
   hint: string | null;
   /** A computer that has left the account will not come back; the chat is read-only for good. */
   gone: boolean;
+  title?: string;
+  loading?: boolean;
+  replacesComposer?: boolean;
 };
 type OwnerFacts = {
   owner: OwnerPresence | null;
@@ -44,28 +47,20 @@ type OwnerFacts = {
 const named = (copy: RemoteCopy, facts: OwnerFacts, owner: OwnerPresence) =>
   facts.ownerDeviceId && facts.ownerDeviceId === facts.localDeviceId ? copy.local.replace("{name}", owner.name) : owner.name;
 /**
- * "Studio Mac is asleep · 5 minutes ago": why it went dark, when it was last seen. A lid closed and a lost network read
- * differently because they are fixed differently; a quit or an unknown reason is plain offline. The moment reads the
- * clock, so a caller that re-renders on its presence tick keeps it current.
- */
-function offlineLine(copy: RemoteCopy, owner: OwnerPresence, name: string) {
-  const [bare, since] = owner.lastSeenReason === "sleep" ? [copy.computerAsleep, copy.computerAsleepSince]
-    : owner.lastSeenReason === "network" ? [copy.computerDisconnected, copy.computerDisconnectedSince] : [copy.computerOffline, copy.computerOfflineSince];
-  const line = owner.lastSeenAt === null ? bare : since.replace("{when}", relativeMoment(owner.lastSeenAt, copy.lang));
-  return line.replace("{name}", name);
-}
-/**
  * Why the owning computer cannot take the next message, or null when it can. Presence and version come from the
  * account's computer list; only the Project facts, which are about this chat, come from its target.
  */
 export function ownerBlock(copy: RemoteCopy, facts: OwnerFacts): OwnerBlock | null {
-  const { owner } = facts;
+  const { owner } = facts, feedback = computerCopy(copy.lang);
   if (!owner) return facts.revoked ? { reason: copy.computerRevoked, hint: null, gone: true } : null;
   const name = named(copy, facts, owner);
-  if (!owner.online) return { reason: offlineLine(copy, owner, name),
-    hint: owner.lastSeenReason === "sleep" ? copy.wakeThere : owner.lastSeenReason === "network" ? copy.networkThere : copy.openThere, gone: false };
-  if (owner.protocolVersion !== facts.protocol) return { reason: copy.computerUpdate.replace("{name}", name), hint: copy.updateThere, gone: false };
-  if (facts.target?.reason === "local-facts-pending") return { reason: copy.projectPending, hint: null, gone: false };
+  if (!owner.online) return { reason: (owner.lastSeenReason === "sleep" ? feedback.wake : owner.lastSeenReason === "network" ? feedback.computerBody : feedback.open).replace("{name}", name),
+    title: owner.lastSeenReason === "sleep" ? feedback.computerAsleep : feedback.computerUnavailable, hint: null, gone: false, replacesComposer: true };
+  const health = owner.health?.status;
+  if (health === "initializing" || health === "recovering") return { reason: feedback.loading, hint: null, gone: false, loading: true, replacesComposer: true };
+  if (health === "locked" || health === "memory-blocked") return { reason: (health === "locked" ? feedback.locked : feedback.privacy).replace("{name}", name), hint: null, gone: false, replacesComposer: true };
+  if (facts.protocol >= 0 && owner.protocolVersion !== facts.protocol) return { reason: copy.computerUpdate.replace("{name}", name), hint: copy.updateThere, gone: false };
+  if (facts.target?.reason === "local-facts-pending") return { reason: feedback.loading, hint: null, gone: false, loading: true, replacesComposer: true };
   if (facts.target?.projectBound === false) return { reason: copy.projectUnbound, hint: null, gone: false };
   return null;
 }
@@ -94,10 +89,8 @@ export function handledElsewhereBlock(copy: RemoteCopy, receipt: Pick<RemoteComm
 export type ReadOnlyGate = { description: string };
 type GateFacts = OwnerFacts & { imported: boolean; blocked: string | null; agent: string };
 /**
- * What the read-only card says, or null when the composer stays. An imported chat is always behind the card until it is
- * continued on the computer that holds it. A native chat keeps its composer even while its computer is asleep or behind a
- * version: those states retire themselves on the account subscription, so they belong on the Send button rather than on a
- * card that would take the draft away. Only a computer that has left the account replaces the composer for good.
+ * Permanent access guidance for imported Chats and revoked computers. Temporary connection covers are separate;
+ * both replace the editor without discarding the draft held by the parent store.
  */
 export function readOnlyGate(copy: RemoteCopy, facts: GateFacts): ReadOnlyGate | null {
   const block = ownerBlock(copy, facts);

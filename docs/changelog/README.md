@@ -4,6 +4,20 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-10-11 — v0.2.4
+
+[Download 0.2.4](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.4) for macOS on Apple silicon, or [open Bottega Web](https://app.getbottega.app).
+
+- **Refine remote Send and Stop.** Reduce avoidable waiting when sending a message, stopping a running Agent, and bringing its finished or interrupted reply to Web. Recover an uncertain request without sending it again as a new command. Agent and tool availability updates more promptly after desktop settings change.
+- **Keep replies in view.** Fix replies that could remain below the composer as the input area changes size or a streaming reply finishes. Following the latest reply continues through these changes; scrolling up to read earlier messages still pauses that following behavior.
+- **Make queue recovery predictable.** Prevent repeated automatic Resume requests and duplicate “queue changed” notices after Stop. A failed queue update in one Chat no longer blocks updates for other Chats. Fix unnecessary connection retries after a subscription has already recovered.
+- **Explain connection problems clearly.** Web uses consistent loading, offline and recovery feedback across Chats, Apps and Bases. Draft text, attachments and references stay available through recovery and are not sent automatically. Temporary content-sync problems do not block other available actions.
+- **Preserve drafts and recover completed replies.** Keep each App Edit draft separate from New Chat and other Apps. Retrying a failed first-message attachment continues in the Chat already created. Fix reply recovery after Stop and a sync error that could appear when a completed reply and another update arrived together.
+- **Keep spreadsheet data intact.** Base XLSX export and reimport preserve separate columns and linked records, including reordered columns or repeated column names. Imports with ambiguous column matches stop before changing Base data. Edited relation cells do not silently restore their previous link.
+- **Handle folders and exports more reliably.** Fix paths when moving a Bottega folder whose name contains non-ASCII characters. Preserve differing Chat copies instead of treating files of the same size as identical. Improve App data retention, support long export filenames, and cancel pending exports cleanly when their App closes.
+
+This release keeps **protocol 16**. Update the computer that runs your Agents to 0.2.4 to receive the desktop fixes, then reload Bottega Web. Existing 0.2.3 clients use the same protocol; clients on protocol 15 or earlier still need to upgrade. No cloud-data reset, sync-password change or account-key replacement is required. This macOS Apple silicon prerelease requires manual updates, uses ad-hoc signatures without Developer ID signing or Apple notarization, and is excluded from GitHub Latest. See the [upgrade guide](../getting-started/README.md#upgrading-to-024).
+
 ## 2026-10-08 — v0.2.3
 
 [Download 0.2.3](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.3) for macOS on Apple silicon, or [open Bottega Web](https://app.getbottega.app).

@@ -59,6 +59,12 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 启动 Bottega 前，请先在对应官方 CLI 中完成登录。Bottega 不会要求或导入这些凭据。
 
+## 升级到 0.2.4
+
+本次继续使用**协议 16**。请将运行 Agent 的电脑更新到 0.2.4，以获得远程控制、回复发布与同步修复，然后重新加载 Bottega Web。0.2.3 客户端使用相同协议；协议 15 或更早的客户端仍需升级。无需清空云端数据、更改同步密码或替换账号密钥。
+
+请完全退出 Bottega，备份 Bottega 文件夹与应用数据，再安装已核验的 0.2.4 下载。替换 `Applications` 中的应用，继续使用原有 Bottega 文件夹。本次 Apple 芯片 macOS 预发布仅支持手动更新，使用 ad-hoc 签名，没有 Developer ID 签名，也未经 Apple 公证，不进入 GitHub Latest。校验与安装步骤见[下载与安装](#下载与安装)，功能变化见 [0.2.4 更新日志](../changelog/README.zh-CN.md#2026-10-11--v024)。
+
 ## 升级到 0.2.3
 
 本次 Cloud Sync 使用协议 16。请将使用云功能的每台电脑升级到 0.2.3，再重新加载 Bottega Web。云服务同批升级后，协议 15 客户端无法重新连接。无需清空云端数据、更改同步密码或替换账号密钥。请完全退出 Bottega，备份 Bottega 文件夹与应用数据，再安装已核验的 0.2.3 下载；继续使用原文件夹。本次预发布仅支持手动更新，使用 ad-hoc 签名，未经 Apple 公证。
@@ -69,11 +75,11 @@ Cloud Sync 现使用协议 15。使用云功能的所有电脑都需升级到 0.
 
 ## 下载与安装
 
-[下载 0.2.3](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.3)，本次提供 **Apple 芯片的 macOS 安装包**。该版本标记为预发布，不进入 GitHub Latest。Windows、Linux 与 Android 发行另行安排。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
+[下载 0.2.4](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.4)，本次提供 **Apple 芯片的 macOS 安装包**。该版本标记为预发布，不进入 GitHub Latest。Windows、Linux 与 Android 发行另行安排。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
 
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
-| macOS（Apple 芯片） | `Bottega-0.2.3-arm64.dmg` 或 `Bottega-0.2.3-arm64-mac.zip` | 手动安装与更新。 |
+| macOS（Apple 芯片） | `Bottega-0.2.4-arm64.dmg` 或 `Bottega-0.2.4-arm64-mac.zip` | 手动安装与更新。 |
 
 Apple Developer 资格仍在审核中。本次安装包使用 **ad-hoc 签名**，**没有 Developer ID 签名，也未经过 Apple 公证**。自动更新已关闭；后续版本请从 Releases 页面下载并手动替换。
 
@@ -81,7 +87,7 @@ Apple Developer 资格仍在审核中。本次安装包使用 **ad-hoc 签名**�
 2. 从同一版本页面下载安装包和 `release-manifest.json`。运行下方命令，将输出与清单中对应安装包的 `sha256` 手动比较；下载 ZIP 时请替换为 ZIP 文件名：
 
 ```bash
-shasum -a 256 Bottega-0.2.3-arm64.dmg
+shasum -a 256 Bottega-0.2.4-arm64.dmg
 ```
 
 3. 打开 DMG，将 Bottega 拖入「应用程序」；使用 ZIP 时，解压后将应用复制到该目录。

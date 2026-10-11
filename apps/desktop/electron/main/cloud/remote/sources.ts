@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on original local Chat outboxes, frozen manual admissions and the existing ledger handoff.
- * [OUTPUT]: Captures owner-scoped turns (never a package Provider's local-only Chat) from a turn-scoped outbox scan and transfers result evidence, including prepared results arriving after cloud settlement, with per-intent failure isolation.
+ * [INPUT]: Depends on original local Chat outboxes, frozen manual admissions and serialized ledger handoff preparation.
+ * [OUTPUT]: Captures owner-scoped turns (never a package Provider's local-only Chat) from a turn-scoped outbox scan and atomically prepares current result evidence, including prepared results arriving after cloud settlement, with per-intent failure isolation.
  * [POS]: Local-only adapter: every mutation targets the profile's SQLite worker, with no network transport.
  */
 import { hashChatContent } from "@ai-chat/cloud-protocol/chats/transcript/body";
@@ -8,10 +8,10 @@ import { chatSyncExclusion } from "../../../../shared/chat-agent/options";
 import { portableChatSchema } from "@ai-chat/cloud-protocol/chats/model";
 import type { SyncScope } from "../../../../shared/local-storage/contracts";
 import type { ChatStore } from "../../chats/chat-store";
-import type { RelayLedger } from "../../sections/coordinator/relay-ledger";
+import type { DeepReadonly, RelayLedger } from "../../sections/coordinator/relay-ledger";
 import { stableId } from "../../sections/coordinator/coordinator-values";
 import { assertPreparedContentHash, type PreparedManualTurn } from "../../sections/coordinator/admission/prepared-manual-turn";
-import { cloudActionSchema, handoffIdentity, type CloudAction } from "../../chats/sqlite/cloud/protocol";
+import { cloudActionSchema, cloudMutationSchema, handoffIdentity, type CloudAction } from "../../chats/sqlite/cloud/protocol";
 import { localTurnAdmissionSchema, type LocalTurnAdmission } from "../../chats/sqlite/cloud/delivery/turns/model";
 import { messageSchema, subagentsSchema } from "../../chats/schema/chat-schema";
 import { cloudRequestHash } from "../../chats/store/sync/api";
@@ -86,33 +86,46 @@ export async function captureTurnAdmissions(ports: TurnSourcePorts, items: ChatO
 }
 export type HandoffEvidence = Extract<CloudAction, { type: "handoff-turn" }>["evidence"];
 type HandoffAdmission = Pick<LocalTurnAdmission, "ledgerIntentId" | "turnId" | "sequences" | "user" | "assistantMessageId"> & { chat: { id: string } };
+function handoffCandidate(state: DeepReadonly<ReturnType<RelayLedger["snapshot"]>>, intentId: string, live: boolean) {
+  const intent = state.manualIntents[intentId];
+  if (!intent || intent.cloudHandoff?.state === "settled") return null;
+  const result = state.manualResultOutbox[intent.id], available = Boolean(result && ["stored", "empty"].includes(result.outcome));
+  if (intent.cloudHandoff?.state !== "pending") {
+    if (intent.cloudHandoff?.state === "confirmed" && (!available || intent.cloudHandoff.command.action.type !== "handoff-turn" ||
+        intent.cloudHandoff.command.action.evidence.resultKind !== "pending")) return null;
+    if (!available && (live || !["failed", "claimed", "settled"].includes(intent.phase))) return null;
+  }
+  return { intent, result, available };
+}
 export async function transferTurnEvidence(ports: TurnSourcePorts, admission: HandoffAdmission, live: boolean) {
   // Recover only this intent: another Chat's old handoff cannot prevent this result from becoming durable.
   const pending = ports.ledger.snapshot().manualIntents[admission.ledgerIntentId]?.cloudHandoff;
   if (pending?.state === "pending") await handoffLedgerTurn(ports.ledger, ports.store, admission.ledgerIntentId, pending.command);
   ports.current();
-  const state = ports.ledger.snapshot(), intent = state.manualIntents[admission.ledgerIntentId];
-  if (!intent) return;
-  const result = state.manualResultOutbox[intent.id], available = result && ["stored", "empty"].includes(result.outcome);
-  if (intent.cloudHandoff?.state === "settled") return;
-  if (intent.cloudHandoff?.state === "confirmed" && (!available || intent.cloudHandoff.command.action.type !== "handoff-turn" ||
-      intent.cloudHandoff.command.action.evidence.resultKind !== "pending")) return;
-  if (!available && live || !available && !live && !["failed", "claimed", "settled"].includes(intent.phase)) return;
-  const attempt = intent.attempts.at(-1) ?? null;
-  const dispatch = !attempt || attempt.phase === "claimed" ? "not-started" : ["dispatched", "result-prepared", "persisted"].includes(attempt.phase) ? "dispatched" : "outcome-unknown";
-  const message = available && result.assistantMessage ? messageSchema.parse(result.assistantMessage) : null;
-  const action: Extract<CloudAction, { type: "handoff-turn" }> = { type: "handoff-turn", chatId: admission.chat.id,
-    turnId: admission.turnId, evidence: {
-      ledgerIntentId: intent.id, identityHash: "0".repeat(64), dispatch, attempt, ...admission.sequences,
-      userMessageId: admission.user.id, userMessage: admission.user, assistantMessageId: admission.assistantMessageId,
-      resultKind: available ? message ? "message" : "empty" : "pending", resultHash: available ? hashChatContent(message ? { ...message, resultHash: undefined } : null) : null,
-      resultMessage: message, ...(result?.terminal ? { terminal: result.terminal } : {}),
-      ...(result?.subagents ? { subagents: subagentsSchema.parse(result.subagents) } : {}),
-    } };
-  action.evidence.identityHash = hashChatContent(handoffIdentity(action));
-  const command = { kind: "cloud-mutate" as const, operationId: hashChatContent(["turn-handoff", ports.scope, admission.turnId, action.evidence.resultKind, action.evidence.resultHash]),
-    deviceId: ports.deviceId, scope: ports.scope, action: cloudActionSchema.parse(action) };
-  ports.current(); await handoffLedgerTurn(ports.ledger, ports.store, intent.id, { ...command, requestHash: cloudRequestHash(command) });
+  // Running turns without evidence need no ledger write on each capture tick.
+  if (!handoffCandidate(ports.ledger.snapshot(), admission.ledgerIntentId, live)) return;
+  await handoffLedgerTurn(ports.ledger, ports.store, admission.ledgerIntentId, state => {
+    ports.current();
+    const candidate = handoffCandidate(state, admission.ledgerIntentId, live);
+    if (!candidate) return null;
+    const { intent, result, available } = candidate;
+    if (intent.cloudHandoff?.state === "pending") return cloudMutationSchema.parse(intent.cloudHandoff.command);
+    const attempt = intent.attempts.at(-1) ?? null;
+    const dispatch = !attempt || attempt.phase === "claimed" ? "not-started" : ["dispatched", "result-prepared", "persisted"].includes(attempt.phase) ? "dispatched" : "outcome-unknown";
+    const message = available && result.assistantMessage ? messageSchema.parse(result.assistantMessage) : null;
+    const action: Extract<CloudAction, { type: "handoff-turn" }> = { type: "handoff-turn", chatId: admission.chat.id,
+      turnId: admission.turnId, evidence: {
+        ledgerIntentId: intent.id, identityHash: "0".repeat(64), dispatch, attempt, ...admission.sequences,
+        userMessageId: admission.user.id, userMessage: admission.user, assistantMessageId: admission.assistantMessageId,
+        resultKind: available ? message ? "message" : "empty" : "pending", resultHash: available ? hashChatContent(message ? { ...message, resultHash: undefined } : null) : null,
+        resultMessage: message, ...(result?.terminal ? { terminal: result.terminal } : {}),
+        ...(result?.subagents ? { subagents: subagentsSchema.parse(result.subagents) } : {}),
+      } };
+    action.evidence.identityHash = hashChatContent(handoffIdentity(action));
+    const command = { kind: "cloud-mutate" as const, operationId: hashChatContent(["turn-handoff", ports.scope, admission.turnId, action.evidence.resultKind, action.evidence.resultHash]),
+      deviceId: ports.deviceId, scope: ports.scope, action: cloudActionSchema.parse(action) };
+    return { ...command, requestHash: cloudRequestHash(command) };
+  });
 }
 export async function recoverLateTurnEvidence(ports: TurnSourcePorts) {
   const state = ports.ledger.snapshot(), failures: unknown[] = [];

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on use-stick-to-bottom, ui Button/SlimScroller primitives, and cn
+ * [INPUT]: Depends on the version-patched use-stick-to-bottom viewport/content-resize authority contract, ui Button/SlimScroller primitives, and cn
  * [OUTPUT]: Provides Conversation fixed horizontal boundary, unified-scrollbar sticky bottom container, back-to-bottom button, the re-exported useStickToBottomContext, and the optional unlocking signal useScrollLockRelease
  * [POS]: ai-elements' scroll-container skeleton; forbids the whole conversation from scrolling horizontally, confining wide content to its own local container inside a message
  */

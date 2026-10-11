@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Account-bound command/draft custody, complete queue metadata and fresh execution facts.
- * [OUTPUT]: One queue controller for local, cloud-waiting and admitted messages, durable edits and Steer, ordering and source pause; admission completion schedules the next eligible successor.
+ * [OUTPUT]: One queue controller for local, cloud-waiting and admitted messages, durable edits and Steer, ordering and source pause; empty queue recovery does not repeat an unchanged revision. One generation-fenced watch retry is canceled by healthy data, replacement or suspension.
  * [POS]: Shared remote queue authority; the UI renders its state and the account lifetime owns its effects.
  */
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
@@ -33,6 +33,8 @@ export class RemoteQueueController {
   private observedFailures = new Set<string>();
   private adopting = new Set<string>();
   private queueStop = () => {};
+  private queueGeneration = 0;
+  private automaticResumeRevision: string | null = null;
   private retry: ReturnType<typeof setTimeout> | undefined;
   private retryStep = 0;
   constructor(readonly platform: ChatPlatform, public head: CloudChatHead, readonly store: RemoteDraftStore,
@@ -61,27 +63,36 @@ export class RemoteQueueController {
     this.connect(); this.schedule();
   }
   private connect = () => {
-    if (this.closed) return;
-    clearTimeout(this.retry); this.queueStop();
+    if (this.closed || !this.started) return;
+    const generation = ++this.queueGeneration;
+    this.clearRetry(); this.queueStop();
     this.queueStop = this.port.queue?.watch(this.head.chat.id, waiting => {
-      this.retryStep = 0; this.publish({ waiting }); this.schedule();
+      if (generation !== this.queueGeneration || this.closed || !this.started) return;
+      this.clearRetry(); this.retryStep = 0; this.publish({ waiting }); this.schedule();
     }, () => {
-      this.retry = setTimeout(this.connect, [2000, 5000, 15000, 30000][Math.min(this.retryStep++, 3)]);
+      if (generation !== this.queueGeneration || this.closed || !this.started || this.retry !== undefined) return;
+      const retry = setTimeout(() => {
+        if (this.retry !== retry || generation !== this.queueGeneration || this.closed || !this.started) return;
+        this.retry = undefined; this.connect();
+      }, [2000, 5000, 15000, 30000][Math.min(this.retryStep++, 3)]);
+      this.retry = retry;
     }) ?? (() => {});
   };
+  private clearRetry() { clearTimeout(this.retry); this.retry = undefined; }
   close = () => {
     if (this.closed) return;
     this.closed = true; this.suspend();
   };
   private suspend() {
-    this.started = false; clearTimeout(this.retry); this.queueStop(); this.stops.splice(0).forEach(stop => stop());
+    this.queueGeneration++;
+    this.started = false; this.clearRetry(); this.queueStop(); this.stops.splice(0).forEach(stop => stop());
     this.port.lifetime?.removeEventListener("abort", this.close);
     if (typeof window !== "undefined") { window.removeEventListener("online", this.connect); window.removeEventListener("pageshow", this.connect); }
     if (!this.view) this.session.close();
   }
   private schedule = () => {
     if (this.scheduled || this.closed || !this.started) return;
-    this.scheduled = true; queueMicrotask(() => { this.scheduled = false; if (!this.closed) this.tick(); });
+    this.scheduled = true; queueMicrotask(() => { this.scheduled = false; if (!this.closed && this.started) this.tick(); });
   };
   get source() { return this.platform.account.snapshot().deviceId; }
   get accepted() { const value = this.state.waiting?.accepted ?? this.head.queue; return value?.deviceId === this.head.ownerDeviceId ? value : null; }
@@ -150,11 +161,21 @@ export class RemoteQueueController {
     }
     for (const row of this.rows()) if (row.kind !== "local" && row.sourceDeviceId && !this.entry(row.intentId)) void this.session.load(row.commandId ?? row.intentId).catch(() => {});
     this.publish();
-    const local = this.store.snapshot().local, empty = !this.rows().some(row => row.sourceDeviceId === this.source) && !local?.gate &&
+    const sourceRows = this.rows().some(row => row.sourceDeviceId === this.source);
+    if (sourceRows) this.automaticResumeRevision = null;
+    const local = this.store.snapshot().local, empty = !sourceRows && !local?.gate &&
       !entries.some(entry => entry.owned && (awaitingRemoteAdmission(entry) || entry.stopRequested && !entry.cancelledBeforeSend && !entry.rejected && !entry.canonical && !refused.has(entry.receipt?.state ?? "") && entry.receipt?.state !== "done")) && !this.store.snapshot().queueOperations?.length;
     if (empty && !this.state.busy && !this.draining) {
       if (local?.paused) this.store.resumeLocal();
-      if (this.source && this.accepted?.pausedSources?.includes(this.source)) { void this.run(() => this.pauseRemote(false)); return; }
+      const accepted = this.accepted;
+      if (!this.view?.disabled && this.source && accepted?.pausedSources?.includes(this.source)) {
+        const revision = JSON.stringify([this.head.ownerDeviceId, this.head.chat.incarnationId, this.source, accepted.revision]);
+        // Receipt completion can precede queue publication. Repeated snapshots must not mint new commands.
+        if (revision !== this.automaticResumeRevision) {
+          this.automaticResumeRevision = revision;
+          void this.run(() => this.pauseRemote(false)); return;
+        }
+      }
     }
     if (!this.view && empty && !this.state.busy && !this.draining && !entries.some(entry =>
       (entry.owned || entry.receipt?.command.sourceDeviceId === this.source && this.store.submittedDraft(entry.input.commandId)) &&
@@ -262,6 +283,7 @@ export class RemoteQueueController {
     this.store.resumeLocal();
   });
   stop = (foregroundId: string | null, requestId: string | null) => {
+    this.automaticResumeRevision = null;
     this.store.pauseLocal("cancelled");
     // Queue pause remains valid if the turn finishes while Stop is in flight.
     const remoteWaiting = this.rows().some(row => row.kind !== "local" && row.sourceDeviceId === this.source);

@@ -19,7 +19,7 @@ import { ConversationUser } from "./turn/user";
 import { turnCopy } from "./turn/copy";
 import { ConversationDraft } from "./turn/draft";
 import { ConversationActions } from "@ai-chat/ui/components/conversation/actions";
-import { ConversationSkeleton } from "@ai-chat/ui/components/conversation/skeleton";
+import { LoadingState } from "@ai-chat/ui/components/feedback/loading-state";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import {
   type CommandSink,
@@ -239,20 +239,12 @@ export function ChatTranscript({
               {copy.latest}
             </button>
           )}
-          {value.error && (
-            <p className="chat-content-status" role="alert">
-              {value.items.length ? copy.partial : copy.unavailable}{" "}
-              <button type="button" onClick={() => void session.latest()}>
-                {copy.retry}
-              </button>
-            </p>
-          )}
-          {value.busy && !value.items.length && !pendingMessages.length && !head.openTurnId && <ConversationSkeleton label={copy.loading} />}
-          {!value.busy && !value.error && value.state !== "ready" && (
+          {value.error && !value.busy && <LoadingState inline locale={locale} failed retry={() => void session.latest()} />}
+          {value.busy && (!pendingMessages.length && !head.openTurnId || value.error) && <LoadingState inline={!!value.items.length} locale={locale} />}
+          {!value.busy && !value.error && value.state === "pending" && <LoadingState inline={!!value.items.length} locale={locale} />}
+          {!value.busy && !value.error && value.state !== "ready" && value.state !== "pending" && (
             <p className="chat-content-status" role="status">
-              {value.state === "pending"
-                ? copy.pending
-                : value.state === "partial"
+              {value.state === "partial"
                   ? copy.partial
                   : copy.unavailable}
             </p>

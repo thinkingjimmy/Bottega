@@ -48,7 +48,7 @@ import { useRemoteComposerControls } from "./composer/controls";
 import { useRemoteConsent } from "./composer/consent";
 import { useRemoteFeedback } from "./composer/feedback";
 import { RemoteEditor } from "./composer/input/editor";
-import { RemoteUnavailable, type UnavailableAction } from "./computer/unavailable";
+import { RemoteUnavailable, RemoteConnectionUnavailable, type UnavailableAction } from "./computer/unavailable";
 import { PlatformGlyph } from "./computer/glyphs";
 import { draftBudget, ownerBlock, ownerPresence, readOnlyGate, sendAction } from "./composer/status";
 import { ChatPlanDecision } from "../composer/controls/plan-decision";
@@ -132,7 +132,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
   const target = targets.items.find(item => item.deviceId === head.ownerDeviceId);
   /* One account-level subscription answers presence, so this composer and the sidebar's switcher can never disagree. */
   const owner = ownerPresence({ computers: presence.computers, target, ownerDeviceId: head.ownerDeviceId, now: presence.now });
-  const usable = Boolean(owner?.online && owner.protocolVersion === protocol);
+  const usable = Boolean(owner?.online && owner.protocolVersion === protocol && (!owner.health || ["ready", "content-error"].includes(owner.health.status)));
   const selected = usable && target ? target.deviceId : "";
   const agent = completeDraft.options?.backend ?? pendingAgent?.backend ?? head.chat.agent, availableAgent = target?.agents.find(item => item.backend === agent)?.available;
   const staleAgent = pendingAgent && (pendingAgent.head.chat.agentRevision !== head.chat.agentRevision || pendingAgent.head.catalogRevision !== head.catalogRevision);
@@ -168,7 +168,10 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
   const unavailableGate = readOnlyGate(copy, { ...ownerFacts, imported: importedReadonly, blocked: blockedReason, agent: head.chat.agent });
   const gate = presentation.waiting && !revoked && account.state === "ready" && !importedReadonly ? null : unavailableGate;
   /* The one sentence about the owning computer: it labels the greyed Send button and, with its hint, the notice above the editor. */
-  const block = gate || presentation.waiting ? null : ownerBlock(copy, ownerFacts);
+  const block = gate ? null : ownerBlock(copy, ownerFacts);
+  const connectionLost = !connected || account.state === "offline" || targets.error;
+  const connectionLoading = !connectionLost && (Boolean(port) && targets.value === null || ownerFacts.loading || presence.freshness === "stale");
+  const connectionUnavailable = connectionLost || connectionLoading || Boolean(block?.replacesComposer);
   const baseBlocked = !authorized || !selected || !availableAgent || preparing || operationPending || Boolean(staleAgent) || projectPending || target?.projectBound === false || (!draft?.ready || draft.unsupported) && Boolean(draft);
   const capability = target?.agents.find(item => item.backend === agent);
   const permissionMode = completeDraft.permissionMode ?? (pendingAgent ? capability?.options?.permissionMode : head.chat.options.permissionMode) ?? "approve-for-me";
@@ -438,10 +441,10 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
   const interactionControls = { recoveryEnabled: platform.capabilities.recovery, entries: commands.entries, copy, locale, backendName: agent, computer: owner?.name ?? null, submit, draftChanged, disabled: !authorized || !usable };
   /* The computer that owns this chat has no chip to sit on any more. When it cannot take the next message — a failed
      preparation, or Project facts still pending or unbound — the composer says so above the editor, with any recovery it has. */
-  const computerNotice = gate || blockedReason ? null : (block ? [block.reason, ...(block.hint ? [block.hint] : [])].join(copy.sentenceGap) : null);
+  const computerNotice = gate || blockedReason || connectionUnavailable ? null : (block ? [block.reason, ...(block.hint ? [block.hint] : [])].join(copy.sentenceGap) : null);
   const composerNotice = outcome
     ? <div className="chat-remote-hint" role="alert" data-computer-notice><p>{outcome.message}</p>
-        <Button type="button" variant="outline" disabled={preparing} onClick={() => { if (outcome.retry === "preparation") void retryPreparation(); else refresh(); }}>
+        <Button type="button" variant="outline" disabled={preparing} onClick={() => { if (outcome.retry === "preparation") void retryPreparation(); else refresh(); }} size="pill">
           {outcome.retry === "refresh" ? copy.refresh : copy.retryPreparation}</Button>
       </div>
     : computerNotice ? <div className="chat-remote-hint" role="status" data-computer-notice><p>{computerNotice}</p></div> : null;
@@ -490,7 +493,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
         <p className="whitespace-pre-wrap break-words">{store.submittedDraft(id)?.text || copy.draft}</p>
         <Button type="button" variant="outline" disabled={uncertain || requestBusy || sendBusy} onClick={() => { store.restoreRecovery(id, { backend: agent, permissionMode, options: remoteTurnOptions(modelValue) }); draft?.change(store.snapshot().text); composerElement.current?.focus(); }}>{input.restoreDraft}</Button>
       </div>)}
-      {outcome || !hasDeliveryRecovery ? composerNotice : null}
+      {!connectionUnavailable && (outcome || !hasDeliveryRecovery) ? composerNotice : null}
       {commands.session && <RemoteReceipts entries={recoveryEntries} session={commands.session} copy={copy} locale={locale} computer={owner?.name ?? null} computerUnavailable={!usable} disabled={!authorized} reexecuteDisabled={blocked || uncertain || requestBusy || holdNew}
         sendAsNew={sendAsNew} sentAsNew={sentAsNew}
         reexecute={entry => { void reexecute(entry); }} />}
@@ -504,7 +507,9 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
         : gate ? <RemoteUnavailable icon={cardIcon(importedReadonly ? <AgentBackendIcon backend={head.chat.agent} className={preparing ? "size-3.5" : "mt-0.5 size-5 shrink-0 text-muted-foreground"} />
             : <PlatformGlyph kind={target?.platform ?? "none"} className={preparing ? "size-3.5" : "mt-0.5 size-5 shrink-0 text-muted-foreground"} />)} title={copy.readOnly} description={gate.description}
           actions={cardActions} />
-        : blockedReason && !presentation.waiting ? <RemoteUnavailable icon={<Cloud aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disconnectedTitle} description={copy.disconnectedDescription} />
+        : connectionUnavailable ? <RemoteConnectionUnavailable locale={locale} loading={connectionLoading} block={connectionLost ? null : block}
+          actions={generating ? [{ label: copy.stop, disabled: stopDisabled, run: stop }] : undefined} />
+        : blockedReason ? <RemoteUnavailable icon={<Cloud aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />} title={copy.disconnectedTitle} description={copy.disconnectedDescription} />
         : <RemoteInteractions projection={turn?.projection ?? null} requestId={head.openTurnId ?? ""} controls={interactionControls} running={turnRunning} ready={Boolean(turn?.replayComplete)}
           slotActions={generating && <div className="flex justify-end"><Button type="button" variant="outline" disabled={stopDisabled} onClick={stop}>{copy.stop}</Button></div>}
           planDecision={planId ? <ChatPlanDecision locale={locale} pending={{ busy: blocked || requestBusy || holdNew }} onDecision={decidePlan} /> : undefined}>
@@ -529,10 +534,10 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
           <RemoteAgentSelector quotaEnabled={platform.capabilities.quota} locale={locale} target={target} value={agent} copy={copy} disabled={!authorized || preparing || operationPending || generating} onSelect={backend => { setPendingAgent({ backend, head }); store.update({ options: null }); }} />
           {capability?.models && <ComposerModelSelector locale={locale} backend={agent} models={platform.capabilities.serviceTier ? capability.models : capability.models.map(model => ({ ...model, serviceTiers: undefined }))} value={modelValue} disabled={!authorized || preparing || operationPending || generating}
             onChange={next => store.update({ options: { backend: agent, ...next } })} />}
-          {retryAuth && <Button type="button" variant="outline" disabled={!authorized || requestBusy || generating || sendBusy || pendingFiles} onClick={() => void send(hasInput ? undefined : { displayText: copy.retryShort, planMode: false }, true)}>{copy.retryShort}</Button>}
+          {retryAuth && <Button type="button" variant="outline" disabled={!authorized || requestBusy || generating || sendBusy || pendingFiles} onClick={() => void send(hasInput ? undefined : { displayText: copy.retryShort, planMode: false }, true)} size="pill">{copy.retryShort}</Button>}
           {action.kind === "send"
             ? <PromptInputSubmit className="shrink-0 rounded-full max-md:size-11 pointer-coarse:size-11" aria-label={showStop ? copy.stop : copy.send} status={generating ? presentation.activeTurnId ? "streaming" : "submitted" : action.busy ? "submitted" : undefined} preferSubmit={hasInput} onStop={stop} tooltip={block?.reason} disabled={showStop ? stopDisabled : (blocked || holdNew && localFull) || requestBusy && !holdNew || !hasInput || tooLong} />
-            : <Button type="submit" size="lg" className="rounded-full px-3 text-sm" data-send-action={action.kind} disabled={!authorized || preparing || operationPending || uncertain || projectPending}>{action.label}</Button>}
+            : <Button type="submit" variant="outline" size="pill" data-send-action={action.kind} disabled={!authorized || preparing || operationPending || uncertain || projectPending}>{action.label}</Button>}
         </ComposerActions></ComposerToolbar>
       </ComposerForm></RemoteInteractions>}
       {controls.dialogs}{consent.dialog}

@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Depends on the UI locale and confirmed remote command, target and preparation facts.
- * [OUTPUT]: Provides canonical Agent names and five-language remote composer copy, including local queue failures, a guidance message that will send after the running turn, a guidance message refused because its turn had ended (with its send-as-new action and the refusal when its files are not all on this device), references too large for one message, pending Project confirmation, plan (entitlement/quota) refusals, owning-computer binding guidance, the reconnect-and-resend line and its failure, the offline line per last-seen reason with its moment, and the read-only card's titles, sentences and actions, including the sync-disconnected cover (disconnectedTitle, disconnectedDescription; sentenceGap joins its sentences per language; lang formats moments).
+ * [INPUT]: UI locale, shared connection vocabulary and confirmed remote command/target/preparation facts.
+ * [OUTPUT]: Five-language remote interaction copy with common loading/retry labels and distinct command outcomes, access requirements, offline causes and read-only guidance.
  * [POS]: packages/chat-ui/src/i18n/messages; Shared remote interaction vocabulary; a chat names the computer that owns it, and unknown execution is never described as stopped.
  */
+import { connectionCopy } from "@ai-chat/ui/components/feedback/connection-copy";
 import { interactionCopy } from "../copy";
 const en = {
   agentMissing: "Install {agent} on the computer.", agentOutdated: "Update {agent} on the computer.", authRequired: "Sign in to {agent} on the computer.", wakeThere: "Wake the computer before continuing.", networkThere: "Check the computer’s network connection.", skillsEmpty: "No synced Skills yet.", handledOn: interactionCopy("en").handledOn, sent: "Sent", viewChat: "View chat", disabledDescription: "You can still read conversations, edit Bases and manage your account.", appsAction: "Bases and Apps", accountAction: "Account", onComputer: "On {name}", readingFile: "Reading file…", localBrowser: "Local browser", installApp: "Install this App on this computer",
@@ -128,5 +129,9 @@ const copies: Record<string, RemoteCopy> = {
     filesRejected: "Archivos no añadidos", referencesTooLarge: "Demasiadas referencias, o rutas demasiado largas, para un solo mensaje. Quita algunas referencias.", budget: "{used} / {limit} KB",
   },
 };
+for (const [locale, copy] of Object.entries(copies)) {
+  const feedback = connectionCopy(locale);
+  Object.assign(copy, { retry: feedback.retry, retryPreparation: feedback.retry, retryShort: feedback.retry, check: feedback.query, checkAgain: feedback.query, connecting: feedback.loading, preparing: feedback.loading, projectPending: feedback.loading, readingFile: feedback.loading });
+}
 export const remoteCopy = (locale: string): RemoteCopy => copies[locale.toLowerCase().split("-")[0]!] ?? en;
 export const backendName = (backend: string) => ({ codex: "Codex", claude: "Claude Code", kimi: "Kimi Code", opencode: "OpenCode" })[backend] ?? backend;

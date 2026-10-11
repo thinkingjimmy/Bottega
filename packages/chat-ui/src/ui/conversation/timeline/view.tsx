@@ -4,7 +4,9 @@
  * [POS]: The timeline's only rendered surface; every rule it shows comes from reader.ts.
  */
 import { Fragment, useState, type ReactNode } from "react";
-import { ChevronUp, Loader2 } from "lucide-react";
+import { Button } from "@ai-chat/ui/components/ui/button";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
+import { ChevronUp } from "lucide-react";
 import { Conversation, ConversationContent, ConversationScrollButton } from "@ai-chat/ui/components/ai-elements/conversation";
 import { conversationColumnClassName } from "@ai-chat/ui/components/conversation/layout";
 import { TranscriptDividerRow as ConversationDivider } from "@ai-chat/ui/components/conversation/layout";
@@ -40,9 +42,9 @@ function TimelineContent<Row extends TranscriptRow>(props: TimelineViewProps<Row
   return <>
     <ConversationContent className={`${conversationColumnClassName} gap-6`} data-transcript-content="" tabIndex={-1}>
       {props.before}
-      {reader.hasEarlier && <ConversationDivider><button className="inline-flex h-7 items-center gap-1 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-60" data-load-earlier="" disabled={reader.loadingEarlier} onClick={reader.loadEarlier} type="button">
-        {reader.loadingEarlier ? <><Loader2 className="size-3 animate-spin motion-reduce:animate-none" />{copy.loading}</> : <><ChevronUp className="size-3" />{copy.earlier}</>}
-      </button></ConversationDivider>}
+      {reader.hasEarlier && <ConversationDivider><Button size="pill" variant="ghost" data-load-earlier="" disabled={reader.loadingEarlier} onClick={reader.loadEarlier} type="button">
+        {reader.loadingEarlier ? <><Spinner aria-hidden="true" />{copy.loading}</> : <><ChevronUp className="size-3" />{copy.earlier}</>}
+      </Button></ConversationDivider>}
       {renderRows(liveIndex < 0 ? reader.messages : reader.messages.slice(0, liveIndex))}
       {live?.content}
       {liveIndex >= 0 && renderRows(reader.messages.slice(liveIndex))}

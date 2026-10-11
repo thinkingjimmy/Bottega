@@ -20,6 +20,7 @@ patchedDependencies:
   app-builder-lib@26.15.3: e6a28eb5124112045304d8e122185d22e7c6cc104955536334a6e653366011fe
   remend@1.3.0: 7c2785c0aadee625db95447324e78781408da96a8f2108ed6679d7f8e5594955
   streamdown@2.5.0: 4ea5f8cc5559c3dc04cbed4d549cd23c5448e11eaabe20055f5cb755f954d764
+  use-stick-to-bottom@1.1.6: 7182f2cbf4444b78a2a00870bbcac89fbaa8070faf4d5d449285109f7ec7b2e7
 
 importers:
 
@@ -573,7 +574,7 @@ importers:
         version: 1.4.0
       use-stick-to-bottom:
         specifier: ^1.1.6
-        version: 1.1.6(react@19.2.4)
+        version: 1.1.6(patch_hash=7182f2cbf4444b78a2a00870bbcac89fbaa8070faf4d5d449285109f7ec7b2e7)(react@19.2.4)
     devDependencies:
       '@types/react':
         specifier: ^19
@@ -13024,7 +13025,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.17
 
-  use-stick-to-bottom@1.1.6(react@19.2.4):
+  use-stick-to-bottom@1.1.6(patch_hash=7182f2cbf4444b78a2a00870bbcac89fbaa8070faf4d5d449285109f7ec7b2e7)(react@19.2.4):
     dependencies:
       react: 19.2.4
 

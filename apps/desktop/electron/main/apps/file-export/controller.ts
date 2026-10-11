@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on live GUI bindings, Electron save dialogs, FileExportManager custody, and App-scoped side-effect permits, and statusError from main/errors
- * [OUTPUT]: Provides renderer-facing begin/write/finalize/cancel operations with active-surface and file.export grant enforcement
+ * [OUTPUT]: Provides renderer-facing begin/write/finalize/cancel operations with active-surface and file.export grant enforcement; surface closure settles sessions before retiring their permits.
  * [POS]: Trusted main-process adapter between Apps IPC and native file-export custody
  */
 
@@ -110,9 +110,9 @@ export class AppFileExportController {
     return this.manager.cancel(input.exportId, "cancelled", binding.surfaceId);
   }
 
-  closeSurface(surfaceId: string) {
+  async closeSurface(surfaceId: string) {
+    await this.manager.closeSurface(surfaceId);
     for (const effects of this.effects.values()) effects.cancelSurface(surfaceId);
-    return this.manager.closeSurface(surfaceId);
   }
 
   async closeApp(appId: string) {

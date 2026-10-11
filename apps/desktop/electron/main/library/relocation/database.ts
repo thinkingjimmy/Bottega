@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node:sqlite, the Chat database path authority and the connection module's transaction helper.
- * [OUTPUT]: Provides unfinishedSagas and rebaseDatabasePaths: the two relocation facts that live in the Chat database.
+ * [OUTPUT]: Provides unfinishedSagas and Unicode-safe rebaseDatabasePaths for both Chat directory bindings.
  * [POS]: The one sanctioned main-thread connection, and only before the database worker starts; everything later goes through the worker.
  */
 import { existsSync } from "node:fs";
@@ -38,8 +38,8 @@ export async function rebaseDatabasePaths(userData: string, from: string, to: st
     let changed = 0;
     for (const column of ["home_dir", "execution_dir"]) {
       const result = database.prepare(
-        `UPDATE chat_device_bindings SET ${column} = ? || substr(${column}, ?) WHERE ${column} = ? OR substr(${column}, 1, ?) = ?`
-      ).run(to, from.length + 1, from, from.length + 1, `${from}/`);
+        `UPDATE chat_device_bindings SET ${column} = ? || substr(${column}, length(?) + 1) WHERE ${column} = ? OR substr(${column}, 1, length(?) + 1) = ?`
+      ).run(to, from, from, from, `${from}/`);
       changed += Number(result.changes);
     }
     return changed;

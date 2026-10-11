@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on original TurnRegistry identities and the sole coordinator ledger transaction owner.
- * [OUTPUT]: Serializes local/remote decisions, preserves proven unsent retries, reports poisoned interactions and checks the original deadline immediately before dispatch; signed out, a second local answer to one interaction is `already-resolved`.
+ * [OUTPUT]: Serializes local/remote decisions, preserves proven unsent retries, reports poisoned interactions and revalidates after asynchronous boundaries while checking the original deadline synchronously before dispatch; signed out, a second local answer to one interaction is `already-resolved`.
  * [POS]: Shared control adapter behind existing bridge handlers; no backend control logic is duplicated.
  */
 import { randomUUID } from "node:crypto";
@@ -53,7 +53,10 @@ export class DurableAgentControls {
       if (entry.generation !== generation) throw new Error("request-not-active");
       input.verify();
     }
-    if ((!previous || previous.state === "not-dispatched") && trusted) await trusted.current();
+    if ((!previous || previous.state === "not-dispatched") && trusted) {
+      // No asynchronous work followed the full check; only its immediate identity/deadline fence needs repeating.
+      if (trusted.authority) trusted.authority.current(); else await trusted.current();
+    }
     const receipt = await this.ledger.remote.reserveControl({ id, conversationId: entry.conversationId, incarnationId: entry.incarnationId,
       requestId: entry.requestId, generation, key, payload, resolvedBy: trusted ? { sourceDeviceId: trusted.remote.origin.sourceDeviceId, sourceDeviceName: trusted.remote.origin.sourceDeviceName } : this.localSource?.(), payloadHash: canonicalHash(payload), ...(trusted ? { remote: trusted.remote } : {}) });
     if (receipt.state === "applied") return receipt.result!;
@@ -66,7 +69,7 @@ export class DurableAgentControls {
       await trusted?.current();
       if (entry.generation !== generation) throw new Error("request-not-active");
       input.verify();
-      await trusted?.current();
+      if (trusted?.authority) trusted.authority.current(); else await trusted?.current();
       if (receipt.resolvedBy) (entry.interactionSources ??= new Map()).set(key, receipt.resolvedBy);
       dispatched = true; await input.apply();
       await this.ledger.remote.settleControl(id, "applied"); return "applied";

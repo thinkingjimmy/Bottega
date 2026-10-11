@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on catalog subscriptions, durable confirmed heads and restartable Chat hydration.
- * [OUTPUT]: Discovers owners before upload, retries incomplete workspace admission and schedules fair concurrent background reads with confirmed deletion eviction and open-Chat priority; a head whose owner has not published its body waits with a backoff instead of re-running the pass.
+ * [OUTPUT]: Discovers owners and schedules bounded background reads; unpublished bodies keep owner backoff, while stale selected heads refresh the catalog through the existing scheduler.
  * [POS]: Main downlink coordinator; memory only caches work scheduling, while Stores own progress and content.
  */
 import { protocolHeader, type CloudFunctionArgs } from "@ai-chat/cloud-protocol";
@@ -48,6 +48,7 @@ export class DesktopDownlink {
   forget(chatIds: string[]) {
     for (const chatId of chatIds) { this.heads.delete(chatId); this.checked.delete(chatId); this.visited.delete(chatId); this.waiting.delete(chatId); }
   }
+  refreshCatalog() { this.ports.current(); this.dirty = true; this.ports.wake(); }
   private async load() {
     if (this.loaded) return;
     let afterId: string | null = null;
@@ -81,19 +82,22 @@ export class DesktopDownlink {
     const waits = (head: CloudChatHead) => this.waiting.get(head.chat.id)?.signature === this.signature(head) && !dirtyChatIds.has(head.chat.id);
     const pending = [...this.heads.values()].filter(head => (dirtyChatIds.has(head.chat.id) || owed(head)) && !(waits(head) && now < this.waiting.get(head.chat.id)!.due));
     pending.sort((a, b) => (this.visited.get(a.chat.id) ?? 0) - (this.visited.get(b.chat.id) ?? 0));
-    const batch = pending.slice(0, HYDRATE_BATCH); let next = 0, hydrated = 0;
+    const batch = pending.slice(0, HYDRATE_BATCH); let next = 0, hydrated = 0, stale = false;
     const lane = async () => {
       for (let index = next++; index < batch.length; index = next++) {
         const head = batch[index]!, signature = this.signature(head);
         this.ports.current(); this.visited.set(head.chat.id, ++this.ordinal);
         try {
-          if (await this.chats.hydrate(head)) { this.checked.set(head.chat.id, signature); this.waiting.delete(head.chat.id); hydrated++; continue; }
+          const result = await this.chats.hydrate(head);
+          if (result === "complete") { this.checked.set(head.chat.id, signature); this.waiting.delete(head.chat.id); hydrated++; continue; }
+          if (result === "stale-head") { this.waiting.delete(head.chat.id); stale = true; continue; }
           const previous = this.waiting.get(head.chat.id), delay = previous?.signature === signature ? Math.min(previous.delay * 2, OWNER_WAIT_MAX) : OWNER_WAIT_MIN;
           this.waiting.set(head.chat.id, { signature, delay, due: Date.now() + delay });
         } catch (error) { this.ports.failure(error); }
       }
     };
     await Promise.all(Array.from({ length: Math.max(1, Math.min(HYDRATE_LANES, batch.length)) }, lane));
+    if (stale) this.refreshCatalog();
     const unread = [...this.heads.values()].filter(owed), waiting = unread.filter(waits).length;
     return { downloading: unread.length - waiting, waiting, progressed: hydrated > 0 || pending.length > batch.length };
   }
@@ -103,7 +107,9 @@ export class DesktopDownlink {
     if (local.type !== "chat-metadata" || !local.value.head) throw new Error("CHAT_HEAD_UNAVAILABLE");
     const head = local.value.head;
     this.heads.set(chatId, head);
-    if (await this.chats.hydrate(head)) { this.checked.set(chatId, this.signature(head)); this.waiting.delete(chatId); }
+    const result = await this.chats.hydrate(head);
+    if (result === "complete") { this.checked.set(chatId, this.signature(head)); this.waiting.delete(chatId); }
+    else if (result === "stale-head") { this.waiting.delete(chatId); this.refreshCatalog(); }
   }
   private signature(head: CloudChatHead) { return hashChatContent([head.bodyRevision, head.reservedThroughSeq, head.openTurnId]); }
   async close() { this.unsubscribe?.(); this.unsubscribe = null; await this.chats.close(); }

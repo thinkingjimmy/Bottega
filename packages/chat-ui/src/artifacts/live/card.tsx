@@ -4,6 +4,8 @@
  * [POS]: Shared UI; no hostname or credential is stored beyond the current component lifetime.
  */
 import { useEffect, useRef, useState } from "react";
+import { LoadingState } from "@ai-chat/ui/components/feedback/loading-state";
+import { connectionCopy } from "@ai-chat/ui/components/feedback/connection-copy";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import type { ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import type { PreviewView } from "@ai-chat/cloud-protocol/resources/preview";
@@ -22,7 +24,7 @@ function PreviewCard({ fence, host }: { fence: ArtifactFence; host: ArtifactHost
   const url = entry && view?.state === "open" && entry.sessionId === view.sessionId ? entry.url : null;
   const busy = pending !== null, connecting = view?.state === "registering" || view?.state === "edge";
   const [qr, setQr] = useState<string | null>(null);
-  const failure = error?.message ?? view?.failure;
+  const failure = busy || connecting ? null : error?.message ?? view?.failure;
   const errorCode = previewErrorCode(failure ?? "");
   const blocked = errorCode === "tunnel-platform-unsupported" || errorCode === "tunnel-plugin-disabled";
   const managed = fence.service?.lifecycle === "managed" || !!view && view.state !== "captured", available = !!host.preview && (!!host.keepPreview || fence.service?.lifecycle === "managed");
@@ -74,14 +76,14 @@ function PreviewCard({ fence, host }: { fence: ArtifactFence; host: ArtifactHost
     <p className="font-mono">127.0.0.1:{fence.service?.port}</p>
     <p className="text-sm text-muted-foreground">{copy[4]}</p>
     {view?.state === "captured" && <p>{recovery[1]}</p>}
-    {(view || pending) && <p role="status">{pending === "preview-stop" ? lifecycle.closing : view?.state === "registering" ? copy[8] : view?.state === "edge" ? copy[9] : view?.state === "open" ? copy[10] : view?.state === "draining" ? lifecycle.draining : view?.state === "closed" ? copy[20] : pending === "preview-start" ? lifecycle.connecting : null}</p>}
+    {connecting || pending === "preview-start" ? <LoadingState inline locale={host.locale} /> : (view || pending) && <p role="status" className="text-sm">{pending === "preview-stop" ? lifecycle.closing : view?.state === "open" ? copy[10] : view?.state === "draining" ? lifecycle.draining : view?.state === "closed" ? copy[20] : null}</p>}
     <div className="flex flex-wrap gap-2">
-      {!blocked && view?.state === "captured" && host.keepPreview && <Button type="button" size="sm" className="min-h-11" disabled={busy} onClick={() => void action("preview-keep-running")}>{recovery[0]}</Button>}
-      {!blocked && view && available && managed && <Button type="button" size="sm" className="min-h-11" disabled={busy || connecting || view.state === "draining"} onClick={() => void action(view?.state === "open" ? "preview-issue-code" : "preview-start")}>{view?.state === "open" ? copy[13] : view?.state === "failed" && view.failure === "preview-tunnel-unavailable" ? lifecycle.reopen : copy[0]}</Button>}
-      {(view?.sessionId || pending === "preview-start") && <Button type="button" variant="outline" size="sm" className="min-h-11" disabled={pending === "preview-stop"} onClick={() => void action("preview-stop")}>{copy[1]}</Button>}
-      {url && <Button type="button" variant="outline" size="sm" className="min-h-11" onClick={() => { const link = url; setEntry(null); setQr(null); void host.openPreview?.(link); }}>{copy[2]}</Button>}
-      {host.followUp && (!managed || failure) && <Button type="button" variant="outline" size="sm" className="min-h-11" onClick={() => host.followUp!({ prompt: copy[19] })}>{copy[3]}</Button>}
-      {host.managePreviews && <Button type="button" variant="ghost" size="sm" className="min-h-11" onClick={host.managePreviews}>{copy[18]}</Button>}
+      {!blocked && view?.state === "captured" && host.keepPreview && <Button type="button" variant="outline" size="pill" disabled={busy} onClick={() => void action("preview-keep-running")}>{recovery[0]}</Button>}
+      {!blocked && view && available && managed && <Button type="button" variant="outline" size="pill" disabled={busy || connecting || view.state === "draining"} onClick={() => void action(view?.state === "open" ? "preview-issue-code" : "preview-start")}>{view?.state === "open" ? copy[13] : view?.state === "failed" ? connectionCopy(host.locale).retry : copy[0]}</Button>}
+      {(view?.sessionId || pending === "preview-start") && <Button type="button" variant="outline" size="pill" disabled={pending === "preview-stop"} onClick={() => void action("preview-stop")}>{copy[1]}</Button>}
+      {url && <Button type="button" variant="outline" size="pill" onClick={() => { const link = url; setEntry(null); setQr(null); void host.openPreview?.(link); }}>{copy[2]}</Button>}
+      {host.followUp && (!managed || failure) && <Button type="button" variant="outline" size="pill" onClick={() => host.followUp!({ prompt: copy[19] })}>{copy[3]}</Button>}
+      {host.managePreviews && <Button type="button" variant="ghost" size="pill" onClick={host.managePreviews}>{copy[18]}</Button>}
     </div>
     {url && <p className="text-sm text-muted-foreground">{copy[12]}</p>}
     {url && qr && <img src={qr} width={224} height={224} alt={copy[12]} className="rounded-md" />}

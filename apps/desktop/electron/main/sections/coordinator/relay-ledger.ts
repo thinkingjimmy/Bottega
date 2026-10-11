@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on atomic file IO, zod, SerialQueue, submission custody, ledger operations, and Section/chat identities
- * [OUTPUT]: Ledger v7 writer for input custody, crash-safe preparation pins, atomic sequence/context binding and retained SQLite handoff evidence.
+ * [OUTPUT]: Ledger v7 writer for input custody, crash-safe preparation pins, atomic sequence/context binding and retained SQLite handoff evidence prepared from current serialized state.
  * [POS]: The durable side-effect journal of sections/coordinator
  */
 
@@ -490,6 +490,14 @@ export class RelayLedger {
   freezeCloudHandoff(intentId: string, command: Parameters<typeof freezeCloudHandoff>[2]) {
     return this.mutate(state => freezeCloudHandoff(state, intentId, command));
   }
+  prepareCloudHandoff(intentId: string, prepare: (state: DeepReadonly<LedgerState>) => Parameters<typeof freezeCloudHandoff>[2] | null) {
+    return this.queue.enqueue(async () => {
+      if (this.frozen) throw this.frozen;
+      const command = prepare(this.state);
+      if (!command) return null;
+      return this.commitMutation(state => freezeCloudHandoff(state, intentId, command).command);
+    });
+  }
   confirmCloudHandoff(intentId: string, proof: Parameters<typeof confirmCloudHandoff>[2]) {
     return this.mutate(state => confirmCloudHandoff(state, intentId, proof));
   }
@@ -672,63 +680,67 @@ export class RelayLedger {
     change: (draft: LedgerState, now: number) => T,
     afterCommit?: (result: T) => void
   ) {
-    return this.queue.enqueue(async () => {
-      if (this.frozen) throw this.frozen;
-      const draft = structuredClone(this.state);
-      retainCloudEvidence(draft, this.cloudEnabled());
-      const now = this.now();
-      const outcomeRevisions = new Map(
-        Object.values(this.state.submissionOutcomes).map((outcome) => [
-          outcome.intentId,
-          outcome.revision,
-        ])
-      );
-      const result = change(draft, now);
-      retainCloudEvidence(draft, this.cloudEnabled());
-      const finishPayloads =
-        await this.submissionPayloads.prepareExpiredReleases(draft, now);
-      compactLedgerState(draft, now);
-      const next = ledgerSchema.parse(draft);
+    return this.queue.enqueue(() => this.commitMutation(change, afterCommit));
+  }
+  private async commitMutation<T>(
+    change: (draft: LedgerState, now: number) => T,
+    afterCommit?: (result: T) => void
+  ) {
+    if (this.frozen) throw this.frozen;
+    const draft = structuredClone(this.state);
+    retainCloudEvidence(draft, this.cloudEnabled());
+    const now = this.now();
+    const outcomeRevisions = new Map(
+      Object.values(this.state.submissionOutcomes).map((outcome) => [
+        outcome.intentId,
+        outcome.revision,
+      ])
+    );
+    const result = change(draft, now);
+    retainCloudEvidence(draft, this.cloudEnabled());
+    const finishPayloads =
+      await this.submissionPayloads.prepareExpiredReleases(draft, now);
+    compactLedgerState(draft, now);
+    const next = ledgerSchema.parse(draft);
+    try {
+      await this.persist(next);
+    } catch (cause) {
+      if (cause instanceof LedgerAmbiguousCommitError) this.frozen = cause;
+      throw cause;
+    }
+    this.state = next;
+    await finishPayloads();
+    this.indices.prune(this.state);
+    afterCommit?.(result);
+    this.freezeCommittedState();
+    this.revision += 1;
+    const actions = this.actionsSnapshot();
+    for (const listener of this.actionListeners) {
       try {
-        await this.persist(next);
+        listener(actions);
       } catch (cause) {
-        if (cause instanceof LedgerAmbiguousCommitError) this.frozen = cause;
-        throw cause;
+        console.warn("[section-ledger] action listener failed", cause);
       }
-      this.state = next;
-      await finishPayloads();
-      this.indices.prune(this.state);
-      afterCommit?.(result);
-      this.freezeCommittedState();
-      this.revision += 1;
-      const actions = this.actionsSnapshot();
-      for (const listener of this.actionListeners) {
+    }
+    // Events only wake observers; publish outcomes whose revisions changed in this mutation.
+    for (const outcome of Object.values(this.state.submissionOutcomes)) {
+      if (outcomeRevisions.get(outcome.intentId) === outcome.revision) {
+        continue;
+      }
+      const projection = querySubmissionOutcome(
+        this.state,
+        outcome.intentId,
+        now
+      );
+      for (const listener of this.outcomeListeners) {
         try {
-          listener(actions);
+          listener(projection);
         } catch (cause) {
-          console.warn("[section-ledger] action listener failed", cause);
+          console.warn("[section-ledger] outcome listener failed", cause);
         }
       }
-      // 事件仅唤醒：只广播本次 mutation 变更过 revision 的 outcome。
-      for (const outcome of Object.values(this.state.submissionOutcomes)) {
-        if (outcomeRevisions.get(outcome.intentId) === outcome.revision) {
-          continue;
-        }
-        const projection = querySubmissionOutcome(
-          this.state,
-          outcome.intentId,
-          now
-        );
-        for (const listener of this.outcomeListeners) {
-          try {
-            listener(projection);
-          } catch (cause) {
-            console.warn("[section-ledger] outcome listener failed", cause);
-          }
-        }
-      }
-      return structuredClone(result);
-    });
+    }
+    return structuredClone(result);
   }
   private async persist(state: LedgerState) { await persistLedgerState(this.filePath, state); }
   private async commitInitializedState(now: number) {

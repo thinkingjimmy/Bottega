@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Exact encrypted commands, current account/clock, existing coordinator evidence and original ledger custody.
- * [OUTPUT]: Claims and decrypts bounded commands, settles a command refused or unreadable before it is frozen as `rejected + noAdmission` (provably never admitted), freezes hash mappings before admission and reports immutable encrypted evidence without rejecting accepted work when result reads fail; each command runs in its hop trace and reuses a live Chat head, reading it fresh only when the cache disagrees (T20-5). A headless command is taken only as a reservation's first message, which materialises its Chat (U06 Q7-c). Frozen contexts bind queue exchange and Steer references; definite pre-outbox refusal releases the claim.
+ * [OUTPUT]: Claims and decrypts bounded commands, settles a command refused or unreadable before it is frozen as `rejected + noAdmission` (provably never admitted), freezes hash mappings before admission and reports immutable encrypted evidence without rejecting accepted work when result reads fail; each command runs in its hop trace and reuses a live Chat head, reading it fresh only when the cache disagrees (T20-5). First claims for cancellation and non-creation Start overlap a missing head read; only custody-free cancellation omits its redundant claimed report. All effect authority and final acknowledgements remain required. A headless command is taken only as a reservation's first message, which materialises its Chat (U06 Q7-c). Frozen contexts bind queue exchange and Steer references; definite pre-outbox refusal releases the claim.
  * [POS]: Main-only intake; current authority and calibrated deadlines gate effects independently from historical receipt recovery.
  */
 import type { ReservedFirst } from "../resources/reservations";
@@ -107,16 +107,24 @@ export class RemoteCommandIntake {
     const claim = { ...header, commandId: wire.commandId, ciphertextHash: wire.ciphertextHash, connectionEpoch: connection.connectionEpoch,
       claimToken: remoteHash(["remote-claim", connection.scope.userId, wire.commandId, wire.ciphertextHash]) };
     const claimKey = `${connection.connectionEpoch}:${wire.commandId}`;
+    const readHead = () => this.ports.transport.query("chats/metadata:head", { ...header, chatId: wire.chatId });
+    const live = this.ports.liveHead?.(wire.chatId);
+    let speculativeHead: Promise<{ value: Awaited<ReturnType<typeof readHead>> } | { error: unknown }> | null = null;
     let original = initial;
     if (!this.claims.has(claimKey)) {
-      original = await this.ports.transport.mutate("remote/commands:claim", claim); current();
+      const claiming = this.ports.transport.mutate("remote/commands:claim", claim);
+      // Observe both outcomes even if the claim finishes early; this read never authorizes an effect.
+      if ((wire.kind === "cancel" || wire.kind === "start-turn" && !wire.intent?.creation) && live == null) {
+        speculativeHead = Promise.resolve().then(readHead).then(value => ({ value }), error => ({ error }));
+      }
+      original = await claiming; current();
       if (finished(original.state) || original.state.startsWith("awaiting-")) return;
       wire = validateRemoteCommand(crypto.scope, original.command); this.claims.add(claimKey);
     }
     // Reject unrelated current heads before touching any command plaintext.
-    const readHead = () => this.ports.transport.query("chats/metadata:head", { ...header, chatId: wire.chatId });
-    const live = this.ports.liveHead?.(wire.chatId);
-    let rawHead = live ?? await readHead(), cachedHead = live !== undefined; current();
+    const speculative = speculativeHead ? await speculativeHead : null; current();
+    if (speculative && "error" in speculative) throw speculative.error;
+    let rawHead = live ?? (speculative ? speculative.value : await readHead()), cachedHead = live !== undefined || speculative !== null; current();
     const known = this.ports.ledger.remote.ciphertext(wire.commandId);
     /* Nothing is admitted before the command is frozen in the ledger, so a command this device refuses before
        freezing it is provably not admitted: it is settled as `rejected + noAdmission` instead of staying claimed
@@ -166,7 +174,11 @@ export class RemoteCommandIntake {
     }
     const priorControl = isRemoteTurnPayload(command.payload) ? null : this.ports.ledger.remote.control(command.commandId);
     const noAdmission = isRemoteTurnPayload(command.payload) ? !this.ports.ledger.remote.lookup(context)?.accepted : !priorControl || priorControl.state === "not-dispatched";
-    if (!receipt.admission && noAdmission) { await send({ state: "claimed", noAdmission: true }); if (receipt.state !== "claimed") return; }
+    // Claim already establishes fresh cancellation custody; effect authority rechecks permission before every effect.
+    // Retained/uncertain commands keep the original report replay and revision sequence.
+    const freshCancel = command.payload.kind === "cancel" && !known && !priorControl && !previous &&
+      original.state === "claimed" && !original.report && !original.admission && !original.withdrawalRequested;
+    if (!receipt.admission && noAdmission && !freshCancel) { await send({ state: "claimed", noAdmission: true }); if (receipt.state !== "claimed") return; }
     const effectCurrent = () => {
       current(); const estimate = clock.estimate();
       if (!estimate) throw new Error("sync-clock-unavailable");

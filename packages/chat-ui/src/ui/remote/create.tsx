@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Account/target capabilities, frozen first-message custody, original command settlement and host destination preparation/navigation.
  * [OUTPUT]: RemoteCreateChat and destination/context contracts: immediate user bubble, editable next draft and continuous Thinking through prepared route handoff; confirmed Stop/completion ends activity. Definite file refusals unlock the original files; pending attempts retain their custody. App Edit creation remains text only and follows an existing Edit Chat unsent.
- * [POS]: Shared creation form; account-fenced original IDs own recovery, and destination commit releases the creation view.
+ * [POS]: Shared creation form; each App owns a separate draft and attempt, account-fenced original IDs own recovery, and the created Chat owns upload retries and destination handoff.
  */
 import { useRemoteReferences } from "./composer/input/references";
 import { remoteDraftStore, handoffRemoteDraft } from "../../platform/remote/input/draft";
@@ -43,7 +43,8 @@ import { remoteCopy } from "../../i18n/messages/remote";
 import { targetReason } from "./computer/selectors";
 import { RemoteAgentSelector } from "./computer/agent";
 import { Cloud } from "lucide-react";
-import { RemoteUnavailable } from "./computer/unavailable";
+import { RemoteUnavailable, RemoteConnectionUnavailable } from "./computer/unavailable";
+import { computerCopy } from "@ai-chat/ui/components/feedback/computer-copy";
 import { PlatformGlyph } from "./computer/glyphs";
 export type RemoteCreateContext = { target?: RemoteTarget; locked: boolean; unavailable: string | null };
 export type RemoteChatDestination = Pick<RemoteCreated, "chatId" | "incarnationId"> & { head?: CloudChatHead | null };
@@ -64,7 +65,7 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
 }) {
   const reading = chatCopy(locale), copy = remoteCopy(locale), input = remoteInputCopy(locale), port = platform.execution.remote, account = useChatAccount(platform.account), targets = useRemoteTargets(port, null, projectId);
   const [backend, setBackend] = useState<RemoteCreateInput["backend"] | null>(null);
-  const draftKey = `new:${projectId ?? "root"}`, [initialDraft] = useState(draft?.text);
+  const draftKey = appTarget ? `new:app-edit:${appTarget.appId}` : `new:${projectId ?? "root"}`, [initialDraft] = useState(draft?.text);
   // A route transition can retain this form after the registry key moves to its destination.
   const store = useMemo(() => remoteDraftStore(platform, draftKey, initialDraft), [platform, draftKey, initialDraft]);
   const completeDraft = useRemoteDraft(store, platform.commands?.remote);
@@ -92,6 +93,7 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
   const choice = completeDraft.options?.backend === agent ? completeDraft.options : null;
   const feedback = useRemoteFeedback(copy);
   const controls = useRemoteComposerControls({ store, draft: completeDraft, port: platform.commands?.remote, capabilities: capability?.capabilities,
+    chatId: attempt?.receipt?.chatId, incarnationId: attempt?.receipt?.incarnationId,
     permissionMode, locale, backend: agent, disabled: locked, copy, feedback, plugins:target?.plugins,ownerDeviceId:targetId,draftKey, textOnly: appTarget ? appEditTextOnly(locale) : undefined });
   const consent = useRemoteConsent(store, locale, target?.name ?? "", `${targetId}/${agent}`);
   // An App's first Edit message is text only (§8.2): no references either.
@@ -104,7 +106,7 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
   const retryBudget = attempt ? draftBudget(copy, { text: attempt.text, references: draftReferences, files: completeDraft.files.length }) : null;
   const filesBlocked = completeDraft.files.some(file => !firstMessageFileReady(file, Boolean(attempt)));
   const retryBlocked = contextBusy || filesBlocked || refused && (retryBudget !== null || controls.unsupported || controls.editing || !attempt?.text.trim() && !completeDraft.files.length && !completeDraft.references.length);
-  const disabled = contextBusy || filesBlocked || controls.unsupported || controls.editing || tooLong || Boolean(draft?.unsupported) || !allowed || !target || !selected || Boolean(target && targetReason(target, protocol, copy)) || !target.agents.some(value => value.backend === agent && value.available);
+  const disabled = contextBusy || filesBlocked || controls.unsupported || controls.editing || tooLong || Boolean(draft?.unsupported) || Boolean(computer?.block?.replacesComposer) || !allowed || !target || !selected || Boolean(target && targetReason(target, protocol, copy)) || !target.agents.some(value => value.backend === agent && value.available);
   const remoteBlockedReason = !allowed ? targets.value?.remoteControlEnabled === false ? copy.disabled : copy.disconnected : null;
   useEffect(() => { onDirtyChange?.(hasInput || Boolean(attempt)); }, [hasInput, attempt, onDirtyChange]);
   const openDestination = async (destination: RemoteChatDestination, sent = true, notice?: string) => {
@@ -223,6 +225,9 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
   const unavailable = targets.value !== null && targets.value.remoteControlEnabled === false;
   /* Targets still arriving is not "sync is disconnected": the card waits until the account or the port has actually failed. */
   const syncDisconnected = remoteBlockedReason === copy.disconnected && !(targets.value === null && connected);
+  const connectionLost = account.state === "offline" || targets.error;
+  const connectionLoading = !connectionLost && (computer === undefined || targets.value === null || target?.reason === "local-facts-pending");
+  const connectionUnavailable = connectionLost || connectionLoading || Boolean(computer?.block?.replacesComposer);
   /* The computer is named by the sidebar, so this composer only speaks when it cannot take the message. */
   const block = computer?.block ?? null;
   const notice = remoteBlockedReason
@@ -240,10 +245,13 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
         {waiting && <ConversationDraft label={turnCopy(locale).thinking} />}
       </ConversationContent>
     </Conversation> : <ChatEmptyState title={composerCopy(locale).empty} />}
-    <ComposerDock className="chat-remote"><fieldset disabled={busy || Boolean(attempt)} className="min-w-0">{typeof context === "function" ? context({ target, locked: busy || Boolean(attempt), unavailable: notice }) : context}</fieldset>
-      {notice && !waiting && !unavailable && !syncDisconnected && !(targets.value === null && notice === copy.disconnected) && <div className="chat-remote-hint" role="status" data-computer-notice><p>{notice}</p></div>}
+    <ComposerDock className="chat-remote">{!connectionUnavailable && computer !== null && <fieldset disabled={busy || Boolean(attempt)} className="min-w-0">{typeof context === "function" ? context({ target, locked: busy || Boolean(attempt), unavailable: notice }) : context}</fieldset>}
+      {notice && !waiting && !unavailable && !syncDisconnected && !connectionUnavailable && computer !== null && !(targets.value === null && notice === copy.disconnected) && <div className="chat-remote-hint" role="status" data-computer-notice><p>{notice}</p></div>}
       {unavailable ? <RemoteUnavailable icon={<PlatformGlyph kind="none" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disabled} description={copy.disabledDescription} actions={disabledActions} />
-        : syncDisconnected && !waiting ? <RemoteUnavailable icon={<Cloud aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disconnectedTitle} description={copy.disconnectedDescription} />
+        : connectionUnavailable ? <RemoteConnectionUnavailable locale={locale} loading={connectionLoading} block={connectionLost ? null : computer?.block}
+            actions={waiting ? [{ label: copy.stop, run: stop }] : undefined} />
+        : computer === null ? <RemoteUnavailable icon={<PlatformGlyph kind="none" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />} title={computerCopy(locale).noComputer} />
+        : syncDisconnected ? <RemoteUnavailable icon={<Cloud aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />} title={copy.disconnectedTitle} description={copy.disconnectedDescription} />
         : <ComposerForm className="chat-remote-form" onSubmit={event => { event.preventDefault(); void create(); }} aria-busy={busy} {...controls.events}>
         {!frozen && controls.files}
         <RemoteEditor references={completeDraft.references} suggestions={references}
@@ -256,11 +264,11 @@ export function RemoteCreateChat({ platform, locale, projectId, appTarget, appNa
           {capability?.models && <ComposerModelSelector locale={locale} backend={agent || undefined} models={capability.models} disabled={!allowed || busy || Boolean(attempt)}
             value={choice ?? EMPTY_CHOICE} onChange={next => store.update({ options: { backend: agent as RemoteCreateInput["backend"], ...next } })} />}
           {action.kind === "retry-create"
-            ? <Button type="submit" size="lg" className="rounded-full px-3 text-sm" aria-label={copy.retry} disabled={!allowed || retryBlocked}>{action.label}</Button>
+            ? <Button type="submit" variant="outline" size="pill" aria-label={action.label} disabled={!allowed || retryBlocked}>{action.label}</Button>
             : <PromptInputSubmit className="shrink-0 rounded-full max-md:size-11 pointer-coarse:size-11" aria-label={waiting ? copy.stop : copy.send} status={waiting ? "submitted" : undefined} onStop={stop} preferSubmit={!waiting} tooltip={block?.reason} disabled={waiting ? false : !allowed || disabled || !hasInput} />}
         </ComposerActions></ComposerToolbar>
       </ComposerForm>}
-      {appTarget && !unavailable && !syncDisconnected && <AppEditTextOnly locale={locale} />}
+      {appTarget && !unavailable && !syncDisconnected && !connectionUnavailable && <AppEditTextOnly locale={locale} />}
       {failure && failure !== "outcome-unknown" && <div role="alert" className="chat-remote-hint"><p>{refused && retryBudget ? retryBudget : appTarget
         ? <AppEditFailure locale={locale} failure={{ reason: failure, refusal }} values={appValues} fallback={reasonCopy(failure, copy)} /> : reasonCopy(failure, copy)}</p>
         {attempt?.receipt && <Button type="button" variant="outline" disabled={busy} onClick={async () => {

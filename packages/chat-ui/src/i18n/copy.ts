@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Depends on the host-selected locale.
+ * [INPUT]: Host-selected locale and shared connection vocabulary.
  * [OUTPUT]: Provides five-language Chat reading and file labels (including the transcript gap and its plural-aware gapLabel) plus compact interaction-completion copy independent of remote composer catalogs.
  * [POS]: Shared presentation copy; transport and execution errors stay structured in client adapters.
  */
+import { connectionCopy } from "@ai-chat/ui/components/feedback/connection-copy";
 const en = { outline: "Conversation outline", showMore: "Show more", showLess: "Show less", partial: "Some imported history is incomplete. The available messages are preserved.", latest: "Latest messages", replyInProgress: "A reply is in progress.", gapNotLoaded_one: "{count} message not loaded", gapNotLoaded_other: "{count} messages not loaded", gapNotLoadedEarlier: "Earlier messages not loaded", gapLoad: "Load", previous: "Previous", next: "Next", assistant: "Assistant", fullMessage: "Read full message", loading: "Loading conversation…", pending: "This conversation is still syncing.", unavailable: "Content is unavailable. Try again when connected.",
   retry: "Try again", earlier: "Show earlier messages", empty: "No messages yet", readOnly: "Read-only conversation", appReadOnly: "Read-only App conversation. Saved messages and files remain available here.",
   running: "Responding", unknown: "The computer has not confirmed whether this reply is still running.", sealing: "Saving the available reply…", settling: "Loading the saved reply…",
@@ -29,6 +30,10 @@ const copies: Record<string, ChatCopy> = {
     interrupted: "Esta respuesta se interrumpió. Se ha conservado el contenido disponible.", complete: "Respuesta guardada", attachment: "Abrir adjunto", download: "Descargar", failedFile: "No se pudo cargar el archivo.", copy: "Copiar", copied: "Copiado", process: "Actividad",
     subagent: "Subagente", unavailableDetail: "Los detalles no están disponibles.", plan: "Plan", imported: "Historial importado", close: "Cerrar", omittedTools: "{count} salidas de herramienta no se sincronizaron", user: "Tú", switchedAgent: "Continuado con {agent}", archived: "Archivada", interactions: "Responde a esta solicitud en el ordenador que ejecuta esta conversación." },
 };
+for (const [locale, copy] of Object.entries(copies)) {
+  const feedback = connectionCopy(locale);
+  Object.assign(copy, { loading: feedback.loading, pending: feedback.loading, retry: feedback.retry, failedFile: feedback.failed });
+}
 export function chatCopy(locale: string): ChatCopy { return copies[locale.toLowerCase().split("-")[0]!] ?? en; }
 /** The transcript gap's label: its size when known, with the language's plural form, else the imported-prefix wording. */
 export function gapLabel(locale: string, count: number | null) {

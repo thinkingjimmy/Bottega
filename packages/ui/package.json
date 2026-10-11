@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     "./globals.css": "./src/styles/globals.css",
+    "./components/feedback/connection-copy": "./src/components/feedback/connection-copy.ts",
+    "./components/feedback/computer-copy": "./src/components/feedback/computer-copy.ts",
     "./components/ai-elements/message/plugin-loader": "./src/components/ai-elements/message/plugin-loader.ts",
     "./components/account/moment": "./src/components/account/moment.ts",
     "./components/*": "./src/components/*.tsx",

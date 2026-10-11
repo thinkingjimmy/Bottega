@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the built-in Provider catalog's narrowing (the stored order is published as built-ins only until S5–S7), confirmed account connections, existing execution preparation, runtime availability, the shared Memory reconnect barrier and coordinator/control ports.
- * [OUTPUT]: Receives commands with paced independent pagination, bounded independent Chat preparation, observation and capability publication before the execution-only Memory barrier, Project/Agent publication (changed Project facts in batched pages), the phone Memory facade status (TASK-28, R-33), the claim of this computer's App Edit reservations (U06 Q7-b) and scoped authority; scans reuse pushed workspace-inbox and reservation pages and pass live Chat heads to intake (T20-5). Queue mutations reuse coordinator authority and conversation locking.
+ * [OUTPUT]: Receives commands with paced independent pagination, bounded independent Chat preparation and workspace replies with acknowledged-only completion and paced retries, observation and event-driven capability publication before the execution-only Memory barrier, Project/Agent publication (eligible ordinary Project facts in revision-aware batched pages), the phone Memory facade status (TASK-28, R-33), the claim of this computer's App Edit reservations (U06 Q7-b) and scoped authority; scans reuse pushed workspace-inbox and reservation pages and pass live Chat heads to intake (T20-5). Queue mutations reuse coordinator authority and conversation locking.
  * [POS]: Remote composition lifetime remains active while product windows are closed; logout and reconnect fence every operation.
  */
 import { recoveryDiagnostics } from "../../runtime/diagnostics/timeline";
@@ -121,6 +121,9 @@ export class RemoteCommandRuntime {
   private workspaceInbox: CloudFunctionResult<"remote/workspace:inbox"> | null = null;
   private reservationPage: CloudFunctionResult<"remote/chats:reservations"> | null = null;
   private readonly answeredQueries = new Set<string>();
+  private readonly workspaceQueries = new Map<string, Promise<void>>();
+  private readonly workspaceRetries = new Map<string, { attempts: number; at: number }>();
+  private workspaceRetry: ReturnType<typeof setTimeout> | null = null;
   private capabilityFlight: Promise<void> | null = null;
   private readonly preparations = new Map<string, Promise<void>>();
   private readonly preparationQueue = new Map<string, { current(): void; generation: number }>();
@@ -169,7 +172,7 @@ export class RemoteCommandRuntime {
         : command.payload.kind === "fork-chat"
         ? applyRemoteFork(command, context, current, { ledger, store, forks: ports.forks })
         : applyRemoteControl(command, context, current,
-        { ...mapping, queueMutation: action => coordinator.mutateRemoteQueue(context, current, action), prepareFiles: (command, current) => this.prepareFiles(command, current), crypto: ports.crypto, clock: ports.clock, config, transport, turns, handlers: currentAgentControlHandlers }) });
+        { ...mapping, queueMutation: action => coordinator.mutateRemoteQueue(context, current, action), prepareFiles: (command, current) => this.prepareFiles(command, current), clock: ports.clock, turns, handlers: currentAgentControlHandlers }) });
     this.releaseTransferred = ledger.remote.configureTransferredBarrier(() => ports.memoryBarrier?.beforeTransferred() ?? Promise.resolve());
     this.releaseAuthority = ledger.remote.configureExecutionAuthority(context => {
       const authority = this.intake.authority(context), current = () => {
@@ -192,14 +195,11 @@ export class RemoteCommandRuntime {
     this.queues = new RemoteQueuePublisher({ ...ports, connection: () => this.connection() });
     this.releaseAccount = ports.account.subscribeIdentity(() => this.wake());
     this.releaseRemoteReady = ports.onRemoteReady?.(() => this.wake()) ?? (() => {});
-    const bump = () => { this.agentInputs += 1; };
-    // A Memory change only republishes the capability packet; it never costs an inbox scan.
-    let facadeOn = ports.settings.get().memoryPhoneFacade;
-    const stopRuntime = backendRuntimeRegistry.subscribe(bump), stopSettings = ports.settings.onChanged(() => {
-      bump(); if (facadeOn !== ports.settings.get().memoryPhoneFacade) { facadeOn = !facadeOn; this.republish(); }
-    });
-    const stopMemory = ports.memory?.onStatus(() => { bump(); this.republish(); });
-    const stopPlugins = ports.plugins?.()?.onChanged(() => {bump();this.republish();});
+    // Capability changes use the existing single-flight publisher without rescanning command inboxes.
+    const bump = () => { this.agentInputs += 1; this.republish(); };
+    const stopRuntime = backendRuntimeRegistry.subscribe(bump), stopSettings = ports.settings.onChanged(bump);
+    const stopMemory = ports.memory?.onStatus(bump);
+    const stopPlugins = ports.plugins?.()?.onChanged(bump);
     this.releaseAgentInputs = () => { stopRuntime(); stopSettings(); stopMemory?.(); stopPlugins?.(); };
     this.releaseConnection = ports.account.subscribeConnection(() => this.wake());
     // Both inbox and preparation changes arrive on their own subscriptions; the timer is only a missed-notification fallback.
@@ -235,6 +235,7 @@ export class RemoteCommandRuntime {
   }
   private stop() {
     this.memoryReady = false; this.capabilitiesReady = false; this.preparationQueue.clear();
+    if (this.workspaceRetry) clearTimeout(this.workspaceRetry); this.workspaceRetry = null; this.workspaceRetries.clear();
     this.lifetimeGeneration++; this.active = false; this.selected = null; this.baseKey = ""; this.configValue = null; this.inboxPage = null; this.preparationPage = null; this.workspaceInbox = null; this.reservationPage = null; this.answeredQueries.clear();
     for (const release of this.listeners.splice(0)) release(); this.publication.clear(); this.agentsKey = null; this.failures.clear(); this.intake.reset();
     this.inboxCursor = null; this.preparationCursor = null;
@@ -341,14 +342,30 @@ export class RemoteCommandRuntime {
     if (!continuing && this.ports.workspaceReferences) {
       const queries = this.workspaceInbox ?? await transport.query("remote/workspace:inbox", { ...header, connectionEpoch: base.connectionEpoch }); current();
       const workspace = new RemoteWorkspaceService(this.ports.deviceId, this.ports.workspaceReferences);
-      for (const id of [...this.answeredQueries]) if (!queries.some(row => row.request.queryId === id)) this.answeredQueries.delete(id);
+      const ids = new Set(queries.map(row => row.request.queryId));
+      for (const id of this.answeredQueries) if (!ids.has(id)) this.answeredQueries.delete(id);
+      for (const id of this.workspaceRetries.keys()) if (!ids.has(id)) this.workspaceRetries.delete(id);
       for (const row of queries) {
-        if (this.answeredQueries.has(row.request.queryId)) continue;
-        this.answeredQueries.add(row.request.queryId);
-        try { await answerProjectQuery(row, { workspace, crypto, deviceId: this.ports.deviceId, connectionEpoch: base.connectionEpoch,
-          current, report: input => transport.mutate("remote/workspace:report", { ...header, ...input }) }); }
-        catch (error) { current(); this.reportFailure("scan", error); }
+        if (this.workspaceQueries.size >= 4) break;
+        const id = row.request.queryId;
+        if (this.answeredQueries.has(id) || this.workspaceQueries.has(id) || (this.workspaceRetries.get(id)?.at ?? 0) > Date.now()) continue;
+        // Keep the slot until the underlying read settles, including after a connection replacement.
+        const flight = Promise.resolve().then(() => answerProjectQuery(row, { workspace, crypto, deviceId: this.ports.deviceId, connectionEpoch: base.connectionEpoch,
+          current, report: input => transport.mutate("remote/workspace:report", { ...header, ...input }) })).then(() => {
+          current(); this.answeredQueries.add(id); this.workspaceRetries.delete(id);
+        }).catch(error => {
+          if (this.closed || this.lifetimeGeneration !== lifetime) return;
+          this.reportFailure("scan", error);
+          const attempts = (this.workspaceRetries.get(id)?.attempts ?? 0) + 1;
+          this.workspaceRetries.set(id, { attempts, at: Date.now() + Math.min(30_000, 1_000 * 2 ** Math.min(attempts - 1, 5)) });
+          this.retryWorkspaceQueries();
+        }).finally(() => {
+          if (this.workspaceQueries.get(id) === flight) this.workspaceQueries.delete(id);
+          if (this.lifetimeGeneration === lifetime || this.active) this.wake();
+        });
+        this.workspaceQueries.set(id, flight);
       }
+      this.retryWorkspaceQueries();
     }
     if (continuing && !this.moreInbox) return;
     const page = observedInbox!; current();
@@ -362,6 +379,15 @@ export class RemoteCommandRuntime {
     if (rejected.length) { this.moreInbox = true; return false; }
     this.inboxCursor = page.complete ? null : page.cursor;
     this.moreInbox = !page.complete;
+  }
+  private retryWorkspaceQueries() {
+    if (this.workspaceRetry) clearTimeout(this.workspaceRetry); this.workspaceRetry = null;
+    if (this.closed || !this.workspaceRetries.size) return;
+    const due = [...this.workspaceRetries.values()].map(retry => retry.at).filter(at => at > Date.now());
+    if (!due.length) return;
+    const at = Math.min(...due);
+    this.workspaceRetry = setTimeout(() => { this.workspaceRetry = null; this.wake(); }, Math.max(0, at - Date.now()));
+    this.workspaceRetry.unref();
   }
   private prepareLater(chatId: string, current: () => void) {
     if (this.preparations.has(chatId) || this.preparationQueue.has(chatId) || this.preparationQueue.size >= REMOTE_LIMITS.pageRows) return;
@@ -390,7 +416,7 @@ export class RemoteCommandRuntime {
     this.publishLater(() => { if (this.lifetimeGeneration !== lifetime || hashChatContent(this.baseConnection()) !== key) throw new Error("connection-changed"); });
   }
   private publishLater(current: () => void) {
-    if (this.capabilityFlight) return;
+    if (this.capabilityFlight) { this.capabilityDirty = true; return; }
     this.capabilityDirty = false;
     const generation = this.lifetimeGeneration;
     const flight = this.publishCapabilities(current).catch(error => this.reportFailure("agents", error));
@@ -420,15 +446,23 @@ export class RemoteCommandRuntime {
     // Folder availability must not wait for Agent discovery or an optional model catalog publication.
     // Only changed facts are sent, a page per transaction, so a reconnect with twenty Projects costs one round trip (B-05).
     let projectFailed = false;
-    const changed = projects.store.list().map(project => ({ projectId: project.id,
-      bound: project.workspaceBinding.kind === "external" && projects.isUsable(project.id) }))
-      .filter(item => this.publication.get(`project:${item.projectId}`) !== String(item.bound));
+    const eligible = projects.store.list().filter(project => project.role !== "base-custody"
+      && project.sync?.confirmed?.role !== "base-custody"
+      && project.workspaceBinding.kind !== "app" && !project.sync?.confirmed?.appId);
+    const keys = new Set(eligible.map(project => `project:${project.id}`));
+    for (const key of this.publication.keys()) if (key.startsWith("project:") && !keys.has(key)) this.publication.delete(key);
+    const changed = eligible.map(project => {
+      const bound = project.workspaceBinding.kind === "external" && projects.isUsable(project.id);
+      return { projectId: project.id, bound, stamp: JSON.stringify([bound, project.sync?.cloudRevision ?? null]) };
+    }).filter(item => this.publication.get(`project:${item.projectId}`) !== item.stamp);
     for (let start = 0; start < changed.length; start += REMOTE_LIMITS.pageRows) {
       const page = changed.slice(start, start + REMOTE_LIMITS.pageRows);
       current();
       try {
-        const { rejected } = await transport.mutate("remote/capabilities:projects", { ...header, projects: page }); current();
-        for (const item of page) if (!rejected.includes(item.projectId)) this.publication.set(`project:${item.projectId}`, String(item.bound));
+        const { rejected } = await transport.mutate("remote/capabilities:projects", {
+          ...header, projects: page.map(({ projectId, bound }) => ({ projectId, bound })),
+        }); current();
+        for (const item of page) if (!rejected.includes(item.projectId)) this.publication.set(`project:${item.projectId}`, item.stamp);
         if (rejected.length) { projectFailed = true; this.reportFailure("projects", new Error("project-unavailable")); }
       } catch (error) { current(); projectFailed = true; this.reportFailure("projects", error); }
     }

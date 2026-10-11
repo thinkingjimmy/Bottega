@@ -19,7 +19,7 @@
 .chat-remote-unavailable-body { min-width: 0; flex: 1 1 auto; }
 .chat-remote-unavailable-title { margin: 0; font-size: 14px; font-weight: 500; line-height: 1.5; }
 .chat-remote-unavailable-description { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted-foreground); overflow-wrap: anywhere; }
-.chat-remote-unavailable-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.chat-remote-unavailable-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .chat-remote-tile-progress { position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit; color: var(--foreground); pointer-events: none; }
 .chat-remote-tile-bar { position: absolute; left: 6px; right: 6px; bottom: 6px; height: 3px; border-radius: 2px; background: color-mix(in oklab, var(--background) 70%, transparent); overflow: hidden; }
 .chat-remote-tile-bar i { display: block; height: 100%; background: var(--primary); }
@@ -34,7 +34,7 @@
 @media (pointer: coarse), (max-width: 767px) {
   .chat-remote-text { font-size: 16px; }
   /* Attachment actions keep the desktop's 24px body; their 44px hit area is the ::after ring. */
-  .chat-remote [data-slot=button]:not([data-slot=attachment-action]), .chat-remote button:not([data-slot=attachment-action]) { min-width: 44px; min-height: 44px; }
+  .chat-remote [data-slot=button]:not([data-size=pill]):not([data-slot=attachment-action]), .chat-remote button:not([data-size=pill]):not([data-slot=attachment-action]) { min-width: 44px; min-height: 44px; }
   .chat-remote-form button[data-permission-mode] { justify-content: center; flex-shrink: 0; }
 }
 
@@ -55,3 +55,5 @@
   /* The two groups stay intact; when both cannot share a row the actions drop to their own, still right-aligned. */
   .chat-remote-form [data-slot=input-group-addon] { flex-wrap: wrap; }
 }
+
+.chat-remote-unavailable > svg { width: 16px; height: 16px; flex-shrink: 0; }
