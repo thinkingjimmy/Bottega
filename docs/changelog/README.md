@@ -6,7 +6,7 @@ This file records product milestones, not internal implementation iterations. Da
 
 ## 2026-10-12 — Inspectable macOS candidate builds
 
-Production macOS Apple silicon candidates now have a build workflow in this same repository. Source, workflow, exact tool pins, installer hashes and GitHub provenance can be inspected together. Signer resource requirements are checked before compilation. Future release candidates use the original cloud-built files after private native acceptance. An upload-only retry preserves the original installers.
+Production macOS Apple silicon candidates now have a build workflow in this same repository. Source, workflow, exact tool pins, installer hashes and GitHub provenance can be inspected together. The signing scanner checks every file with bounded concurrency. Future release candidates use the original cloud-built files after private native acceptance. An upload-only retry preserves the original installers.
 
 This is build-process setup, with no new product version. Build-only candidates do not change the published 0.2.4 download, its tag or release assets. Personal releases retain ad-hoc signatures, manual updates and no Apple notarization.
 

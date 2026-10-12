@@ -1,0 +1,77 @@
+diff --git a/dist/cjs/util.js b/dist/cjs/util.js
+--- a/dist/cjs/util.js
++++ b/dist/cjs/util.js
+@@ -101,11 +101,31 @@
+ /**
+  * This function returns a promise resolving the file path if file binary.
+  */
++// Share probe slots across recursive and simultaneous walks to bound open files.
++const binaryProbeQueue = [];
++let activeBinaryProbes = 0;
+ async function getFilePathIfBinary(filePath) {
+-    if (await (0, isbinaryfile_1.isBinaryFile)(filePath)) {
+-        return filePath;
+-    }
+-    return null;
++    if (activeBinaryProbes >= 32) {
++        await new Promise(resolve => binaryProbeQueue.push(resolve));
++    }
++    else {
++        activeBinaryProbes += 1;
++    }
++    try {
++        if (await (0, isbinaryfile_1.isBinaryFile)(filePath)) {
++            return filePath;
++        }
++        return null;
++    }
++    finally {
++        const next = binaryProbeQueue.shift();
++        if (next) {
++            next();
++        }
++        else {
++            activeBinaryProbes -= 1;
++        }
++    }
+ }
+ /**
+  * This function returns a promise validating opts.app, the application to be signed or flattened.
+diff --git a/dist/esm/util.js b/dist/esm/util.js
+--- a/dist/esm/util.js
++++ b/dist/esm/util.js
+@@ -67,11 +67,31 @@
+ /**
+  * This function returns a promise resolving the file path if file binary.
+  */
++// Share probe slots across recursive and simultaneous walks to bound open files.
++const binaryProbeQueue = [];
++let activeBinaryProbes = 0;
+ async function getFilePathIfBinary(filePath) {
+-    if (await isBinaryFile(filePath)) {
+-        return filePath;
++    if (activeBinaryProbes >= 32) {
++        await new Promise(resolve => binaryProbeQueue.push(resolve));
+     }
+-    return null;
++    else {
++        activeBinaryProbes += 1;
++    }
++    try {
++        if (await isBinaryFile(filePath)) {
++            return filePath;
++        }
++        return null;
++    }
++    finally {
++        const next = binaryProbeQueue.shift();
++        if (next) {
++            next();
++        }
++        else {
++            activeBinaryProbes -= 1;
++        }
++    }
+ }
+ /**
+  * This function returns a promise validating opts.app, the application to be signed or flattened.
