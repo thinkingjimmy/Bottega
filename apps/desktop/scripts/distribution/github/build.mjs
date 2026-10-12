@@ -1,5 +1,5 @@
 /**
- * [INPUT]: A clean public GitHub snapshot, physical CLI identity, pinned Node/pnpm, production builder and platform artifact selectors.
+ * [INPUT]: A clean public GitHub snapshot, physical CLI identity, pinned Node/pnpm, signer descriptor admission, production builder and platform artifact selectors.
  * [OUTPUT]: Fresh macOS ARM64 personal installers, canonical build identity and normalized provenance bytes.
  * [POS]: Public GitHub production producer; private native acceptance remains a separate consumer.
  */
@@ -13,6 +13,7 @@ import { builderEnvironment } from "../../assembly/package-manager.mjs";
 import { locateCurrentPlatformArtifact, locateInstallers } from "../product-artifact.mjs";
 import { canonicalJson, payloadIdentity, publicConfigurationIdentity, publicSourceIdentity, PUBLIC_REPOSITORY, PUBLIC_WORKFLOW } from "./identity.mjs";
 import { assertGithubBuildRecord, readGithubBuildRecord, verifyGithubAssets } from "./record.mjs";
+import { probeProductionSignerResources, spawnProductionSigner } from "./signer-resources.mjs";
 
 const root = resolve(import.meta.dirname, "../../../../..");
 const desktop = join(root, "apps/desktop");
@@ -52,10 +53,12 @@ function paths() {
   const candidate = join(process.env.RUNNER_TEMP, "bottega-macos-candidate");
   return { candidate, packages: join(candidate, "packages"), assets: join(candidate, "assets") };
 }
-function run(command, args, environment = process.env) {
-  const result = spawnSync(command, args, { cwd: desktop, stdio: "inherit", env: environment });
+function assertSucceeded(result, message) {
   if (result.error) throw result.error;
-  assert.equal(result.status, 0, `Production build command failed: ${command}`);
+  assert.equal(result.status, 0, message);
+}
+function run(command, args, environment = process.env) {
+  assertSucceeded(spawnSync(command, args, { cwd: desktop, stdio: "inherit", env: environment }), `Production build command failed: ${command}`);
 }
 function verifyAdHoc(path) {
   execFileSync("/usr/bin/codesign", ["--verify", "--deep", "--strict", path], { stdio: "inherit" });
@@ -76,9 +79,11 @@ function build(context) {
   assert.equal(`pnpm@${actualPnpm}`, context.packageManager, "Installed pnpm differs from source pin");
   const environment = builderEnvironment({ ...process.env, BOTTEGA_CLOUD_BUILD: "production", BOTTEGA_WORKBENCH_UI: "1",
     CSC_IDENTITY_AUTO_DISCOVERY: "false", pnpm_config_verify_deps_before_run: "error" });
+  assertSucceeded(probeProductionSignerResources({ cwd: desktop, stdio: "inherit", env: environment }), "Production signer descriptor admission failed");
   run("pnpm", ["--dir", desktop, "build"], environment);
-  run(process.execPath, ["node_modules/electron-builder/cli.js", "--config", "electron-builder.yml", "--mac", "--arm64", "--publish", "never",
-    "-c.mac.identity=-", "-c.mac.notarize=false", "-c.extraMetadata.bottegaReleaseProfile=personal", `-c.directories.output=${output.packages}`], environment);
+  assertSucceeded(spawnProductionSigner(process.execPath, ["node_modules/electron-builder/cli.js", "--config", "electron-builder.yml", "--mac", "--arm64", "--publish", "never",
+    "-c.mac.identity=-", "-c.mac.notarize=false", "-c.extraMetadata.bottegaReleaseProfile=personal", `-c.directories.output=${output.packages}`],
+  { cwd: desktop, stdio: "inherit", env: environment }), "Production signing and packaging command failed");
   const artifact = locateCurrentPlatformArtifact(desktop, startedAt, "darwin", output.packages);
   verifyAdHoc(artifact.appPath); verifyAdHoc(join(artifact.resourcesPath, "runtime/node/darwin-arm64/bin/node"));
   const installers = locateInstallers(desktop, startedAt, "darwin", output.packages);
