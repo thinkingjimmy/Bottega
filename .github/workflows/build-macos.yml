@@ -1,0 +1,121 @@
+# [INPUT]: Clean public production source, fixed toolchain pins and GitHub-hosted standard ARM64 runners.
+# [OUTPUT]: Attested macOS personal installers and optional verified draft assets; publication follows private acceptance.
+# [POS]: The only public production workflow, maintained in the development source and exported byte-for-byte.
+name: Build macOS candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Full public main commit to build
+        required: true
+        type: string
+      tag:
+        description: Product version label (v0.2.4 or the next unpublished version)
+        required: true
+        type: string
+      mode:
+        description: Build-only verification or unpublished candidate draft
+        required: true
+        default: build-only
+        type: choice
+        options:
+          - build-only
+          - draft
+
+permissions: {}
+
+concurrency:
+  group: macos-candidate-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  BOTTEGA_PUBLIC_BUILD_COMMIT: ${{ inputs.source }}
+  BOTTEGA_PUBLIC_RELEASE_TAG: ${{ inputs.tag }}
+  BOTTEGA_PUBLIC_BUILD_MODE: ${{ inputs.mode }}
+
+jobs:
+  build:
+    if: github.repository == 'thinkingjimmy/Bottega' && github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    outputs:
+      artifact-id: ${{ steps.transfer.outputs.artifact-id }}
+      artifact-digest: ${{ steps.transfer.outputs.artifact-digest }}
+    steps:
+      - name: Check out exact public source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source }}
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - name: Set up pinned Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - name: Admit source and install pinned pnpm
+        run: node apps/desktop/scripts/distribution/github/build.mjs toolchain
+      - name: Install exact production dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build personal production installers
+        run: pnpm exec node apps/desktop/scripts/distribution/github/build.mjs build
+      - name: Attest exact installers and build record
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ runner.temp }}/bottega-macos-candidate/assets/*
+      - name: Preserve provenance bundle
+        env:
+          BOTTEGA_PUBLIC_ATTESTATION_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: pnpm exec node apps/desktop/scripts/distribution/github/build.mjs provenance
+      - name: Preserve original transfer artifact
+        id: transfer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: macos-arm64-candidate-${{ github.run_id }}
+          path: ${{ runner.temp }}/bottega-macos-candidate/assets
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  draft:
+    needs: build
+    if: inputs.mode == 'draft'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Check out exact public source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source }}
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - name: Set up pinned Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - name: Retrieve original verified transfer artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          path: ${{ runner.temp }}/candidate-assets
+          merge-multiple: true
+      - name: Upload exact draft bytes and record custody
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BOTTEGA_PUBLIC_TRANSFER_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}
+          BOTTEGA_PUBLIC_TRANSFER_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact-digest }}
+          BOTTEGA_PUBLIC_CANDIDATE_DIRECTORY: ${{ runner.temp }}/candidate-assets
+        run: node apps/desktop/scripts/distribution/github/draft.mjs "$BOTTEGA_PUBLIC_CANDIDATE_DIRECTORY"

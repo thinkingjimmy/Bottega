@@ -126,7 +126,7 @@
     {"path":"electron/main/workers/app-gui-query-worker-entry.ts","bytes":347,"sha256":"sha256:22378a6debae14c7d969138786b8670448815f1f0c52ec0ad2cc2324e94f3fc1"},
     {"path":"src/components/apps/surface/app-gui-surface.tsx","bytes":20412,"sha256":"sha256:1da3aba3d015bd602a5b92ac4704992f788a143e3716c575112650553bb30299"}
   ],
-  "runtimeSbomDigest": "sha256:46df55f8e6ddc0c3ae1285e374dde022d8552aff0d7e2d2e18cf7ffd307b3c21",
+  "runtimeSbomDigest": "sha256:2a6bd4151244baa1f058167773fbd71439a8e08ab692d9859c574443129467b2",
   "noticesDigest": "sha256:eb2e134fd32bdac4d615371bd0342699f89ad5c67279266a88c82a87887e7dd6",
   "authoringContracts": [
     "app-react-data-hooks-v1",

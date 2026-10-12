@@ -72,13 +72,13 @@ Bottega drives the Codex, Claude Code, Kimi Code, and OpenCode CLIs already inst
 
 ## Build from source
 
-Requires a Mac with Apple silicon, Node.js 24, and pnpm 11.9 or newer.
+Requires a Mac with Apple silicon. This source pins Node.js 24.21.0 and pnpm 11.9.0.
 
 ```bash
 git clone --recurse-submodules https://github.com/thinkingjimmy/Bottega.git
 cd Bottega
-corepack enable
-pnpm install
+npm install --global pnpm@11.9.0
+pnpm install --frozen-lockfile
 node apps/desktop/scripts/node-runtime/fetch-node.mjs --dev-manifest
 pnpm dev
 ```
@@ -91,6 +91,12 @@ pnpm dist
 ```
 
 A signed distribution requires your own Apple signing configuration. A local build is not the verified prerelease download. See the [getting-started guide](./docs/getting-started/README.md) for requirements, supported Agent CLIs, and build commands.
+
+## Build provenance
+
+The [macOS candidate workflow](./.github/workflows/build-macos.yml) builds the production source in this repository. Its [Actions runs](https://github.com/thinkingjimmy/Bottega/actions/workflows/build-macos.yml) record the exact source commit, pinned tools, installer hashes and GitHub provenance. Future releases use those same installers after private native acceptance.
+
+Build-only candidates validate this build process and expire after one day. They do not replace the published 0.2.4 download. Personal installers continue to use ad-hoc signatures, require manual updates and have no Apple notarization.
 
 # Collaboration
 

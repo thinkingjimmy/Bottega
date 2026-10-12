@@ -4,6 +4,12 @@
 
 本文件只记录产品里程碑，不记录内部实现的逐次迭代。日期表示对应能力首次形成完整产品形态的时间。
 
+## 2026-10-12 — 可查阅的 macOS 候选包构建
+
+macOS Apple 芯片生产候选包的构建工作流放在同一个仓库中。源码、工作流、固定工具版本、安装包摘要和 GitHub 来源证明可以一起查阅。后续发布先在私有侧对原云端文件做原生验收；只重试上传时，保留原安装包。
+
+本次仅设置构建流程，没有产品新版。build-only 候选不改动已发布的 0.2.4 下载、tag 或附件。个人包仍使用 ad-hoc 签名、手动更新，未经 Apple 公证。
+
 ## 2026-10-12 — v0.2.4
 
 [下载 0.2.4](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.4)，适用于 macOS Apple 芯片；也可以[打开 Bottega Web](https://app.getbottega.app)。
