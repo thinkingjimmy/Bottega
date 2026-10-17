@@ -1,12 +1,13 @@
 /**
- * [INPUT]: Existing colors/container queries and actual owner chrome bounds from the workspace.
- * [OUTPUT]: Separated floating top/bottom controls, Canvas layout and inspector overlays bounded below actual owner chrome.
+ * [INPUT]: Existing colors/container queries, the workspace menu's Radix Popper wrapper and actual owner chrome bounds.
+ * [OUTPUT]: Separated floating controls, closed-menu pointer release, Canvas layout and inspector overlays bounded below actual owner chrome.
  * [POS]: Canvas presentation; source dimensions and authority remain in host/model contracts.
  */
 .artifact-workspace { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; background: var(--muted); container-type: inline-size; container-name: artifact; }
 .artifact-workspace-body { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--muted); }
 .artifact-inspector { z-index: 25; display: flex; width: 288px; min-height: 0; flex-shrink: 0; flex-direction: column; overflow: hidden; border-left: 1px solid var(--border); background: var(--background); }
 .artifact-inspector[hidden] { display: none; }
+[data-radix-popper-content-wrapper]:has(> [data-workspace-menu][data-state="closed"]) { pointer-events: none; }
 .artifact-canvas { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
 .artifact-canvas-pair { display: grid; flex: 1; min-height: 0; min-width: 0; grid-template-columns: 1fr 1fr; overflow: hidden; }
 @container artifact (max-width: 899px) {

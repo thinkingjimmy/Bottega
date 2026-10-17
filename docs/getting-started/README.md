@@ -59,6 +59,14 @@ See the [features guide](../features/README.md) for the product model and its fo
 
 Authenticate with the CLI provider before starting Bottega. Bottega never asks for or imports that credential.
 
+## Upgrading to 0.2.6
+
+0.2.6 is an official stable release for macOS on Apple silicon (ARM64) only. The shipped 0.2.5 personal build has its updater disabled and cannot upgrade automatically. Quit Bottega completely, back up your Bottega folder and application data, then install 0.2.6 manually once. Keep your existing Bottega folder.
+
+0.2.6 enables the official stable automatic-update channel. To test automatic upgrades from this version, use a later stable release **higher than 0.2.6**.
+
+This release keeps **protocol 19**. Existing Bottega content, cloud content, sync passwords, and account keys remain. No data reset is required. See the [0.2.6 changelog](../changelog/README.md) and [installation steps](#download-and-install).
+
 ## Upgrading to 0.2.5
 
 This release uses **protocol 19**. Update every computer that uses cloud features to 0.2.5, then reload Bottega Web. Keep your existing Bottega folder, cloud content, sync password, and account keys; no data reset is required.
@@ -81,25 +89,18 @@ Cloud Sync now uses protocol 15. Update all computers that use cloud features to
 
 ## Download and install
 
-[Download 0.2.5](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.5) for **macOS on Apple silicon**. It is a prerelease and is excluded from GitHub Latest. Windows, Linux, and Android distribution are scheduled separately. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
+[Download 0.2.6](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.6), the official stable release for **macOS on Apple silicon (ARM64) only**. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| macOS (Apple silicon) | `Bottega-0.2.5-arm64.dmg` or `Bottega-0.2.5-arm64-mac.zip` | Manual installation and updates. |
+| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.6) | Official stable release. |
 
-Release packages require **Developer ID signing and Apple notarization**. Automatic updates are disabled: download each new version from the Releases page and replace the installed app manually.
+The official installers have **Developer ID signatures and Apple notarization**. 0.2.6 enables the official stable automatic-update channel. The shipped 0.2.5 personal build requires one manual installation of 0.2.6; subsequent automatic-upgrade tests need a stable version higher than 0.2.6.
 
 1. Quit Bottega completely and back up both your Bottega folder and application data.
-2. Download the DMG or ZIP and `release-manifest.json` from the same release. Run the command below and manually compare its output with the matching installer's `sha256` in the manifest. Use the ZIP filename instead if you downloaded the ZIP:
-
-```bash
-shasum -a 256 Bottega-0.2.5-arm64.dmg
-```
-
+2. Download the DMG or ZIP and `release-manifest.json` from the same release. Run `shasum -a 256` followed by the installer's path. Compare the output with the matching installer's `sha256` in the manifest.
 3. Open the DMG and drag Bottega into `Applications`, or extract the ZIP and copy the app there.
 4. Open Bottega from `Applications` and confirm the normal macOS first-launch prompt. If macOS reports a signature or notarization problem, keep the error details and report the bug before opening that package.
-
-The owner tests this prerelease after publication. Functional, visual, and interaction acceptance remains pending until that testing is complete; follow-up fixes ship as bugs.
 
 ## Cloud Sync and Cloud Web
 

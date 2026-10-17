@@ -59,6 +59,14 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 启动 Bottega 前，请先在对应官方 CLI 中完成登录。Bottega 不会要求或导入这些凭据。
 
+## 升级到 0.2.6
+
+0.2.6 为正式稳定版，仅适用于 macOS Apple 芯片（ARM64）。已发布的 0.2.5 个人版关闭了更新器，无法自动升级。请完全退出 Bottega，备份 Bottega 文件夹与应用数据，再手动安装 0.2.6 一次，继续使用原有 Bottega 文件夹。
+
+0.2.6 启用正式稳定版自动更新通道。此后的自动升级测试需要发布**高于 0.2.6** 的稳定版本。
+
+本次继续使用**协议 19**。已有 Bottega 内容、云端内容、同步密码与账号密钥保留，无需清空数据。见 [0.2.6 更新日志](../changelog/README.zh-CN.md)和[安装步骤](#下载与安装)。
+
 ## 升级到 0.2.5
 
 本次使用**协议 19**。请将使用云功能的每台电脑更新到 0.2.5，再重新加载 Bottega Web。继续使用原有 Bottega 文件夹、云端内容、同步密码与账号密钥，无需清空数据。
@@ -81,25 +89,18 @@ Cloud Sync 现使用协议 15。使用云功能的所有电脑都需升级到 0.
 
 ## 下载与安装
 
-[下载 0.2.5](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.5)，本次提供 **Apple 芯片的 macOS 安装包**。该版本标记为预发布，不进入 GitHub Latest。Windows、Linux 与 Android 发行另行安排。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
+[下载 0.2.6](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.6)，正式稳定版**仅适用于 macOS Apple 芯片（ARM64）**。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
 
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
-| macOS（Apple 芯片） | `Bottega-0.2.5-arm64.dmg` 或 `Bottega-0.2.5-arm64-mac.zip` | 手动安装与更新。 |
+| macOS（Apple 芯片 / ARM64） | [DMG 或 ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.6) | 正式稳定版。 |
 
-发布包要求 **Developer ID 签名与 Apple 公证**。自动更新已关闭；后续版本请从 Releases 页面下载并手动替换。
+正式安装包具有 **Developer ID 签名与 Apple 公证**。0.2.6 启用正式稳定版自动更新通道。已发布的 0.2.5 个人版需手动安装 0.2.6 一次；此后的自动升级测试需要高于 0.2.6 的稳定版本。
 
 1. 完全退出 Bottega，备份 Bottega 文件夹与应用数据目录。
-2. 从同一版本页面下载安装包和 `release-manifest.json`。运行下方命令，将输出与清单中对应安装包的 `sha256` 手动比较；下载 ZIP 时请替换为 ZIP 文件名：
-
-```bash
-shasum -a 256 Bottega-0.2.5-arm64.dmg
-```
-
+2. 从同一版本页面下载 DMG 或 ZIP 及 `release-manifest.json`。运行 `shasum -a 256`，后接安装包路径，将输出与清单中对应安装包的 `sha256` 比较。
 3. 打开 DMG，将 Bottega 拖入「应用程序」；使用 ZIP 时，解压后将应用复制到该目录。
 4. 从「应用程序」打开 Bottega，确认正常的 macOS 首次启动提示。如果 macOS 报告签名或公证问题，请保留错误信息并反馈 bug，暂勿打开该安装包。
-
-本次预发布由维护者在发布后测试。功能、视觉与交互验收仍待完成，后续问题按 bug 修复。
 
 ## Cloud Sync 与 Cloud Web
 

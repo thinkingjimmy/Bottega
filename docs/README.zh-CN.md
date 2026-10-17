@@ -2,7 +2,7 @@
 
 [English](./README.md) · [仓库首页](../README.md)
 
-当前版本：[0.2.5 预发布](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.5)，提供 Apple 芯片的 macOS 安装包与 [Bottega Web](https://app.getbottega.app)。升级前请阅读[安装与更新说明](./getting-started/README.zh-CN.md#升级到-025)。
+当前版本：[0.2.6 正式稳定版](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.6)，仅提供 macOS Apple 芯片（ARM64）安装包；也可使用 [Bottega Web](https://app.getbottega.app)。已发布的 0.2.5 个人版需手动安装 0.2.6 一次。升级前请阅读[安装与更新说明](./getting-started/README.zh-CN.md#升级到-026)。
 
 文档按职责组织，让仓库根目录只聚焦源码与构建配置。
 

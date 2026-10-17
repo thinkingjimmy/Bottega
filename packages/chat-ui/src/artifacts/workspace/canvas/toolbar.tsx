@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Displayed immutable version, shared mutation controller and workspace navigation/review actions; catalog-owned labels use the shared formatCopy formatter.
- * [OUTPUT]: WorkspaceHeader, inline WorkspaceActions and bottom WorkspaceHistory with original mutation guards.
+ * [OUTPUT]: WorkspaceHeader, inline WorkspaceActions whose closed menu releases pointer input, and bottom WorkspaceHistory with original mutation guards.
  * [POS]: Shared workspace controls composed around CanvasEditor; input fields keep native text Undo.
  */
 import { useState } from "react";
@@ -30,7 +30,7 @@ export function WorkspaceActions({ state, tool, commentCount, onTool, onPanel, o
   const copy = workspaceCopy(useArtifactHost()!.locale), [menuOpen, setMenuOpen] = useState(false);
   return <div data-workspace-toolbar="" className="ml-1 flex shrink-0 items-center border-l pl-1" role="group" aria-label={copy.tools}>
     <ToolbarButton label={copy.annotation} icon={MessageSquare} onClick={() => onTool("annotate")} active={tool === "annotate"} disabled={!state.previewEnabled && !state.enabled} />
-    <Popover open={menuOpen} onOpenChange={setMenuOpen}><PopoverTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label={copy.more} title={copy.more} className="min-h-[44px] min-w-[44px] shrink-0"><MoreHorizontal className="size-4" /></Button></PopoverTrigger><PopoverContent align="end" className="w-64 max-w-[calc(100vw-24px)] p-1" data-workspace-menu="" data-canvas-chrome="">
+    <Popover open={menuOpen} onOpenChange={setMenuOpen}><PopoverTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label={copy.more} title={copy.more} className="min-h-[44px] min-w-[44px] shrink-0"><MoreHorizontal className="size-4" /></Button></PopoverTrigger><PopoverContent align="end" className="w-64 max-w-[calc(100vw-24px)] p-1 data-[state=closed]:pointer-events-none" data-workspace-menu="" data-canvas-chrome="">
       {[[copy.history, History, "history"], [copy.system, Palette, "system"], [copy.comments + ` (${commentCount})`, MessageSquare, "comments"], [copy.properties, MousePointer2, "properties"], [copy.settings, Settings2, "settings"]].map(([label, Icon, panel]) => {
         const Glyph = Icon as typeof MessageSquare; return <Button key={String(panel)} type="button" variant="ghost" className="min-h-[44px] w-full justify-start" onClick={() => { setMenuOpen(false); onPanel(panel as Inspector); }}><Glyph className="size-4" />{String(label)}</Button>;
       })}
