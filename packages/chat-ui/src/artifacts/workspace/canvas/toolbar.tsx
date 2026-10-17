@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Displayed immutable version, shared mutation controller and workspace navigation/review actions.
+ * [INPUT]: Displayed immutable version, shared mutation controller and workspace navigation/review actions; catalog-owned labels use the shared formatCopy formatter.
  * [OUTPUT]: WorkspaceHeader, inline WorkspaceActions and bottom WorkspaceHistory with original mutation guards.
  * [POS]: Shared workspace controls composed around CanvasEditor; input fields keep native text Undo.
  */
 import { useState } from "react";
 import { MousePointer2, MessageSquare, Undo2, Redo2, MoreHorizontal, History, Palette, Settings2, RefreshCw } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
+import { formatCopy } from "@ai-chat/ui/lib/workbench-copy/format";
 import { Popover, PopoverContent, PopoverTrigger } from "@ai-chat/ui/components/ui/popover";
 import { useArtifactHost } from "../../context";
 import { ArtifactHeader } from "../../presentation/header";
@@ -17,7 +18,7 @@ export type CanvasTool = "preview" | "select" | "annotate";
 export function WorkspaceHeader({ state, controls, onCurrent }: { state: WorkspaceRead; controls: DesignEditController; onCurrent(): void }) {
   const copy = workspaceCopy(useArtifactHost()!.locale);
   return <div className="z-20 shrink-0">
-    <ArtifactHeader title={`${state.title} · v${state.revision}`} status={state.revision < state.latestRevision || state.editable === false ? copy.readonly : controls.pending ? copy.checking : controls.canvasDraft?.draft || state.dirty ? copy.dirty : copy.saved}>
+    <ArtifactHeader title={`${state.title} · ${formatCopy(copy.revisionTag, { revision: state.revision })}`} status={state.revision < state.latestRevision || state.editable === false ? copy.readonly : controls.pending ? copy.checking : controls.canvasDraft?.draft || state.dirty ? copy.dirty : copy.saved}>
       {state.revision < state.latestRevision && <Button type="button" variant="outline" className="min-h-[44px] shrink-0 px-2 text-xs" onClick={onCurrent}>{copy.current}</Button>}
     </ArtifactHeader>
   </div>;

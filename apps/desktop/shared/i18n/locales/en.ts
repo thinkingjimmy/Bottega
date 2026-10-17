@@ -3,7 +3,7 @@
  * [OUTPUT]: Provides the complete English catalog and its Catalog type, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery General appearance provides theme, language and archive confetti.
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
  * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
- * Artifact workspace labels are supplied by the shared workspace catalogs.
+ * Artifact workspace labels are supplied by the shared workspace catalogs; retired App Design controls register no copy.
  * [POS]: Reference and fallback locale for desktop i18n
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/en";
@@ -368,7 +368,6 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
     settingsRename: "Rename",
     settingsRenameTitle: "Rename App",
     settingsRenameDescription: "This name shows up in the Sidebar, in Chat @ suggestions, and in share links.",
-    settingsDanger: "Danger zone",
     settingsRequirements: "Machine configuration",
     settingsToolsHint: "This App declares the tools it needs. Below is where each of them stands on your machine right now.",
     settingsToolSatisfied: "Ready",

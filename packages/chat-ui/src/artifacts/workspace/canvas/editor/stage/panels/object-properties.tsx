@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Fixed Canvas object/board and snapshot identity, scoped draft and the original edit controller.
+ * [INPUT]: Fixed Canvas object/board and snapshot identity, scoped draft and the original edit controller; catalog-owned labels use the shared formatCopy formatter.
  * [OUTPUT]: Snapshot-bound raw fields, merged geometry/name drafts and cancellation from saved model values.
  * [POS]: Model inspector; stale local values cannot cross Save/Undo/target changes or replay canceled geometry.
  */
@@ -11,6 +11,7 @@ import type { DesignEditController } from "../../../edits";
 import { useArtifactHost } from "../../../../../context";
 import { canvasCopy } from "../../copy";
 import { Button } from "@ai-chat/ui/components/ui/button";
+import { formatCopy } from "@ai-chat/ui/lib/workbench-copy/format";
 type Fields = { x: string; y: string; width: string; height: string; title: string };
 export function CanvasObjectProperties({ object, board, artifactId, controls, onUncheckpointed }: { object?: CanvasObject; board?: CanvasRead["boards"][number]; artifactId: string; controls: DesignEditController; onUncheckpointed?(value: boolean): void }) {
   const copy = canvasCopy(useArtifactHost()!.locale), checkpoint = controls.canvasDraft;
@@ -44,7 +45,7 @@ export function CanvasObjectProperties({ object, board, artifactId, controls, on
   };
   return <fieldset disabled={!controls.current || controls.busy || controls.pending} className="space-y-4 p-4"><legend className="sr-only">{copy.properties}</legend><p className="text-sm font-medium">{board?.title ?? (object?.kind === "text" || object?.kind === "note" ? object.text.slice(0, 100) : object?.kind === "drawing" ? copy.draw : object ? copy[object.kind] : copy.choose)}</p>
     {board && <label className="block space-y-1 text-sm"><span>{copy.name}</span><input aria-label={copy.name} value={values.title} maxLength={250} className="min-h-[44px] w-full rounded-md border bg-background px-2" onChange={event => change("title", event.target.value)} /></label>}
-    <div className="grid grid-cols-2 gap-2">{([['x', 'X'], ['y', 'Y'], ['width', copy.width], ['height', copy.height]] as const).map(([field, label]) => <label key={field} className="block space-y-1 text-sm"><span>{label} (px)</span><input type="number" inputMode="decimal" aria-label={label} value={values[field]} className="min-h-[44px] w-full rounded-md border bg-background px-2" onChange={event => change(field, event.target.value)} /></label>)}</div>
+    <div className="grid grid-cols-2 gap-2">{([['x', 'X'], ['y', 'Y'], ['width', copy.width], ['height', copy.height]] as const).map(([field, label]) => <label key={field} className="block space-y-1 text-sm"><span>{formatCopy(copy.pixelLabel, { label })}</span><input type="number" inputMode="decimal" aria-label={label} value={values[field]} className="min-h-[44px] w-full rounded-md border bg-background px-2" onChange={event => change(field, event.target.value)} /></label>)}</div>
     {failed && <p role="alert" className="text-xs text-destructive">{copy.unsupported}</p>}
     <div className="flex gap-2"><Button type="button" variant="outline" className="min-h-[44px]" onClick={cancel}>{copy.cancel}</Button><Button type="button" className="min-h-[44px]" disabled={failed || !checkpoint?.draft} onClick={() => { if (checkpoint?.draft) void controls.canvas(artifactId, checkpoint.draft); }}>{copy.save}</Button></div>
   </fieldset>;

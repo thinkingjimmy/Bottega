@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Current main Chat/workspace authority, closed system commands and the single document journal.
+ * [INPUT]: Current main Chat/workspace authority, the canonical Provider default, closed system commands and the single document journal.
  * [OUTPUT]: Exact source extraction, paged three-way review, finite overrides, fixed consumption and controlled mounts.
  * [POS]: Design-system main adapter; no new registry, commit protocol or comment store.
  */
@@ -8,6 +8,7 @@ import { constants, lstatSync, realpathSync, existsSync, openSync, closeSync, fs
 import { dirname, join } from "node:path";
 import { unpackArtifactArchive } from "@ai-chat/cloud-protocol/artifacts/archive";
 import type { WorkspaceCommand } from "@ai-chat/cloud-protocol/artifacts/design/model";
+import { DEFAULT_PROVIDER_ID } from "../../../../shared/providers/catalog";
 import { designSystemSchema, systemCompileSchema, systemOverrideSchema, type DesignSystem, type SystemEntry } from "@ai-chat/cloud-protocol/artifacts/design/system/model";
 import { designSystemChanges, mergeDesignSystem } from "@ai-chat/cloud-protocol/artifacts/design/system/difference";
 import { validTokenValue, resolvedSystemToken } from "@ai-chat/cloud-protocol/artifacts/design/system/tokens";
@@ -164,7 +165,7 @@ async function initializeFiles(authority: DesignAuthority, path: string, files: 
   }
   assertAuthority();
 }
-export async function extractDesignSystem(input: WorkspaceCommand, backend = "codex") {
+export async function extractDesignSystem(input: WorkspaceCommand, backend: string = DEFAULT_PROVIDER_ID) {
   assertArtifactGeneration(input.generation);
   if (input.save) {
     if (!input.systemId || !input.requestId || input.expectedRevision !== 0) throw new DesignDocumentError("INVALID_DOCUMENT", "Initial system save requires an ID, request ID and expectedRevision 0");

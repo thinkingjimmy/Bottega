@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Main document/Artifact custody, current Chat/workspace facts, plugin lifecycle and trusted top-frame requests.
+ * [INPUT]: Main document/Artifact custody, current Chat/workspace facts, the canonical Provider default, plugin lifecycle and trusted top-frame requests.
  * [OUTPUT]: Fixed Canvas reads/capabilities/batches, semantic history, source conflicts, mounted-view checkpoint custody and immutable exports.
  * [POS]: Workspace authority; renderer input cannot select a filesystem root or App installation.
  */
 import { randomUUID } from "node:crypto";
+import { DEFAULT_PROVIDER_ID } from "../../../../shared/providers/catalog";
 import { manifestSchema, workspaceCommandSchema, summarizeDesignBoards, type WorkspaceCommand } from "@ai-chat/cloud-protocol/artifacts/design/model";
 import { designReferenceSchema, formatDesignReview, type DesignReference } from "@ai-chat/cloud-protocol/artifacts/design/review";
 import { unpackArtifactArchive } from "@ai-chat/cloud-protocol/artifacts/archive";
@@ -45,7 +46,7 @@ export class ArtifactWorkspace {
       authority && JSON.stringify(documents.authority(input.chatId, input.incarnationId)) !== JSON.stringify(authority)) throw new Error("Artifact reference authority changed");
     const version: DesignRevision = local ?? { authority: authority ?? { chatId: input.chatId, incarnationId: input.incarnationId, workspace: "", ownerId: "retained:" + input.chatId, authorityIdentity: source.record.remote ?? input.incarnationId }, manifest, path: `${manifest.format === "bottega-design-system" ? "design-systems" : "design"}/${manifest.documentId}`,
       revision: summary.revision, readSetDigest: summary.readSetDigest, snapshotRef: summary.snapshotRef, artifactId: input.artifactId,
-      fence: source.record.fence, messageId: source.record.messageId, backend: "codex", requestId: "retained-reference", createdAt: source.record.fence.createdAt ?? 0 };
+      fence: source.record.fence, messageId: source.record.messageId, backend: DEFAULT_PROVIDER_ID, requestId: "retained-reference", createdAt: source.record.fence.createdAt ?? 0 };
     await artifactRuntime()!.validate(source.record.ref);
     return { version, files, editable: Boolean(local), remote: Boolean(source.record.remote) };
   }
@@ -66,7 +67,7 @@ export class ArtifactWorkspace {
     if (!destination.canceled && destination.filePath) { await this.version(input); await writeFile(destination.filePath, Buffer.from(result.data, "base64")); }
     return { ...result, data: undefined, canceled: destination.canceled };
   }
-  async dispatch(raw: unknown, windowId = 0, backend = "codex"): Promise<unknown> {
+  async dispatch(raw: unknown, windowId = 0, backend: string = DEFAULT_PROVIDER_ID): Promise<unknown> {
     const input = workspaceCommandSchema.parse(raw), documents = designDocuments();
     if (input.action === "reference-check") { await this.authorizeReference(input.chatId, input.incarnationId, designReferenceSchema.parse(input.reference)); return { available: true }; }
     if (input.action === "ack-disable") { this.checkpoints.ack(windowId, input.nonce!, input.viewId!, this.checkpoints.key(input.chatId, input.incarnationId, input.documentId!)); return { acknowledged: true }; }

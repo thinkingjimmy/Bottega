@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Actual selected values, fixed font choices, source capabilities and durable draft callbacks and raw-field close protection.
+ * [INPUT]: Actual selected values, fixed font choices, source capabilities and durable draft callbacks and raw-field close protection; catalog-owned labels use the shared formatCopy formatter.
  * [OUTPUT]: Selection-bound typography with staged font/size/color/face/alignment/link/list changes and explicit settlement.
  * [POS]: Floating Canvas text controls; temporary values are saved only by the original journal on Done.
  */
 import { useState } from "react";
 import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Bold, Italic, Underline, MoreHorizontal, Pencil, Check, X } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
+import { formatCopy } from "@ai-chat/ui/lib/workbench-copy/format";
 import { Popover, PopoverContent, PopoverTrigger } from "@ai-chat/ui/components/ui/popover";
 import { validDesignProperty, type CanvasStyle } from "@ai-chat/cloud-protocol/artifacts/design/canvas/model";
 import { useArtifactHost } from "../../../../../context";
@@ -33,14 +34,15 @@ export function CanvasTypography({ values, fonts, editable, textEditable, linkEd
 }) {
   const copy = canvasCopy(useArtifactHost()!.locale), [more, setMore] = useState(false), [invalidFields, setInvalidFields] = useState<Partial<Record<keyof CanvasStyle, string>>>({});
   const family = values["font-family"] || fonts[0] || "system-ui", size = String(parseFloat(values["font-size"] || "16")), decoration = values["text-decoration"] ?? "none";
+  const fontLabel = (font: string) => font === "system-ui" ? copy.systemFont : font;
   const invalidMessage = Object.values(invalidFields)[0] ?? "";
   const invalid = (key: keyof CanvasStyle, message: string) => { const next = { ...invalidFields }; if (message) next[key] = message; else delete next[key]; setInvalidFields(next); onUncheckpointed(Object.keys(next).length > 0); };
   const apply = (key: keyof CanvasStyle, value: string) => { if (!validDesignProperty(key, value)) { invalid(key, copy.unsupported); return; } invalid(key, ""); change({ [key]: value }); };
   const action = (label: string, Icon: typeof Bold, click: () => void, pressed = false, disabled = false) => <Button type="button" variant={pressed ? "secondary" : "ghost"} size="icon" aria-label={label} title={disabled ? reason ?? copy.unsupported : label} aria-pressed={pressed} disabled={!editable || busy || disabled} className="min-h-[44px] min-w-[44px] shrink-0" onClick={click}><Icon className="size-4" /></Button>;
   return <div data-canvas-typography="" data-canvas-chrome="" className="max-w-full rounded-lg border bg-background p-1 shadow-lg" role="toolbar" aria-label={copy.properties}>
     <fieldset disabled={!editable || busy} className="flex flex-wrap items-center gap-1">
-      <select aria-label={copy.font} title={copy.font} value={family} className="min-h-[44px] min-w-0 max-w-40 flex-1 rounded-md border bg-background px-2 text-sm" onChange={event => apply("font-family", event.target.value)}>{!fonts.includes(family) && <option value={family} disabled>{family}</option>}{fonts.map(family => <option key={family} value={family}>{family}</option>)}</select>
-      <span className="w-16 shrink-0"><ValueInput label={`${copy.fontSize} (px)`} value={size} numeric change={value => { if (value.trim() && Number(value) > 0 && Number(value) <= 8000) apply("font-size", `${Number(value)}px`); else invalid("font-size", copy.unsupported); }} /></span>
+      <select aria-label={copy.font} title={copy.font} value={family} className="min-h-[44px] min-w-0 max-w-40 flex-1 rounded-md border bg-background px-2 text-sm" onChange={event => apply("font-family", event.target.value)}>{!fonts.includes(family) && <option value={family} disabled>{fontLabel(family)}</option>}{fonts.map(family => <option key={family} value={family}>{fontLabel(family)}</option>)}</select>
+      <span className="w-16 shrink-0"><ValueInput label={formatCopy(copy.pixelLabel, { label: copy.fontSize })} value={size} numeric change={value => { if (value.trim() && Number(value) > 0 && Number(value) <= 8000) apply("font-size", `${Number(value)}px`); else invalid("font-size", copy.unsupported); }} /></span>
       <input type="color" aria-label={copy.color} title={`${copy.color}: ${values.color ?? ""}`} value={colorHex(values.color ?? "#000000")} className="size-11 shrink-0 cursor-pointer rounded border bg-background p-1" onChange={event => apply("color", event.target.value)} />
       {action(copy.bold, Bold, () => apply("font-weight", Number.parseInt(values["font-weight"] ?? "400", 10) >= 600 || values["font-weight"] === "bold" ? "400" : "700"), Number.parseInt(values["font-weight"] ?? "400", 10) >= 600 || values["font-weight"] === "bold")}
       {action(copy.italic, Italic, () => apply("font-style", ["italic", "oblique"].includes(values["font-style"] ?? "") ? "normal" : "italic"), ["italic", "oblique"].includes(values["font-style"] ?? ""))}

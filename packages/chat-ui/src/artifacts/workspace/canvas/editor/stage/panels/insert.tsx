@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Current page/board, trusted placement geometry and fixed legal image choices.
+ * [INPUT]: Current page/board, trusted placement geometry and fixed legal image choices; catalog-owned labels use the shared formatCopy formatter.
  * [OUTPUT]: Named text/note/artboard/image insertion through closed CM operations with retained failed fields.
  * [POS]: Canvas insertion dialog; IDs/resources/source bytes remain host-owned.
  */
 import { useState } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@ai-chat/ui/components/ui/dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
+import { formatCopy } from "@ai-chat/ui/lib/workbench-copy/format";
 import { canvasOperationSchema, type CanvasOperation } from "@ai-chat/cloud-protocol/artifacts/design/canvas/commands";
 import type { CanvasRead } from "@ai-chat/cloud-protocol/artifacts/design/canvas/view";
 import { useArtifactHost } from "../../../../../context";
@@ -27,8 +28,8 @@ export function CanvasInsert({ placement, pageId, pageTitle, board, images, busy
   return <Dialog open onOpenChange={value => { if (!value && !busy) close(); }}><DialogContent className="max-w-sm" data-canvas-chrome=""><DialogTitle>{tool === "artboard" ? copy.newBoard : tool === "note" ? copy.note : tool === "image" ? copy.image : copy.text}</DialogTitle><DialogDescription>{copy.page} · {pageTitle}</DialogDescription>
     {(tool === "artboard" || tool === "image") && <label className="space-y-1 text-sm"><span>{copy.name}</span><input autoFocus aria-label={copy.name} value={title} maxLength={250} disabled={busy} className="min-h-[44px] w-full rounded-md border bg-background px-3" onChange={event => setTitle(event.target.value)} /></label>}
     {(tool === "text" || tool === "note") && <label className="space-y-1 text-sm"><span>{copy.text}</span><textarea autoFocus aria-label={copy.text} value={text} maxLength={4096} disabled={busy} className="min-h-[96px] w-full rounded-md border bg-background px-3 py-2" onChange={event => setText(event.target.value)} /></label>}
-    {tool === "image" && <label className="space-y-1 text-sm"><span>{copy.image}</span><select aria-label={copy.image} value={image} disabled={busy} className="min-h-[44px] w-full rounded-md border bg-background px-2" onChange={event => setImage(event.target.value)}>{images.map(value => <option key={value.path} value={value.path}>{value.path.split("/").at(-1)} · {Math.round(value.bytes / 1024)} KiB</option>)}</select></label>}
-    <div className="grid grid-cols-2 gap-2">{([[copy.width, width, setWidth], [copy.height, height, setHeight]] as const).map(([label, value, change]) => <label key={label} className="space-y-1 text-sm"><span>{label} (px)</span><input type="number" inputMode="decimal" aria-label={label} min={tool === "artboard" ? 40 : 1} max={8000} value={value} disabled={busy} className="min-h-[44px] w-full rounded-md border bg-background px-2" onChange={event => change(event.target.value)} /></label>)}</div>
+    {tool === "image" && <label className="space-y-1 text-sm"><span>{copy.image}</span><select aria-label={copy.image} value={image} disabled={busy} className="min-h-[44px] w-full rounded-md border bg-background px-2" onChange={event => setImage(event.target.value)}>{images.map(value => <option key={value.path} value={value.path}>{value.path.split("/").at(-1)} · {formatCopy(copy.sizeKiB, { size: Math.round(value.bytes / 1024) })}</option>)}</select></label>}
+    <div className="grid grid-cols-2 gap-2">{([[copy.width, width, setWidth], [copy.height, height, setHeight]] as const).map(([label, value, change]) => <label key={label} className="space-y-1 text-sm"><span>{formatCopy(copy.pixelLabel, { label })}</span><input type="number" inputMode="decimal" aria-label={label} min={tool === "artboard" ? 40 : 1} max={8000} value={value} disabled={busy} className="min-h-[44px] w-full rounded-md border bg-background px-2" onChange={event => change(event.target.value)} /></label>)}</div>
     {board && tool !== "artboard" && <label className="flex min-h-[44px] items-center gap-2 text-sm"><input type="checkbox" checked={onBoard} disabled={busy} onChange={event => setOnBoard(event.target.checked)} />{copy.artboard} · {board.title}</label>}
     {failed && <p role="alert" className="text-sm text-destructive">{copy.failed}</p>}
     <div className="flex justify-end gap-2"><Button type="button" variant="outline" className="min-h-[44px]" disabled={busy} onClick={close}>{copy.cancel}</Button><Button type="button" className="min-h-[44px]" disabled={!valid || busy} onClick={() => void submit()}>{copy.create}</Button></div>

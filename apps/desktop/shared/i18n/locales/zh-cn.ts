@@ -3,7 +3,7 @@
  * [OUTPUT]: Provides the complete Simplified Chinese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery General appearance provides theme, language and archive confetti.
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
  * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
- * Artifact workspace labels are supplied by the shared workspace catalogs.
+ * Artifact workspace labels are supplied by the shared workspace catalogs; retired App Design controls register no copy.
  * [POS]: zh-CN desktop locale; compile-time structure must match English exactly
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/zh-cn";
@@ -361,7 +361,6 @@ currentModelUnavailable: "{{model}}（当前不可用）"
     settingsRename: "重命名",
     settingsRenameTitle: "重命名 App",
     settingsRenameDescription: "这个名字出现在侧栏、Chat 的 @ 提示和分享链接里。",
-    settingsDanger: "危险区",
     settingsRequirements: "机器配置",
     settingsToolsHint: "这款 App 自己声明了要用哪些工具，下面是它们此刻在你机器上的状态。",
     settingsToolSatisfied: "已就绪",

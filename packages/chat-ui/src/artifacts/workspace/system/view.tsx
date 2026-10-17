@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Main-issued fixed version, archived system payload and the existing durable host checkpoint.
+ * [INPUT]: Main-issued fixed version, archived system payload and the existing durable host checkpoint; catalog-owned labels use the shared formatCopy formatter.
  * [OUTPUT]: Exact tokens/themes/provenance, persisted overrides, fixed bindings and explicit source-conflict resolution.
  * [POS]: Lazy Artifact design-system view; ordinary files never import it.
  */
 import { useState } from "react";
+import { formatCopy } from "@ai-chat/ui/lib/workbench-copy/format";
 import type { WorkspaceRead } from "@ai-chat/cloud-protocol/artifacts/design/model";
 import { inspectDesignSystem } from "@ai-chat/cloud-protocol/artifacts/design/system/validation";
 import { validTokenValue, resolvedSystemValue } from "@ai-chat/cloud-protocol/artifacts/design/system/tokens";
@@ -57,7 +58,7 @@ function useSystemCommands(props: Props) {
   return { host, copy, draft, busy, editable, run, mutate, feedback, fail: () => setError(true) };
 }
 function SystemViewer(props: Props) {
-  const { copy, draft, busy, editable, run, mutate, feedback, fail } = useSystemCommands(props), result = inspectDesignSystem(props.state.system);
+  const { host, copy, draft, busy, editable, run, mutate, feedback, fail } = useSystemCommands(props), result = inspectDesignSystem(props.state.system);
   const [theme, setTheme] = useState(result.system?.tokens.themes[0]?.id ?? "light"), [cursor, setCursor] = useState(0);
   const system = result.system;
   if (!system || result.issues.length) return <p role="alert">{copy.invalid}</p>;
@@ -65,7 +66,7 @@ function SystemViewer(props: Props) {
   const tokenNames = [...new Set([...system.tokens.tokens.map(token => token.name), ...system.aliases.aliases.map(alias => alias.name)])];
   const currentTheme = system.tokens.themes.some(value => value.id === draft.theme) ? draft.theme : firstTheme;
   return <section data-design-system={props.state.documentId} className="flex min-w-0 flex-col gap-3 rounded border p-3">
-    <h3 className="font-semibold">{props.state.title} · v{props.state.revision}</h3>
+    <h3 className="font-semibold">{props.state.title} · {formatCopy(workspaceCopy(host.locale).revisionTag, { revision: props.state.revision })}</h3>
     <label>{copy.themes}<select aria-label={copy.themes} className="ml-2 min-h-[44px] rounded border bg-background" value={theme} onChange={event => setTheme(event.target.value)}>{system.tokens.themes.map(value => <option key={value.id} value={value.id}>{value.name}</option>)}</select></label>
     <div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="py-2 text-left font-semibold">{copy.tokens} · {system.tokens.tokens.length}</caption><thead><tr><th className="p-2">{copy.token}</th><th className="p-2">{copy.exact}</th><th className="p-2">{copy.usage}</th><th className="p-2">{copy.sourceVersion}</th></tr></thead><tbody>
       {system.tokens.tokens.slice(cursor, cursor + 40).map(token => {

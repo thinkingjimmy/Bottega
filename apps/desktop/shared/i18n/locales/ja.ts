@@ -3,7 +3,7 @@
  * [OUTPUT]: Provides the complete Japanese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery General appearance provides theme, language and archive confetti.
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
  * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
- * Artifact workspace labels are supplied by the shared workspace catalogs.
+ * Artifact workspace labels are supplied by the shared workspace catalogs; retired App Design controls register no copy.
  * [POS]: Japanese desktop locale; compile-time structure must match English exactly
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/ja";
@@ -364,7 +364,6 @@ currentModelUnavailable: "{{model}}（現在利用不可）"
     settingsRename: "名前を変更",
     settingsRenameTitle: "App の名前を変更",
     settingsRenameDescription: "この名前は Sidebar、Chat の @ 候補、共有リンクに表示されます。",
-    settingsDanger: "危険な操作",
     settingsRequirements: "この端末の設定",
     settingsToolsHint: "この App が必要と宣言したツールと、いまこの端末での状態です。",
     settingsToolSatisfied: "準備完了",

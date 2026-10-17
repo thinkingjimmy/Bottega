@@ -50,7 +50,7 @@ export const settingsToolsFr: typeof settingsToolsEn = {
       design_check: { label: "Vérifier le document", hint: "Vérification en lecture seule de la structure et des fichiers stables." },
       design_commit: { label: "Enregistrer une version", hint: "Enregistre le document complet après vérification des conflits de version." },
       design_render_check: { label: "Vérifier le rendu Design", hint: "Rendre le canevas Design actuel et renvoyer une capture avec les avertissements anti-slop." },
-      design_system_extract: { label: "Extraire le système", hint: "Lit les valeurs exactes et leurs sources ; enregistre seulement un nouveau système." },
+      design_system_extract: { label: "Extraire le système", hint: "Lit les valeurs exactes et leurs sources ; enregistre seulement un nouveau système." },
       design_system_diff: { label: "Comparer les sources", hint: "Lit les changements et les éléments non synchronisés sans modifier le système." },
       design_system_update: { label: "Mettre à jour le système", hint: "Enregistre les choix explicites ou une valeur personnalisée." },
       design_system_bind: { label: "Utiliser une version", hint: "Conserve une version précise et ses ressources dans le design." },
