@@ -1,6 +1,6 @@
-# [INPUT]: Clean public production source, fixed toolchain pins and GitHub-hosted standard ARM64 runners.
-# [OUTPUT]: Attested macOS personal installers and optional verified draft assets; publication follows private acceptance.
-# [POS]: The only public production workflow, maintained in the development source and exported byte-for-byte.
+# [INPUT]: Clean public production source, fixed toolchain pins and GitHub-hosted standard ARM64 runners. Signing material comes only from the protected release environment on thinkingjimmy/Bottega.
+# [OUTPUT]: Attested macOS personal installers. build-only stays ad-hoc. signed and draft are Developer ID signed and Apple notarized. Publication follows private acceptance.
+# [POS]: The only public production workflow, maintained in the development source and exported byte-for-byte. Bottega-Dev never holds the signing secrets.
 name: Build macOS candidate
 
 on:
@@ -15,12 +15,13 @@ on:
         required: true
         type: string
       mode:
-        description: Build-only verification or unpublished candidate draft
+        description: Unsigned build-only check, signed artifact, or unpublished notarized draft
         required: true
         default: build-only
         type: choice
         options:
           - build-only
+          - signed
           - draft
 
 permissions: {}
@@ -37,8 +38,11 @@ env:
 jobs:
   build:
     if: github.repository == 'thinkingjimmy/Bottega' && github.ref == 'refs/heads/main'
+    # An empty name loads no environment, so build-only cannot see release secrets.
+    # signed and draft use the protected release environment on thinkingjimmy/Bottega.
+    environment: ${{ inputs.mode != 'build-only' && 'release' || '' }}
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 90
     permissions:
       contents: read
       id-token: write
@@ -60,6 +64,16 @@ jobs:
         with:
           node-version-file: package.json
           package-manager-cache: false
+      - name: Admit Developer ID signing material
+        if: inputs.mode != 'build-only'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: node apps/desktop/scripts/distribution/github/build.mjs sign-prepare
       - name: Admit source and install pinned pnpm
         run: node apps/desktop/scripts/distribution/github/build.mjs toolchain
       - name: Install exact production dependencies
@@ -84,6 +98,13 @@ jobs:
           compression-level: 0
           if-no-files-found: error
           retention-days: 1
+      - name: Remove temporary signing material
+        if: always() && inputs.mode != 'build-only'
+        run: |
+          if [ ! -f apps/desktop/scripts/distribution/github/build.mjs ]; then
+            exit 0
+          fi
+          node apps/desktop/scripts/distribution/github/build.mjs sign-cleanup
 
   draft:
     needs: build
