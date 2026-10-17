@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides the complete Japanese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery General appearance provides theme, language and archive confetti.
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
  * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
+ * Artifact workspace labels are supplied by the shared workspace catalogs.
  * [POS]: Japanese desktop locale; compile-time structure must match English exactly
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/ja";
@@ -147,8 +148,6 @@ promoteBaseToApp: "{{name}} をアプリに昇格"
     browser: settingsBrowserJa,
     extensions: settingsExtensionsJa,
     providers: {
-      toolAccess: "ツールのアクセス範囲",
-      toolAccessHint: "Agent ツールは GitHub CLI の認証情報、Git の認証ファイル、SSH 秘密鍵を読み取れません。認証が必要な gh と git はシステムのターミナルで実行してください。同梱 Node は追加 CA ファイルを引き継ぎません。企業 CA が必要なツールは管理者が設定したターミナルで実行してください。",
       title: "プロバイダー",
       description: "デフォルトの Agent と、Agent ピッカーでの並び順を設定します。",
       default: "デフォルト",
@@ -362,13 +361,9 @@ currentModelUnavailable: "{{model}}（現在利用不可）"
     settingsGeneral: "一般",
     settingsBasics: "基本情報",
     settingsNameAndIcon: "名前とアイコン",
-    designHiddenHint: "この App はいまどこでも開けないため、$design は Chat に表示されません。",
-    designReopen: "もう一度開く",
     settingsRename: "名前を変更",
     settingsRenameTitle: "App の名前を変更",
     settingsRenameDescription: "この名前は Sidebar、Chat の @ 候補、共有リンクに表示されます。",
-    settingsInteractiveAgentHint: "会話で機能や画面の変更を頼んだとき、この Agent が手を動かします。",
-    settingsMaintenanceAgentHint: "バージョンの再構築、環境の修復、プラグインの導入はこちら。「自動」を選ぶと製品が適任を選びます。",
     settingsDanger: "危険な操作",
     settingsRequirements: "この端末の設定",
     settingsToolsHint: "この App が必要と宣言したツールと、いまこの端末での状態です。",
@@ -402,10 +397,6 @@ currentModelUnavailable: "{{model}}（現在利用不可）"
     settingsCapabilities: "触れられるもの",
     settingsCapabilitiesHint: "どれも個別に切れます。切っても App は動きますが、その分できることが減ります。",
     settingsDataAccessHint: "Base のテーブルを開けるか、そして中の行を変更できるかどうか。",
-    designDeleteHint: "過去バージョンもすべて完全に削除され、元に戻せません。App 自体は残り、入れ直せば白紙から始まります。",
-    designDeleteTitle: "すべてのキャンバスを削除しますか？",
-    settingsInteractiveAgent: "編集 Agent",
-    settingsMaintenanceAgent: "メンテナンス Agent",
     settingsSave: "保存",
     settingsLiveSnapshot: "この App が使うツール",
     settingsRedetect: "再チェック",
@@ -424,21 +415,9 @@ currentModelUnavailable: "{{model}}（現在利用不可）"
     settingsStudioAccessStale: "以前は許可されましたが、この承認は現在のビルドと一致しません。App を開いて再度許可してください。",
     settingsRevokeStudioAccess: "App 内のアクセスを取り消す",
     settingsStudioRevokeFailed: "App 内のアクセスを取り消せませんでした",
-    designCanvasFile: "キャンバスファイル",
-    designNoImportCandidates: "インポート候補はありません",
     guiChecking: "アプリ画面を確認しています…",
     baseOpening: "データを開いています…",
     surfacePreparing: "アプリ画面を準備しています…",
-    designImport: "インポート",
-    designVersion: "キャンバスのバージョン",
-    designRestore: "復元",
-    designRestoreConfirm: "このバージョンを復元して現在のキャンバスを置き換えますか？",
-    designHistory: "バージョン履歴",
-    designHistoryHint: "キャンバスと保存済みバージョンを選び、現在のキャンバスと置き換えます。",
-    designNoVersions: "保存されたバージョンはまだありません",
-    designDeleteData: "すべてのキャンバスを削除",
-    designDeleteConfirm: "すべてのキャンバスと過去バージョンが完全に削除されます。この端末にバックアップは残らず、復元もできません。App 自体は残ります。",
-    designPresetReinstallHint: "Design は再インストールできます。残したデータはそのままで、明示的に削除したものは戻りません。",
     baseGuiConsent: {
       simpleTitle: "「{{name}}」に次の権限を許可",
       allowOpenTitle: "「{{name}}」を許可して開く",
@@ -483,7 +462,6 @@ currentModelUnavailable: "{{model}}（現在利用不可）"
     settingsOpenGlobalPlugins: "すべての App のプラグインを管理",
     settingsReadFailed: "App 設定を読み込めませんでした",
     settingsSaveFailed: "App 設定を保存できませんでした",
-    settingsAgentFailed: "App Agent を更新できませんでした",
     settingsDefaultFailed: "既定権限を更新できませんでした",
     settingsPluginRevokeFailed: "プラグイン権限を取り消せませんでした",
     settingsPluginRebuildFailed: "プラグイン世代を再構築できませんでした",

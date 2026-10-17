@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on AppStore, no-link manifest reads, source/compatibility receipts, joined commands, cross-volume publication and generation consent.
+ * [INPUT]: Depends on AppStore, task-frozen automatic maintenance selection, no-link manifest reads, source/compatibility receipts, joined commands, publication and generation consent.
  * [OUTPUT]: Executes authorized App install/update/repair work with target-specific maintenance eligibility and the existing source, publication and permission fences. Fences disabled rebuild/repair and auto-start without rolling back enablement.
  * [POS]: Apps supply-chain coordinator; it turns mutable source trees into validated runtime generations while AppSourceMonitor owns observation inside the same mutation lane
  */
@@ -64,6 +64,7 @@ import {
   assertAppSourceReceipt,
 } from "./app-source-coordinator";
 import { AppSourceMonitor } from "./app-source-monitor";
+import { maintenanceAgentForTask, recordMaintenanceAgent, type MaintenancePurpose } from "../runtime/maintenance-agent";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
 const NAMING_STUDIO_URL = "https://github.com/thinkingjimmy/codex-naming-studio";
@@ -118,6 +119,7 @@ export class AppInstaller {
       emit,
       appendLog,
       readLogTail,
+      recordAgent: (appId, backend) => recordMaintenanceAgent(store, appId, backend),
       validateStatic: (appDir, manifest) =>
         validateStaticArtifact(appDir, manifest),
     });
@@ -571,15 +573,11 @@ export class AppInstaller {
   }
 
   private async analyze(record: AppRecord, staging: string, task: InstallTask) {
-    if (record.maintenanceAgent === "auto") {
-      throw new Error("App 尚未钉住维护 Agent");
-    }
-    const descriptor = backendById(record.maintenanceAgent);
-    if (!descriptor.maintenance || !descriptor.headless) {
-      throw new Error(`${descriptor.displayName} 不支持 App 安装分析`);
-    }
+    const { descriptor, maintenance } = await maintenanceAgentForTask(task, "install-analysis", {
+      cwd: staging, onSelected: selected => recordMaintenanceAgent(this.store, record.id, selected.descriptor.id),
+    });
     const runtime = await this.maintenanceRuntime(descriptor.id, staging);
-    const session = await descriptor.maintenance.open({
+    const session = await maintenance.open({
       backend: descriptor.id, userData: this.userData,
       appId: record.id,
       workspace: staging,
@@ -640,12 +638,11 @@ export class AppInstaller {
       await this.appendLog(record.id, "[agent] 已批准仓库 Skill 文件，随 App 交付");
       return;
     }
-    const descriptor = backendById(record.maintenanceAgent === "auto" ? record.agent : record.maintenanceAgent);
-    if (!descriptor.maintenance) {
-      throw new Error(`${descriptor.displayName} 不支持 App 扩展配置`);
-    }
-    const runtime = await this.maintenanceRuntime(descriptor.id, appDir);
-    const session = await descriptor.maintenance.open({
+    const { descriptor, maintenance, purpose } = await maintenanceAgentForTask(task, repairContext ? "repair" : "install-analysis", {
+      cwd: appDir, onSelected: selected => recordMaintenanceAgent(this.store, record.id, selected.descriptor.id),
+    });
+    const runtime = await this.maintenanceRuntime(descriptor.id, appDir, purpose);
+    const session = await maintenance.open({
       backend: descriptor.id, userData: this.userData,
       appId: record.id,
       workspace: appDir,
@@ -684,13 +681,13 @@ export class AppInstaller {
   }
 
   private async maintenanceRuntime(
-    backend: Parameters<typeof backendById>[0], cwd: string
+    backend: Parameters<typeof backendById>[0], cwd: string, purpose: MaintenancePurpose = "install-analysis"
   ) {
     const descriptor = backendById(backend);
     const snapshot = await backendRuntimeRegistry.resolveForSpawn(backend);
     if (
       snapshot.runtimeStatus !== "installed" ||
-      (await backendRuntimeRegistry.operationEligibility(backend, "install-analysis", { cwd, ignoreUserConfig: true }, snapshot)).decision !== "allow" ||
+      (await backendRuntimeRegistry.operationEligibility(backend, purpose, { cwd, ignoreUserConfig: true }, snapshot)).decision !== "allow" ||
       !snapshot.capabilities.maintenance
     ) {
       throw new Error(`${descriptor.displayName} 当前不可用于 App 维护`);

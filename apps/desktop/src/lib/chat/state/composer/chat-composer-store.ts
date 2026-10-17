@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Depends on React external store, nanoid, PromptInput/RichInput, typed attachment matching, Gallery origin, message queues and file authorization release
  * [OUTPUT]: Provides per-chat draft/files/queue/ACK, submission gate, images carried through a window move (F-34b) with unavailable chips, and a store-wide queue feed for background runners (F-34c) (a Project switch reports how many file / Skill references left the draft; F-46 ④), draft-owned workspace reference provenance, live input snapshots, attachment commands, Sketch ownership and migration custody, and an App's unsent Edit draft following the remote Edit Chat that displaced it (U06 Q7-c3).
+ * Typed fixed-design appends and queued review request keys stay with this one original draft owner.
  * [POS]: apps/desktop/src/lib/chat/state/composer; lib's single-owner store for uncommitted composer drafts and their identity; unlike the retrievable message caches, this store never LRU-evicts, and a generation-unknown snapshot can never silently replace a known one
  */
 import { type ComposerFile, type FileResource, type ComposerState, emptyComposer } from "./model";
@@ -142,6 +143,7 @@ export async function exportComposerCapsule(
       id: item.id,
       richValue: structuredClone(carryFileNodes(item.prompt.richValue)),
       displayText: item.prompt.displayText,
+      ...(item.prompt.requestKey ? { requestKey: item.prompt.requestKey } : {}),
       ...(itemImages.length ? { images: itemImages.filter((image) => image !== null) } : {}),
       ...(lost ? { unavailableAttachment: lost } : {}),
       ...(item.content ? { content: structuredClone(item.content) } : {}),
@@ -309,6 +311,7 @@ export function importComposerCapsule(capsule: SurfaceComposerCapsule, transacti
       prompt: {
         richValue: queueRichValues[index]!,
         displayText: item.displayText,
+        ...(item.requestKey ? { requestKey: item.requestKey } : {}),
         attachments: attachments.filter((attachment) => attachment !== null),
       },
       ...(item.content
@@ -399,22 +402,24 @@ const HOST_COMPOSE_TEXT_BYTE_LIMIT = 32 * 1024;
  * A GUI may only append inert text to its already-bound chat draft. The update
  * is atomic: invalid UTF-8 budgets leave every existing node and file untouched.
  */
-export function appendComposerText(chatId: string, text: string) {
+export function appendComposerText(chatId: string, text: string, design?: { name: string; reference: import("@bottega/contracts/model/artifacts/design").DesignReference }) {
   const bytes = new TextEncoder().encode(text).byteLength;
-  if (!text || bytes > HOST_COMPOSE_TEXT_BYTE_LIMIT) return false;
+  if ((!text && !design) || bytes > HOST_COMPOSE_TEXT_BYTE_LIMIT) return false;
   let appended = false;
   updateComposer(chatId, (current) => {
     const richValue = [...current.draft.richValue];
+    if (design && !richValue.some(node => node.type === "design" && JSON.stringify(node.reference) === JSON.stringify(design.reference)))
+      richValue.push({ id: `design_${nanoid()}`, type: "design", name: design.name, reference: design.reference });
     const tail = richValue.at(-1);
-    if (tail?.type === "text") {
+    if (text && tail?.type === "text") {
       const trailingNewlines = tail.value.match(/\n*$/)?.[0].length ?? 0;
       const separator = tail.value ? "\n".repeat(Math.max(0, 2 - trailingNewlines)) : "";
       richValue[richValue.length - 1] = { ...tail, value: tail.value + separator + text };
-    } else {
+    } else if (text) {
       richValue.push({ id: `host_${nanoid()}`, type: "text", value: text });
     }
     if (
-      new TextEncoder().encode(richInputDisplayText(richValue)).byteLength >
+      richValue.length > 128 || new TextEncoder().encode(richInputDisplayText(richValue)).byteLength >
       MESSAGE_BYTE_LIMIT
     ) {
       return current;

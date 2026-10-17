@@ -1,8 +1,8 @@
 /**
- * [INPUT]: Depends on shared builtin-tool access/backend allowlists, ProviderId, Agent TurnOrigin, and frozen Skills capability facts
+ * [INPUT]: Depends on shared builtin-tool access/backend allowlists, ProviderId, Agent TurnOrigin, frozen Skills capability facts and live Artifact admission
  * [OUTPUT]: Provides ambient access projection, exact `use_skill` issuance for capable turns, turn-kind mapping (a workflow turn: Base and its Chat's history, plus its exact step tools only), and fail-closed MCP issuance
  * Capable workflow turns exact-issue use_skill from their frozen catalog.
- * [POS]: Pure authorization composition; backend exclusions, missing origins, and missing Skills capability fail closed before a lease exists
+ * [POS]: Authorization composition with live plugin admission; backend exclusions, missing origins, and missing Skills capability fail closed before a lease exists
  */
 
 import type { ProviderId } from "@bottega/contracts/model/provider";
@@ -13,6 +13,7 @@ import {
   type BuiltinTurnKind,
 } from "../../../shared/builtin-tools";
 import type { TurnOrigin } from "../agent/bridge/bridge-types";
+import { artifactEnabled } from "../artifacts/admission/state";
 
 /* 本轮到底能不能写，只由这一个函数回答。App instructions 与 tool lease 各自
    再推一次，就会出现「工具是只读、文案却说可写」这种自相矛盾的授权叙述。 */
@@ -95,6 +96,7 @@ export function admittedAmbientTools(
   const disabled = new Set(input.disabledTools ?? []);
   return allowedToolsFor(access, turnKind, input.planMode).filter((name) => {
     if (disabled.has(name)) return false;
+    if (builtinToolSpec(name)?.domainId === "design" && !artifactEnabled()) return false;
     const allowlist = builtinToolSpec(name)?.backendAllowlist;
     return !allowlist || allowlist.some(id => id === input.backend);
   });

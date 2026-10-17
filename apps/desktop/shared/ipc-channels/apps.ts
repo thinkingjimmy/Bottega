@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on nothing.
- * [OUTPUT]: Provides the App and Artifact channel names. Routes App impact and enablement commands through main.
+ * [OUTPUT]: Zod-free App/file/workspace channel names and Artifact lifecycle events; main owns effect/authority validation.
  * [POS]: Zod-free IPC channel names (OPT-34): preload imports these so no schema module enters its bundle; the owning contract modules re-export them unchanged.
  */
 export const APPS_CHANNEL = {
@@ -26,7 +26,6 @@ export const APPS_CHANNEL = {
   readLog: "apps:read-log",
   retry: "apps:retry",
   repair: "apps:repair",
-  setAgent: "apps:set-agent",
   saveAsApp: "apps:save-as-app",
   rename: "apps:rename",
   ensureChatSlot: "apps:ensure-chat-slot",
@@ -53,15 +52,6 @@ export const APPS_CHANNEL = {
   fileExportFinalize: "apps:file-export:finalize",
   fileExportCancel: "apps:file-export:cancel",
   setPinned: "apps:set-pinned",
-  importDesignCanvas: "apps:design:import",
-  listDesignImportCandidates: "apps:design:import-candidates",
-  listDesignFiles: "apps:design:files",
-  listDesignVersions: "apps:design:versions",
-  restoreDesignVersion: "apps:design:restore",
-  setDesignAutoOpen: "apps:design:auto-open:set",
-  designDataStatus: "apps:design:data:status",
-  deleteDesignData: "apps:design:data:delete",
-  setDesignEnabled: "apps:design:enabled:set",
   readReadme: "apps:read-readme",
   probeRepo: "apps:probe-repo",
   compatibilityRequests: "apps:compatibility-requests",
@@ -82,4 +72,4 @@ export const APPS_CHANNEL = {
   shareDiscard: "apps:share-discard",
 } as const;
 
-export const ARTIFACT_IPC = { preview: "artifact:preview", lease: "artifact:lease", release: "artifact:release", action: "artifact:action", workbook: "artifact:workbook", importBase: "artifact:import-base" } as const;
+export const ARTIFACT_IPC = { preview: "artifact:preview", lease: "artifact:lease", release: "artifact:release", action: "artifact:action", workbook: "artifact:workbook", importBase: "artifact:import-base", workspace: "artifact:workspace", workspaceEvent: "artifact:workspace:event" } as const;

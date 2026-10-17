@@ -1,7 +1,9 @@
 /**
  * [INPUT]: Depends on Zod, the encryption scalars and purpose limits, the encrypted-space schema, REMOTE_LIMITS, the workflow confirm input and bridge refusal codes.
+ * Closed Artifact status/history/difference/action/export-reference schemas share the existing encrypted resource registry.
  * [OUTPUT]: Provides RESOURCE_LIMITS, the closed resource kinds and classes, the action registry (resourceActionDescriptor: class and criticality per action), the sealed command body and result body, the refusal codes, the encrypted command (plaintext header + packet), the encrypted result and the receipt. Registers bounded Project Git operations, App impact/enablement, requester-bound plugin installation and bounded encrypted record/result pages.
- * [POS]: Resource-command domain model (protocol 15, purposes 10 / 11, §10.1): a phone or Web asks the computer that owns a resource to act on it. The header names no action, input or path; the owner re-derives the class and criticality from the action and refuses a mismatch.
+ * Artifact actions/results remain bounded metadata and private-file references with original-operation recovery.
+ * [POS]: Protocol-18 resource domain over purposes 10/11; headers reveal no action/input/path and owners rederive exact class/criticality.
  */
 import { appDisableImpactSchema, setAppEnabledInputSchema } from "../apps/build-status/enablement";
 import { z } from "zod";
@@ -15,6 +17,7 @@ import { WORKFLOW_BRIDGE_ERRORS } from "../contracts/workflow/bridge";
 import { previewViewSchema } from "./preview";
 import { pluginInstallSourceSchema, pluginInstallReceiptSchema } from "./plugin-install";
 import { pluginRecordReadSchema, pluginRecordReportSchema, pluginRecordResultsSchema, pluginRecordPageSchema } from "./plugin-records";
+import { artifactStatusInput, artifactHistoryInput, artifactOperationInput, artifactRemoteInput, artifactStatusSchema, artifactOperationSchema, artifactExportSchema, artifactHistorySchema, artifactDifferenceSchema, artifactCanvasTargetSchema } from "./artifact/model";
 
 const packet = (plaintextBytes: number) => { const envelopeBytes = Math.ceil(plaintextBytes * 4 / 3) + 8_192; return { envelopeBytes, packetChars: Math.ceil(envelopeBytes * 4 / 3) }; };
 const command = packet(PLAINTEXT_LIMITS[10]), result = packet(PLAINTEXT_LIMITS[11]);
@@ -29,7 +32,7 @@ export const RESOURCE_LIMITS = Object.freeze({
   acceptedGraceMs: 3_600_000,
 });
 export const RESOURCE_CONTRACT = "bottega.resource/v1";
-export const RESOURCE_KINDS = ["project", "provider-quota", "workflow-run", "workflow-binding", "app", "preview", "plugin"] as const;
+export const RESOURCE_KINDS = ["project", "provider-quota", "workflow-run", "workflow-binding", "app", "preview", "plugin", "artifact"] as const;
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
 export const RESOURCE_CLASSES = ["read", "control", "work"] as const;
 export type ResourceClass = (typeof RESOURCE_CLASSES)[number];
@@ -37,6 +40,10 @@ export type ResourceClass = (typeof RESOURCE_CLASSES)[number];
 const empty = z.object({}).strict();
 /** The action registry (§10.1): each action belongs to one kind, with its class, criticality and exact input. Names are unique across kinds. */
 const REGISTRY = {
+  "artifact-status": { kind: "artifact", class: "read", critical: false, input: artifactStatusInput },
+  "artifact-history": { kind: "artifact", class: "read", critical: false, input: artifactHistoryInput },
+  "artifact-operation-status": { kind: "artifact", class: "read", critical: false, input: artifactOperationInput },
+  "artifact-workspace": { kind: "artifact", class: "work", critical: false, input: artifactRemoteInput },
   "project-git-list": { kind: "project", class: "read", critical: false, input: projectGitListSchema },
   "project-git-checkout": { kind: "project", class: "control", critical: false, input: projectGitCheckoutSchema },
   "project-git-create": { kind: "project", class: "control", critical: false, input: projectGitCreateSchema },
@@ -96,7 +103,7 @@ export const RESOURCE_REFUSALS = [...WORKFLOW_BRIDGE_ERRORS, ...PROJECT_GIT_REFU
   "plugin-setup-required", "plugin-unsupported", "plugin-not-found", "plugin-not-switchable", "tunnel-platform-unsupported", "tunnel-plugin-disabled",
   "tunnel-download-consent-required", "preview-service-unavailable", "preview-service-changed", "preview-chat-changed", "preview-session-closed",
   "preview-tunnel-unavailable", "preview-session-limit", "preview-account-required", "plugin-request-unavailable", "plugin-request-limit",
-  "plugin-record-unavailable", "plugin-record-changed", "plugin-record-budget", "failed"] as const;
+  "plugin-record-unavailable", "plugin-record-changed", "plugin-record-budget", "artifact-disabled", "artifact-generation-expired", "artifact-conflict", "artifact-invalid", "artifact-budget", "artifact-path", "artifact-unavailable", "failed"] as const;
 export type ResourceRefusal = (typeof RESOURCE_REFUSALS)[number];
 /** `runId` for an action that creates a run (start, start-rework); `revision` is the run projection's revision after the action; `chatId` for the Chat an App action opened (none from open-editor while the App has no Edit Chat yet: the sender starts one). */
 export const resourceResultBodySchema = z.union([
@@ -105,6 +112,10 @@ export const resourceResultBodySchema = z.union([
     appImpact: appDisableImpactSchema.optional(),
     pluginInstall: pluginInstallReceiptSchema.optional(),
     pluginRecord: pluginRecordPageSchema.optional(),
+    artifactStatus: artifactStatusSchema.optional(), artifactOperation: artifactOperationSchema.optional(),
+    artifactExport: artifactExportSchema.optional(), artifactHistory: artifactHistorySchema.optional(),
+    artifactDifference: artifactDifferenceSchema.optional(),
+    artifactCanvasTarget: artifactCanvasTargetSchema.optional(),
     preview: previewViewSchema.optional(),
     evidence: z.object({ kind: z.enum(["diff", "report"]), offset: version.max(65_536), nextOffset: version.max(65_536).nullable(),
       totalBytes: version.max(2 * 1024 * 1024), chunk: z.string().max(5462).regex(/^[A-Za-z0-9_-]*$/), digest, truncated: z.boolean() }).strict().optional() }).strict(),

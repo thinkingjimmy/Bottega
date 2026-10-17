@@ -15,6 +15,7 @@ import {
 import type { AppStore } from "../store/app-store";
 import { fingerprintWorkingTree, RepositoryState } from "../install/repository-state";
 import type { InstallTask } from "../install/task-queue";
+import { isRetiredApp } from "../service/availability/guard";
 
 type GitStatus = (
   record: AppRecord,
@@ -47,11 +48,11 @@ export class AppSourceMonitor {
   initialize() {
     this.stopped = false;
     this.startupSweep = Promise.allSettled(
-      this.store.list().map((record) => this.reconcileAtStartup(record))
+      this.store.list().filter(record => !isRetiredApp(record)).map((record) => this.reconcileAtStartup(record))
     );
     this.timer = setInterval(() => {
       if (this.stopped) return;
-      for (const record of this.store.list()) this.poll(record.id);
+      for (const record of this.store.list()) if (!isRetiredApp(record)) this.poll(record.id);
     }, this.intervalMs);
     this.timer.unref?.();
   }

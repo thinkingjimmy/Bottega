@@ -74,7 +74,7 @@ export const BUILTIN_TOOL_DOMAINS = {
   },
   design: {
     id: "design",
-    rateLimit: 4,
+    rateLimit: 16,
     rateWindowMs: 60_000,
     logicalResultByteLimit: BASE_WIRE_BYTE_LIMIT,
   },

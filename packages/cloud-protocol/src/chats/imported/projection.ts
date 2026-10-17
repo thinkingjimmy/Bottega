@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on validated imported tool/process fields, shared completion evidence and canonical content budgets.
+ * [INPUT]: Validated imported activity, text-only Artifact markers, completion evidence and content budgets.
  * [OUTPUT]: Decodes individual or packed activity and projects ordered native text/tool parts, with bounded UTF-8 detail and original completion state.
  * [POS]: Browser-capable projection shared by SQLite history and Cloud Web; never executes source tool content.
  */
 import { z } from "zod";
-import { projectUnavailableArtifacts } from "../../turns/text/artifact-reference";
+import { projectUnavailableArtifacts } from "../../turns/text/artifact-markers";
 import { completionFields, completionMetadataSchema } from "../content/completion";
 import type { ChatPart, ChatToolPart } from "../content/parts";
 import { MESSAGE_PART_LIMIT, IMPORTED_TOOL_DETAIL_BYTE_LIMIT, PART_TITLE_CHAR_LIMIT } from "../content/budgets";

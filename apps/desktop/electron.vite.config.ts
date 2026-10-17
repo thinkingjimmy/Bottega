@@ -34,7 +34,7 @@ const PRODUCTION_CSP = [
     "worker-src 'self' blob:",
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
-    "img-src 'self' data:",
+    "img-src 'self' data: blob:",
 ].join("; ");
 function productionCsp(): Plugin {
     return {

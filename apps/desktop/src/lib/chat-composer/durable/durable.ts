@@ -4,6 +4,7 @@
  * [OUTPUT]: Provides startDurableDrafts (save debounced, a queue change at once, empty deletes; restore into an empty composer, then save what was typed while it loaded; the blank page keyed by Project; a quit's flush that waits for first loads still in flight and says whether every held draft is on disk) and the installed
  *           instance's restoreDurableDraft / flushDurableDrafts
  * Flush drains restores, timers and the save chain to a stable revision before acknowledging persistence.
+ * Fixed design chips and original review request keys survive save/restore and surface transfer.
  * [POS]: lib/chat-composer's F-12 renderer port; main owns the files and the file-grant rules, this owns when to save and how a restore lands
  */
 
@@ -39,6 +40,7 @@ function toDurable(state: ComposerState, chatId: string, blank = false) {
     id: item.id,
     richValue: withGrants(item.prompt.richValue),
     displayText: item.prompt.displayText,
+    ...(item.prompt.requestKey ? { requestKey: item.prompt.requestKey } : {}),
     ...(item.prompt.attachments.length ? { imageNames: item.prompt.attachments.map((attachment) => attachment.name) } : {}),
     ...(item.content ? { content: item.content } : {}),
     ...(item.custodyIntentId ? { custodyIntentId: item.custodyIntentId } : {}),
@@ -231,7 +233,7 @@ function applyRestore(chatId: string, draft: DurableComposerDraft) {
     adopt(itemRichValue);
     return {
       id: item.id,
-      prompt: { richValue: itemRichValue, displayText: item.displayText, attachments: [] },
+      prompt: { richValue: itemRichValue, displayText: item.displayText, attachments: [], ...(item.requestKey ? { requestKey: item.requestKey } : {}) },
       ...(item.content ? { content: item.content as QueueItem["content"] } : {}),
       ...(item.custodyIntentId ? { custodyIntentId: item.custodyIntentId } : {}),
       ...(item.outboxRef ? { outboxRef: item.outboxRef } : {}),

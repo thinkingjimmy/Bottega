@@ -1,6 +1,6 @@
 {
   "name": "@ai-chat/desktop",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Bottega desktop workspace for local Codex, Claude Code, Kimi Code, and OpenCode CLIs",
   "author": "Jimmy Wong",
   "private": true,
@@ -31,6 +31,7 @@
     "@tanstack/react-virtual": "3.14.8",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
+    "acorn": "8.17.0",
     "axe-core": "4.10.3",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
@@ -43,6 +44,10 @@
     "i18next": "26.3.6",
     "lucide-react": "1.24.0",
     "nanoid": "6.0.0",
+    "parse5": "7.3.0",
+    "pdf-lib": "1.17.1",
+    "postcss": "8.5.19",
+    "postcss-value-parser": "4.2.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-hook-form": "7.87.0",
@@ -54,6 +59,7 @@
     "zod": "4.6.4"
   },
   "devDependencies": {
+    "@ai-chat/base-core": "workspace:*",
     "@ai-chat/base-ui": "workspace:*",
     "@ai-chat/chat-ui": "workspace:*",
     "@ai-chat/cloud-crypto": "workspace:*",
@@ -66,6 +72,7 @@
     "@tailwindcss/vite": "^4.3.2",
     "@types/http-proxy": "^1.17.17",
     "@types/node": "^20",
+    "@types/ws": "8.18.2",
     "@vitejs/plugin-react": "^5.2.0",
     "ai": "^7.0.26",
     "convex": "1.45.0",
@@ -82,8 +89,6 @@
     "react-konva": "19.2.7",
     "react-router": "^7.18.1",
     "tsx": "^4.23.1",
-    "vite": "^7.3.6",
-    "@ai-chat/base-core": "workspace:*",
-    "@types/ws": "8.18.2"
+    "vite": "^7.3.6"
   }
 }

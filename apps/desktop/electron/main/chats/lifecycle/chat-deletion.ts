@@ -4,7 +4,7 @@
  * [POS]: apps/desktop/electron/main/chats/lifecycle; Deletion adapter of the chats module; ChatsService only admits and cancels, while the durable journal and resource details stay behind this seam
  */
 
-import { artifactRuntime } from "../../artifacts/runtime";
+import { artifactRuntime } from "../../artifacts/core/runtime";
 import type { ChatRecord, ChatsEvent } from "../../../../shared/ipc/content/chats-ipc";
 import type {
   ConversationDeletionCoordinator,

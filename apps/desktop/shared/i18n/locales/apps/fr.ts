@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
  * [OUTPUT]: Provides the Apps French catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
+ * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: French copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
 
@@ -11,10 +12,6 @@ export const appsFr: typeof appsEn = {
     listFailed: "Échec du chargement des Apps : {{message}}",
   },
   presets: {
-    designCanvas: {
-      name: "Bottega Design Canvas",
-      description: "Créez, comparez et examinez des canevas HTML autonomes avec tout Agent de programmation pris en charge par Bottega, puis renvoyez les ancres d’éléments ou de zones au Chat pour poursuivre l’itération.",
-    },
     expenseTracker: {
       name: "Suivi des dépenses",
       description: "Enregistrez une dépense en une phrase, convertissez-la automatiquement en données structurées et consultez à tout moment la répartition par catégorie et les tendances quotidiennes.",
@@ -408,7 +405,7 @@ export const appsFr: typeof appsEn = {
     crashed: "Le processus App s’est arrêté de manière inattendue",
     stopped: "L’App est arrêtée",
     viewLog: "Voir le journal",
-    settings: "Réglages de l’Agent App",
+    settings: "Réglages de l’App",
     edit: "Modifier l’App",
     rebuilding: "Application des modifications et reconstruction de l’App",
     agentWarning: "L’Agent n’a pas démarré : {{warning}}",

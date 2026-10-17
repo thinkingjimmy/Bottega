@@ -1,8 +1,7 @@
 /**
  * [INPUT]: Depends on Electron app paths, the renderer IPC registrar and trusted window context, the window-surface residency guard, the shared durable draft
  *          contract, FileAuthorizationStore, the workspace resolver, ChatsService events, the build's cloud config and the signed-in account
- * [OUTPUT]: Provides composerDraftsRegistrar: one process-wide ComposerDraftStore behind the composer-drafts load/save channels, removing a Chat's drafts
- *           when it is deleted; queuedComposerDraft reads queue identities for App disable impact
+ * [OUTPUT]: One ComposerDraftStore bridge with trusted window/workspace validation, stable queued review request keys and exact Chat/account cleanup.
  * [POS]: Wiring of electron/main/composer/drafts; store.ts owns the files and rules, this validates renderer input and binds it to its window
  */
 
@@ -36,6 +35,7 @@ const saveSchema = keySchema.extend({
     unavailableAttachments: z.array(z.object({ id, name: z.string().max(1024) }).strict()).max(64),
     queue: z.object({ paused: z.boolean(), items: z.array(z.object({
       id, richValue: z.array(z.unknown()).max(512), displayText: z.string(), imageNames: z.array(z.string().max(1024)).max(16).optional(),
+      requestKey: z.object({ id: z.string().uuid(), createdAt: z.number().int().nonnegative() }).strict().optional(),
       content: z.unknown().optional(), custodyIntentId: id.optional(), outboxRef: id.optional(), state: z.enum(["queued", "ambiguous"]),
       unavailableAttachment: z.string().max(1024).optional(), createdAt: z.number(),
     }).strict()).max(20) }).strict(),

@@ -4,7 +4,7 @@
  * [POS]: apps/desktop/electron/main/chats/service; Main-process Chat service boundary; every new or adopted executable Chat is owned by a Chat Home creation saga
  */
 
-import { artifactRuntime } from "../../artifacts/runtime";
+import { artifactRuntime } from "../../artifacts/core/runtime";
 import { commitSwitchWithAttachments } from "../store/agent-switch/service";
 import { commitAttachments } from "../lifecycle/attachment-commit";
 import { type BrowserWindow } from "electron";
@@ -292,6 +292,7 @@ export class ChatsService {
       chatHomes: this.options.chatHomes,
       resolveAgent: (appId, projectId) =>
         this.options.resolveAppAgent?.(appId, projectId),
+      resolveOptions: this.options.resolveAppChatOptions,
       withProject: (projectId, task) => this.withProject(projectId, task),
       publish: (mutation) => this.events.emitMutation(mutation),
     }, input);

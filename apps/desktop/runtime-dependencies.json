@@ -129,6 +129,13 @@
       ],
       "note": "paired with @types/react for the product bootstrap module typings"
     },
+    "acorn": {
+      "version": "8.17.0",
+      "roles": [
+        "main"
+      ],
+      "note": "Lazy design JavaScript resource analysis"
+    },
     "axe-core": {
       "version": "4.10.3",
       "roles": [
@@ -228,9 +235,36 @@
         "main"
       ]
     },
+    "parse5": {
+      "version": "7.3.0",
+      "roles": [
+        "main"
+      ],
+      "note": "Lazy design markup resource locations"
+    },
+    "pdf-lib": {
+      "version": "1.17.1",
+      "roles": [
+        "main"
+      ]
+    },
+    "postcss": {
+      "version": "8.5.19",
+      "roles": [
+        "main"
+      ]
+    },
+    "postcss-value-parser": {
+      "version": "4.2.0",
+      "roles": [
+        "main"
+      ],
+      "note": "Lazy design CSS resource locations"
+    },
     "react": {
       "version": "19.2.4",
       "roles": [
+        "main",
         "appGui"
       ],
       "runtimeGates": [
@@ -238,18 +272,21 @@
         "gate-2",
         "gate-3"
       ],
-      "authorAdmission": "core"
+      "authorAdmission": "core",
+      "note": "Locked local design-system component compiler and App GUI runtime"
     },
     "react-dom": {
       "version": "19.2.4",
       "roles": [
+        "main",
         "appGui"
       ],
       "runtimeGates": [
         "gate-1",
         "gate-2",
         "gate-3"
-      ]
+      ],
+      "note": "Locked local design-system component compiler and App GUI runtime"
     },
     "react-hook-form": {
       "version": "7.87.0",
@@ -299,7 +336,9 @@
     },
     "ws": {
       "version": "8.21.1",
-      "roles": ["main"]
+      "roles": [
+        "main"
+      ]
     },
     "zod": {
       "version": "4.6.4",

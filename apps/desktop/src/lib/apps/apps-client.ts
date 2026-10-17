@@ -22,13 +22,6 @@ import type {
   AppSurfaceAcquireInput,
   BeginFileExportInputV1,
   CompleteFileExportInputV1,
-  DesignAutoOpenInput,
-  DesignSurfaceInput,
-  DeleteDesignDataInput,
-  ImportDesignCanvasInput,
-  ListDesignVersionsInput,
-  RestoreDesignVersionInput,
-  SetDesignEnabledInput,
   AvailableAppsInput,
   EnsureAppChatSlotInput,
   ListAppUseHistoryInput,
@@ -39,7 +32,6 @@ import type {
   RemoveAppMode,
   RenameAppInput,
   SaveAsAppInput,
-  SetAppAgentInput,
   SetAppGrantInput,
   SetAppGrantStateInput,
   SetDefaultAppGrantInput,
@@ -127,8 +119,6 @@ export const removeApp = (
 ) => bridge().remove(appId, mode, requestId);
 export const retryApp = (appId: string) => bridge().retry(appId).then(unwrapLifecycleCompatibility);
 export const repairApp = (appId: string) => bridge().repair(appId).then(unwrapLifecycleCompatibility);
-export const setAppAgent = (input: SetAppAgentInput) =>
-  bridge().setAgent(input);
 export class SaveAsAppRejectedError extends Error {
   constructor(
     readonly code: string,
@@ -198,24 +188,6 @@ export const cancelAppFileExport = (input: CompleteFileExportInputV1) =>
   bridge().fileExportCancel(input);
 export const setAppPinned = (appId: string, pinned: boolean) =>
   bridge().setPinned({ appId, pinned });
-export const importDesignCanvas = (input: ImportDesignCanvasInput) =>
-  bridge().importDesignCanvas(input);
-export const listDesignImportCandidates = (input: DesignSurfaceInput) =>
-  bridge().listDesignImportCandidates(input);
-export const listDesignFiles = (input: DesignSurfaceInput) =>
-  bridge().listDesignFiles(input);
-export const listDesignVersions = (input: ListDesignVersionsInput) =>
-  bridge().listDesignVersions(input);
-export const restoreDesignVersion = (input: RestoreDesignVersionInput) =>
-  bridge().restoreDesignVersion(input);
-export const setDesignAutoOpen = (input: DesignAutoOpenInput) =>
-  bridge().setDesignAutoOpen(input);
-export const readDesignDataStatus = (appId: string) =>
-  bridge().designDataStatus(appId);
-export const deleteDesignData = (input: DeleteDesignDataInput) =>
-  bridge().deleteDesignData(input);
-export const setDesignEnabled = (input: SetDesignEnabledInput) =>
-  bridge().setDesignEnabled(input);
 export const probeAppRepo = async (repoUrl: string) => unwrapCompatibility(await bridge().probeRepo(repoUrl));
 export const discardAppProbe = (preflightId: string) =>
   bridge().discardProbe(preflightId);

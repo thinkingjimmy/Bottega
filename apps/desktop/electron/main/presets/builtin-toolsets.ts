@@ -24,7 +24,7 @@ import type { CdpHarness } from "../browser/cdp-harness";
 import { createBrowserToolset } from "../browser/toolset";
 import type { AgentPluginInventory } from "../extensions/agent-plugins/inventory";
 import type { SkillsTurnCustodyStore } from "../skills-management/custody/turn-custody";
-import { createDesignToolset } from "../design/toolset";
+import { createDesignToolset } from "../design/tooling/toolset";
 import { createChatHistoryToolset } from "../agent/history/lease";
 import type { BuiltinToolset } from "../tools/registry";
 import { createWorkflowToolset } from "../workflows/step-results";
@@ -32,6 +32,7 @@ import { createPluginToolset } from "../plugins/authoring/toolset";
 import { pluginSurfaceIntegration } from "../plugins/surface-integration/runtime";
 import { createPreviewToolset } from "../preview/tools";
 import type { EffectiveWorkspaceResolver } from "../workspace/files/workspace-resolver";
+import { designDocuments } from "../design/documents/runtime";
 
 export type BuiltinToolsetDependencies = {
   chatStore: ChatStore;
@@ -103,7 +104,7 @@ export function createBuiltinToolsets(deps: BuiltinToolsetDependencies) {
     createBrowserToolset(deps.browserService, deps.browserHarness),
     createDesignToolset({
       readDesignCanvasForTool: (chatId, incarnationId, file) =>
-        deps.appsService.readDesignCanvasForTool(chatId, incarnationId, file),
+        designDocuments().singleHtml(chatId, incarnationId, file),
     }),
     createAppToolset({
       appRoleOf: (chatId) => deps.chatStore.getAppRole(chatId),

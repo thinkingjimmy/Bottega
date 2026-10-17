@@ -53,10 +53,6 @@ type CardStage =
   | { kind: "installing"; probe: ReadyPresetProbeResult };
 
 const PRESET_COPY_KEYS = {
-  "design-canvas": {
-    nameKey: "apps.presets.designCanvas.name",
-    descriptionKey: "apps.presets.designCanvas.description",
-  },
   "expense-tracker": {
     nameKey: "apps.presets.expenseTracker.name",
     descriptionKey: "apps.presets.expenseTracker.description",
@@ -130,11 +126,6 @@ export function PresetCard({ preset, onOpen }: {
         <span className="mb-2 text-4xl">{preset.icon}</span>
         <CardTitle className="truncate text-base">{copy.name}</CardTitle>
         <CardDescription className="line-clamp-2">{copy.description}</CardDescription>
-        {preset.id === "design-canvas" && (
-          <p className="line-clamp-2 text-muted-foreground text-xs">
-            {t("apps.designPresetReinstallHint")}
-          </p>
-        )}
       </CardHeader>
       <div className="px-4 pb-4">
         <p className="flex items-center gap-1.5 font-medium text-sm text-primary" data-testid="preset-details-label"><Download className="size-4" />{t("apps.presetInstall")}</p>

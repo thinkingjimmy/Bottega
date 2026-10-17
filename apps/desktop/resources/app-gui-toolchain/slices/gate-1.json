@@ -47,7 +47,7 @@
     {"path":"../../packages/base-ui/src/ui/chrome/base-tab-chrome.ts","bytes":1407,"sha256":"sha256:00e6a4eadd54be336b1fa2b3cedd703622080b2aaa8058b4b633d507f2cd4f2e"},
     {"path":"../../packages/base-ui/src/ui/chrome/base-toolbar-overflow.tsx","bytes":5032,"sha256":"sha256:443a399092f5abf46edcc4cd3a917fe40319aa2127a250c8c7647da9a9084754"},
     {"path":"../../packages/base-ui/src/ui/chrome/base-toolbar.tsx","bytes":18487,"sha256":"sha256:71365dace29d6849c05f723f2435770192039cd3bb2b442f1d9e182962cc2930"},
-    {"path":"../../packages/base-ui/src/ui/chrome/base-view-tabs.tsx","bytes":7908,"sha256":"sha256:29460a2cb54c52aaeecbeb0878a95328b0b559ea3413c23ea0da70856e0306fd"},
+    {"path":"../../packages/base-ui/src/ui/chrome/base-view-tabs.tsx","bytes":8272,"sha256":"sha256:598fa4981f55372dcf289097ac71712fac5b88df7388a0eb90d092545553fdcb"},
     {"path":"../../packages/base-ui/src/ui/chrome/inline-name-input.tsx","bytes":1473,"sha256":"sha256:435150d318fd261de65f4f437aa9f6e97bec4a1820be9161926e9065d09a257d"},
     {"path":"../../packages/base-ui/src/ui/chrome/workflow-column.tsx","bytes":5842,"sha256":"sha256:dba0c72b1016ab0ffdca5868dfd2b882bea101e9e2971131ae875e9802efa396"},
     {"path":"../../packages/base-ui/src/ui/editors/cells/base-cell-display.tsx","bytes":1697,"sha256":"sha256:a9a966c76b583e7310fd368da2fb8455c197167a951e5f896759263353958e97"},
@@ -175,7 +175,7 @@
     {"path":"shared/app-gui/support.ts","bytes":4637,"sha256":"sha256:a2e61eeedc47034a3b796315f9abac6dc689386f1c5795e57954a96d876ac5e1"},
     {"path":"shared/apps/model/apps-execution.ts","bytes":980,"sha256":"sha256:890560f494e0b36ab6277dfb22d5b9e157c1cff3724fa3fe25ac3200b5d60631"}
   ],
-  "runtimeSbomDigest": "sha256:4b1be46e23a48d3387ed2dff2c015b66631523f3c38f0d20c725fdd60b8675de",
+  "runtimeSbomDigest": "sha256:b93efe7c8a74388124d086977805c105f1fd21a1c56e570422d07dfcf48ba53d",
   "noticesDigest": "sha256:dde2c417b5eaaf39421765603f3329983f6a52d0b9e1a4ab90ece17186187e46",
   "authoringContracts": [
     "bottega-react-v1",

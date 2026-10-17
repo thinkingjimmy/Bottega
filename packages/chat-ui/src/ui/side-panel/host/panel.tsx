@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Chat identity, Router takeover history, host catalog visibility, shared ConversationModel and authority-checked Base resolution.
- * [OUTPUT]: useChatSidePanel: session-owned Base chrome slots, retained Base state, live/final Plan previews, direct subagent navigation, resolver recovery and artifact/workspace previews.
+ * [OUTPUT]: Shared session-owned panels, Artifact takeover/presentation, awaited handoff and retained Base/Plan/subagent state.
  * [POS]: Shared panel composition with host-owned Base authority, navigation, draft guards and artifact callbacks.
  */
 import { MessageResponse } from "@ai-chat/ui/components/ai-elements/message";
@@ -15,7 +15,7 @@ import { BotIcon, DatabaseIcon, ImageIcon, GlobeIcon, BlocksIcon, LoaderCircle }
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import type { TranscriptSource } from "../../../platform/contracts";
-import { ArtifactHostProvider, useArtifactHost, type ArtifactHost } from "../../../artifacts/context";
+import { ArtifactHostProvider, ArtifactPresentationProvider, useArtifactHost, type ArtifactHost } from "../../../artifacts/context";
 import { ArtifactPreview } from "../../../artifacts/renderer";
 import { useConversationModel } from "../../conversation/body/model";
 import { decodeImageIdentity, encodeImageIdentity, resolveImage, type ImageIdentity, type ImageRegion } from "../image/identity";
@@ -44,7 +44,10 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   const history = services.useHistory(eligible, narrow, memory.readOpenIntent(key), rememberIntent);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [fullPreviewKey, setFullPreviewKey] = useState<string | null>(null);
   const previewKey = preview ? "fence" in preview ? preview.fence.id : "workspace" in preview ? preview.workspace.key : preview.planId : null;
+  const artifactFull = Boolean(previewKey && fullPreviewKey === previewKey);
+  const setArtifactFull = (full: boolean) => setFullPreviewKey(full ? previewKey : null);
   const planMessage = preview && "planId" in preview ? model.bodies.find(body => body.message.id === preview.planId)?.message : null;
   const livePlan = preview && "planId" in preview && model.live?.state?.receipt.assistantMessageId === preview.planId && model.live.projection ? projectDraftPlan(hydrateDraft(model.live.projection.draft)) : null;
   const planContent = planMessage?.content ?? livePlan?.content ?? "";
@@ -131,7 +134,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
         {id.startsWith("app:") && canInstallApps && <Button variant="link" onClick={() => services.navigate("/apps")}>{remote.installApp}</Button>}
       </div> })),
   ];
-  const element = (eligible || baseEngaged) && <SidePanelShell open={visible} takeover={history.takeover} {...geometry} onWidthChange={widthChange} onClose={close} resizeLabel={copy.resize} resizeHint={copy.resizeHint}>
+  const element = (eligible || baseEngaged) && <SidePanelShell open={visible} takeover={history.takeover || artifactFull} {...geometry} onWidthChange={widthChange} onClose={close} resizeLabel={copy.resize} resizeHint={copy.resizeHint}>
     <PanelHost close={close} backRef={backRef} takeover={history.takeover} copy={copy}
       extraActions={!preview && slots.active === "base" ? <span ref={setBaseHeaderActions} className="flex items-center empty:hidden" /> : undefined}
       title={preview || history.takeover ? (preview ? "fence" in preview ? preview.fence.title : "workspace" in preview ? preview.workspace.title : turnCopy(locale).plan.title : null) ?? items.find(item => item.selected)?.label ?? copy.tabs : undefined}
@@ -143,7 +146,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
     </>)}
     {!preview && creating && <p role="status" className="px-4 py-2 text-sm">{copy.loadingBase}</p>}
     {!preview && creationError && <p role="alert" className="px-4 py-2 text-sm">{creationError === "base-identity-mismatch" ? copy.basePromoted : copy.createFailed}{promotedPath && <a className="ml-2 underline" href={promotedPath} onClick={event => { event.preventDefault(); services.navigate(promotedPath); }}>{copy.openFull}</a>}</p>}
-    {preview && visible && ("workspace" in preview ? <WorkspacePreview request={preview.workspace} copy={{ loading: remote.readingFile, failed: remote.requestFailed, retry: copy.retry }} /> : "planId" in preview ? <div className="min-h-0 flex-1 overflow-auto px-6 py-5 text-sm"><MessageResponse isAnimating={Boolean(livePlan?.editing)}>{capMarkdown(planContent)}</MessageResponse></div> : <ExpandedArtifact preview={preview} close={history.close} />)}
+    {preview && visible && ("workspace" in preview ? <WorkspacePreview request={preview.workspace} copy={{ loading: remote.readingFile, failed: remote.requestFailed, retry: copy.retry }} /> : "planId" in preview ? <div className="min-h-0 flex-1 overflow-auto px-6 py-5 text-sm"><MessageResponse isAnimating={Boolean(livePlan?.editing)}>{capMarkdown(planContent)}</MessageResponse></div> : <ArtifactPresentationProvider value={{ full: history.takeover || artifactFull, canExpand: !narrow, setFull: setArtifactFull, close: history.close }}><ExpandedArtifact preview={preview} close={history.close} /></ArtifactPresentationProvider>)}
     </>} />
   </SidePanelShell>;
   return { eligible, containerRef, triggerRef, takeover: history.takeover, openShell, onOpenImage, onOpenArtifact,
@@ -155,6 +158,6 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
 function ExpandedArtifact({ preview, close }: { preview: ArtifactPreviewValue; close(): void }) {
   const host = useArtifactHost();
   const followUp = preview.followUp ?? host?.followUp;
-  const value = useMemo(() => host ? { ...host, followUp: followUp ? (request: { prompt: string; title?: string }) => { followUp(request); close(); } : undefined } : null, [host, followUp, close]);
-  return <ArtifactHostProvider value={value}><div className="min-h-0 flex-1 overflow-auto px-6 py-5 text-sm"><ArtifactPreview key={preview.fence.id} fence={preview.fence} expanded /></div></ArtifactHostProvider>;
+  const value = useMemo(() => host ? { ...host, followUp: followUp ? async (request: Parameters<NonNullable<ArtifactHost["followUp"]>>[0]) => { await followUp(request); close(); } : undefined } : null, [host, followUp, close]);
+  return <ArtifactHostProvider value={value}><div className="flex min-h-0 flex-1 flex-col overflow-hidden text-sm"><ArtifactPreview key={preview.fence.id} fence={preview.fence} expanded /></div></ArtifactHostProvider>;
 }

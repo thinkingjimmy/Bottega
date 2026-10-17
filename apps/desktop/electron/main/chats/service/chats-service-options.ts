@@ -4,7 +4,7 @@
  * [POS]: apps/desktop/electron/main/chats/service; Type-only composition boundary separating service wiring from runtime Chat orchestration
  */
 
-import type { AgentBackendId, SessionRef } from "../../../../shared/ipc/agent/agent-ipc";
+import type { AgentBackendId, AgentTurnOptions, SessionRef } from "../../../../shared/ipc/agent/agent-ipc";
 import type { AppChatRole, ChatRecord } from "../../../../shared/ipc/content/chats-ipc";
 import type { ChatHomeService } from "../../chat-home/chat-home-service";
 import type { AttachmentExportDependencies } from "../attachments/attachment-export";
@@ -32,6 +32,7 @@ export type ChatsServiceOptions = ChatDeletionOptions & {
     record: Pick<ChatRecord, "id" | "incarnationId" | "title">
   ) => Promise<void>;
   resolveAppAgent?: (appId: string, projectId: string) => AgentBackendId | undefined;
+  resolveAppChatOptions?: (agent: AgentBackendId) => AgentTurnOptions;
   assertAgentReady?: (agent: AgentBackendId, operation?: {
     conversationId: string; requestId: string; cwd: string; model?: string;
   }) => Promise<void>;

@@ -1,14 +1,11 @@
 /**
- * [INPUT]: Reads saved App configuration through the common command resolver; Depends on maintenance sessions, Headless execution, the shared command interpreter and repair journal context
- * [OUTPUT]: Builds authorized repair jobs only after matching maintenance qualification; execution remains bound to the repair workspace and lease.
+ * [INPUT]: Reads saved App configuration through the command resolver; depends on automatic task-scoped maintenance selection, Headless execution and repair journal context.
+ * [OUTPUT]: Builds qualified repair jobs with a frozen automatically selected Agent, bound to the repair workspace, cancellation and existing lease.
  * [POS]: install/repair product adaptation layer, so that AppInstaller does not know the specific Agent runtime
  */
 
 import type { AppInstallEvent, AppManifest } from "../../../../../shared/ipc/apps/apps-ipc";
-import {
-  backendById,
-  backendRuntimeRegistry,
-} from "../../../backends";
+import { backendRuntimeRegistry } from "../../../backends";
 import { headlessExecutor } from "../../../backends/jobs/executor";
 import { sanitizedProcessEnvironment } from "../../../backends/runtime/runtime-probe";
 import { resolveConfiguredAppCommand, appCommandLabel } from "../../execution/command";
@@ -16,6 +13,8 @@ import type { AppCommand } from "../../../../../shared/apps/model/apps-execution
 import { finalizeInstall } from "../finalize";
 import { createRepairPrompt } from "./prompt";
 import type { RepairContext } from "./runner";
+import { maintenanceAgentForTask } from "../../runtime/maintenance-agent";
+import type { AgentBackendId } from "../../../../../shared/ipc/agent/agent-ipc";
 
 type RepairAdapterOptions = {
   userData: string;
@@ -24,6 +23,7 @@ type RepairAdapterOptions = {
   appendLog: (appId: string, line: string) => Promise<void>;
   readLogTail: (appId: string) => Promise<string>;
   validateStatic: (appDir: string, manifest: AppManifest) => Promise<void>;
+  recordAgent?: (appId: string, backend: AgentBackendId) => Promise<void>;
 };
 
 export class RepairAdapter {
@@ -55,13 +55,10 @@ export class RepairAdapter {
 
   async runSession(context: RepairContext) {
     const appId = context.record.id;
-    if (context.record.maintenanceAgent === "auto") {
-      throw new Error("App 尚未钉住维护 Agent");
-    }
-    const descriptor = backendById(context.record.maintenanceAgent);
-    if (!descriptor.maintenance || !descriptor.headless) {
-      throw new Error(`${descriptor.displayName} 不支持 App 修复`);
-    }
+    const { descriptor, maintenance } = await maintenanceAgentForTask(context.task, "repair", {
+      cwd: context.journal.workspace,
+      onSelected: async selected => this.options.recordAgent?.(appId, selected.descriptor.id),
+    });
     const snapshot = await backendRuntimeRegistry.resolveForSpawn(
       descriptor.id
     );
@@ -72,7 +69,7 @@ export class RepairAdapter {
     ) {
       throw new Error(`${descriptor.displayName} 当前不可用于 App 修复`);
     }
-    const session = await descriptor.maintenance.open({
+    const session = await maintenance.open({
       backend: descriptor.id,
       userData: this.options.userData,
       appId,

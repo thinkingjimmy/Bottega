@@ -5,7 +5,7 @@
  * Workflow recall receipts use settled handoff facts without granting capture.
  */
 
-import { artifactRuntime } from "../../artifacts/runtime";
+import { artifactRuntime } from "../../artifacts/core/runtime";
 import { previewFeature } from "../../preview/session/runtime";
 import { encodeArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import { randomUUID } from "node:crypto";

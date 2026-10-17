@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React layout measurement, ChatSessionController, window role, canonical transcript and its hydration skeleton, lib/idle-prefetch, composer, optional side panel, Gallery, and main-window Memory state
- * [OUTPUT]: Provides ChatViewFrame and ChatView with independent wide artifact resizing, Design auto-open, paged deep links, a transcript placeholder that stands in for both the lazy chunk and message hydration on conversations that already have history, and a conversation with nothing to show that holds that slot open rather than mounting the transcript whose chunk is instead prefetched at idle
+ * [OUTPUT]: Native/imported Chat layout, scoped Artifact panel resizing, paged deep links and lazy transcript/hydration states without legacy Design auto-open.
  * [POS]: The single horizontal chat layout for draft and canonical native/imported sessions
  */
 
@@ -11,7 +11,6 @@ import {
   Suspense,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -50,7 +49,6 @@ import { prefetchWhenIdle } from "@/lib/platform/idle-prefetch";
 import { memoryStore } from "@/lib/memory/memory-store";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { useLocation } from "react-router";
-import { onAppsEvent } from "@/lib/apps/apps-client";
 import { windowContext } from "@/lib/platform/window-surfaces-client";
 import type {
   ChatForkViewContext,
@@ -183,8 +181,6 @@ export function ChatViewFrame({
     };
   }, [enableSidePanel]);
 
-  const openedDesignTurns = useRef(new Set<string>());
-
   useEffect(() => {
     if (!enableSidePanel || !matchesSidePanelRequest(sidePanelRequest, panelContext)) {
       return;
@@ -198,27 +194,6 @@ export function ChatViewFrame({
     openTabs,
     sidePanelRequest,
   ]);
-  useEffect(() => {
-    if (!enableSidePanel) return;
-    return onAppsEvent((event) => {
-      if (event.type !== "design-canvases-changed") return;
-      const productRef =
-        panelContext.kind === "product" || panelContext.kind === "adopted"
-          ? panelContext.productRef
-          : null;
-      if (
-        event.chatId !== productRef?.chatId ||
-        event.conversationIncarnationId !== productRef.incarnationId
-      ) return;
-      const key = `${event.chatId}\0${event.conversationIncarnationId}\0${event.turnId}`;
-      if (openedDesignTurns.current.has(key)) return;
-      openedDesignTurns.current.add(key);
-      if (openedDesignTurns.current.size > 128) {
-        openedDesignTurns.current.delete(openedDesignTurns.current.values().next().value as string);
-      }
-      openTabs({ target: "app", appId: event.appId });
-    });
-  }, [enableSidePanel, openTabs, panelContext]);
   const sidePanelState =
     enableSidePanel && controller.sidePanel.state.kind !== "none"
       ? controller.sidePanel.state

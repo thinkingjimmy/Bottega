@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Depends on Chat/Project/Setup ports, the native CommandSink, coordinator outcome clients, frozen submission payloads and view/abort fences.
  * [OUTPUT]: Workspace-fenced submission and revision, current options after initial model preparation, captured accepted-use preferences, ambiguous draft retention and existing admission/custody gates.
+ * Explicit review sends retain original request ID/time and reconcile that outcome before another admission.
  * [POS]: apps/desktop/src/components/chat/runtime/session/submission; The limit of the submission of chat/runtime/session transactions; The main custody is not cancelled due to view switching, and the delayed return can only be written back to the still matched renderer generation
  */
 import { lastCanonicalSeq } from "@/lib/native-transcript/window";
@@ -265,9 +266,12 @@ export function createSessionSubmissionPorts(
     const agentDraft = readAgentDraft(chatId);
     if (agentDraft.pending?.submitting || agentDraft.pending?.stale) throw new Error(translate(effectiveLocale(), "chat.agentSwitch.stale"));
     const switchIntent = agentDraft.pending?.intent;
-    const intentId = `manual_${crypto.randomUUID().replaceAll("-", "")}`;
-    const requestId = `request_${crypto.randomUUID().replaceAll("-", "")}`;
-    const userCreatedAt = Date.now();
+    const keyed = message.requestKey;
+    if (keyed && (!/^[a-f0-9-]{36}$/.test(keyed.id) || !Number.isSafeInteger(keyed.createdAt) || keyed.createdAt < 0)) throw new Error("Invalid review request identity");
+    const seed = keyed?.id.replaceAll("-", "");
+    const intentId = seed ? `manual_review_${seed}` : `manual_${crypto.randomUUID().replaceAll("-", "")}`;
+    const requestId = seed ? `request_review_${seed}` : `request_${crypto.randomUUID().replaceAll("-", "")}`;
+    const userCreatedAt = keyed?.createdAt ?? Date.now();
     const proposedIncarnationId = crypto.randomUUID().replaceAll("-", "");
     throwIfSubmissionAborted(signal);
     // F-33: re-grant attached files from the retained File, so a message that waited past the 30-minute grant still sends.
@@ -318,7 +322,7 @@ export function createSessionSubmissionPorts(
     }
     const attachments = splitChatAttachments(message.files);
     const userMessage: UnsequencedUserMessage = {
-      id: messageId("user"),
+      id: seed ? `user_review_${seed}` : messageId("user"),
       role: "user",
       content: displayText,
       createdAt: userCreatedAt,
@@ -644,6 +648,15 @@ export function createSessionRevisionSubmit(
 
 export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
   return async (message, options = {}) => {
+    if (message.requestKey) {
+      const identity = `manual_review_${message.requestKey.id.replaceAll("-", "")}`;
+      const previous = await getSubmissionOutcome(identity);
+      if (previous.kind !== "notFound") {
+        if (previous.kind === "tombstone" ? previous.outcome === "failed" : previous.phase === "failed") throw new Error("The original review was not sent. Its input is retained.");
+        return;
+      }
+      if (previous.reservation !== "absent") throw new Error("The original review request is still being checked. Keep its input and use the Chat queue.");
+    }
     const signal = options.signal ?? new AbortController().signal;
     let ports: ReturnType<typeof createSessionSubmissionPorts>;
     let envelope: ManualTurnSubmission;

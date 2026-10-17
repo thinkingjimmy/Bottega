@@ -108,8 +108,8 @@
     },
     {
       "path": "resources/gui-sdk/base-api.js",
-      "bytes": 14440,
-      "sha256": "sha256:ba727bfee4b94bf361893e67068f7fdffa51f95ac0d110d685b45759e591c609"
+      "bytes": 13029,
+      "sha256": "sha256:3c615556fcdc69f6eb9b999d57617485b4fea1310c2f76f0fc399c1ad65a3d7c"
     }
   ]
 }

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Authorized immutable leases, theme tokens, exact iframe messages and host user activation.
- * [OUTPUT]: Lazy sandboxed artifact frames with bounded sizing, revocation, sync-aware recovery and validated follow-ups.
+ * [INPUT]: Authorized leases, host workspace lifecycle events, theme tokens, exact frame messages and host activation.
+ * [OUTPUT]: Lazy ordinary frames with full-height expanded content, shared quota/revocation, sync recovery and guarded follow-ups.
  * [POS]: Shared artifact frame host; never reads or trusts child DOM or child activation claims.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -26,6 +26,8 @@ export function ArtifactFrame({ fence, expanded = false }: { fence: ArtifactFenc
   const [visible, setVisible] = useState(false), [retained, setRetained] = useState(false), [admitted, setAdmitted] = useState(false), [lease, setLease] = useState<ArtifactLease | null>(null);
   const [height, setHeight] = useState(200), [failure, setFailure] = useState<ArtifactFailure | null>(null), [attempt, setAttempt] = useState(0), [markdown, setMarkdown] = useState<string | null>(null);
   const [automatic, setAutomatic] = useState(0), [blocked, setBlocked] = useState(false);
+  const [pluginOff, setPluginOff] = useState(false);
+  useEffect(() => host?.workspaceEvents?.(event => { if (event.type === "changed") setPluginOff(event.enabled === false); }), [host]);
   const [viewport, setViewport] = useState(() => typeof innerHeight === "number" ? innerHeight : 800);
   useEffect(() => {
     const resized = () => setViewport(innerHeight); window.addEventListener("resize", resized); return () => window.removeEventListener("resize", resized);
@@ -42,11 +44,11 @@ export function ArtifactFrame({ fence, expanded = false }: { fence: ArtifactFenc
     observer.observe(element); return () => { observer.disconnect(); clearTimeout(timer); };
   }, []);
   useEffect(() => {
-    if (!retained) return;
+    if (!retained || pluginOff) return;
     return requestArtifactFrame(() => setAdmitted(true), () => setAdmitted(false), expanded ? 2 : visible ? 1 : 0);
-  }, [retained, visible, expanded]);
+  }, [retained, visible, expanded, pluginOff]);
   useEffect(() => {
-    if (!host || !admitted) return;
+    if (!host || !admitted || pluginOff) return;
     let alive = true, obtained: ArtifactLease | undefined;
     const controller = new AbortController();
     let renewal: ReturnType<typeof setTimeout> | undefined;
@@ -61,7 +63,7 @@ export function ArtifactFrame({ fence, expanded = false }: { fence: ArtifactFenc
       }
     }).catch(error => { clearTimeout(timeout); if (alive) setFailure(classifyFailure(error)); });
     return () => { alive = false; clearTimeout(timeout); clearTimeout(renewal); controller.abort(); if (obtained) host.release(obtained); setLease(null); };
-  }, [host, fence, admitted, attempt]);
+  }, [host, fence, admitted, attempt, pluginOff]);
   useEffect(() => {
     if (failure !== "pending" || automatic >= AUTOMATIC_RETRIES) return;
     const timer = setTimeout(() => { setAutomatic(value => value + 1); setFailure(null); setAttempt(value => value + 1); }, Math.min(30_000, 5_000 * 2 ** automatic));
@@ -89,7 +91,7 @@ export function ArtifactFrame({ fence, expanded = false }: { fence: ArtifactFenc
       if (event.data.type === "bottega:artifact:error") setFailure("failed");
       if (event.data.type === "bottega:artifact:follow-up") {
         const accepted = guard.current.accept(event.data.payload, navigator.userActivation?.isActive === true);
-        if (accepted && host.followUp) { host.followUp({ ...accepted, title: accepted.title ?? fence.title }); setBlocked(false); }
+        if (accepted && host.followUp) { void Promise.resolve(host.followUp({ ...accepted, title: accepted.title ?? fence.title })).then(() => setBlocked(false)).catch(() => setBlocked(true)); }
         else setBlocked(true);
       }
     };
@@ -106,14 +108,15 @@ export function ArtifactFrame({ fence, expanded = false }: { fence: ArtifactFenc
   const retry = () => { setFailure(null); setAutomatic(0); setAttempt(value => value + 1); };
   const waiting = failure === "pending" && automatic < AUTOMATIC_RETRIES;
   const fullHeight = expanded ? height : Math.min(height, viewport * 2);
-  return <div ref={root} tabIndex={-1} style={{ minHeight: 80, outlineOffset: 2 }}>
+  if (pluginOff) return <div ref={root} tabIndex={-1} className="p-4 text-sm" role="status">{copy.unavailable}</div>;
+  return <div ref={root} tabIndex={-1} className={expanded ? "min-h-0 flex-1 overflow-auto" : undefined} style={{ minHeight: expanded ? 0 : 80, outlineOffset: 2 }}>
     {failure ? <LoadingState inline locale={host?.locale ?? "en"} failed={!waiting} retry={retry}
       title={failure === "sync" ? copy.syncRequired : undefined} /> :
       fence.kind === "markdown" && markdown !== null ? <div style={{ maxHeight: expanded ? undefined : viewport * 2, overflow: "hidden" }}><MessageResponse>{markdown}</MessageResponse></div> :
-      admitted && lease && fence.kind === "image" ? <img src={source} alt={fence.title} style={{ display: "block", width: "100%", maxHeight: expanded ? undefined : viewport * 2, objectFit: "contain" }} onError={() => setFailure("failed")} /> :
+      admitted && lease && fence.kind === "image" ? <img src={source} alt={fence.title} style={{ display: "block", width: "100%", height: expanded ? "100%" : undefined, maxHeight: expanded ? undefined : viewport * 2, objectFit: "contain" }} onError={() => setFailure("failed")} /> :
       admitted && lease && fence.kind !== "markdown" ? <iframe ref={frame} onError={() => setFailure("failed")} src={source} title={fence.title} sandbox={fence.kind === "pdf" ? undefined : lease.sandbox} referrerPolicy="no-referrer"
         allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'" scrolling={fence.kind === "pdf" ? "auto" : "no"}
-        style={{ display: "block", border: 0, width: "100%", height: fence.kind === "pdf" ? "75vh" : fullHeight, background: "transparent" }} /> :
+        style={{ display: "block", border: 0, width: "100%", height: expanded ? "100%" : fence.kind === "pdf" ? "75vh" : fullHeight, background: "transparent" }} /> :
       <div style={{ height: fullHeight }} className="flex"><LoadingState locale={host?.locale ?? "en"} /></div>}
     {blocked && <p role="status" className="px-3 text-sm text-muted-foreground">{copy.blocked}</p>}
     {!expanded && height > viewport * 2 && <Button variant="ghost" size="sm" type="button" className="relative touch-target-44" onClick={() => { void Promise.resolve(host?.open(fence, host?.followUp)).catch(() => setFailure("failed")); }}>{copy.expand}</Button>}

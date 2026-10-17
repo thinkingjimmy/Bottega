@@ -67,6 +67,10 @@ export const BUILTIN_PLUGINS: readonly PluginDescriptor[] = Object.freeze([
     description: copy("plugins.builtin.workflow.description"),
     icon: "workflow", provides: [], requires: [BASE_CONTRACT, AGENT_PROVIDER_CONTRACT], turnOn: { mode: "direct" }, turnOff: { allowed: true }, settings: [],
     capabilities: [{ label: copy("plugins.capability.workflowColumns"), id: null }, { label: copy("plugins.capability.workflowRoles"), id: null }] },
+  { id: "artifact", kind: "feature", source: "builtin", name: copy("plugins.builtin.artifact.name"),
+    summary: copy("plugins.builtin.artifact.summary"), description: copy("plugins.builtin.artifact.description"), icon: "artifact",
+    provides: [], requires: [], turnOn: { mode: "direct" }, turnOff: { allowed: true }, settings: [],
+    capabilities: [{ label: copy("plugins.builtin.artifact.summary"), id: null }] },
   provider(BUILTIN_PROVIDER_IDS.claude, [
     toggle(BUILTIN_PROVIDER_IDS.claude, "memory", "session-create", true),
     toggle(BUILTIN_PROVIDER_IDS.claude, "native-subagents", "session-create", true),

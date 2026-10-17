@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the PromptInput file/rich-text contract, ComposerFile, and the message-queue-model attachment/prompt types
- * [OUTPUT]: Provides materializePrompt (queued attachment to PromptInputMessage via FileReader data URLs), draftPrompt, and promptFiles for the two-way composer/queue file projection
+ * [OUTPUT]: Queued file/rich prompt materialization and two-way draft projection preserving the original review request key.
  * [POS]: Attachment boundary for runtime/message-queue; only converts File objects to/from data and blob URLs, never touches admission or Steer state
  */
 
@@ -44,6 +44,7 @@ export async function materializePrompt(
   prompt: QueuedPrompt
 ): Promise<PromptInputMessage> {
   return {
+    ...(prompt.requestKey ? { requestKey: structuredClone(prompt.requestKey) } : {}),
     input: {
       kind: "rich",
       value: structuredClone(prompt.richValue),

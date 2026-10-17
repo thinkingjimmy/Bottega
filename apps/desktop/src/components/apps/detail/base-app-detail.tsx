@@ -61,7 +61,6 @@ import {
   cancelAppFileExport,
   finalizeAppFileExport,
   releaseAppSurface,
-  setDesignEnabled,
   writeAppFileExport,
 } from "@/lib/apps/apps-client";
 import { appendComposerText } from "@/lib/chat/state/composer/chat-composer-store";
@@ -74,26 +73,18 @@ import {
   useHoldsSurface,
   windowContext,
 } from "@/lib/platform/window-surfaces-client";
-import {
-  DesignCanvasMenuItems,
-  DesignHistoryDialog,
-} from "../design/design-history-dialog";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { surfaceErrorMessage } from "@/lib/chat-composer/errors";
 import { declaresBaseGui } from "../app-state";
 import { useAppEditor } from "../use-app-editor";
 import { AppWorkbench } from "./app-workbench";
 import { useAppSkillFeedback } from "./use-app-skill-feedback";
-
-const AppUseDock = lazy(() =>
-  import("../use/app-use-dock").then((module) => ({ default: module.AppUseDock }))
-);
-
+const AppUseDock = lazy(() => import("../use/app-use-dock").then(module => ({ default: module.AppUseDock })));
 type RightSurface = "none" | "settings" | "use";
 type MainSurface = "app" | "data";
 /* 弹窗式入口住进了 ⋯ 菜单，而菜单一关就把整棵子树卸掉——触发器若自持
    open，弹窗与它共命，永远开不起来。故开关上提到这一层。 */
-type Overlay = "none" | "readme" | "share" | "history" | "workbench";
+type Overlay = "none" | "readme" | "share" | "workbench";
 
 export function BaseAppDetail({ record }: { record: AppRecordProjection }) {
   const needsStudio = declaresBaseGui(record);
@@ -437,7 +428,6 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
         baseOwnerKey={ownerKey}
         onHostAction={handleHostAction}
         onGoToData={() => selectMainSurface("data")}
-        chromeless={record.presetId === "design-canvas"}
       />
     ) : (
       <BaseWorkbench ownerKey={ownerKey} requestedViewId={requestedView} />
@@ -590,17 +580,6 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
                 {t("apps.readme.about")}
               </DropdownMenuItem>
             )}
-            {record.presetId === "design-canvas" && appSurface && (
-              <>
-                <DropdownMenuSeparator />
-                <DesignCanvasMenuItems
-                  appId={record.id}
-                  appSurfaceLeaseId={appSurface.surfaceLeaseId}
-                  onImported={gui.refresh}
-                  onOpenHistory={() => setOverlay("history")}
-                />
-              </>
-            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => setOverlay("share")}>
               <Share2Icon />
@@ -612,18 +591,6 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
     >
       <div className="flex h-full min-w-0">
         <main className="relative flex min-w-0 flex-1 flex-col">
-          {record.presetId === "design-canvas" && record.defaultGrant == null && (
-            <div className="absolute top-3 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background/95 px-4 py-2 text-sm shadow-lg">
-              <span>{t("apps.designHiddenHint")}</span>
-              <Button
-                onClick={() => void setDesignEnabled({ appId: record.id, enabled: true })}
-                size="sm"
-                variant="outline"
-              >
-                {t("apps.designReopen")}
-              </Button>
-            </div>
-          )}
           {showSurfaceTabs ? (
             <>
               {(["app", "data"] as const).map((value) => {
@@ -657,7 +624,6 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
                 key={useChat.chatId}
                 appId={record.id}
                 chatId={useChat.chatId}
-                draftAgent={record.agent}
               />
             </Suspense>
           )}
@@ -695,19 +661,6 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
           open={overlay === "workbench"}
           record={record}
         />
-        {/* 只在开着的时候挂：这道弹窗一挂上就发两条 IPC 并订阅
-            design-canvases-changed，而它一年里 364 天是关着的。开关既然
-            已经由 overlay 持有，挂载条件就该照它写，而不是让组件自己
-            在关闭态里空转一整套订阅。 */}
-        {overlay === "history" && appSurface && (
-          <DesignHistoryDialog
-            appId={record.id}
-            appSurfaceLeaseId={appSurface.surfaceLeaseId}
-            onOpenChange={(next) => setOverlay(next ? "history" : "none")}
-            onRestored={gui.refresh}
-            open
-          />
-        )}
       </div>
     </PageShell>
   );

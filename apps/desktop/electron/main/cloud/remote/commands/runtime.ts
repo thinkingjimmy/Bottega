@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Depends on the built-in Provider catalog's narrowing (the stored order is published as built-ins only until S5–S7), confirmed account connections, existing execution preparation, runtime availability, the shared Memory reconnect barrier and coordinator/control ports.
  * [OUTPUT]: Receives commands with paced independent pagination, bounded independent Chat preparation and workspace replies with acknowledged-only completion and paced retries, observation and event-driven capability publication before the execution-only Memory barrier, Project/Agent publication (eligible ordinary Project facts in revision-aware batched pages), the phone Memory facade status (TASK-28, R-33), the claim of this computer's App Edit reservations (U06 Q7-b) and scoped authority; scans reuse pushed workspace-inbox and reservation pages and pass live Chat heads to intake (T20-5). Queue mutations reuse coordinator authority and conversation locking.
+ * Plugin/Artifact capability publication is encrypted and bound to this computer, connection epoch and current protocol.
  * [POS]: Remote composition lifetime remains active while product windows are closed; logout and reconnect fence every operation.
  */
 import { recoveryDiagnostics } from "../../runtime/diagnostics/timeline";
@@ -16,6 +17,8 @@ import { hashChatContent } from "@ai-chat/cloud-protocol/chats/transcript/body";
 import type { RemoteCipherPort } from "@ai-chat/cloud-protocol/remote/encrypted/client";
 import { sealRemoteCapabilities } from "@ai-chat/cloud-protocol/remote/encrypted/creation";
 import { sealRemotePlugins } from "@ai-chat/cloud-protocol/surfaces/plugin/catalog-codec";
+import { artifactEnabled, artifactGeneration } from "../../../artifacts/admission/state";
+import { installedPluginCatalog } from "../../../plugins/catalog";
 import type { PluginSurfaceSource } from "../../sync/surfaces/source";
 import { sealRemoteMemory } from "@ai-chat/cloud-protocol/remote/memory";
 import type { RemoteMemoryStatus } from "@ai-chat/cloud-protocol/remote/memory-status";
@@ -200,7 +203,8 @@ export class RemoteCommandRuntime {
     const stopRuntime = backendRuntimeRegistry.subscribe(bump), stopSettings = ports.settings.onChanged(bump);
     const stopMemory = ports.memory?.onStatus(bump);
     const stopPlugins = ports.plugins?.()?.onChanged(bump);
-    this.releaseAgentInputs = () => { stopRuntime(); stopSettings(); stopMemory?.(); stopPlugins?.(); };
+    const stopArtifact = installedPluginCatalog()?.onChanged(bump);
+    this.releaseAgentInputs = () => { stopRuntime(); stopSettings(); stopMemory?.(); stopPlugins?.(); stopArtifact?.(); };
     this.releaseConnection = ports.account.subscribeConnection(() => this.wake());
     // Both inbox and preparation changes arrive on their own subscriptions; the timer is only a missed-notification fallback.
     this.timer = setInterval(() => { this.inboxPage = null; this.preparationPage = null; this.workspaceInbox = null; this.reservationPage = null; this.wake(); }, 60_000); this.timer.unref(); this.wake();
@@ -500,11 +504,12 @@ export class RemoteCommandRuntime {
       }
       const memoryStatus = this.memoryFacade();
       const pluginCatalog = this.ports.plugins?.()?.catalog() ?? [];
-      const digest = hashChatContent({ agents, memory: memoryStatus, plugins: pluginCatalog });
+      const artifact = { enabled: artifactEnabled(), generation: artifactGeneration(), protocolVersion: protocolHeader(config).protocolVersion, publishedAt: Date.now() };
+      const digest = hashChatContent({ agents, memory: memoryStatus, plugins: pluginCatalog, artifact: { ...artifact, publishedAt: Math.floor(Date.now() / 60_000) } });
       if (this.publication.get("agents") !== digest) {
         const encrypted = await sealRemoteCapabilities(agents, connection.connectionEpoch, protocolHeader(config), crypto); current();
         const memory = memoryStatus && await sealRemoteMemory({ ...memoryStatus, publishedAt: Date.now() }, connection.connectionEpoch, protocolHeader(config), crypto); current();
-        const plugins = await sealRemotePlugins(pluginCatalog, connection.connectionEpoch, protocolHeader(config), crypto); current();
+        const plugins = await sealRemotePlugins(pluginCatalog, connection.connectionEpoch, protocolHeader(config), crypto, undefined, artifact); current();
         await transport.mutate("remote/capabilities:publish", { ...header, agents: encrypted, unlocked: true, memory, plugins }); current();
         this.publishedHeader = header; this.publication.set("agents", digest);
       }

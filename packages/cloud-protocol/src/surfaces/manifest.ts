@@ -1,12 +1,12 @@
 /**
- * [INPUT]: zod, the encrypted file descriptor, the surface frame limits and the protocol canonical encoding.
+ * [INPUT]: Zod, the path-only snapshot rule, encrypted file descriptors, frame limits and canonical encoding.
  * [OUTPUT]: APP_SURFACE_LIMITS, APP_SURFACE_CAPABILITIES, the R-26 manifest and head schemas, appSurfaceTreeDigest and encodeAppSurfaceManifest.
  * [POS]: The App surface manifest contract (TASK-22 S3): what the owner desktop seals per generation and what the Web verifies before mounting.
  */
 import { z } from "zod";
 import { encryptedFileDescriptorSchema } from "../blobs/encrypted/model";
 import { canonicalJson, hashCanonical } from "../encryption/encoding";
-import { artifactRelativePathSchema } from "../turns/text/artifact-reference";
+import { artifactRelativePathSchema } from "../turns/text/artifact-path";
 import { SURFACE_LIMITS } from "./policy";
 
 export const APP_SURFACE_LIMITS = Object.freeze({ ...SURFACE_LIMITS, manifestBytes: 1_048_576, hostActions: 16 });

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Apps plus narrow Chat metadata/managed-worktree stores, Sections pending CreateIntent, shared AppLocale/local detachment causes, Agent conversation lifecycle, Memory rebind fence, Design rebind observer, ProjectStore, ProjectResourceCleanupCoordinator, and ProjectsService
- * [OUTPUT]: Provides composeProjectsService, which wires this installation's device id, authoritative App-directory reveal, managed-worktree rebind blockers, Project-held lifecycle callbacks, Base-custody existence/cleanup, unified record cleanup, stale-session release, and main-owned rebind evidence into Memory and Design convergence
+ * [INPUT]: Apps, Chat metadata/worktrees, pending Sections, locale/detachment facts, conversation lifecycle, Memory rebind and Project cleanup/store/service owners.
+ * [OUTPUT]: Project composition with device identity, App reveal, worktree/lifecycle blockers, Base cleanup, stale-session release and Memory rebind evidence.
  * [POS]: Projects module's composition root; ProjectsService itself stays a domain-focused index responsible only for lifecycle and instance ordering
  */
 
@@ -159,14 +159,6 @@ export function composeProjectsService(input: {
       (input.chatStore()?.listByProject(projectId) ?? []).some((chatId) =>
         input.deletions?.()?.hasActive(chatId) ?? false
       ),
-    onWorkspaceRebound: async (capsule) => {
-      await input.apps()?.migrateDesignProjectWorkspace({
-        operationId: capsule.operationId,
-        projectId: capsule.projectId,
-        sourceBinding: capsule.sourceBinding,
-        targetBinding: capsule.targetBinding,
-      });
-    },
     /* fence 缺席时 fail closed：宁可拒绝一次转换，也不能在没有 D17 复核的情况下
        把一个可能仍持有授权的 Project 变成 App workspace。 */
     admitAppConversion: (projectId, work) => {

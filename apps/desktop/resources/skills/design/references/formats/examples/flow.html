@@ -1,0 +1,7 @@
+<!doctype html>
+<!--
+[INPUT]: Browser HTML/CSS/JS with no external dependencies
+[OUTPUT]: Executable offline design method example
+[POS]: Artifact design task example; adapt to the current brief
+-->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Invoice flow</title><style>body{margin:0;font:16px/1.5 system-ui;color:#172c27;background:#f5f4ee}main{max-width:960px;margin:auto;padding:32px}button{min-height:44px;padding:8px 20px;background:#225c4d;color:white;border:0;border-radius:8px;font:inherit;cursor:pointer}button:hover{background:#174336}button:focus-visible{outline:3px solid #a45820;outline-offset:3px}h1{font-size:clamp(28px,5vw,48px);line-height:1.15}.flow{display:flex;gap:16px;align-items:center;flex-wrap:wrap}.node{padding:24px;border:1px solid #89988e;border-radius:8px}</style></head><body><main><h1>Invoice review</h1><div class="flow"><div id="draft" class="node">Draft invoice</div><svg id="draft-to-review" width="80" height="32" viewBox="0 0 80 32" aria-label="Next"><defs><marker id="arrow" markerWidth="5" markerHeight="5" refX="4" refY="2" orient="auto"><path d="M0 0L4 2L0 4Z" fill="#225c4d"></path></marker></defs><path d="M2 16H74" fill="none" stroke="#225c4d" stroke-width="2" marker-end="url(#arrow)"></path></svg><div id="review" class="node">Finance review</div></div></main></body></html>

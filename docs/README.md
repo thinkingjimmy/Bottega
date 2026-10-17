@@ -2,7 +2,7 @@
 
 [简体中文](./README.zh-CN.md) · [Repository home](../README.md)
 
-Current release: [0.2.4 prerelease](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.4) for macOS on Apple silicon, with [Bottega Web](https://app.getbottega.app). Read the [installation and update notes](./getting-started/README.md#upgrading-to-024) before upgrading.
+Current release: [0.2.5 prerelease](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.5) for macOS on Apple silicon, with [Bottega Web](https://app.getbottega.app). Read the [installation and update notes](./getting-started/README.md#upgrading-to-025) before upgrading.
 
 Documentation is organized by responsibility so the repository root remains focused on source and build configuration.
 

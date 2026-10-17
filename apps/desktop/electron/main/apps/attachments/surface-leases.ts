@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on AppStore, ProjectStore, AppGrantAuthority ordinary/Studio projections, the canonical effective-workspace resolver, trusted renderer residence, shared surface DTOs, and the main/errors statusError factory
- * [OUTPUT]: Provides AppAttachmentSurfaceLeaseRegistry with exact authorization, staged runtime leases, active-only mutation fencing, renderer ownership, drift revalidation, and coded invalid/revoked lease failures. Checks enabled state before issuing or reading a surface lease.
+ * [INPUT]: App/Project stores, ordinary/Studio grant authority, effective workspace resolution, trusted residence and strict surface DTOs.
+ * [OUTPUT]: Generation-bound App surface authorization, staged leases, active mutation/drift fences and coded disabled/revoked refusals.
  * [POS]: Main-only UI capability registry for apps/attachments; a slot or grant never substitutes for a live surface lease
  */
 

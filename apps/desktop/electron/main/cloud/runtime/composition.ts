@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Owner Project Git resource operations, the PreparedCloudRuntime shape from prepare.ts, Electron account/lifecycle ports and preferred languages, shared locale negotiation, the bounded recovery timeline, isolated userData, original coordinator/control owners and artifact custody/publication.
  * [OUTPUT]: Wires binding-fenced offline identity, a read-only operation-receipt lookup for the broker, startup/token admission, synchronization with library-confirmed remote readiness independent of historical backlog, bidirectional Chat read acknowledgements, scoped artifact transfers, sleep/quit presence (resume is refreshed by the application lifecycle), continuation, remote IPC and the `attachAccountConfig(store)` Dock-layout sync seam onto an already prepared runtime, with verified owner/account record resource ports, Agent-configuration sync, the Workflow projection outbox and the resource-command executor attached alongside, behind one shared Memory reconnect barrier.
+ * Native mirror Artifact commands retain original execution-owner identity and durable encrypted request recovery.
  * [POS]: Heavy half of the cloud composition, dynamically loaded and never reached from prepare.ts; stable builds exclude the implementation and SDK.
  */
 import { projectResourcePort } from "../remote/resources/projects";
@@ -8,7 +9,7 @@ import { recordResourcePort } from "../remote/resources/records";
 import { MemoryControlBarrier } from "../remote/memory/runtime";
 import { attachPreviewCloud } from "../../preview/session/cloud";
 import { NativePluginSurfaces } from "../sync/surfaces/native";
-import { artifactRuntime } from "../../artifacts/runtime";
+import { artifactRuntime } from "../../artifacts/core/runtime";
 import { artifactCloudTransport } from "../../artifacts/storage/transport";
 import { app, powerMonitor, shell, type BrowserWindow } from "electron";
 import { resolveAppLocale } from "@ai-chat/ui/lib/locale";
@@ -35,7 +36,9 @@ import { memoryBlobSource, type ChatBodyBytePorts } from "../sync/chats/bodies";
 import { syncStoreEvents, type SyncEventPorts } from "./store-events";
 import type { GalleryMediaService } from "../../gallery/media-service";
 import { LocalTurnRecorder, type TurnRuntimePorts } from "../remote/recorder";
-import { RemoteArtifacts } from "../../artifacts/remote";
+import { RemoteArtifacts } from "../../artifacts/access/remote";
+import { artifactWorkspace } from "../../artifacts/workspace/runtime";
+import { remoteArtifactWorkspace } from "../../artifacts/workspace/remote";
 import { CloudChatReader } from "../chat/reader";
 import { registerCloudChat } from "../chat/registration";
 import { CloudExecutionService } from "../execution/service";
@@ -190,6 +193,9 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
   if (artifacts) artifacts.remote = new RemoteArtifacts(chatReader, () => {
     const port = contentCrypto(); return JSON.stringify([port.session.userId, port.scope, port.keyPackageFingerprint]);
   });
+  if (artifacts) artifactWorkspace().remote = remoteArtifactWorkspace({ config, deviceId, crypto: contentCrypto, transport,
+    current: () => { const account = service.snapshot(), active = binding.snapshot();
+      if (account.status !== "ready" || active?.phase !== "active" || active.paused || active.userId !== account.profile?.userId || active.deviceId !== deviceId) throw new Error("artifact-account-changed"); } });
   const baseImages = new BaseImageReader({ config, userData, store: owners.bases, binding, account: service,
     filePorts: userId => desktopFileTransport({ config, userId, transport, crypto: contentCrypto, token: () => http.getToken() }), own: activity => scope.own(activity) });
   const execution = new CloudExecutionService({ config, userData, deviceId, binding, owners, ...lifecycle, attachments, runtime: ui.turns, projectGate: ui.projectGate,

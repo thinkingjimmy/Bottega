@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Chat facts, coordinator activity, and the existing submission/relay ledger
- * [OUTPUT]: Allows imported readonly Agent selection while preserving activity locks, source/revision fences, and Full Access checks for normal switches and saved-history replay
+ * [OUTPUT]: Allows ordinary, App Use/Edit and imported readonly Agent selection while preserving activity locks, ownership/revision fences and Full Access checks.
  * [POS]: Main switch policy shared by selector queries, admission, and queued commits
  */
 
@@ -17,7 +17,6 @@ export function switchEligibility(dependencies: CoordinatorDependencies, convers
   const chat = dependencies.chats.store.getMetadata(conversationId);
   if (!chat) throw new Error("Chat does not exist");
   let reason: AgentSwitchBlockReason | null = chat.readOnlyReason && chat.readOnlyReason !== "external-readonly" ? "readonly"
-    : chat.context.kind !== "ordinary" ? "app-bound"
     : conversationAvailability(dependencies, conversationId, chat.projectId) !== "open" || chat.archivedAt ? "archived"
     : options.recovering ? "recovery"
     : dependencies.switchActivityReason?.(conversationId) ?? (options.running || dependencies.hasActivity([conversationId]) ? "running" : null);

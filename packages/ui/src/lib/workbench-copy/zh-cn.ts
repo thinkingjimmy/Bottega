@@ -263,6 +263,7 @@ export const zhCN: WorkbenchCopy = {
       memory: memoryPluginCopy,
       dock,
       sketch: { name: "草图", summary: "绘制、擦除并附上可继续编辑的图片。", description: "草图在输入框里加入一块画布。绘制、擦除、标注，然后把结果作为可继续编辑的图片附到消息里。" },
+      artifact: { name: "Artifact", summary: "创作视觉设计并预览聊天产物。", description: "Artifact 为 Chat 提供设计工具和交互预览。设计文档保存为完整归档，并提供版本截图。", disableHint: "关闭前保存现有意见，关闭已打开的预览；已准入的保存会完成。" },
       base: {
         name: "Base",
         summary: "每个 Project 都有的表格、看板、列表和表单。流程与 Base 型 App 都建立在它之上。",

@@ -47,7 +47,7 @@
     {"path":"../../packages/base-ui/src/ui/chrome/base-tab-chrome.ts","bytes":1407,"sha256":"sha256:00e6a4eadd54be336b1fa2b3cedd703622080b2aaa8058b4b633d507f2cd4f2e"},
     {"path":"../../packages/base-ui/src/ui/chrome/base-toolbar-overflow.tsx","bytes":5032,"sha256":"sha256:443a399092f5abf46edcc4cd3a917fe40319aa2127a250c8c7647da9a9084754"},
     {"path":"../../packages/base-ui/src/ui/chrome/base-toolbar.tsx","bytes":18487,"sha256":"sha256:71365dace29d6849c05f723f2435770192039cd3bb2b442f1d9e182962cc2930"},
-    {"path":"../../packages/base-ui/src/ui/chrome/base-view-tabs.tsx","bytes":7908,"sha256":"sha256:29460a2cb54c52aaeecbeb0878a95328b0b559ea3413c23ea0da70856e0306fd"},
+    {"path":"../../packages/base-ui/src/ui/chrome/base-view-tabs.tsx","bytes":8272,"sha256":"sha256:598fa4981f55372dcf289097ac71712fac5b88df7388a0eb90d092545553fdcb"},
     {"path":"../../packages/base-ui/src/ui/chrome/inline-name-input.tsx","bytes":1473,"sha256":"sha256:435150d318fd261de65f4f437aa9f6e97bec4a1820be9161926e9065d09a257d"},
     {"path":"../../packages/base-ui/src/ui/chrome/workflow-column.tsx","bytes":5842,"sha256":"sha256:dba0c72b1016ab0ffdca5868dfd2b882bea101e9e2971131ae875e9802efa396"},
     {"path":"../../packages/base-ui/src/ui/editors/cells/base-cell-display.tsx","bytes":1697,"sha256":"sha256:a9a966c76b583e7310fd368da2fb8455c197167a951e5f896759263353958e97"},
@@ -117,7 +117,7 @@
     {"path":"shared/app-gui/file-export.ts","bytes":4064,"sha256":"sha256:5b074e3001f0ada5147b8181b4ba217a00290801fad669dbd3fe23f2dcd763e6"},
     {"path":"src/components/apps/detail/app-workbench.tsx","bytes":20152,"sha256":"sha256:ba4f990afafb5f09f47bddee6e7051cb55090d3970bb9eee8a55fd00a01eb673"}
   ],
-  "runtimeSbomDigest": "sha256:f0da85b024724f956f19bd0141eecf8cf6f4415d7fbbaa15cf4c1f5c00083bc2",
+  "runtimeSbomDigest": "sha256:1d96d6bf12748a97659cc86868b3c387f39fa632493fb1d04f9553992d075ece",
   "noticesDigest": "sha256:41fcad5a6836f21fdb522501b0c499d4d9de7353732f4548b8b2a17e1cd4811b",
   "authoringContracts": [
     "bottega-ui-blocks-v1",

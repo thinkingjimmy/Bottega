@@ -49,7 +49,6 @@ import {
 import { panelSlotStore, usePanelSlots } from "../panel-slot-store";
 import {
   listAvailableApps,
-  setDesignAutoOpen,
 } from "@/lib/apps/apps-client";
 import type { AvailableAttachedApp } from "../../../../../shared/ipc/apps/apps-ipc";
 const AppTabPanel = lazy(() => import("./app-tab-panel").then(module => ({ default: module.AppTabPanel })));
@@ -209,14 +208,6 @@ export function PanelTabs({
   const openPanel = (id: PanelTabId) => {
     if (!panelEligibility(context, regionCapability(id)).allowed) return;
     panelSlotStore.open(slotKey, id);
-    if (isAppRegion(id) && productRef) {
-      void setDesignAutoOpen({
-        appId: appIdOf(id),
-        conversationId: productRef.chatId,
-        conversationIncarnationId: productRef.incarnationId,
-        suppressed: false,
-      });
-    }
     if (id === "subagents") setSelectedAgentThreadId("");
   };
   // 目录里唯一的分叉，只此一处：面板是单例，Browser 是工厂。
@@ -416,14 +407,6 @@ export function PanelTabs({
         select: () => panelSlotStore.activate(slotKey, id),
         close: () => {
           panelSlotStore.close(slotKey, id);
-          if (isAppRegion(id) && productRef) {
-            void setDesignAutoOpen({
-              appId: appIdOf(id),
-              conversationId: productRef.chatId,
-              conversationIncarnationId: productRef.incarnationId,
-              suppressed: true,
-            });
-          }
           if (id === "subagents") setSelectedAgentThreadId("");
         },
       };

@@ -8,7 +8,7 @@
  */
 
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
-import { artifactRuntime } from "../../artifacts/runtime";
+import { artifactRuntime } from "../../artifacts/core/runtime";
 import { type BrowserWindow } from "electron";
 import {
   AGENT_BACKEND_ORDER,

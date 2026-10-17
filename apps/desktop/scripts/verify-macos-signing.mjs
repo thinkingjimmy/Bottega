@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Apple Team ID, codesign, Gatekeeper, stapler and explicit application/DMG paths or the existing release directory.
- * [OUTPUT]: Verifies strict nested Developer ID signatures, hardened runtime, helper entitlements, Gatekeeper and notarization staples.
+ * [INPUT]: Apple Team ID, codesign, Gatekeeper, stapler, an application path, and either an explicit DMG or the existing release directory.
+ * [OUTPUT]: Verifies strict nested Developer ID signatures, hardened runtime, helper entitlements, the bundled Node's own signature, Gatekeeper, and the application notarization ticket. A requested DMG must exist; electron-builder 26.15.3 does not staple that container.
  * [POS]: macOS release verification; distribution supplies exact fresh artifacts instead of newest-file inference.
  */
 
@@ -19,19 +19,21 @@ if (!teamId) throw new Error("APPLE_TEAM_ID is required for signature verificati
 const newest = (paths) =>
   paths.sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs)[0];
 const args = process.argv.slice(2);
-if (args.length && (args.length !== 4 || args[0] !== "--app" || args[2] !== "--dmg")) throw new Error("Expected --app <path> --dmg <path>");
-const app = args[1] ?? newest(
+const explicitApp = args[0] === "--app" && (args.length === 2 || (args.length === 4 && args[2] === "--dmg"));
+if (args.length && !explicitApp) throw new Error("Expected --app <path> or --app <path> --dmg <path>");
+const app = explicitApp ? args[1] : newest(
   readdirSync(release)
     .filter((name) => name.startsWith("mac"))
     .map((name) => join(release, name, `${productName}.app`))
     .filter(existsSync)
 );
-const dmg = args[3] ?? newest(
+const dmg = args.length === 2 ? undefined : explicitApp ? args[3] : newest(
   readdirSync(release)
     .filter((name) => name.endsWith(".dmg"))
     .map((name) => join(release, name))
 );
-if (!app || !dmg) throw new Error("signed app or DMG is missing");
+if (!app || !existsSync(app)) throw new Error("signed app is missing");
+if (args.length !== 2 && (!dmg || !existsSync(dmg) || !statSync(dmg).isFile())) throw new Error("signed DMG is missing");
 
 const run = (command, args) => {
   const result = spawnSync(command, args, { encoding: "utf8" });
@@ -82,6 +84,20 @@ const screenSignature = run("codesign", ["-dv", "--verbose=4", screenHelper]);
 if (!screenSignature.includes(`TeamIdentifier=${teamId}`) || !/flags=.*runtime/.test(screenSignature)) {
   throw new Error("presence screen helper signature policy mismatch");
 }
+const bundledNode = join(app, "Contents", "Resources", "runtime", "node", "darwin-arm64", "bin", "node");
+if (!existsSync(bundledNode)) throw new Error("bundled Node is missing");
+run("codesign", ["--verify", "--strict", "--verbose=4", bundledNode]);
+const nodeSignature = run("codesign", ["-dv", "--verbose=4", bundledNode]);
+if (!nodeSignature.includes("Authority=Developer ID Application") || !nodeSignature.includes(`TeamIdentifier=${teamId}`) || !/flags=.*runtime/.test(nodeSignature)) {
+  throw new Error("bundled Node signature policy mismatch");
+}
+const nodeEntitlements = run("codesign", ["-d", "--entitlements", ":-", bundledNode]);
+if (!nodeEntitlements.includes("com.apple.security.cs.allow-jit") || !nodeEntitlements.includes("com.apple.security.cs.disable-library-validation")) {
+  throw new Error("bundled Node is missing its own entitlements");
+}
+if (nodeEntitlements.includes("com.apple.security.automation.apple-events")) {
+  throw new Error("bundled Node inherited app entitlements");
+}
 // Bottega Dock: the bridge sends the one Finder Apple Event, so hardened runtime must carry the entitlement;
 // the recovery agent is launched by launchd from the bundled plist and must be team-signed like the app.
 for (const name of ["system-dock-bridge", "bottega-dock-recovery", "dock-glass.node"]) {
@@ -102,6 +118,7 @@ if (!existsSync(launchAgents) || !readdirSync(launchAgents).some((name) => name.
   throw new Error("Bottega Dock recovery LaunchAgent plist is missing");
 }
 run("spctl", ["-a", "-vv", "--type", "execute", app]);
+// electron-builder 26.15.3 calls notarize() from sign(), which staples this .app, before DMG and ZIP targets run.
+// DmgTarget never notarizes the disk image, and dmg.sign is unset, so the container has no ticket.
 run("xcrun", ["stapler", "validate", app]);
-run("xcrun", ["stapler", "validate", dmg]);
-process.stdout.write(`strict signing and notarization verification passed: ${dmg}\n`);
+process.stdout.write(`strict signing and notarization verification passed: ${app}\n`);

@@ -1,3 +1,8 @@
+# [INPUT]: Git line-ending and whitespace matching for repository sources and exact-byte artifacts.
+# [OUTPUT]: LF source checkouts and unchanged license, notice and internal acceptance bytes.
+# [POS]: Root checkout policy; artifact formatting does not change source whitespace checks.
+# [PROTOCOL]: Update this header when making changes, then check README.md.
+
 # Line endings are not a local preference here. Builds, the public audit and packaged
 # verification compare these trees byte for byte, and the release manifest pins their
 # digests, so every checkout must produce the same bytes on every platform. Nothing in
@@ -10,3 +15,8 @@ LICENSE -text
 NOTICE.txt -text
 *.NOTICE.txt -text
 OFL.txt -text
+
+
+# Unified-diff context lines and native logs retain their original spaces and bytes.
+DEV/chat/artifact-design/adaptation.patch -text whitespace=-blank-at-eol
+DEV/chat/artifact-design/evidence/**/*.log -text whitespace=-blank-at-eol

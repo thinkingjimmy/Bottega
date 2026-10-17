@@ -576,8 +576,7 @@ function configureDelete(
       dependencies.apps.revokeDeleteCapabilities(appId),
     settleData: (record, mode) =>
       dependencies.apps.settleDeleteData(record, mode),
-    finalizeRemoval: (appId) =>
-      dependencies.apps.finalizeDelete(appId).then(() => undefined),
+    finalizeRemoval: async () => undefined,
     publishRemoval: (appId) => dependencies.apps.emitRemoval(appId),
     reportProgress: (appId) => dependencies.apps.emitDeleteProgress(appId),
   };

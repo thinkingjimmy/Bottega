@@ -1,39 +1,48 @@
 /**
  * [INPUT]: Validated artifact fences and current host capabilities, including the active draft callback.
- * [OUTPUT]: Inline previews, document cards, Claude links and local service status with recoverable actions.
+ * [OUTPUT]: Fixed cards with static saved previews/current links, plus common ordinary file/full-view actions.
  * [POS]: Shared artifact presentation; native file paths and account keys stay outside the renderer.
  */
+import { File, Expand, Minimize2 } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { decodeArtifactFence, type ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
-import { useArtifactHost } from "./context";
+import { useArtifactHost, useArtifactPresentation } from "./context";
 import { artifactCopy } from "./copy";
 import { ArtifactFrame } from "./frame";
 import { ArtifactImport } from "./import-dialog";
 import { LivePreviewCard } from "./live/card";
+const Thumbnail = lazy(() => import("./workspace/canvas/thumbnail").then(module => ({ default: module.BoardThumbnail })));
 const inlineKinds = new Set(["html-fragment", "html-document", "static-site", "svg", "markdown"]);
+const Workspace = lazy(() => import("./workspace/view").then(module => ({ default: module.ArtifactWorkspaceView })));
+const Current = lazy(() => import("./workspace/directory").then(module => ({ default: module.CurrentVersionLink })));
 export function ArtifactCard({ fence, expanded = false }: { fence: ArtifactFence; expanded?: boolean }) {
-  const host = useArtifactHost(), copy = artifactCopy(host?.locale ?? "en"), [error, setError] = useState(false), [busy, setBusy] = useState(false), [copied, setCopied] = useState(false);
+  const presentation = useArtifactPresentation(), host = useArtifactHost(), copy = artifactCopy(host?.locale ?? "en"), [error, setError] = useState(false), [busy, setBusy] = useState(false), [copied, setCopied] = useState(false);
+  const design = Boolean(fence.design);
+  useEffect(() => { host?.remember?.(fence); }, [host, fence]);
   const run = async (action: "quick-look" | "reveal" | "open" | "save") => {
     if (!host || busy) return; setBusy(true); setError(false);
     try { await host.action(fence, action, host.followUp); } catch { setError(true); } finally { setBusy(false); }
   };
   useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 2000); return () => clearTimeout(timer); }, [copied]);
   if (fence.rejected || !host) return <div role="status" className="my-3 rounded-lg border p-4 text-sm">{fence.rejected === "interrupted" ? copy.interrupted : fence.rejected === "budget" ? copy.budget : fence.rejected === "too-large" ? copy.tooLarge : fence.rejected === "not-utf8" ? copy.encoding : fence.rejected === "symlink" || fence.rejected === "path-denied" ? copy.pathDenied : copy.unavailable}</div>;
+  if (design && expanded && host.workspace) return <Suspense fallback={<div aria-busy="true" style={{ minHeight: 400 }} />}><Workspace fence={fence} /></Suspense>;
   const open = () => { setError(false); void Promise.resolve().then(() => host.open(fence, host.followUp)).catch(() => setError(true)); };
   const copyText = (value: string) => { void navigator.clipboard.writeText(value).then(() => setCopied(true)).catch(() => setError(true)); };
   const media = host.desktop && ["pdf", "image"].includes(fence.kind);
   const inline = inlineKinds.has(fence.kind), top = fence.kind === "static-site" && host.directoryTopLevel;
   const action = (name: "quick-look" | "reveal" | "open" | "save", label: string) => <Button variant="ghost" size="sm" type="button" disabled={busy} className="relative touch-target-44" onClick={() => void run(name)}>{label}</Button>;
-  return <section aria-label={`${fence.title} · ${inline ? copy.visualization : copy.file}`} className="my-3 overflow-hidden rounded-lg border bg-card text-card-foreground" data-artifact-id={fence.id}>
+  return <section aria-label={`${fence.title} · ${inline ? copy.visualization : copy.file}`} className={expanded ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-card text-card-foreground" : "my-3 overflow-hidden rounded-lg border bg-card text-card-foreground"} data-artifact-id={fence.id}>
     <header className="flex flex-wrap items-center gap-2 border-b px-3 py-1">
-      <strong className="flex min-w-0 flex-1 items-center gap-2 text-sm">{!inline && <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h6" /></svg>}<span className="truncate">{fence.title}</span></strong>
+      <strong className="flex min-w-0 flex-1 items-center gap-2 text-sm">{!inline && !design && <File aria-hidden className="size-4 shrink-0" />}<span className="truncate">{fence.title}</span></strong>
+      {expanded && presentation?.canExpand && <Button variant="ghost" size="sm" type="button" className="min-h-[44px]" aria-label={presentation.full ? fullLabel(host.locale, true) : fullLabel(host.locale)} onClick={() => presentation.setFull(!presentation.full)}>{presentation.full ? <Minimize2 className="size-4" /> : <Expand className="size-4" />}</Button>}
+      {design && host.workspace && <Button variant="ghost" size="sm" type="button" className="relative touch-target-44" data-action="open-version" onClick={open}>{workspaceLabel(host.locale)}</Button>}
       {(inline || media) && !expanded && <Button variant="ghost" size="sm" type="button" className="relative touch-target-44" onClick={open}>{top ? copy.browser : host.sidePanel ? copy.panel : copy.preview}</Button>}
       {fence.kind === "claude-artifact" ? <Button variant="ghost" size="sm" type="button" className="relative touch-target-44" onClick={open}>{copy.browser}</Button> : fence.kind !== "live-app" && action("save", copy.save)}
     </header>
     {(inline && !top || media && expanded) ? <ArtifactFrame fence={fence} expanded={expanded} /> : <div className="px-3 py-2 text-sm">
-      {fence.kind === "live-app" ? <LivePreviewCard fence={fence} /> : fence.kind !== "claude-artifact" && <p>{fence.kind.toUpperCase()} · {Intl.NumberFormat(host.locale, { style: "unit", unit: "kilobyte", maximumFractionDigits: 1 }).format((fence.bytes ?? 0) / 1024)}{fence.createdAt && <> · <time dateTime={new Date(fence.createdAt).toISOString()}>{new Intl.DateTimeFormat(host.locale, { dateStyle: "medium", timeStyle: "short" }).format(fence.createdAt)}</time></>}</p>}
-      {fence.kind !== "claude-artifact" && fence.kind !== "live-app" && <div className="flex flex-wrap gap-2">
+      {fence.kind === "live-app" ? <LivePreviewCard fence={fence} /> : design ? <div className="flex items-center gap-3"><Suspense fallback={null}><Thumbnail artifactId={fence.id} boardId={fence.design!.launchBoard} title={fence.design!.boards.find(board => board.id === fence.design!.launchBoard)?.title ?? fence.title} className="h-24 w-36 shrink-0 border" /></Suspense><div><p>{fence.design!.boards.length} {host.locale.startsWith("zh") ? "块画板" : host.locale.startsWith("ja") ? "アートボード" : host.locale.startsWith("fr") ? "plans de travail" : host.locale.startsWith("es") ? "mesas de trabajo" : "boards"}</p><p className="mt-1 text-xs text-muted-foreground">v{fence.design!.revision}</p></div></div> : fence.kind !== "claude-artifact" && <p>{fence.kind.toUpperCase()} · {Intl.NumberFormat(host.locale, { style: "unit", unit: "kilobyte", maximumFractionDigits: 1 }).format((fence.bytes ?? 0) / 1024)}{fence.createdAt && <> · <time dateTime={new Date(fence.createdAt).toISOString()}>{new Intl.DateTimeFormat(host.locale, { dateStyle: "medium", timeStyle: "short" }).format(fence.createdAt)}</time></>}</p>}
+      {!design && fence.kind !== "claude-artifact" && fence.kind !== "live-app" && <div className="flex flex-wrap gap-2">
         {host.desktop && action("quick-look", copy.quick)}{action("open", copy.open)}{host.desktop && action("reveal", copy.reveal)}
         {fence.kind === "xlsx" && <ArtifactImport fence={fence} />}
       </div>}
@@ -41,10 +50,11 @@ export function ArtifactCard({ fence, expanded = false }: { fence: ArtifactFence
     {inline && <div className="flex flex-wrap gap-2 px-3 text-sm">{host.desktop && action("reveal", copy.reveal)}<Button variant="ghost" size="sm" type="button" className="relative touch-target-44" onClick={() => copyText(fence.title)}>{copy.copyTitle}</Button></div>}
     {fence.kind === "claude-artifact" && <div className="flex flex-wrap gap-2 px-3 text-sm"><Button variant="ghost" size="sm" type="button" className="relative touch-target-44" onClick={() => copyText(fence.url!)}>{copy.copyLink}</Button>{action("open", copy.external)}</div>}
     {copied && <p role="status" className="px-3 text-sm">{copy.copied}</p>}
-    {fence.location === "workspace" && <p className="px-3 text-sm text-muted-foreground">{copy.workspace}</p>}
+    {fence.location === "workspace" && !design && <p className="px-3 text-sm text-muted-foreground">{copy.workspace}</p>}
     {fence.collection === "dependencies" && <p className="px-3 text-sm text-muted-foreground">{copy.dependencies}</p>}
     {fence.collection === "entry-only" && <p className="px-3 text-sm text-muted-foreground">{copy.entryOnly}</p>}
     {error && <p role="alert" className="px-3 text-sm">{copy.failed}</p>}
+    {design && host.workspace && <div className="px-3"><Suspense fallback={null}><Current fence={fence} /></Suspense></div>}
   </section>;
 }
 
@@ -52,3 +62,6 @@ export function ArtifactCodeBlock({ code }: { code: string }) {
   const host = useArtifactHost(), fence = useMemo(() => decodeArtifactFence(code), [code]);
   return fence ? <ArtifactCard key={host?.scope + fence.id} fence={fence} /> : <p role="status">{artifactCopy(host?.locale ?? "en").unavailable}</p>;
 }
+const workspaceLabel = (locale: string) => locale.startsWith("zh") ? "打开此版本" : locale.startsWith("ja") ? "このバージョンを開く" : locale.startsWith("fr") ? "Ouvrir cette version" : locale.startsWith("es") ? "Abrir esta versión" : "Open this version";
+
+const fullLabel = (locale: string, back = false) => locale.startsWith("zh") ? back ? "返回会话" : "完整视图" : locale.startsWith("ja") ? back ? "チャットに戻る" : "全体表示" : locale.startsWith("fr") ? back ? "Retour au chat" : "Vue complète" : locale.startsWith("es") ? back ? "Volver al chat" : "Vista completa" : back ? "Back to Chat" : "Full view";

@@ -6,8 +6,8 @@
 import { lstat, readdir } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { isClaudeArtifactUrl } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
-import type { ArtifactRoots } from "../admission";
-import { ignoredArtifactName } from "./resources";
+import type { ArtifactRoots } from "../admission/files";
+import { designDocumentSource, ignoredArtifactName } from "./resources";
 export type ArtifactToolMetadata = { locations?: string[]; title?: string };
 export function artifactDeclaration(command: string) {
   if (!/(?:^|[\s/])mark_artifact_operation_started\.mjs\b/.test(command)) return null;
@@ -26,6 +26,7 @@ export class ArtifactFileDiscovery {
   constructor(private readonly roots: ArtifactRoots) {}
   declare(command: string) { const value = artifactDeclaration(command); if (value) this.declarations.add(value.format); }
   private eligible(path: string) {
+    if (designDocumentSource(this.roots.workspace, path)) return false;
     const ext = extname(path).slice(1).toLowerCase();
     return ["pdf", "docx", "pptx", "xlsx"].includes(ext) || this.declarations.has(ext) ||
       (ext === "csv" && path.startsWith(this.roots.artifacts + "/"));

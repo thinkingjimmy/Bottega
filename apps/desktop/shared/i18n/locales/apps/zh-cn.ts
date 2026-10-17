@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
  * [OUTPUT]: Provides the Apps Simplified Chinese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
+ * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Simplified Chinese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
 
@@ -11,10 +12,6 @@ export const appsZhCN: typeof appsEn = {
     listFailed: "Apps 加载失败：{{message}}",
   },
   presets: {
-    designCanvas: {
-      name: "Bottega Design Canvas",
-      description: "与 Bottega 支持的编码 Agent 创建、比较和评审自包含 HTML 画板，并把元素或区域锚点送回 Chat 继续迭代。",
-    },
     expenseTracker: {
       name: "记账本",
       description: "一句话记一笔开销，自动落成结构化账目，随时看分类占比与每日趋势。",
@@ -408,7 +405,7 @@ export const appsZhCN: typeof appsEn = {
     crashed: "App 进程意外退出",
     stopped: "App 已停止",
     viewLog: "查看日志",
-    settings: "App Agent 设置",
+    settings: "App 设置",
     edit: "编辑 App",
     rebuilding: "正在应用修改并重建 App",
     agentWarning: "Agent 未启动：{{warning}}",

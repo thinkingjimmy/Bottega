@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical Chat/Agent drafts, shared preference policy, scoped model catalogs, Settings IPC, window role, warm-up and Setup invalidation events.
- * [OUTPUT]: Revision-fenced Chat options, preference learning, accepted-use callbacks and live defaults for factory drafts; remembered choices remain usable, and send preparation receives results across display refreshes.
+ * [OUTPUT]: Per-Chat Agent selection for ordinary and App Chats, revision-fenced options, preference learning and live factory defaults; canonical Chat state owns resumed choices.
  * [POS]: apps/desktop/src/components/chat/runtime/settings; Composer settings owner; canonical commit and default learning are separate operations
  */
 
@@ -155,8 +155,7 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
        改写已记录的选项——主进程的 patchChatOptions 对任何 readOnlyReason 或
        archivedAt 一律抛 CHAT_NOT_WRITABLE，况且导入 Chat 记的是原生会话的
        历史事实，不是一份我们可以代劳修正的偏好。 */
-    if (canonical && (canonical.archivedAt || canonical.readOnlyReason
-      || canonical.context.kind !== "ordinary")) return;
+    if (canonical && (canonical.archivedAt || canonical.readOnlyReason)) return;
     const target = catalog.find(entry => entry.isDefault) ?? catalog[0]!;
     /* 目录可以不给某个模型报 Effort，而 Codex 的选项契约要求它——换出来的
        形状自己过一遍契约，换不出合法选项就宁可不动。 */
@@ -264,8 +263,8 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
     pendingAgent: state.pending, undoAgentSwitch: pendingUndo,
     canonicalAgent: state.canonical?.agent ?? null,
     canonicalHasSession: Boolean(state.canonical?.session),
-    switchReason: state.canonical?.readOnlyReason && state.canonical.readOnlyReason !== "external-readonly" ? "readonly" : state.canonical?.context.kind !== "ordinary" && state.canonical ? "app-bound" : state.canonical?.archivedAt ? "archived" : null,
-    switchLocked: Boolean(state.adoption || state.canonical?.readOnlyReason && state.canonical.readOnlyReason !== "external-readonly" || state.canonical && state.canonical.context.kind !== "ordinary" || state.canonical?.archivedAt),
+    switchReason: state.canonical?.readOnlyReason && state.canonical.readOnlyReason !== "external-readonly" ? "readonly" : state.canonical?.archivedAt ? "archived" : null,
+    switchLocked: Boolean(state.adoption || state.canonical?.readOnlyReason && state.canonical.readOnlyReason !== "external-readonly" || state.canonical?.archivedAt),
     backends, settingsLoading: !state.initialized || state.loading, settingsSaving: settingsSaving || Boolean(state.adoption), settingsError: settingsError || state.adoptionError || (pendingError ? translate(locale, "chat.runtime.settings.readFailed", { message: errorMessage(pendingError) }) : ""),
     /* A Project with no folder here is answered, not awaited: the empty catalog is derived rather than stored,
        so no state has to be written back when the binding changes. */

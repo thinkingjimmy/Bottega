@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the backend runtime registry, AppStore/Installer/PackageController, maintenance gate and log files
- * [OUTPUT]: Projects static App tools and cached inventory, selects maintenance Agents by concrete purposes and gates interactive App binding with scoped authentication evidence.
+ * [INPUT]: Depends on purpose-scoped maintenance selection, the backend registry, AppStore, PackageController and log files.
+ * [OUTPUT]: Projects static App tools and cached inventory, selects qualified installation Agents by purpose; Chats own interactive Agent selection.
  * [POS]: apps/service Agent-operations module; excluded from turn custody and the delete saga
  */
 
@@ -10,31 +10,25 @@ import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
 import type {
   AppCapabilitiesSnapshot,
   AppInstallEvent,
-  SetAppAgentInput,
 } from "../../../../shared/ipc/apps/apps-ipc";
 import {
-  backendById,
   backendRuntimeRegistry,
   orderedBackends,
 } from "../../backends";
 import { installLogPath } from "../maintenance/app-cleanup";
-import type { AppInstaller } from "../source/app-installer";
-import type { MaintenanceGate } from "../maintenance/maintenance-gate";
 import type { AppStore } from "../store/app-store";
 import type { AppPackageController } from "../share/app-package-controller";
 import { detectCliRequirements } from "../share/cli-detectors";
 import type { AgentToolInventory } from "../runtime/agent-tools";
+import { resolveMaintenanceAgent } from "../runtime/maintenance-agent";
 
 const LOG_TAIL_LIMIT = 256 * 1024;
 
 type AppAgentOperationsDependencies = {
   userData: string;
   store: AppStore;
-  installer(): AppInstaller;
   packages: AppPackageController;
-  maintenanceGate: MaintenanceGate;
   inspectCapabilityInventory(appId: string): Promise<AgentToolInventory | null>;
-  stop(appId: string): Promise<void>;
   emit(event: AppInstallEvent): void;
 };
 
@@ -130,44 +124,6 @@ export class AppAgentOperations {
     };
   }
 
-  async setAgent(input: SetAppAgentInput) {
-    const record = this.requireRecord(input.appId);
-    if (input.role === "interactive") {
-      if (input.agent === "auto") throw new Error("交互 Agent 不支持 Auto");
-      await this.requireReadyBackend(input.agent, record.dir);
-      return this.deps.store.update(record.id, (current) => ({
-        ...current,
-        agent: input.agent as AgentBackendId,
-      }));
-    }
-
-    const effective = await this.resolveMaintenanceBackend(input.agent);
-    const owner = `set-agent:${Date.now()}`;
-    this.deps.maintenanceGate.acquire(record.id, owner);
-    try {
-      await this.deps.installer().cancel(record.id);
-      await this.deps.stop(record.id);
-      const saved = await this.deps.store.update(record.id, (current) => {
-        if (current.bindingRevision !== record.bindingRevision) {
-          throw new Error("App Agent 设置已变化，请刷新后重试");
-        }
-        return {
-          ...current,
-          maintenanceAgent: effective.id,
-          headlessConsent: {
-            backend: effective.id,
-            version: effective.version,
-            consentAt: Date.now(),
-          },
-          bindingRevision: current.bindingRevision + 1,
-        };
-      });
-      return saved;
-    } finally {
-      this.deps.maintenanceGate.release(record.id, owner);
-    }
-  }
-
   async resolvePresetAgent(): Promise<AgentBackendId> {
     return this.resolveMaintenanceBackend("auto")
       .then((backend) => backend.id)
@@ -181,32 +137,8 @@ export class AppAgentOperations {
   }
 
   async resolveMaintenanceBackend(requested: AgentBackendId | "auto") {
-    const candidates = orderedBackends().filter(
-      (descriptor) => descriptor.maintenance && descriptor.headless
-    );
-    const selected =
-      requested === "auto"
-        ? candidates
-        : candidates.filter((descriptor) => descriptor.id === requested);
-    for (const descriptor of selected) {
-      const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
-      const capabilities = snapshot.capabilities;
-      if (
-        snapshot.runtimeStatus === "installed" &&
-        (await Promise.all((["install-analysis", "repair", "serve"] as const).map((purpose) => backendRuntimeRegistry.operationEligibility(descriptor.id, purpose, { ignoreUserConfig: true }, snapshot)))).every((result) => result.decision === "allow") &&
-        capabilities.maintenance &&
-        ["install-analysis", "repair", "serve"].every((purpose) =>
-          capabilities.headless.includes(
-            purpose as "install-analysis" | "repair" | "serve"
-          )
-        )
-      ) {
-        return backendRuntimeRegistry.toBackendInfo(descriptor.id, snapshot);
-      }
-    }
-    throw new Error(
-      "App 安装与自动维护需要已就绪且已开放维护能力的 Agent"
-    );
+    const selected = await resolveMaintenanceAgent("install-analysis", { requested });
+    return backendRuntimeRegistry.toBackendInfo(selected.descriptor.id, selected.snapshot);
   }
 
   async appendLog(appId: string, line: string) {
@@ -236,18 +168,6 @@ export class AppAgentOperations {
       if ((cause as NodeJS.ErrnoException).code === "ENOENT") return "";
       throw cause;
     }
-  }
-
-  private async requireReadyBackend(id: AgentBackendId, cwd: string) {
-    const descriptor = backendById(id);
-    const snapshot = await backendRuntimeRegistry.resolve(id);
-    if (
-      snapshot.runtimeStatus !== "installed" ||
-      (await backendRuntimeRegistry.operationEligibility(id, "app-binding", { cwd }, snapshot)).decision !== "allow"
-    ) {
-      throw new Error(`${descriptor.displayName} 当前不可用`);
-    }
-    return backendRuntimeRegistry.toBackendInfo(id, snapshot);
   }
 
   private requireRecord(appId: string) {

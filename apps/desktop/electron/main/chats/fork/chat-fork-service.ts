@@ -4,7 +4,7 @@
  * [POS]: apps/desktop/electron/main/chats/fork; Focused fork orchestration boundary composed by ChatsService; ordinary Chat creation, attachments, titles, and removal remain outside it
  */
 
-import { artifactRuntime } from "../../artifacts/runtime";
+import { artifactRuntime } from "../../artifacts/core/runtime";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type {

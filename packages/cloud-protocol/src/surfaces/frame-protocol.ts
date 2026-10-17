@@ -1,10 +1,10 @@
 /**
- * [INPUT]: zod and the shared relative-path rule for snapshot files.
+ * [INPUT]: Zod and the path-only snapshot rule, without Artifact fence/design schemas.
  * [OUTPUT]: The strict one-use mount (bounded by policy.ts SURFACE_LIMITS), unmount reasons, SURFACE_OPERATIONS with typed RPC envelopes of both hops, closed RPC error codes, authenticated preferences and lease renewal.
  * [POS]: Wire contract between Cloud Web (hop 1 parent), the surface wrapper and the opaque App frame (hop 2); the decryption key never appears here.
  */
 import { z } from "zod";
-import { artifactRelativePathSchema } from "../turns/text/artifact-reference";
+import { artifactRelativePathSchema } from "../turns/text/artifact-path";
 import { pluginSurfaceSubjectSchema, PLUGIN_OPERATIONS } from "./plugin/model";
 import { SURFACE_LIMITS } from "./policy";
 

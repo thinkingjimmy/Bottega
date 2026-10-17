@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides the complete Spanish catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery General appearance provides theme, language and archive confetti.
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
  * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
+ * Artifact workspace labels are supplied by the shared workspace catalogs.
  * [POS]: Spanish desktop locale; compile-time structure must match English exactly
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/es";
@@ -147,8 +148,6 @@ promoteBaseToApp: "Convertir {{name}} en App"
     browser: settingsBrowserEs,
     extensions: settingsExtensionsEs,
     providers: {
-      toolAccess: "Acceso de herramientas",
-      toolAccessHint: "Las herramientas del Agente no pueden leer credenciales de GitHub CLI, archivos de credenciales de Git ni claves privadas SSH. Ejecuta los comandos gh y git autenticados en el terminal del sistema. El Node incluido no hereda archivos CA adicionales; usa el terminal configurado por tu administrador para las herramientas que requieran el CA de tu empresa.",
       title: "Proveedores",
       description: "Define el Agent predeterminado y su orden en los selectores de Agent.",
       default: "Predeterminado",
@@ -362,13 +361,9 @@ currentModelUnavailable: "{{model}} (no disponible)"
     settingsGeneral: "General",
     settingsBasics: "Información básica",
     settingsNameAndIcon: "Nombre e icono",
-    designHiddenHint: "Ahora mismo esta App no se puede abrir en ninguna parte, así que $design no aparecerá en el Chat.",
-    designReopen: "Volver a abrir",
     settingsRename: "Cambiar nombre",
     settingsRenameTitle: "Cambiar el nombre de la App",
     settingsRenameDescription: "Este nombre aparece en la Sidebar, en las sugerencias @ del Chat y en los enlaces para compartir.",
-    settingsInteractiveAgentHint: "Cuando le pides en una conversación que cambie una función o la interfaz, actúa este Agente.",
-    settingsMaintenanceAgentHint: "Reconstrucciones, reparación del entorno e instalación de plugins van por aquí. Con «Automático» el producto elige uno capaz.",
     settingsDanger: "Zona peligrosa",
     settingsRequirements: "Configuración de la máquina",
     settingsToolsHint: "Esta App declara qué herramientas necesita. Abajo está el estado de cada una en tu máquina.",
@@ -402,10 +397,6 @@ currentModelUnavailable: "{{model}} (no disponible)"
     settingsCapabilities: "Qué puede tocar",
     settingsCapabilitiesHint: "Cada una se puede desactivar por separado. La App sigue funcionando, solo con una capacidad menos.",
     settingsDataAccessHint: "Si puede abrir las tablas de tu Base y si puede cambiar las filas que contienen.",
-    designDeleteHint: "Se van con ellos todas las versiones anteriores, de forma permanente. No hay vuelta atrás. La App permanece; al reinstalarla empiezas de cero.",
-    designDeleteTitle: "¿Eliminar todos los lienzos?",
-    settingsInteractiveAgent: "Agente de edición",
-    settingsMaintenanceAgent: "Agente de mantenimiento",
     settingsSave: "Guardar",
     settingsLiveSnapshot: "Las herramientas que usa",
     settingsRedetect: "Volver a comprobar",
@@ -424,21 +415,9 @@ currentModelUnavailable: "{{model}} (no disponible)"
     settingsStudioAccessStale: "Se permitió antes, pero esta aprobación ya no coincide con la compilación actual. Abre la App para autorizar de nuevo.",
     settingsRevokeStudioAccess: "Revocar acceso dentro de la App",
     settingsStudioRevokeFailed: "No se pudo revocar el acceso dentro de la App",
-    designCanvasFile: "Archivo de lienzo",
-    designNoImportCandidates: "No hay lienzos para importar",
     guiChecking: "Comprobando la interfaz de la App…",
     baseOpening: "Abriendo los datos…",
     surfacePreparing: "Preparando la interfaz de la App…",
-    designImport: "Importar",
-    designVersion: "Versión del lienzo",
-    designRestore: "Restaurar",
-    designRestoreConfirm: "¿Restaurar esta versión y reemplazar el lienzo actual?",
-    designHistory: "Historial de versiones",
-    designHistoryHint: "Elige un lienzo y una versión guardada para reemplazar el lienzo actual.",
-    designNoVersions: "Aún no hay versiones guardadas",
-    designDeleteData: "Eliminar todos los lienzos",
-    designDeleteConfirm: "Todos los lienzos y sus versiones anteriores se eliminarán para siempre. No queda copia en esta máquina y no podemos recuperarlos. La App en sí permanece.",
-    designPresetReinstallHint: "Design se puede reinstalar. Los datos que conservaste siguen ahí; lo que borraste explícitamente no vuelve.",
     baseGuiConsent: {
       simpleTitle: "Permitir que «{{name}}» use estos permisos",
       allowOpenTitle: "Permitir y abrir «{{name}}»",
@@ -483,7 +462,6 @@ currentModelUnavailable: "{{model}} (no disponible)"
     settingsOpenGlobalPlugins: "Gestionar plugins de todas las Apps",
     settingsReadFailed: "No se pudieron leer los ajustes de la App",
     settingsSaveFailed: "No se pudieron guardar los ajustes de la App",
-    settingsAgentFailed: "No se pudo actualizar el Agent de la App",
     settingsDefaultFailed: "No se pudo actualizar el permiso predeterminado",
     settingsPluginRevokeFailed: "No se pudo revocar el plugin",
     settingsPluginRebuildFailed: "No se pudo reconstruir la generación del plugin",

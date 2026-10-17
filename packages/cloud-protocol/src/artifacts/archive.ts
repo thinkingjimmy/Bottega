@@ -1,9 +1,9 @@
 /**
- * [INPUT]: Validated relative resource names and bounded byte arrays.
+ * [INPUT]: The relative-path leaf validator and bounded byte arrays, without fence/render schemas.
  * [OUTPUT]: Deterministic regular-file tar archives and strictly checked in-memory extraction.
  * [POS]: Artifact snapshot archive codec shared by desktop custody and isolated browser shells.
  */
-import { artifactRelativePathSchema } from "../turns/text/artifact-reference";
+import { artifactRelativePathSchema } from "../turns/text/artifact-path";
 import { MAX_BLOB_BYTES } from "../config";
 export type ArtifactFile = { path: string; data: Uint8Array };
 const encoder = new TextEncoder(), decoder = new TextDecoder("utf-8", { fatal: true });

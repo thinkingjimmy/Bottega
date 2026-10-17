@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides the complete English catalog and its Catalog type, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery General appearance provides theme, language and archive confetti.
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
  * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
+ * Artifact workspace labels are supplied by the shared workspace catalogs.
  * [POS]: Reference and fallback locale for desktop i18n
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/en";
@@ -146,8 +147,6 @@ promoteBaseToApp: "Promote {{name}} to App"
     browser: settingsBrowserEn,
     extensions: settingsExtensionsEn,
     providers: {
-      toolAccess: "Tool access",
-      toolAccessHint: "Agent tools cannot read your GitHub CLI credentials, Git credential files or SSH keys. Use your system terminal for authenticated gh and git commands. Tools using the bundled Node do not inherit extra CA files; run tools that require your company’s CA in the terminal configured by your administrator.",
       title: "Providers",
       description: "Set the default Agent and its order in Agent pickers.",
       default: "Default",
@@ -366,13 +365,9 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
     settingsGeneral: "General",
     settingsBasics: "Basics",
     settingsNameAndIcon: "Name and icon",
-    designHiddenHint: "This App cannot be opened anywhere right now, so $design will not appear in Chat.",
-    designReopen: "Open it again",
     settingsRename: "Rename",
     settingsRenameTitle: "Rename App",
     settingsRenameDescription: "This name shows up in the Sidebar, in Chat @ suggestions, and in share links.",
-    settingsInteractiveAgentHint: "When you ask it to change a feature or the interface in a conversation, this Agent does the work.",
-    settingsMaintenanceAgentHint: "Rebuilds, environment repairs and plugin installs go here. Pick Auto to let the product choose a capable one.",
     settingsDanger: "Danger zone",
     settingsRequirements: "Machine configuration",
     settingsToolsHint: "This App declares the tools it needs. Below is where each of them stands on your machine right now.",
@@ -406,10 +401,6 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
     settingsCapabilities: "What it can reach",
     settingsCapabilitiesHint: "Each of these can be turned off on its own. The App still works afterwards, it just knows one less trick.",
     settingsDataAccessHint: "Whether it can open the tables in your Base, and whether it can change the rows inside them.",
-    designDeleteHint: "Every past version goes with them, permanently. There is no undo. The App itself stays; reinstall it and you get a blank slate.",
-    designDeleteTitle: "Delete every canvas?",
-    settingsInteractiveAgent: "Editing Agent",
-    settingsMaintenanceAgent: "Maintenance Agent",
     settingsSave: "Save",
     settingsLiveSnapshot: "Tools it needs",
     settingsRedetect: "Check again",
@@ -428,21 +419,9 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
     settingsStudioAccessStale: "Allowed earlier, but this approval no longer matches the current build. Open the App to authorize again.",
     settingsRevokeStudioAccess: "Revoke In-App access",
     settingsStudioRevokeFailed: "Failed to revoke In-App access",
-    designCanvasFile: "Canvas file",
-    designNoImportCandidates: "No import candidates",
     guiChecking: "Checking the App interface…",
     baseOpening: "Opening data…",
     surfacePreparing: "Preparing the App surface…",
-    designImport: "Import",
-    designVersion: "Canvas version",
-    designRestore: "Restore",
-    designRestoreConfirm: "Restore this version and replace the current canvas?",
-    designHistory: "Version history",
-    designHistoryHint: "Pick a canvas and a saved version, then restore it in place of the current one.",
-    designNoVersions: "No saved versions yet",
-    designDeleteData: "Delete every canvas",
-    designDeleteConfirm: "Every canvas and all of their past versions are deleted for good. No backup is kept on this machine and we cannot restore them. The App itself stays.",
-    designPresetReinstallHint: "Design can be reinstalled. Data you kept is still there; anything you explicitly deleted does not come back.",
     baseGuiConsent: {
       simpleTitle: "Allow “{{name}}” to use the following access",
       allowOpenTitle: "Allow and open “{{name}}”",
@@ -487,7 +466,6 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
     settingsOpenGlobalPlugins: "Manage plugins for every App",
     settingsReadFailed: "Failed to read App settings",
     settingsSaveFailed: "Failed to save App settings",
-    settingsAgentFailed: "Failed to update App Agent",
     settingsDefaultFailed: "Failed to update default grant",
     settingsPluginRevokeFailed: "Failed to revoke plugin grant",
     settingsPluginRebuildFailed: "Failed to rebuild plugin generation",

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node crypto, shared builtin-tool registry, the provider host traits (result byte budget), per-turn server/socket path, and optional frozen Skills custody, and statusError from main/errors
- * [OUTPUT]: Provides incarnation-bound per-turn BuiltinMcpLease, launcher/budgets, a single-use claim that binds the lease to the one bridge connection that presented it first (so a copy of the token read from the environment or `ps` cannot be replayed), ready/revoke signals, bounded same-identity-different-content refusal, `(token, domainId)` rate control, and custody release. The server command is resolved per lease (bundledToolsServer by default, TASK-35 C4).
+ * [INPUT]: Node crypto, shared tool registry, Provider budgets, per-turn server/socket, frozen Skill custody and Artifact generation.
+ * [OUTPUT]: Incarnation/generation-bound tool leases, one-use bridge claim, result/rate/replay budgets, readiness/revocation and custody release.
  * [POS]: Tool-platform authorization core; subprocesses hold only random tokens, while main holds the live lease and turn custody
  */
 
@@ -16,6 +16,7 @@ import type { AgentBackendId } from "../../../shared/ipc/agent/agent-ipc";
 import { providerTraits } from "../../../shared/providers/traits";
 import { statusError } from "../ipc/errors";
 import { bundledToolsServer } from "../runtime";
+import { artifactGeneration } from "../artifacts/admission/state";
 
 const INVOCATION_GUARD_LIMIT = 4096;
 
@@ -32,6 +33,7 @@ export type BuiltinMcpLease = {
   incarnationId: string;
   requestId: string;
   generation: number;
+  artifactGeneration?: string;
   allowedTools: BuiltinToolName[];
   initiatorBackend: AgentBackendId;
   /** References the resource-owning Skills turn custody; the lease owns no Skill bytes or Registry refs. */
@@ -120,6 +122,7 @@ export class BuiltinMcpLeaseStore {
     const lease: BuiltinMcpLease = {
       leaseId: randomUUID(),
       ...input,
+      artifactGeneration: artifactGeneration(),
       resultByteBudget:
         input.resultByteBudget ??
         initiatorResultByteBudget(input.initiatorBackend),

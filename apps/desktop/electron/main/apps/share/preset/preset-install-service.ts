@@ -1,12 +1,11 @@
 /**
- * [INPUT]: Depends on the main-owned PresetCatalog/SourceResolver, RepoProbeService, BaseAppImporter, and an optional immutable local-factory flow
- * [OUTPUT]: Provides probePreset/discard/install with frozen preset identity and Studio-only authorization forwarding, plus an explicit product-factory branch that never falls through to Git
+ * [INPUT]: Main-owned PresetCatalog/SourceResolver, RepoProbeService and BaseAppImporter.
+ * [OUTPUT]: Frozen ordinary preset probe/discard/install with canonical identity and Studio-only authorization forwarding.
  * [POS]: apps/share/preset installation boundary over ../package/repo-probe.ts; renderer holds only opaque preflight/digest evidence and cannot choose a URL or pin
  */
 
 import type {
   AppConfigValue,
-  AppRecord,
   InstallPresetInput,
   PresetProbeResult,
 } from "../../../../../shared/ipc/apps/apps-ipc";
@@ -23,20 +22,8 @@ type FrozenPresetProbe = {
   digest: string;
 };
 
-export type PresetFactoryFlow = Readonly<{
-  handles(presetId: string): boolean;
-  probePreset(presetId: string): Promise<PresetProbeResult>;
-  discard(preflightId: string): Promise<boolean>;
-  install(
-    input: InstallPresetInput,
-    agent: AgentBackendId,
-    config: AppConfigValue
-  ): Promise<AppRecord>;
-}>;
-
 export class PresetInstallService {
   private readonly frozen = new Map<string, FrozenPresetProbe>();
-  private factory: PresetFactoryFlow | null = null;
 
   constructor(
     private readonly resolver: Pick<PresetSourceResolver, "resolve">,
@@ -44,23 +31,9 @@ export class PresetInstallService {
     private readonly importer: () => BaseAppImporter
   ) {}
 
-  configureFactory(factory: PresetFactoryFlow) {
-    if (this.factory) throw new Error("Factory preset flow 已配置");
-    this.factory = factory;
-  }
-
   async probePreset(presetId: string): Promise<PresetProbeResult>;
   async probePreset(presetId: string, expectedCommitSha: string | undefined): Promise<PresetProbeResult | { kind: "candidate-unavailable" }>;
   async probePreset(presetId: string, expectedCommitSha?: string): Promise<PresetProbeResult | { kind: "candidate-unavailable" }> {
-    if (this.factory?.handles(presetId)) {
-      const result = await this.factory.probePreset(presetId);
-      const commit = result.kind === "base" ? result.commitSha : result.compatibility.candidate.commitSha;
-      if (expectedCommitSha && commit !== expectedCommitSha) {
-        if (result.kind === "base") await this.factory.discard(result.preflightId);
-        return { kind: "candidate-unavailable" };
-      }
-      return result;
-    }
     const source = await this.resolver.resolve(presetId);
     if (expectedCommitSha && source.expectedCommitSha !== expectedCommitSha) return { kind: "candidate-unavailable" };
     const result = await this.probes.probe(
@@ -84,7 +57,6 @@ export class PresetInstallService {
   }
 
   async discard(preflightId: string) {
-    if (await this.factory?.discard(preflightId)) return;
     this.frozen.delete(preflightId);
     await this.probes.discard(preflightId);
   }
@@ -94,9 +66,6 @@ export class PresetInstallService {
     agent: AgentBackendId,
     config: AppConfigValue
   ) {
-    if (this.factory?.handles(input.presetId)) {
-      return this.factory.install(input, agent, config);
-    }
     const known = this.frozen.get(input.preflightId);
     const current = await this.resolver.resolve(input.presetId);
     if (

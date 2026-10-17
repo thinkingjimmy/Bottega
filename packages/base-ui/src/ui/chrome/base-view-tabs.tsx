@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, shared BaseView contracts, menus/dialogs, tab chrome, InlineNameInput, icons, and Base mutation outcomes
- * [OUTPUT]: Provides BaseViewTabs; Single VIEW_TYPES directory drives six standard view tabs with added menus, taller on coarse pointers
+ * [OUTPUT]: Provides horizontal-only BaseViewTabs with selected-tab visibility, six standard view types and menus, taller on coarse pointers.
  * [POS]: Shared Base presentation in ui/chrome.
  */
 
@@ -87,16 +87,21 @@ export function BaseViewTabs({
   const tablistRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    tablistRef.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    const viewport = tablistRef.current;
+    const selected = viewport?.querySelector('[aria-selected="true"]');
+    if (!viewport || !selected) return;
+    const bounds = viewport.getBoundingClientRect();
+    const tab = selected.getBoundingClientRect();
+    const offset = tab.left < bounds.left ? tab.left - bounds.left
+      : tab.right > bounds.left + viewport.clientWidth ? tab.right - bounds.left - viewport.clientWidth : 0;
+    if (offset) viewport.scrollLeft += offset;
   }, [activeViewId]);
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <SlimScroller
         ref={tablistRef}
         aria-label={t("bases.view.tabsAria")}
-        className="flex min-w-0 items-center gap-0.5 overflow-x-auto"
+        className="flex min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden"
         role="tablist"
       >
         {orderedViews.map((view) =>

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Admitted workers, exact capability envelopes and immutable UUID creation attempts.
- * [OUTPUT]: Authenticated Agent defaults and plugin catalogs with separately validated packet/projection fields, retained connection epochs, original creation capsules (an App Edit target reserves the App, U06 Q7), retired receipt projections, and the reserved computer's sealed settlement.
+ * [OUTPUT]: Authenticated defaults, sealed plugin/Artifact publication, exact connection/creation identities and strict live/retired receipts.
  * [POS]: Client-only remote creation codec; no server path reads Agent preferences or initial Chat content.
  */
 import { z } from "zod";
@@ -84,9 +84,9 @@ async function openRemoteTarget(target: EncryptedRemoteTargets["items"][number],
   // R-33: opened under the connection it was sealed in, so a last-known status stays readable after the computer reconnects.
   const memory = sealed ? await openRemoteMemory({ publicationId: sealed.publicationId, packet: sealed.packet },
     { deviceId: target.deviceId, connectionEpoch: sealed.connectionEpoch, protocolVersion: sealed.protocolVersion }, crypto, signal) : sealed;
-  const plugins = sealedPlugins ? await openRemotePlugins({ publicationId: sealedPlugins.publicationId, packet: sealedPlugins.packet },
-    { deviceId: target.deviceId, connectionEpoch: sealedPlugins.connectionEpoch, protocolVersion: sealedPlugins.protocolVersion }, crypto, signal) : [];
-  return { ...publicTarget, plugins, agents: remoteAgentsSchema.parse(agents), ...(memory !== undefined ? { memory } : {}) };
+  const publication = sealedPlugins ? await openRemotePlugins({ publicationId: sealedPlugins.publicationId, packet: sealedPlugins.packet },
+    { deviceId: target.deviceId, connectionEpoch: sealedPlugins.connectionEpoch, protocolVersion: sealedPlugins.protocolVersion }, crypto, signal) : { entries: [], artifact: null };
+  return { ...publicTarget, plugins: publication.entries, artifact: publication.artifact, agents: remoteAgentsSchema.parse(agents), ...(memory !== undefined ? { memory } : {}) };
 }
 export async function openRemoteTargets(page: EncryptedRemoteTargets, crypto: RemoteCipherPort, signal?: AbortSignal) {
   const items = []; for (const target of page.items) items.push(await openRemoteTarget(target, crypto, signal));

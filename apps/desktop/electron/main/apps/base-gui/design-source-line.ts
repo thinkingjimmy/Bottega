@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends only on the canvas source text and the bounded opening-tag hint the preview bridge emits
+ * [INPUT]: Complete source text and a bounded opening-tag hint from the compiled workspace facade.
  * [OUTPUT]: Provides workspaceSourceLine — the 1-based line of the single opening tag a hint can name, or null when the hint is ambiguous
- * [POS]: The one source-line matcher shared by the legacy workspace route and the compiled workspace facade
+ * [POS]: Pure unique source-line matcher for generic compiled App workspace previews; Artifact anchors use their own shared inert resolver.
  */
 
 /* 提示词是浏览器桥截断过的开标签：超过 180 字符时属性会被裁掉，所以精确

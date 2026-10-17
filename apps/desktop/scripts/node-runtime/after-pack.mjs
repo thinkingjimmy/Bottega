@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on fetch-node.mjs (fetchNodeRuntime: the verified cache or a verified online fetch; manifestNodeSection), the build's runtime-entries.json beside the main bundle (the foundation's entries/packages), resources/entitlements.node.plist, and /usr/bin/codesign.
- * [OUTPUT]: Provides the electron-builder afterPack hook (default export) and its parts: assertPinned, nodeSigningMode, readRuntimeEntries, packBundledNode, adHocSign, NODE_ENTITLEMENTS, NODE_ENTITLEMENTS_PLIST, runtimePaths.
+ * [OUTPUT]: Provides the electron-builder afterPack hook (default export) and its parts: assertPinned, nodeSigningMode, readRuntimeEntries, packBundledNode, adHocSign, developerIdSign, NODE_ENTITLEMENTS, NODE_ENTITLEMENTS_PLIST, runtimePaths.
  * [POS]: TASK-34's packaging step for the bundled Node: every packaging path (dist, dist:verify, dist:release:mac, the public release workflow) runs it; runtime/node.ts is the reader of what it writes.
  */
 import { execFile } from "node:child_process";
@@ -28,14 +28,24 @@ export function runtimePaths(resourcesPath, platform, arch) {
 }
 
 /**
- * Ad-hoc only until part 2b: an unsigned or ad-hoc app gets an ad-hoc Node with its own entitlements. A Developer ID
- * identity is refused, never answered with an ad-hoc Node inside a Developer-ID app.
+ * Ad-hoc and unsigned packages get an ad-hoc Node. A Developer ID identity signs the Node with its own entitlements;
+ * an ad-hoc Node is never placed inside a Developer ID app.
  */
+const SHORT_IDENTITY = /^[^\r\n:]+ \([A-Z0-9]{10}\)$/;
+export function developerIdSignName(raw) {
+  const name = String(raw ?? "").trim();
+  const body = name.startsWith("Developer ID Application: ") ? name.slice("Developer ID Application: ".length) : name;
+  if (!SHORT_IDENTITY.test(body)) throw new Error("Developer ID signing requires an Application identity with a Team ID; refusing to place an ad-hoc Node inside a Developer ID app");
+  return `Developer ID Application: ${body}`;
+}
+
 export function nodeSigningMode({ identity, forceCodeSigning = false, env = process.env }) {
-  if (identity === "-" || identity === null) return "ad-hoc";
+  if (identity === "-" || identity === null) return { mode: "ad-hoc", identity: "-" };
   const discovery = env.CSC_IDENTITY_AUTO_DISCOVERY === "false" && !env.CSC_LINK && !env.CSC_NAME;
-  if (identity === undefined && discovery && !forceCodeSigning) return "ad-hoc";
-  throw new Error("Signing the bundled Node with a Developer ID identity is TASK-34 part 2b, which waits for the Apple Developer membership; package ad-hoc (mac.identity=-) or unsigned (mac.identity=null).");
+  if ((identity === undefined || identity === "") && discovery && !forceCodeSigning) return { mode: "ad-hoc", identity: "-" };
+  const raw = typeof identity === "string" && identity.trim() && identity !== "-" ? identity.trim() : env.CSC_NAME?.trim();
+  if (!raw) throw new Error("Developer ID signing requires CSC_NAME or mac.identity; refusing to place an ad-hoc Node inside a Developer ID app");
+  return { mode: "developer-id", identity: developerIdSignName(raw) };
 }
 
 const DIGEST = /^[0-9a-f]{64}$/;
@@ -61,11 +71,16 @@ export async function adHocSign(binary, entitlements = NODE_ENTITLEMENTS_PLIST) 
   await run("/usr/bin/codesign", ["--force", "--sign", "-", "--options", "runtime", "--timestamp=none", "--entitlements", entitlements, binary]);
 }
 
+export async function developerIdSign(binary, identity, entitlements = NODE_ENTITLEMENTS_PLIST) {
+  const name = developerIdSignName(identity);
+  await run("/usr/bin/codesign", ["--force", "--sign", name, "--options", "runtime", "--timestamp", "--entitlements", entitlements, binary]);
+}
+
 /**
  * Places exactly bin/node and LICENSE, signs the placed copy, and records the digest of the signed bytes: the packaged
  * port compares against that, not the release digest (which `source` keeps).
  */
-export async function packBundledNode({ resourcesPath, platform, arch, node, runtimeEntries, sign }) {
+export async function packBundledNode({ resourcesPath, platform, arch, node, runtimeEntries, sign, codeSignature = "ad-hoc" }) {
   const paths = runtimePaths(resourcesPath, platform, arch);
   await rm(paths.root, { recursive: true, force: true });
   await mkdir(dirname(paths.binary), { recursive: true });
@@ -76,7 +91,7 @@ export async function packBundledNode({ resourcesPath, platform, arch, node, run
   await sign(paths.binary);
   const signed = await readFile(paths.binary);
   const section = manifestNodeSection({ ...node, sha256: sha256(signed), bytes: (await stat(paths.binary)).size,
-    source: { ...node.source, releaseBinarySha256: node.sha256, codeSignature: "ad-hoc" } });
+    source: { ...node.source, releaseBinarySha256: node.sha256, codeSignature } });
   const manifest = { schemaVersion: 1, node: section, entries: runtimeEntries.entries, packages: runtimeEntries.packages };
   await writeFile(paths.manifest, JSON.stringify(manifest, null, 2) + "\n");
   return { paths, manifest };
@@ -100,10 +115,14 @@ export default async function afterPack(context) {
   const arch = ARCH[context.arch] ?? String(context.arch);
   assertPinned(platform, arch);
   const packager = context.packager;
-  if (platform === "darwin") nodeSigningMode({ identity: packager.platformSpecificBuildOptions.identity, forceCodeSigning: packager.forceCodeSigning });
+  const decision = platform === "darwin"
+    ? nodeSigningMode({ identity: packager.platformSpecificBuildOptions.identity, forceCodeSigning: packager.forceCodeSigning })
+    : { mode: "unsigned", identity: null };
   const runtimeEntries = await readRuntimeEntries(await entriesPath(packager));
   const node = await fetchNodeRuntime({ version: NODE_VERSION, platform, arch });
+  const sign = decision.mode === "developer-id" ? binary => developerIdSign(binary, decision.identity)
+    : decision.mode === "ad-hoc" ? adHocSign : async () => {};
   const { paths, manifest } = await packBundledNode({ resourcesPath: packager.getResourcesDir(context.appOutDir), platform, arch, node, runtimeEntries,
-    sign: platform === "darwin" ? adHocSign : async () => {} });
+    sign, codeSignature: decision.mode === "developer-id" ? "developer-id" : "ad-hoc" });
   console.log(`[bundled-node] ${paths.binary} ${manifest.node.bytes} bytes, signed sha256 ${manifest.node.sha256} (release ${node.sha256})`);
 }

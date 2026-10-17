@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron session storage clearing, Node fs, backendById for maintenance-agent cleanup, and removeServeAck from apps/runtime/serve-loop
+ * [INPUT]: Depends on Electron storage clearing, Node fs, ordered backend App-scoped cleanup and removeServeAck from apps/runtime/serve-loop.
  * [OUTPUT]: Provides installLogPath and cleanupAppFiles, which removes every unowned file or state left behind by a deleted App
  * [POS]: apps module's single unowned-file cleanup list for App deletion; every new unowned path must be registered here. Ledger-backed data (`app-data/<appId>`) is out of scope — it is disposed by `settleDeleteData` via cascade discard or, under retain-data, archived into `app-data-archives/<archiveId>`
  */
@@ -8,7 +8,7 @@ import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { session } from "electron";
 import type { AppRecord } from "../../../../shared/ipc/apps/apps-ipc";
-import { backendById } from "../../backends";
+import { orderedBackends } from "../../backends";
 import { removeServeAck } from "../runtime/serve-loop";
 
 export function installLogPath(userData: string, appId: string) {
@@ -40,13 +40,8 @@ export async function cleanupAppFiles(
     },
     {
       label: "维护 Agent 状态",
-      promise:
-        record.maintenanceAgent === "auto"
-          ? Promise.resolve()
-          : backendById(record.maintenanceAgent).maintenance?.cleanup({
-              userData,
-              appId,
-            }) ?? Promise.resolve(),
+      promise: Promise.all(orderedBackends().map(backend =>
+        backend.maintenance?.cleanup({ userData, appId }) ?? Promise.resolve())),
     },
     {
       label: "Repair workspace",

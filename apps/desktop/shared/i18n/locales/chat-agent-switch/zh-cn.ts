@@ -16,7 +16,6 @@ export const chatAgentSwitchZhCN = {
   "queue": "处理待发送消息后可切换。",
   "recovery": "完成恢复后可切换。",
   "readonly": "此聊天为只读，无法切换 Agent。",
-  "app-bound": "此 Agent 由 App 指定。",
   "archived": "已归档聊天不能切换 Agent。",
   "approval": "请先处理待批准请求。",
   "plan-review": "请先完成 Plan 审阅。",

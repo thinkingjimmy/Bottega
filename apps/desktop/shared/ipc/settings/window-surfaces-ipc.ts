@@ -2,6 +2,7 @@
  * [INPUT]: Depends on clone-safe primitives and workspace-reference identities shared by Electron main, preload, and renderer
  * [OUTPUT]: Provides window role/bootstrap, exact App Studio route helpers, navigation-intent-fenced surface DTOs, migration commands with side-channel image transfers and their limits, fixed background-destination (activity/General/Dock/Usage) commands, IPC channels, and WindowSurfacesBridgeApi
  * The resume-drafts command restores editing after a cancelled draft flush.
+ * Composer capsules retain original queued review request IDs/times instead of allocating new submissions.
  * [POS]: apps/desktop/shared/ipc/settings; Shared wire truth for one-surface-one-window routing; renderer submits intents while main owns residency and migration
  */
 import type { RemoteFileReference } from "@ai-chat/cloud-protocol/remote/input/references";
@@ -72,6 +73,7 @@ export type SurfaceComposerCapsule = Readonly<{
   pendingAcks: readonly Readonly<{ kind: "manual" | "steer"; id: string }>[];
   queue: readonly Readonly<{
     id: string;
+    requestKey?: { id: string; createdAt: number };
     richValue: unknown;
     displayText: string;
     images?: readonly SurfaceComposerImage[];

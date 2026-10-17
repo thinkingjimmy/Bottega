@@ -3,6 +3,7 @@
 /**
  * [INPUT]: Depends on PromptInput RichValue, host activation feedback, candidate icons, invalid-state metadata, and PathLabel
  * [OUTPUT]: Provides RichInputNodes with atomic chip activation, Enter/Space handling, focus rings, invalid state, host-owned file chip states (busy spinner, bad tone), and 44px coarse-pointer targets
+ * Fixed design references render as atomic accessible chips without editable authority fields.
  * [POS]: packages/ui/src/components/ai-elements/rich; RichInput node view layer; editing history and candidate ownership remain in rich-input.tsx
  */
 
@@ -77,6 +78,8 @@ export function RichInputNodes({
         </span>
       );
     }
+    if (node.type === "design") return <span contentEditable={false} data-rich-node-id={node.id} key={node.id}
+      className="mx-0.5 inline-flex select-none rounded-md bg-muted px-1.5 py-0.5 align-baseline text-primary">@{node.name}</span>;
     if (node.type === "section" || node.type === "history") {
       return (
         <span

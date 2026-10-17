@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Chat facades, confirmed heads, ConversationModel, shared send projection, complete queue, command/draft custody and scoped consent.
  * [OUTPUT]: Shared messages, successor queue and composer; destination commit consumes creation custody, view-local body readiness retires pending bubbles, uncertain delivery retains loading, and Stop cancels the original request. Shared queue custody survives route changes, restores complete inputs and pauses successors through Stop; explicit auth-required retry retains capability and permission checks.
+ * Design draft/send uses this original durable owner, exact reference/computer checks and existing unknown-command recovery.
  * [POS]: Shared Web and desktop mirror host; transcript, composer and sibling panels read one published live projection without another subscription.
  */
 import { ChatConversation, type ConversationRegions } from "../page/conversation";
-import { useArtifactHost, ArtifactHostProvider } from "../../artifacts/context";
+import { useArtifactHost, ArtifactHostProvider, type ArtifactHost } from "../../artifacts/context";
 import { lazy, Suspense, useLayoutEffect, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ComposerDock, ComposerForm, ComposerToolbar, ComposerActions } from "../composer/layout";
 import { PromptInputSubmit, PromptInputTools } from "@ai-chat/ui/components/ai-elements/prompt-input";
@@ -106,14 +107,21 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
       focusRequested.current = false; composerElement.current?.focus();
     }
   });
-  const artifactComposer = useMemo(() => artifactHost ? { ...artifactHost, followUp: (value: { prompt: string; title?: string }) => {
-    const current = composerLatest.current;
-    const block = artifactFollowUpBlock(current.text, value);
-    if (!block) return;
-    const next = [current.text, block].filter(Boolean).join("\n\n");
-    if (utf8Length(next) > REMOTE_LIMITS.textBytes) return;
-    focusRequested.current = true; current.text = next; current.change(next);
-  } } : null, [artifactHost]);
+  const reviewSend = useRef<NonNullable<ArtifactHost["sendReview"]>>(async () => { throw new Error("Original Chat is unavailable"); });
+  const artifactComposer = useMemo(() => artifactHost ? { ...artifactHost, sendReview: (value: Parameters<NonNullable<ArtifactHost["sendReview"]>>[0]) => reviewSend.current(value),
+    followUp: async (value: Parameters<NonNullable<ArtifactHost["followUp"]>>[0]) => {
+      const current = composerLatest.current, block = artifactFollowUpBlock(current.text, value);
+      const next = block ? [current.text, block].filter(Boolean).join("\n\n") : current.text;
+      if (utf8Length(next) > REMOTE_LIMITS.textBytes) throw new Error("Review exceeds the original draft budget");
+      if (value.design) {
+        if (!artifactHost.executionDeviceId || artifactHost.executionDeviceId !== head.ownerDeviceId) throw new Error("Original computer changed");
+        await artifactHost.workspace?.({ action: "reference-check", reference: value.design, generation: value.design.generation });
+        const reference = { ...value.design, kind: "design" as const, deviceId: artifactHost.executionDeviceId, incarnationId: head.chat.incarnationId };
+        const held = store.snapshot().references;
+        if (!held.some(item => JSON.stringify(item.value) === JSON.stringify(reference))) store.update({ references: [...held, { id: crypto.randomUUID(), label: value.title ?? value.design.documentId, value: reference }] });
+      }
+      current.text = next; current.change(next); await store.checkpoint?.flushStrict(); focusRequested.current = true;
+    } } : null, [artifactHost, store, head.ownerDeviceId, head.chat.incarnationId]);
   const [pendingAgent, setPendingAgent] = useState<{ backend: CloudChatHead["chat"]["agent"]; head: CloudChatHead } | null>(null);
   const [preparing, setPreparing] = useState(false), [outcome, setOutcome] = useState<Outcome | null>(null);
   const [operationPending, setOperationPending] = useState(false);
@@ -340,6 +348,46 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
       release();
     }
   };
+  useLayoutEffect(() => {
+  reviewSend.current = async value => {
+    const owner = artifactHost?.executionDeviceId;
+    if (!owner || owner !== head.ownerDeviceId || selected !== owner || !authorized || !commands.session) throw new Error("Original computer is unavailable");
+    const previous = commands.session.snapshot().entries.find(entry => entry.input.commandId === value.requestId);
+    if (previous) {
+      await commands.session.check(value.requestId);
+      const checked = commands.session.snapshot().entries.find(entry => entry.input.commandId === value.requestId);
+      if (!checked || checked.uncertain || !checked.receipt && !checked.canonical) throw new Error("Original review result is unknown. Its input is retained.");
+      if (checked.rejected || checked.receipt && ["refused", "expired", "revoked", "outcome-unknown"].includes(checked.receipt.state)) throw new Error("Original review was not sent. Its input is retained.");
+      return;
+    }
+    await artifactHost.workspace?.({ action: "reference-check", reference: value.design, generation: value.design.generation });
+    const reference = { ...value.design, kind: "design" as const, deviceId: owner, incarnationId: head.chat.incarnationId };
+    const settings: FrozenSendSettings = { backend: agent, permissionMode, options: remoteTurnOptions(modelValue) };
+    const position: SendPosition = { ...(presentation.foreground ? { afterCommandId: presentation.foreground.input.commandId } : {}), ...(presentation.activeTurnId ? { afterTurnId: presentation.activeTurnId } : {}) };
+    store.retain(value.requestId, { text: value.prompt, files: [], references: [{ id: value.requestId, label: value.title ?? value.design.documentId, value: reference }], settings, planMode: completeDraft.planMode });
+    await store.checkpoint?.flushStrict();
+    if (holdNew) {
+      store.enqueueLocal({ commandId: value.requestId, text: value.prompt, attachments: [], references: [reference], planMode: completeDraft.planMode,
+        incarnationId: head.chat.incarnationId, ownerDeviceId: owner, settings, position }, awaitingEntries.at(-1)?.input.commandId ?? null);
+      await store.checkpoint?.flushStrict(); return;
+    }
+    const capability = target?.agents.find(item => item.backend === settings.backend)?.capabilities;
+    if (!capability?.permissionModes.includes(settings.permissionMode) || completeDraft.planMode && !capability.planMode) throw new Error("Original Agent capability changed");
+    let fullAccessConsent;
+    if (settings.permissionMode === "full-access") {
+      if (!account.profile?.userId || !account.deviceId) throw new Error("Original account changed");
+      const confirmed = await consent.confirm({ userId: account.profile.userId, sourceDeviceId: account.deviceId, chatId: head.chat.id, incarnationId: head.chat.incarnationId, targetDeviceId: owner });
+      if (!confirmed) throw new Error("Review sending was cancelled"); fullAccessConsent = remoteConsentFor(confirmed, value.requestId, owner);
+    }
+    const input: RemoteCommandInput = { commandId: value.requestId, chatId: head.chat.id, incarnationId: head.chat.incarnationId, targetDeviceId: owner,
+      intent: { baselineAgent: head.chat.agent }, payload: { kind: "start-turn", text: value.prompt, references: [reference], expectedAgentRevision: head.chat.agentRevision,
+        agentSelection: { backend: settings.backend, expectedFactRevision: head.catalogRevision }, permissionMode: settings.permissionMode, planMode: completeDraft.planMode,
+        ...(settings.options ? { options: settings.options } : {}), ...(fullAccessConsent ? { fullAccessConsent } : {}) } };
+    try { const receipt = await commands.session.submit(input, undefined, position);
+      if (!receipt || ["refused", "expired", "revoked", "outcome-unknown"].includes(receipt.state)) throw new Error("Original review was not sent. Its input is retained."); }
+    finally { store.track(commands.session.snapshot().entries); await store.checkpoint?.flushStrict(); }
+  };
+  });
   /** One new message from exact content: the composer's draft, or a refused guidance message resent with its uploaded files. */
   const startTurn = async (content: { text: string; attachments: readonly RemoteAttachment[]; references: readonly RemoteReference[] }, planMode: boolean,
     decision?: { planId: string; planMode: boolean }, authenticationRetry = false, commandId?: string, settings: FrozenSendSettings = { backend: agent, permissionMode, options: remoteTurnOptions(modelValue) }, position?: SendPosition, onSubmitted?: () => void) => {
@@ -526,7 +574,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
             if (result.kind !== "workspace-text") throw new Error("workspace-text-unavailable"); return result.content;
           } });
         }} references={completeDraft.references} suggestions={referenceSuggestions} removeReference={key => store.update({ references: completeDraft.references.filter(item =>
-          (item.value.kind === "file" ? `file:${item.value.path}` : `library:${item.value.libraryId}`) !== key) })} ref={composerElement} text={text} change={change} files={completeDraft.files} remove={id => store.remove(id)} placeholder={copy.placeholder} label={copy.draft}
+          (item.value.kind === "file" ? `file:${item.value.path}` : item.value.kind === "design" ? `design:${item.value.artifactId}` : `library:${item.value.libraryId}`) !== key) })} ref={composerElement} text={text} change={change} files={completeDraft.files} remove={id => store.remove(id)} placeholder={copy.placeholder} label={copy.draft}
           disabled={draft ? !draft.ready : false} previewTitle={input.previewFile} onFileClick={controls.openFile} fileStates={controls.fileStates} />
         <ComposerToolbar><PromptInputTools>{controls.tools}
           {budget && <span role="alert" className="chat-remote-budget">{budget}</span>}

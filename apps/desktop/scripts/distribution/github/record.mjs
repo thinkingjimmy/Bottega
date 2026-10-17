@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical public build identities and exact installer filesystem bytes.
- * [OUTPUT]: Strict GitHub build records and installer-set verification without smoke claims.
+ * [OUTPUT]: Strict GitHub build records and installer-set verification without smoke claims. Draft records must be Developer ID notarized; artifact records may be ad-hoc.
  * [POS]: Production interchange contract consumed by draft upload and private acceptance.
  */
 import assert from "node:assert/strict";
@@ -30,7 +30,9 @@ export function assertGithubBuildRecord(record) {
   assert.equal(record.source.dirty, false, "Public build source must be clean");
   keys(record.configuration, ["workbenchUi", "cloud", "builder", "digest", "signing"], "public build configuration");
   assert.equal(record.configuration.workbenchUi, true); assert.deepEqual(record.configuration.cloud, PRODUCTION_CLOUD);
-  assert.equal(record.configuration.builder, "electron-builder.yml"); assert.equal(record.configuration.signing, "ad-hoc-unnotarized");
+  assert.equal(record.configuration.builder, "electron-builder.yml");
+  assert(["ad-hoc-unnotarized", "developer-id-notarized"].includes(record.configuration.signing), "Invalid GitHub signing claim");
+  if (record.delivery === "draft") assert.equal(record.configuration.signing, "developer-id-notarized", "Draft delivery requires Developer ID notarization");
   assert(DIGEST.test(record.configuration.digest) && DIGEST.test(record.payloadDigest), "Invalid configuration/payload digest");
   keys(record.workflow, ["path", "runId", "runAttempt", "ref", "sha"], "GitHub workflow identity");
   assert.equal(record.workflow.path, PUBLIC_WORKFLOW);

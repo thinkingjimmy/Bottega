@@ -1,12 +1,13 @@
 /**
  * [INPUT]: Depends on React, PanelSessionContext, horizontal resize, PanelTabs, Plan/file/Workspace previews, Gallery projection, and the shared SidePanelShell and localized shell catalog
- * [OUTPUT]: Provides the localized resizable tabs/plan/file side-panel host and forwards the canonical context to every tab consumer
+ * [OUTPUT]: Provides localized panel chrome, Artifact takeover/close hooks and canonical context for each consumer
  * [POS]: The visual shell of chat/side-panel; ChatView owns width and visibility
  */
 
 import { ArtifactPreview as ArtifactCard } from "@ai-chat/chat-ui/artifact-renderer";
+import { ArtifactPresentationProvider } from "@ai-chat/chat-ui/artifacts";
 import { LoaderCircleIcon, XIcon } from "lucide-react";
-import { lazy, memo, Suspense, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useRef, useState } from "react";
 import { MessageResponse } from "@ai-chat/ui/components/ai-elements/message";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
@@ -75,6 +76,13 @@ export const SidePanel = memo(function SidePanel({
   const { t } = useAppTranslation();
   const [documentScrollRoot, setDocumentScrollRoot] =
     useState<HTMLDivElement | null>(null);
+  const [fullArtifactId, setFullArtifactId] = useState<string | null>(null);
+  const beforeArtifactClose = useRef<(() => Promise<unknown>) | null>(null), [artifactCloseFailed, setArtifactCloseFailed] = useState(false);
+  const registerArtifactClose = useCallback((handler: () => Promise<unknown>) => { beforeArtifactClose.current = handler; return () => { if (beforeArtifactClose.current === handler) beforeArtifactClose.current = null; }; }, []);
+  const closeArtifact = () => { void Promise.resolve().then(() => beforeArtifactClose.current?.()).then(onClose).catch(() => setArtifactCloseFailed(true)); };
+  const artifactId = state?.kind === "artifact-preview" ? state.fence.id : null;
+  const artifactFull = Boolean(artifactId && fullArtifactId === artifactId);
+  const setArtifactFull = (full: boolean) => setFullArtifactId(full ? artifactId : null);
   const documentState =
     state?.kind === "artifact-preview" ||
     state?.kind === "plan" ||
@@ -92,7 +100,7 @@ export const SidePanel = memo(function SidePanel({
     !MARKDOWN_PATTERN.test(documentState.filename);
   return (
     <SidePanelShell open={open} width={width} minWidth={minWidth} maxWidth={maxWidth}
-      onWidthChange={onWidthChange} onClose={onClose} style={crossHeader ? crossHeaderPanelStyle : undefined}
+      onWidthChange={onWidthChange} onClose={onClose} takeover={artifactFull} style={crossHeader ? crossHeaderPanelStyle : undefined}
       resizeLabel={t("chat.sidePanel.shell.resize")} resizeHint={t("chat.sidePanel.shell.resizeHint")}>
         {state?.kind === "tabs" ? (
           <Suspense fallback={<BasePanelLoading />}>
@@ -113,7 +121,7 @@ export const SidePanel = memo(function SidePanel({
           <>
             <header className="flex h-[var(--page-shell-header-height)] shrink-0 items-center gap-3 border-b px-4 [-webkit-app-region:drag]">
               <h2 className="min-w-0 flex-1 truncate font-medium text-sm">
-                {title}
+                {documentState?.kind === "artifact-preview" && documentState.fence.design ? documentState.fence.title.replace(/ · v\d+$/, "") : title}
               </h2>
               <Button
                 aria-label={t("chat.sidePanel.shell.closePreview")}
@@ -121,7 +129,7 @@ export const SidePanel = memo(function SidePanel({
                   "cursor-pointer [-webkit-app-region:no-drag]",
                   panelChromeClassName
                 )}
-                onClick={onClose}
+                onClick={closeArtifact}
                 size="icon-lg"
                 type="button"
                 variant="ghost"
@@ -134,10 +142,10 @@ export const SidePanel = memo(function SidePanel({
                 于是同一段 Markdown 在聊天流是 14px、在这里回落根字号 16px，
                 标题梯级同时服务两个基准——必然对一处错一处。 */}
             <SlimScroller
-              className="min-h-0 flex-1 overflow-y-auto px-6 py-5 text-sm"
+              className={cn("min-h-0 flex-1 text-sm", documentState?.kind === "artifact-preview" ? "flex flex-col overflow-hidden" : "overflow-y-auto px-6 py-5")}
               ref={setDocumentScrollRoot}
             >
-              {!documentState ? null : documentState.kind === "artifact-preview" ? <ArtifactCard key={documentState.fence.id} fence={documentState.fence} expanded /> :
+              {!documentState ? null : documentState.kind === "artifact-preview" ? <ArtifactPresentationProvider value={{ full: artifactFull, canExpand: true, setFull: setArtifactFull, close: closeArtifact, beforeClose: registerArtifactClose }}><ArtifactCard key={documentState.fence.id} fence={documentState.fence} expanded />{artifactCloseFailed && <p role="alert" className="shrink-0 p-2 text-xs text-destructive">{t("chat.sidePanel.shell.readingFile")}</p>}</ArtifactPresentationProvider> :
               (documentState.kind === "file" && documentState.loading) ||
               (documentState.kind === "workspace-preview" &&
                 documentState.status === "loading") ? (

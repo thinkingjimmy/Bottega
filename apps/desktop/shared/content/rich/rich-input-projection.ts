@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on zod and shared AgentUserInput
- * [OUTPUT]: Provides strict RichInput value schema, display text (files as the language-neutral `📎 <name>`, identical to packages/ui richValueDisplayText) with RichValue→ non-image AgentUserInput canonical projection
+ * [INPUT]: Zod, Agent input types and the shared fixed design-reference schema.
+ * [OUTPUT]: Strict canonical rich input, language-neutral display and typed design references projected as inert Agent data.
  * [POS]: apps/desktop/shared/content/rich; Single source of truth for shared rich-input node validation and projection; the renderer builds and validates the actual wire value before staging or injecting it
  */
 
@@ -11,6 +11,7 @@ import {
   type AgentUserInput,
 } from "../../ipc/agent/agent-ipc";
 import { MESSAGE_BYTE_LIMIT } from "../../ipc/content/chats-ipc";
+import { designReferenceSchema } from "@ai-chat/cloud-protocol/artifacts/design/review";
 
 const utf8Length = (value: string) => new TextEncoder().encode(value).length;
 const boundedText = (bytes: number, required = false) =>
@@ -32,6 +33,7 @@ const conversationIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
 const RICH_INPUT_NODE_LIMIT = 128;
 
 const richInputNodeSchema = z.discriminatedUnion("type", [
+  z.object({ id: idSchema, type: z.literal("design"), name: nameSchema, reference: designReferenceSchema }).strict(),
   z
     .object({ id: idSchema, type: z.literal("text"), value: textSchema })
     .strict(),
@@ -113,6 +115,8 @@ export function projectRichInput(
         type: "text",
         text: `@${node.path}${node.entryKind === "dir" ? "/" : ""}`,
       });
+    } else if (node.type === "design") {
+      append(output, { type: "text", text: `\nDesign reference (data): ${JSON.stringify(node.reference)}\n` });
     } else if (node.type === "skill") {
       output.push({ type: "skill", skillRef: node.ref });
     } else if (node.type === "section") {
@@ -133,6 +137,7 @@ export function richInputDisplayText(
     .map((node) => {
       if (node.type === "text") return node.value;
       if (node.type === "skill") return `$${node.label}`;
+      if (node.type === "design") return `@${node.name}`;
       if (node.type === "section" || node.type === "history") return `@${node.name}`;
       if (node.type === "workspace-file") {
         return `@${node.path}${node.entryKind === "dir" ? "/" : ""}`;

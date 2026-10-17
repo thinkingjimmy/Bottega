@@ -2,6 +2,7 @@
  * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, history/quota services, Apps, Update, MCP, and window security, and the build-gated cloud account lifecycle, and the workflow turn policy (a read-only workspace only the executor can ask for).
  * [OUTPUT]: Creates the main window with a bounded listener budget for its fixed domain registrars, derives canonical turn authority, records actual session prompt hashes, admits saved-history fresh-session recovery before the original user boundary and registers Project/Extension/App IPC plus any injected trusted-renderer registrars; a package Provider's turn gets no built-in tool policy, projection, App tools, Skills access or restored session.
  * Main-owned workflow Skill receipts and MCP policies are validated against the canonical Project; Provider settings survive Skill isolation.
+ * Window closure releases only its observed Artifact workspace leases; it does not recreate a closed workspace owner.
  * [POS]: Interactive main-window authority boundary (it also freezes each turn's Provider plugin settings with the backend session config); renderer identities are routing hints and main re-derives every Project lifecycle fact
  * Workflow Memory admission reads canonical Chat identity and the main-owned workflow timestamp and read intent.
  */
@@ -15,8 +16,8 @@ import { app, BrowserWindow, nativeTheme } from "electron";
 import { devRendererUrl } from "./security/frame-guard";
 import { INITIAL_DARK_ARGUMENT, INITIAL_LANGUAGE_ARGUMENT } from "../../../shared/ipc/settings/settings-ipc";
 import { resolveAppLocale } from "@ai-chat/ui/lib/locale";
-import { registerArtifactIpc } from "../artifacts/ipc";
-import { artifactRuntime } from "../artifacts/runtime";
+import { registerArtifactIpc } from "../artifacts/access/ipc";
+import { artifactRuntime } from "../artifacts/core/runtime";
 import { startupTrace } from "../startup/boot/startup-trace";
 import { registerAgentBridge, resetThreadServiceTierEffective } from "../agent/bridge/agent-bridge";
 import type { AgentContext, BuiltinTurnToolPolicy } from "../agent/bridge/bridge-types";
@@ -708,35 +709,7 @@ export function createMainWindow({
     /* App reference/plan lease 的释放归 finalizer 的 custody 收口那一步，
        不在这里：dependency 早于进程退出被释放，等于允许一个还活着的 backend
        读到已经被 GC 的 generation 字节。 */
-    onTurnStarted: async (event) => {
-      const conversationIncarnationId = chats.store.getIncarnationId(
-        event.conversationId
-      );
-      if (!conversationIncarnationId) return;
-      await apps.armDesignTurn({
-        chatId: event.conversationId,
-        conversationIncarnationId,
-        turnId: event.requestId,
-        explicitDesign: event.explicitDesign,
-      }).catch((cause) =>
-        console.warn("[design] turn watcher arm failed", cause)
-      );
-    },
     onTurnSettled: async (event) => {
-      const conversationIncarnationId = chats.store.getIncarnationId(
-        event.conversationId
-      );
-      if (conversationIncarnationId) {
-        await apps
-          .settleDesignTurn(
-            event.conversationId,
-            conversationIncarnationId,
-            event.requestId
-          )
-          .catch((cause) =>
-            console.warn("[design] turn watcher settle failed", cause)
-          );
-      }
       const memoryAuthorized = await coordinator.onTurnSettled(event);
       /* Memory 是 degraded subsystem：任何 store/provider 异常都不能改写
          Chat persist/trace 终态，也不能阻断下一轮。 */

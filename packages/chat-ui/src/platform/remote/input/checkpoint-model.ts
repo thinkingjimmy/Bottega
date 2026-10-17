@@ -1,12 +1,13 @@
 /**
  * [INPUT]: Depends on opaque plugin source metadata and closed remote attachment, reference, creation and command schemas; no DOM or draft-store code.
  * [OUTPUT]: RemoteDraftCheckpointPort (host-implemented encrypted storage), the closed DraftCheckpoint (with frozen queued sends and original cancellation custody) / CheckpointFile shapes, parseCheckpoint and blobKey. Full queued settings, complete recovery identities and immutable queue-operation journals survive reload.
+ * Target-bound fixed design references remain typed recovery data throughout draft/queue reload.
  * [POS]: DOM-free half of the W23 recovery contract, so platform contracts (also compiled into the desktop main process) never pull the draft store or canvas code; checkpoint.ts adds the binder.
  */
 import { z } from "zod";
 import { pluginSourceMetadataSchema, pluginSourceSchema } from "@bottega/contracts/plugins/surface/source";
 import { remoteAttachmentSchema, remotePermissionModeSchema } from "@ai-chat/cloud-protocol/remote/input/model";
-import { remoteFileReferenceSchema, remoteSkillReferenceSchema } from "@ai-chat/cloud-protocol/remote/input/references";
+import { remoteFileReferenceSchema, remoteSkillReferenceSchema, remoteDesignReferenceSchema } from "@ai-chat/cloud-protocol/remote/input/references";
 import { remoteCommandInputSchema, remoteCreationReceiptSchema, remoteTurnOptionsSchema } from "@ai-chat/cloud-protocol/remote/model";
 import { frozenRemoteCommandSchema, frozenRemoteCreationSchema, remoteCreationInputSchema } from "@ai-chat/cloud-protocol/remote/encrypted";
 import { LOCAL_QUEUE_LIMIT, DRAFT_CUSTODY_LIMIT } from "./limits";
@@ -23,7 +24,7 @@ const uuid = z.string().uuid();
 const queueIdentity = z.string().min(1).max(256);
 const settingsSchema = z.object({ backend: remoteCreationInputSchema.shape.backend, permissionMode: remotePermissionModeSchema, options: remoteTurnOptionsSchema.optional() }).strict();
 const referenceSchema = z.object({ id: z.string().min(1).max(256), label: z.string().max(1024),
-  value: z.discriminatedUnion("kind", [remoteFileReferenceSchema, remoteSkillReferenceSchema]) }).strict();
+  value: z.discriminatedUnion("kind", [remoteFileReferenceSchema, remoteSkillReferenceSchema, remoteDesignReferenceSchema]) }).strict();
 /* processed: the fixed File is held; source: the picked image is held and is processed again; reselect: nothing is held. */
 const storedPluginSourceSchema = pluginSourceMetadataSchema.extend({ encoding: z.literal("chunks"),
   parts: z.array(z.string().min(1).max(256)).min(1).max(6) }).strict();

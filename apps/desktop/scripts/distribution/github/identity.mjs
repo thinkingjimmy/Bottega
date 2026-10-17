@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Node crypto/filesystem/process APIs, physical repository-root resolution and committed public build configuration.
- * [OUTPUT]: Canonical JSON, public source/configuration identities and packaged application digests.
+ * [OUTPUT]: Canonical JSON, public source/configuration identities and packaged application digests. Signing is an explicit build claim, defaulting to ad-hoc.
  * [POS]: Production identity shared by GitHub packaging and private exact-installer acceptance.
  */
 import assert from "node:assert/strict";
@@ -50,7 +50,8 @@ export function publicSourceIdentity(root) {
     entry.type === "commit" ? entry.oid : hashes.get(entry.oid)])), dirty: false };
 }
 
-export function publicConfigurationIdentity(desktop) {
+export function publicConfigurationIdentity(desktop, signing = "ad-hoc-unnotarized") {
+  assert(["ad-hoc-unnotarized", "developer-id-notarized"].includes(signing), "Invalid public signing claim");
   const files = ["electron-builder.yml", "config/cloud-assembly.ts", "electron.vite.config.ts", "package.json"];
   const assembly = readFileSync(join(desktop, "config/cloud-assembly.ts"), "utf8");
   for (const [key, value] of Object.entries(PRODUCTION_CLOUD)) {
@@ -64,7 +65,7 @@ export function publicConfigurationIdentity(desktop) {
   const builder = readFileSync(join(desktop, "electron-builder.yml"), "utf8");
   assert(/^appId: com\.jimmywong\.bottega$/m.test(builder) && /^productName: Bottega$/m.test(builder), "Public builder identity mismatch");
   return { workbenchUi: true, cloud: { ...PRODUCTION_CLOUD }, builder: "electron-builder.yml",
-    digest: digestJson(Object.fromEntries(files.map(path => [path, hashFile(join(desktop, path))]))), signing: "ad-hoc-unnotarized" };
+    digest: digestJson(Object.fromEntries(files.map(path => [path, hashFile(join(desktop, path))]))), signing };
 }
 
 export function payloadIdentity(root) {

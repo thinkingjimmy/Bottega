@@ -263,6 +263,7 @@ export const es: WorkbenchCopy = {
       memory: memoryPluginCopy,
       dock,
       sketch: { name: "Boceto", summary: "Dibuja, borra y adjunta una imagen editable.", description: "Boceto añade un lienzo de dibujo al compositor. Dibuja, borra y anota, y luego adjunta el resultado a tu mensaje como imagen editable." },
+      artifact: { name: "Artifact", summary: "Crea diseños y previsualiza los archivos de la conversación.", description: "Artifact añade herramientas de diseño y vistas interactivas a Chat. Los documentos se guardan como archivos completos con capturas de cada versión.", disableHint: "Se guardan tus comentarios antes del cierre. Las vistas se cierran y los guardados admitidos terminan." },
       base: {
         name: "Base",
         summary: "Tablas, tableros, listas y formularios en cada Project. Los Workflows y las Apps basadas en Base se apoyan en ella.",

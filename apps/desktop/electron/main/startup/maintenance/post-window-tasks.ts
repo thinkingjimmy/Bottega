@@ -40,7 +40,7 @@ export async function runPostWindowTasks(
 
 /**
  * Every post-window run quit must wait for (TASK-11 follow-up): the runner stops between tasks once quit is requested, but a task already
- * running still writes into its store, so the owners close only after `drain()`. A run scheduled later (Design factory after a folder
+ * running still writes into its store, so the owners close only after `drain()`. A run scheduled later (Artifact custody after a folder
  * mounts) is tracked the same way.
  */
 export class PostWindowFlights {

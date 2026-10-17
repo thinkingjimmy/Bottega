@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on service/composition for the assembled collaborator graph and explicit runtime storage mode, plus the shared lifecycle mutation lane, Design/extension/navigation integrations, and the service IPC registrar, and statusError from main/errors
- * [OUTPUT]: Owns App lifecycle, explicit installation Agent checks, cloud-management projections and committed removal notifications, and the Edit-draft supersession a remote Edit Chat causes (U06 Q7-c3). App server guardians run on the bundled Node by default (bundledGuardian, TASK-35). U06-d: remoteApps (navigation plus remote rebuild and extension decline), buildStatus, and the Edit Chat notice writer it is configured with; a window that shows asks any waiting extension decision. A remote rebuild goes through startRemoteRebuild. Composes the availability authority, transient conversation admission guard and committed-only availability reads for persistent services.
+ * [INPUT]: App service composition, durable lifecycle/store/runtime owners, Extension/navigation collaborators and trusted Apps IPC.
+ * [OUTPUT]: App lifecycle, availability, installation/configuration, cloud projections, build/rebuild and exact Use/Edit navigation with existing custody recovery.
  * [POS]: App composition root; owns lifecycle, authority and late-bound collaborators, including the isolated plugin gateway delegate.
  */
 
@@ -61,8 +61,6 @@ import {
 } from "./service/lifecycle/runtime-operations";
 import type { ShareFlow } from "./share/share-flow";
 import { projectAppExtensionStatus } from "./turn/app-extension-status";
-import type { EffectiveWorkspaceResolver } from "../workspace/files/workspace-resolver";
-import type { DesignProjectRebindEvidence } from "../design/service";
 import { bundledGuardian } from "../runtime";
 import type { CustodyRuntimeOptions } from "../custody/attachment";
 import type { DeclinedNotice } from "./service/consent/broker";
@@ -92,7 +90,6 @@ export class AppsService {
   readonly instructionContributors: AppsRuntime["instructionContributors"];
   readonly thirdPartyMcpPlans: AppsRuntime["thirdPartyMcpPlans"];
   readonly baseGuiGrants: AppsRuntime["baseGuiGrants"];
-  readonly design: AppsRuntime["designIntegration"]["service"];
 
   private readonly lifecycleMutations = new AppMutationCoordinator();
 
@@ -185,7 +182,6 @@ export class AppsService {
     this.instructionContributors = this.parts.instructionContributors;
     this.thirdPartyMcpPlans = this.parts.thirdPartyMcpPlans;
     this.baseGuiGrants = this.parts.baseGuiGrants;
-    this.design = this.parts.designIntegration.service;
   }
 
   revokeAppSurfaces(appId: string) { this.surfaceLeases?.revokeApp(appId); }
@@ -211,7 +207,6 @@ export class AppsService {
       this.dataArchives.initialize(),
       this.baseGuiGrants.initialize(),
       this.store.initializeAppGuiCompiler(),
-      startupTrace.span("apps:design-integration", () => this.parts.designIntegration.initialize()),
       startupTrace.span("apps:gui-runtime", () => this.parts.guiRuntime.initialize()),
     ]);
     await this.serverCustody.initialize();
@@ -284,7 +279,6 @@ export class AppsService {
         rebuildExtensionGeneration(this.store, appId),
       remove: (appId, mode, requestId) => this.remove(appId, mode, requestId),
       readLogTail: (appId) => this.parts.agentOperations.readLogTail(appId),
-      setAgent: (input) => this.parts.agentOperations.setAgent(input),
       rename: (input) => {
         if (!this.renamer) throw new Error("Base App 改名尚未初始化");
         return this.renamer.rename(input);
@@ -298,7 +292,6 @@ export class AppsService {
       guiReady: (input) => this.guiReady(input),
       releaseGuiSurface: (input, context) => this.releaseGuiSurface(input, context),
       guiRuntime: this.parts.guiRuntime,
-      design: this.parts.designIntegration,
       resolveMaintenanceBackend: (agent) =>
         this.parts.agentOperations.resolveMaintenanceBackend(agent),
       resolvePresetAgent: () => this.parts.agentOperations.resolvePresetAgent(),
@@ -309,26 +302,6 @@ export class AppsService {
   }
   resolveApp(appId: string) { return resolveRunnableApp(this.store, appId); }
   resolveAppForBinding(appId: string) { return resolveBindableApp(this.store, appId); }
-  resolveAppData(appId: string) { return this.parts.designIntegration.resolveAppData(appId); }
-  readDesignCanvasForTool(chatId: string, incarnationId: string, relativePath: string) {
-    return this.parts.designIntegration.readCanvasForTool(chatId, incarnationId, relativePath);
-  }
-  configureDesignWorkspace(
-    resolver: EffectiveWorkspaceResolver,
-    getConversationIncarnation: (chatId: string) => string | undefined
-  ) {
-    this.parts.designIntegration.configureWorkspace(resolver, getConversationIncarnation);
-  }
-  migrateDesignProjectWorkspace(evidence: DesignProjectRebindEvidence) { return this.parts.designIntegration.migrateProjectWorkspace(evidence); }
-  async armDesignTurn(input: {
-    chatId: string;
-    conversationIncarnationId: string;
-    turnId: string;
-    explicitDesign: boolean;
-  }) {
-    return this.parts.designIntegration.armTurn(input);
-  }
-  settleDesignTurn(chatId: string, incarnationId: string, turnId: string) { return this.parts.designIntegration.settleTurn(chatId, incarnationId, turnId); }
   configureSaveAsApp(
     service: SaveAsAppService,
     options: {
@@ -368,7 +341,6 @@ export class AppsService {
   configureSurfaceLeases(registry: AppAttachmentSurfaceLeaseRegistry) {
     if (this.surfaceLeases) throw new Error("App surface leases 已配置");
     this.surfaceLeases = registry;
-    this.parts.designIntegration.configureSurfaceLeases(registry);
     this.parts.guiRuntime.configureSurfaceLeases(registry);
     this.parts.gateway.configureBaseGuiSurfaceValidator((surfaceLeaseId) =>
       registry.describe(surfaceLeaseId)
@@ -460,29 +432,13 @@ export class AppsService {
   }
   configurePackageFlows(importer: BaseAppImporter, shareFlow: ShareFlow) {
     this.parts.packages.configure(importer, shareFlow);
-    this.parts.designIntegration.configureFactory({
-      importer,
-      grants: this.requireGrantAuthority(),
-      resolveAgent: () => this.parts.agentOperations.resolvePresetAgent(),
-    });
-    this.parts.packages.configureFactoryPreset(
-      this.parts.designIntegration.factoryPresetFlow()
-    );
   }
 
-  ensureDesignFactory() { return this.parts.designIntegration.ensureFactory(); }
-  finalizeDelete(appId: string) {
-    return this.parts.designIntegration.finalizeFactoryDeletion(appId);
-  }
   emitDeleteProgress(appId: string) {
     this.emit({ appId, type: "progress", step: "", operation: "delete" });
   }
   emitRemoval(appId: string) {
     this.emit({ appId, type: "removed" });
-  }
-  resolveInteractiveAgent(appId: string) {
-    const record = this.store.get(appId);
-    return record && record.state !== "delete-failed" ? record.agent : undefined;
   }
   resolveAgentEnvironment(appId: string) {
     const record = this.requireRecord(appId);
@@ -538,7 +494,6 @@ export class AppsService {
     await this.serverCustody.close();
     await this.processCustody.closeAndFlush();
     await this.dataCutovers.closeAndFlush();
-    await this.parts.designIntegration.closeAndFlush();
     await this.parts.guiRuntime.shutdown();
   }
   closeDeleteAdmission(appId: string) { return this.parts.deleteCoordinator.closeAdmission(appId); }

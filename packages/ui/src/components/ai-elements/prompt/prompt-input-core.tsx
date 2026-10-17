@@ -3,6 +3,7 @@
 /**
  * [INPUT]: Depends on React, prompt context/admission, native Blob reading, typed attachment commands, localized UI text, and abort-aware submission gates.
  * [OUTPUT]: Provides PromptInput/PromptInputBody with native image conversion, fresh-count admission, per-submission tokens, exactly-once final settlement, and an optional owner-held submission gate.
+ * PromptInputMessage may retain an original review request key supplied by its durable owner.
  * [POS]: packages/ui/src/components/ai-elements/prompt; The submission and attachment-admission core of ai-elements PromptInput; provider and local paths share the same pure selection rules
  */
 
@@ -67,6 +68,7 @@ function filesFromClipboard(clipboard: DataTransfer | null): File[] {
 }
 
 export interface PromptInputMessage {
+  requestKey?: { id: string; createdAt: number };
   input: PromptInputSnapshot;
   files: PromptInputFilePart[];
   /** 宿主在首个 await 前冻结的严格 sidecar；UI 只透传，不解释业务语义。 */

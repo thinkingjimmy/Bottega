@@ -18,7 +18,7 @@ import { sameMirrorMessage } from "../../../library/mirrors/store";
 import { recoveredForkKey, type ChatDivergence } from "../../../chats/sqlite/cloud/convergence/contracts";
 import type { RecoveryContent } from "./content";
 import { copyLibraryAssets, copyLibraryHome } from "../../../library/assets/copy";
-import { artifactRuntime } from "../../../artifacts/runtime";
+import { artifactRuntime } from "../../../artifacts/core/runtime";
 import { libraryDirectory } from "../../../library/paths";
 import { encodeTranscript } from "../../../library/mirrors/codec";
 import { durableReplaceFile } from "../../../persistence/durable-json";

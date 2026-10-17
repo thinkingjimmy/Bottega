@@ -19,7 +19,7 @@ export function observeComposition<T>(moment: CompositionMoment, observe: (value
   observers.set(moment, [...observers.get(moment) ?? [], observe as (value: unknown) => void]);
 }
 
-export type InterruptionPoint = "deferred-recovery" | "terminal-owner";
+export type InterruptionPoint = "deferred-recovery" | "terminal-owner" | "document-commit" | "document-source-edit";
 let interruption: ((point: InterruptionPoint, name: string) => void) | null = null;
 /** A named deferred recovery task or shutdown owner; a registered handler may throw here, nothing else happens. */
 export function interruptionPoint(point: InterruptionPoint, name: string) { interruption?.(point, name); }

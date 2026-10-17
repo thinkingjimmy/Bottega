@@ -16,7 +16,6 @@ export const chatAgentSwitchEs = {
   "queue": "Procesa los mensajes pendientes.",
   "recovery": "Completa la recuperación.",
   "readonly": "Este chat es de solo lectura y no permite cambiar de Agent.",
-  "app-bound": "Este Agent lo establece la App.",
   "archived": "Los chats archivados no pueden cambiar de Agent.",
   "approval": "Resuelve la aprobación pendiente.",
   "plan-review": "Termina la revisión del Plan.",

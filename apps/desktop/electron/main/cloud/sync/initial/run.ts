@@ -12,7 +12,7 @@ import { DesktopChatConvergence } from "../convergence/service";
 import type { RecoverySave } from "../../chat/recovery/save";
 import { DesktopChatDownlink } from "../downlink/chats";
 import { hydrateLibraryFiles } from "../../../library/assets/remote";
-import { artifactRuntime } from "../../../artifacts/runtime";
+import { artifactRuntime } from "../../../artifacts/core/runtime";
 import { hashCanonical, type BlobTransferPorts, type CloudBuildConfig, type FileProgress } from "@ai-chat/cloud-protocol";
 import { EncryptedBlobTransfer } from "@ai-chat/cloud-protocol/blobs/encrypted/transport";
 import type { FileCipherPort } from "@ai-chat/cloud-protocol/blobs/encrypted";

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared activity data, Marker, Collapsible, Markdown and Terminal surfaces.
- * [OUTPUT]: Provides the native tool rows, reasoning detail and grouped activity for every host.
+ * [OUTPUT]: Provides collapsed single-line tool and reasoning previews, bounded detail and grouped activity for every host.
  * [POS]: Presentation only; tool execution, file access and subagent navigation stay with callers.
  */
 import { useState, type ReactNode } from "react";
@@ -99,21 +99,6 @@ function ToolDetail({ part }: { part: ActivityTool }) {
   );
 }
 
-function ThoughtInline({ part }: { part: GroupedToolPart }) {
-  return (
-    <div className="flex min-w-0 gap-2 py-1 text-muted-foreground">
-      <MarkerIcon className="mt-0.5">
-        <BrainIcon />
-      </MarkerIcon>
-      <div className="min-w-0 flex-1 text-sm [&_[data-streamdown=strong]]:font-normal">
-        <MessageRendererProvider value={NO_RENDERERS}>
-          <MessageResponse>{part.detail ?? ""}</MessageResponse>
-        </MessageRendererProvider>
-      </div>
-    </div>
-  );
-}
-
 function ToolMarker({
   icon,
   open,
@@ -126,12 +111,12 @@ function ToolMarker({
   return (
     <Marker className="min-w-0 flex-1">
       <MarkerIcon>{icon}</MarkerIcon>
-      <span className="flex min-w-0 items-center gap-1">
+      <span className="flex min-w-0 flex-1 items-center gap-1">
         <MarkerContent>{title}</MarkerContent>
         {open !== undefined && (
           <ChevronRightIcon
             className={cn(
-              "pointer-events-none size-3 shrink-0 opacity-0 transition-[opacity,transform] group-hover/tool-toggle:opacity-100 group-focus-visible/tool-toggle:opacity-100",
+              "pointer-events-none size-3 shrink-0 opacity-0 transition-[opacity,transform] group-hover/tool-toggle:opacity-100 group-focus-visible/tool-toggle:opacity-100 no-hover:opacity-100 motion-reduce:transition-none",
               open && "rotate-90"
             )}
           />
@@ -143,13 +128,11 @@ function ToolMarker({
 
 export function ToolRow({ part }: { part: GroupedToolPart }) {
   const [open, onOpenChange] = useFoldState();
-  if (part.tool === "reasoning" && !part.merged && part.detail)
-    return <ThoughtInline part={part} />;
   const row = (
     <ToolMarker
       icon={statusIcon(part)}
       open={part.detail ? open : undefined}
-      title={part.title}
+      title={part.tool === "reasoning" && !part.merged && part.detail ? part.detail : part.title}
     />
   );
   if (!part.detail)
@@ -160,7 +143,7 @@ export function ToolRow({ part }: { part: GroupedToolPart }) {
       onOpenChange={onOpenChange}
       open={open}
     >
-      <CollapsibleTrigger className="group/tool-toggle flex w-full min-w-0 max-w-full cursor-pointer items-center py-1 text-left hover:[&_[data-slot=marker]]:text-foreground">
+      <CollapsibleTrigger className="group/tool-toggle flex w-full min-w-0 max-w-full cursor-pointer items-center py-1 text-left hover:[&_[data-slot=marker]]:text-foreground pointer-coarse:min-h-11">
         {row}
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -194,7 +177,7 @@ export function ToolGroup({ parts }: { parts: readonly ActivityTool[] }) {
       onOpenChange={onOpenChange}
       open={open}
     >
-      <CollapsibleTrigger className="group/tool-toggle flex w-full min-w-0 max-w-full cursor-pointer items-center py-1 text-left hover:[&_[data-slot=marker]]:text-foreground">
+      <CollapsibleTrigger className="group/tool-toggle flex w-full min-w-0 max-w-full cursor-pointer items-center py-1 text-left hover:[&_[data-slot=marker]]:text-foreground pointer-coarse:min-h-11">
         <ToolMarker
           icon={groupIcon(parts)}
           open={open}

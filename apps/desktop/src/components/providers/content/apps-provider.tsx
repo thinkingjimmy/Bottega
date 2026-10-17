@@ -30,7 +30,6 @@ import type {
   RemoveAppMode,
   RenameAppInput,
   SaveAsAppInput,
-  SetAppAgentInput,
 } from "../../../../shared/ipc/apps/apps-ipc";
 import type { AppsRendererEvent } from "@/lib/apps/apps-client";
 import {
@@ -48,7 +47,6 @@ import {
   retryApp,
   revealApp,
   saveAsApp,
-  setAppAgent,
   setAppPinned,
   ensureAppChatSlot,
   retryAppSkill,
@@ -120,7 +118,6 @@ type AppsContextValue = {
   liveLogs: Record<string, string[]>;
   sidebarStatus: AppsSidebarStatus;
   addApp: (input: AddAppInput) => Promise<AppRecord>;
-  setAgent: (input: SetAppAgentInput) => Promise<AppRecord>;
   saveAsApp: (input: SaveAsAppInput) => Promise<AppRecord>;
   renameApp: (input: RenameAppInput) => Promise<AppRecord>;
   setPinned: (appId: string, pinned: boolean) => Promise<AppRecord>;
@@ -398,7 +395,6 @@ export function AppsProvider({
       liveLogs,
       sidebarStatus,
       addApp,
-      setAgent: setAppAgent,
       saveAsApp,
       renameApp,
       setPinned: setAppPinned,

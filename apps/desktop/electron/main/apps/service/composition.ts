@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the explicit runtime storage mode and Apps store/gateway/runtime/installer, the durable generation/reference/data/custody ledgers, the compiled Base GUI runtime, the Design integration, and the turn/delete/edit sub-domains
- * [OUTPUT]: Assembles App collaborators and injects passive cached inventory into ordinary capability reads. U06-d: the ExtensionConsentBroker the installer asks (instead of a bare dialog) and the AppBuildTracker, which also hears the installer's compatibility blocks. Injects the shared availability check into gateway and App turn admission.
+ * [INPUT]: Runtime storage mode, App store/gateway/installer, generation/reference/data/custody ledgers, Base GUI and turn/delete/edit owners.
+ * [OUTPUT]: Generic App collaborators, passive inventory, extension consent/build tracking and shared availability admission independently of Artifact design.
  * [POS]: The apps composition factory; AppsService owns policy and lifecycle while the object graph is assembled here
  */
 
@@ -14,7 +14,6 @@ import type {
 } from "../../../../shared/ipc/apps/apps-ipc";
 import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { resolvePlatformCapabilities } from "../../../../shared/platform/platform-capabilities";
-import { DESIGN_PRESET_ID } from "../../design/enabled";
 import type { AppExtensionIntegration } from "../../extensions/integration/app-extension-composition";
 import { ThirdPartyMcpPlanLedger } from "../../extensions/lifecycle/mcp/third-party-mcp-plan-ledger";
 import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/generation/build-participants";
@@ -44,7 +43,6 @@ import { AppPackageController } from "../share/app-package-controller";
 import { AppAgentOperations } from "./agent-operations";
 import { AppDeleteCoordinator } from "./delete-coordinator";
 import { AppGuiRuntimeService } from "./gui-runtime-service";
-import { AppDesignIntegration } from "./integrations/design-integration";
 import { AppEditTurnLifecycle } from "./lifecycle/edit-turn-lifecycle";
 import { AppTurnCoordinator } from "./turn-coordinator";
 import type { CustodyRuntimeOptions } from "../../custody/attachment";
@@ -102,8 +100,6 @@ export function composeAppsRuntime(input: ComposeAppsRuntimeInput) {
   const emit = host.emit;
   const requireGrantAuthority = () =>
     requireConfigured(host.grantAuthority(), "App grant authority");
-  const requireSurfaceLeases = () =>
-    requireConfigured(host.surfaceLeases(), "App surface leases");
 
   const store = new AppStore(userData, undefined, input.storageMode, input.libraryRoot);
   store.configureLocale(() => host.locale());
@@ -164,31 +160,6 @@ export function composeAppsRuntime(input: ComposeAppsRuntimeInput) {
     );
   });
 
-  const designIntegration = new AppDesignIntegration(
-    userData,
-    store,
-    baseGuiGrants,
-    {
-      surfaceLeases: requireSurfaceLeases,
-      grantAuthority: requireGrantAuthority,
-      configureWorkspacePreview: (port) =>
-        guiRuntime.configureWorkspacePreview(port),
-      emit,
-      invalidateSkills: () => host.invalidateSkills(),
-      factoryDescriptor: () => {
-        const preset = packages.presets.require(DESIGN_PRESET_ID);
-        if (!preset.factoryTreeDigest) {
-          throw new Error("Design factory catalog 缺少 treeDigest");
-        }
-        return {
-          presetId: DESIGN_PRESET_ID,
-          repoUrl: preset.canonicalRepoUrl,
-          catalogPin: preset.catalogPin,
-          treeDigest: preset.factoryTreeDigest,
-        };
-      },
-    }
-  );
   store.configureGenerationCutover((appId, operation) =>
     guiRuntime.cutover(appId, operation)
   );
@@ -216,13 +187,10 @@ export function composeAppsRuntime(input: ComposeAppsRuntimeInput) {
   const agentOperations: AppAgentOperations = new AppAgentOperations({
     userData,
     store,
-    installer: () => installer,
     packages,
-    maintenanceGate,
     inspectCapabilityInventory:
       input.inspectCapabilityInventory ??
       (async (appId) => runtime.cachedToolInventory(appId)),
-    stop: stopApp,
     emit,
   });
 
@@ -340,7 +308,6 @@ export function composeAppsRuntime(input: ComposeAppsRuntimeInput) {
     dataCutovers,
     dataMigrations,
     deleteCoordinator,
-    designIntegration,
     editTurnLifecycle,
     gateway,
     guiRuntime,

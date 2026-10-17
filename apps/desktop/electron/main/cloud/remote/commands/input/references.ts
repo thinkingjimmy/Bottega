@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Existing native workspace catalog/resolver, fresh filesystem membership proofs and local Library Skill resolution.
- * [OUTPUT]: Relative-path search, bounded text preview and verified native rich-input references for remote commands.
+ * [INPUT]: Native workspace catalog/resolver, filesystem membership proofs, Library Skills and main fixed design-reference authorization.
+ * [OUTPUT]: Target-only relative searches/text previews and verified native file/Library/design rich-input references.
  * [POS]: Target-only reference library; each async boundary retains the original authority and root digest.
  */
 import { lstat, realpath } from "node:fs/promises";
@@ -76,6 +76,13 @@ export class RemoteWorkspaceService {
       if (reference.kind === "file") {
         await this.file(chatId, reference, current);
         nodes.push({ id: `remote-reference-${index}`, type: "workspace-file", path: reference.path, entryKind: reference.entryKind });
+      } else if (reference.kind === "design") {
+        const { artifactWorkspace } = await import("../../../../artifacts/workspace/runtime");
+        await artifactWorkspace().authorizeReference(chatId, reference.incarnationId, { artifactId: reference.artifactId,
+          documentId: reference.documentId, revision: reference.revision, readSetDigest: reference.readSetDigest, generation: reference.generation }); current();
+        nodes.push({ id: `remote-reference-${index}`, type: "design", name: reference.documentId + " · v" + reference.revision,
+          reference: { artifactId: reference.artifactId, documentId: reference.documentId, revision: reference.revision, readSetDigest: reference.readSetDigest, generation: reference.generation,
+            ...(reference.anchors ? { anchors: reference.anchors } : {}) } });
       } else {
         const entry = this.ports.library.entry(reference.libraryId);
         if (!entry?.enabled || !entry.activeGenerationId) throw new Error("skill-unavailable");
@@ -91,7 +98,11 @@ export class RemoteWorkspaceService {
     assertRemoteReferenceTarget(references, this.deviceId);
     for (const reference of references) {
       if (reference.kind === "file") await this.file(chatId, reference, current);
-      else {
+      else if (reference.kind === "design") {
+        const { artifactWorkspace } = await import("../../../../artifacts/workspace/runtime");
+        await artifactWorkspace().authorizeReference(chatId, reference.incarnationId, { artifactId: reference.artifactId,
+          documentId: reference.documentId, revision: reference.revision, readSetDigest: reference.readSetDigest, generation: reference.generation });
+      } else {
         const entry = this.ports.library.entry(reference.libraryId);
         if (!entry?.enabled || !entry.activeGenerationId) throw new Error("skill-unavailable");
       }

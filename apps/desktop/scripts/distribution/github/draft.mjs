@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Canonical GitHub build/provenance bytes, exact installers, physical CLI identity, GitHub context and release API readback.
  * [OUTPUT]: Uploads immutable candidate bytes only to a personal prerelease draft and reports exact asset custody.
- * [POS]: Production cloud-side upload boundary; it never publishes, clobbers assets, signs, or rebuilds.
+ * [POS]: Production cloud-side upload boundary; it never publishes, clobbers assets, signs, or rebuilds. It accepts only a Developer ID notarized draft record.
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -85,7 +85,8 @@ export function uploadDraft(directory) {
   const context = assertGithubContext(); assert.equal(context.mode, "draft", "Only draft mode may upload candidate assets");
   assert.deepEqual(record.source, context.source); assert.equal(record.tag, `v${context.version}`);
   assert.equal(record.workflow.runId, context.workflow.runId); assert(record.workflow.runAttempt <= context.workflow.runAttempt, "Invalid candidate run attempt");
-  assert.deepEqual(record.configuration, publicConfigurationIdentity(resolve(import.meta.dirname, "../../..")), "Candidate configuration differs from public source");
+  assert.equal(record.configuration.signing, "developer-id-notarized", "Draft upload requires a Developer ID notarized candidate");
+  assert.deepEqual(record.configuration, publicConfigurationIdentity(resolve(import.meta.dirname, "../../.."), record.configuration.signing), "Candidate configuration differs from public source");
   verifyGithubAssets(directory, record); verifyTag(record);
   const expected = [...record.assets.map(asset => ({ name: asset.name, bytes: asset.bytes, sha256: asset.sha256 })),
     ...["github-build.json", "build-provenance.jsonl"].map(name => ({ name, bytes: lstatSync(join(directory, name)).size, sha256: hashFile(join(directory, name)) }))];
@@ -94,7 +95,7 @@ export function uploadDraft(directory) {
   else {
     const requestDirectory = mkdtempSync(join(tmpdir(), "bottega-draft-create-")), requestPath = join(requestDirectory, "request.json");
     writeFileSync(requestPath, canonicalJson({ tag_name: record.tag, target_commitish: record.source.commit, name: `${record.tag} candidate`,
-      body: "Production macOS ARM64 candidate. Private installer acceptance is pending.", draft: true, prerelease: true, make_latest: "false" }));
+      body: "Production macOS ARM64 candidate, Developer ID signed and notarized. Private installer acceptance is pending.", draft: true, prerelease: true, make_latest: "false" }));
     const created = gh(["api", "--method", "POST", `repos/${PUBLIC_REPOSITORY}/releases`, "--input", requestPath]);
     release = lookup(record.tag);
     assert(release, created.status === 0 ? "Created draft cannot be read back" : "Draft creation result is unknown; no retry is allowed");

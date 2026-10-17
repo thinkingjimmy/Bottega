@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical metadata, the fact writer, and the stable switch reservation command
- * [OUTPUT]: Allocates receipt-backed two/three-slot reservations from confirmed ownership state.
+ * [OUTPUT]: Allocates receipt-backed ordinary/App Chat switch reservations from confirmed ownership and writable canonical state.
  * [POS]: Worker reservation kernel; the repository records its result in the existing operation receipt table
  */
 import { allocateTurnSequences } from "../../../../../shared/chat-agent/sequences";
@@ -21,7 +21,7 @@ export function reserveSwitchSequences(db: SqliteDatabase, reader: ChatRepositor
   if (!current || current.incarnationId !== command.incarnationId) throw new Error("INCARNATION_MISMATCH");
   if (intent && (current.agent !== intent.expectedAgent || current.agentRevision !== intent.expectedAgentRevision ||
     current.chatRecordRevision !== intent.expectedChatRecordRevision)) throw new Error("AGENT_REVISION_STALE");
-  if (current.readOnlyReason || (intent && current.context.kind !== "ordinary") || current.archivedAt) throw new Error("AGENT_SWITCH_NOT_WRITABLE");
+  if (current.readOnlyReason || current.archivedAt) throw new Error("AGENT_SWITCH_NOT_WRITABLE");
   const execution = assertLocalOwner(db, command.chatId, command.deviceId);
   const { preview: _preview, ...facts } = current;
   const sequences = allocateTurnSequences(current.nextSeq, { agent: Boolean(intent) || command.kind === "reserve-turn-sequences" && Boolean(command.contextNotice) });

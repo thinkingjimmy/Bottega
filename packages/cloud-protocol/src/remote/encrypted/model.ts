@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Closed remote states, routing identities and encrypted-space headers.
- * [OUTPUT]: Bounded ciphertext commands, catalog-sized capabilities and live or content-free retired creation receipts.
+ * [OUTPUT]: Bounded ciphertext DTOs with plugin/Artifact capability kept encrypted and strict creation/recovery receipts.
  * [POS]: Server-safe remote boundary; command text, Agent defaults and submission hashes remain encrypted.
  */
 import { isRemoteWorkspaceQuery } from "../input/references";
@@ -51,7 +51,7 @@ export const encryptedRemoteMemoryTargetSchema = encryptedRemoteMemorySchema.ext
 export const encryptedRemotePluginsSchema = z.object({ publicationId: z.uuid(), packet: remotePacketSchema.extend({ ciphertextBytes: rev.positive().max(70_000) }) }).strict();
 export type EncryptedRemotePlugins = z.infer<typeof encryptedRemotePluginsSchema>;
 export const encryptedRemotePluginsTargetSchema = encryptedRemotePluginsSchema.extend({ connectionEpoch: id, protocolVersion: rev.positive() }).strict();
-const encryptedRemoteTargetSchema = remoteTargetSchema.omit({ agents: true, memory: true, plugins: true }).extend({ agents: encryptedRemoteAgentsSchema,
+const encryptedRemoteTargetSchema = remoteTargetSchema.omit({ agents: true, memory: true, plugins: true, artifact: true }).extend({ agents: encryptedRemoteAgentsSchema,
   connectionEpoch: id.nullable(), encryptedSpace: encryptedSpaceSchema.nullable(), plugins: encryptedRemotePluginsTargetSchema.nullable().optional(), memory: encryptedRemoteMemoryTargetSchema.nullable().optional() }).strict();
 export const encryptedRemoteTargetsSchema = z.object({ items: z.array(encryptedRemoteTargetSchema).max(REMOTE_LIMITS.pageRows),
   cursor: z.string().nullable(), complete: z.boolean(), sourceDeviceId: id, sourceProtocolVersion: rev,

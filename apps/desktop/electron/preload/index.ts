@@ -2,6 +2,7 @@
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, role-scoped plugin bridge installers, shared renderer IPC contracts, and the build-gated cloud account lifecycle.
  * Announces surface readiness only after the renderer command listener is installed.
  * [OUTPUT]: Exposes explicit Project history preview/import commands and renderer bridges including pathless native local-package selection, the main-window macOS Settings → Dock bridge, the main-window Agent-configuration, Plugins & Apps, workflow and Provider catalog bridges, nested quota snapshot/demand access, the fire-and-forget Agent connection warm intent, fixed-purpose background display selection and panel/Agent management, explicit manual/adopt retry intents, the main-window-only frozen startup snapshot, scoped plugin surfaces and GUI history in both product window roles, and the launch-flagged startup trace mark channel; rejects extra navigation arguments. Exposes the typed App impact and enablement bridge.
+ * Artifact workspace requests and revocable lifecycle events remain restricted to the trusted main frame.
  * [POS]: All-frame preload security boundary; OOPIF/srcdoc frames receive RTC denial but no Electron, Node, IPC, path, secret, or product bridge. Memory and Extensions single-input methods share a fixed-arity invoke factory.
  */
 
@@ -25,7 +26,7 @@ import {
   systemFileManagerForPlatform,
   type AppBridgeApi,
 } from "../../shared/ipc/apps/app-ipc";
-import { APPS_CHANNEL } from "../../shared/ipc-channels/apps";
+import { APPS_CHANNEL, ARTIFACT_IPC } from "../../shared/ipc-channels/apps";
 import { type AddAppInput, type AppsBridgeApi } from "../../shared/ipc/apps/apps-ipc";
 import { AGENT_CHANNEL } from "../../shared/ipc-channels/agent";
 import { type AgentBridgeApi } from "../../shared/ipc/agent/agent-ipc";
@@ -176,7 +177,11 @@ const windowRole: ProductWindowRole =
    channel a sandboxed preload can read before the first IPC answer exists. */
 const startupSnapshot = windowRole === "main" ? decodeStartupSnapshot(startupArgument(STARTUP_SNAPSHOT_ARGUMENT) ?? "") : null;
 if (startupSnapshot) contextBridge.exposeInMainWorld("startupSnapshot", startupSnapshot);
-if (windowRole === "main") contextBridge.exposeInMainWorld("artifacts", createArtifactBridge((channel, input) => ipcRenderer.invoke(channel, input)));
+if (windowRole === "main") contextBridge.exposeInMainWorld("artifacts", createArtifactBridge((channel, input) => ipcRenderer.invoke(channel, input), listener => {
+  const handler = (_event: Electron.IpcRendererEvent, value: Parameters<typeof listener>[0]) => listener(value);
+  ipcRenderer.on(ARTIFACT_IPC.workspaceEvent, handler);
+  return () => ipcRenderer.removeListener(ARTIFACT_IPC.workspaceEvent, handler);
+}));
 if (__BOTTEGA_CLOUD_CONFIG__ && windowRole === "main") installCloudBridge();
 installComposerDraftsBridge();
 const windowContext = Object.freeze({
@@ -418,7 +423,6 @@ contextBridge.exposeInMainWorld("apps", {
   readLog: (appId: string) => ipcRenderer.invoke(APPS_CHANNEL.readLog, appId),
   retry: (appId: string) => ipcRenderer.invoke(APPS_CHANNEL.retry, appId),
   repair: (appId: string) => ipcRenderer.invoke(APPS_CHANNEL.repair, appId),
-  setAgent: (input) => ipcRenderer.invoke(APPS_CHANNEL.setAgent, input),
   saveAsApp: (input) => ipcRenderer.invoke(APPS_CHANNEL.saveAsApp, input),
   rename: (input) => ipcRenderer.invoke(APPS_CHANNEL.rename, input),
   ensureChatSlot: (input) =>
@@ -467,24 +471,6 @@ contextBridge.exposeInMainWorld("apps", {
   disableImpact: (appId) => ipcRenderer.invoke(APPS_CHANNEL.disableImpact, appId),
   setEnabled: (input) => ipcRenderer.invoke(APPS_CHANNEL.setEnabled, input),
   setPinned: (input) => ipcRenderer.invoke(APPS_CHANNEL.setPinned, input),
-  importDesignCanvas: (input) =>
-    ipcRenderer.invoke(APPS_CHANNEL.importDesignCanvas, input),
-  listDesignImportCandidates: (input) =>
-    ipcRenderer.invoke(APPS_CHANNEL.listDesignImportCandidates, input),
-  listDesignFiles: (input) =>
-    ipcRenderer.invoke(APPS_CHANNEL.listDesignFiles, input),
-  listDesignVersions: (input) =>
-    ipcRenderer.invoke(APPS_CHANNEL.listDesignVersions, input),
-  restoreDesignVersion: (input) =>
-    ipcRenderer.invoke(APPS_CHANNEL.restoreDesignVersion, input),
-  setDesignAutoOpen: (input) =>
-    ipcRenderer.invoke(APPS_CHANNEL.setDesignAutoOpen, input),
-  designDataStatus: (appId) =>
-    ipcRenderer.invoke(APPS_CHANNEL.designDataStatus, appId),
-  deleteDesignData: (input) =>
-    ipcRenderer.invoke(APPS_CHANNEL.deleteDesignData, input),
-  setDesignEnabled: (input) =>
-    ipcRenderer.invoke(APPS_CHANNEL.setDesignEnabled, input),
   readReadme: (appId) =>
     ipcRenderer.invoke(APPS_CHANNEL.readReadme, appId),
   onCompatibilityChanged: (callback) => subscribe(APPS_CHANNEL.compatibilityChanged)(callback),

@@ -5,7 +5,7 @@
  */
 export type RecoveryCategory = "cache" | "sync" | "authorization" | "custody" | "settings";
 const caches = new Set(["history-import/index-v1.json", "history-import/memory-watermarks-v2.json", "chat-artifacts/index.json",
-  "design/canvas-registry.json", "app-compatibility/requests.json"]);
+  "app-compatibility/requests.json"]);
 const authorizations = new Set(["history-import/memory-grants-v2.json", "agent-extensions/projections.json"]);
 export function recoveryCategory(path: string): RecoveryCategory {
   if (path === "settings.json" || path === "apps/preferences.json") return "settings";

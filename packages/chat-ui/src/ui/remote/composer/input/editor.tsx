@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the shared RichInput editor, the draft's text and staged files, and remote input copy.
- * [OUTPUT]: Provides RemoteEditor — the desktop editor on the Web: non-image files are chips inside the text, text stays the draft's plain text, Enter submits the form.
- * [POS]: Remote composer text surface; chip positions live here, the draft store keeps only text and files.
+ * [INPUT]: Shared RichInput, plain text, staged files/fixed design references and localized input copy.
+ * [OUTPUT]: Web/mirror editor with atomic file/design chips, existing text ownership, removal and submit behavior.
+ * [POS]: Remote input view; the original draft store owns all references/files/text and their durable lifecycle.
  */
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { RichInput, type RichInputHandle, type RichInputProps } from "@ai-chat/ui/components/ai-elements/rich-input";
@@ -17,8 +17,10 @@ const withTrailingText = (value: RichValue): RichValue => value.at(-1)?.type ===
    (cleared after a send, an artifact follow-up) replaces the text nodes after the chips. */
 const referenceNode = (reference: DraftReference): RichNode => reference.value.kind === "file"
   ? { id: reference.id, type: "workspace-file", path: reference.value.path, entryKind: reference.value.entryKind }
+  : reference.value.kind === "design" ? { id: reference.id, type: "design", name: reference.label, reference: { artifactId: reference.value.artifactId,
+    documentId: reference.value.documentId, revision: reference.value.revision, readSetDigest: reference.value.readSetDigest, generation: reference.value.generation } }
   : { id: reference.id, type: "skill", ref: `library:${reference.value.libraryId}`, name: reference.label, label: reference.label };
-const referenceKey = (node: RichNode) => node.type === "workspace-file" ? `file:${node.path}` : node.type === "skill" ? node.ref : null;
+const referenceKey = (node: RichNode) => node.type === "workspace-file" ? `file:${node.path}` : node.type === "skill" ? node.ref : node.type === "design" ? `design:${node.reference.artifactId}` : null;
 function reconcile(value: RichValue, text: string, files: readonly DraftFile[], references: readonly DraftReference[]): RichValue {
   const present = new Set(files.map(file => file.id));
   const keys = new Set(references.map(reference => referenceKey(referenceNode(reference))));

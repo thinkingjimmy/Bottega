@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Depends only on i18next interpolation syntax
  * [OUTPUT]: Provides the Apps English catalog, first-party preset copy, contextual authorization copy, operation-specific progress copy, and the structural reference for translated Apps catalogs; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
+ * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: English copy for Apps discovery, install, lifecycle, authorization, Studio, sharing, and non-cancellable deletion surfaces; assembled by the matching top-level locale
  */
 
@@ -9,10 +10,6 @@ export const appsEn = {
     listFailed: "Failed to load Apps: {{message}}",
   },
   presets: {
-    designCanvas: {
-      name: "Bottega Design Canvas",
-      description: "Create, compare, and review self-contained HTML canvases with any coding Agent supported by Bottega, then send element or region anchors back to Chat for the next iteration.",
-    },
     expenseTracker: {
       name: "Expense Tracker",
       description: "Record an expense in one sentence, turn it into structured data automatically, and review category shares and daily trends anytime.",
@@ -408,7 +405,7 @@ export const appsEn = {
     crashed: "The App process exited unexpectedly",
     stopped: "The App stopped",
     viewLog: "View log",
-    settings: "App Agent settings",
+    settings: "App settings",
     edit: "Edit App",
     rebuilding: "Applying changes and rebuilding App",
     agentWarning: "Agent did not start: {{warning}}",

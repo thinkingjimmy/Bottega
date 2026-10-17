@@ -16,7 +16,6 @@ export const chatAgentSwitchFr = {
   "queue": "Traitez les messages en attente.",
   "recovery": "Terminez la récupération.",
   "readonly": "Cette conversation est en lecture seule. L’Agent ne peut pas être changé.",
-  "app-bound": "Cet Agent est défini par l’App.",
   "archived": "Une conversation archivée ne peut pas changer d’Agent.",
   "approval": "Traitez la demande d’approbation.",
   "plan-review": "Terminez la révision du Plan.",

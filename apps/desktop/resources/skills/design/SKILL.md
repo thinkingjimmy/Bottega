@@ -1,141 +1,88 @@
 ---
 name: design
-displayName: Bottega Design Canvas
-description: Create or revise a polished, self-contained HTML design canvas in the current workspace. Use for UI concepts, layouts, visual directions, prototypes, or targeted visual feedback; do not use for ordinary prose or non-visual coding tasks.
+displayName: Artifact Design
+description: Create or edit a Bottega Artifact design with local HTML boards and Canvas pages or objects. Use for visual prototypes, diagrams, print layouts and visual revisions in the current Chat workspace.
+requires: "tools: design_check, design_commit, design_render_check"
 ---
 
 <!--
-  [INPUT]: Depends on a visual user request, current-workspace product evidence, and optional numbered Bottega Design Canvas anchors
-  [OUTPUT]: Provides a complete self-contained design/*.html artifact or a strictly anchor-scoped in-place revision
-  [POS]: Product-managed Bottega Design Canvas creation protocol shared by all supported Agent backends
+  [INPUT]: Bottega document and Canvas schemas, current Chat source authority, issued design tools and saved-revision evidence
+  [OUTPUT]: A scoped document transaction with a saved receipt and a stated inspection result
+  [POS]: Bottega Artifact Design entry; routes document, Canvas, source, composition and inspection tasks
 -->
 
-## Output contract
+# Artifact Design
 
-- Every artboard is one self-contained file at `design/<Name>.html` — a complete HTML
-  document with all CSS and JS inline. Write the file fully, then report; the product
-  reveals only completed documents and does not stream partial markup.
-- The preview sandbox has no network and no storage: external stylesheets, scripts,
-  fonts, and images will not load; `localStorage`/`sessionStorage` throw; no popups,
-  form submission, workers, or WebRTC. Images must be inline SVG or `data:` URIs.
-  Keep state in JS variables.
-- System fonts only — nothing downloads. Choose stacks deliberately: UI
-  `-apple-system, system-ui, "Segoe UI", sans-serif`; editorial serif
-  `"Iowan Old Style", Georgia, "Times New Roman", serif`; mono
-  `ui-monospace, "SF Mono", Menlo, Consolas, monospace`. Distinct typography comes
-  from size, weight, spacing, and case — not from downloading a font.
-- Filenames are identity: name by content (`Pricing.html`, `Hero-dense.html`), keep
-  names stable, iterate by editing the same file. Create a new file only for a
-  genuinely different direction, never for a revision.
-- Never inspect, rename, overwrite, or suggest deleting files in `design/` that you
-  did not create in this conversation — user files live there too.
+Produce the visual result in the document selected by the user. Bottega stores that result as a
+complete local source directory and an immutable saved revision. Work from the current document
+record, its source files and the actual tools issued for this turn.
 
-## Direction before detail
+## Select the work path
 
-Settle a visual thesis before building: audience, purpose, information hierarchy,
-type character, color logic, density. If the user gave an aesthetic, brand, or
-reference — follow it and stop asking. If direction is open:
+Load the reference for the operation you need. These paths are relative to this entry.
 
-- Offer 2–4 genuinely different directions, each with an axis you can name
-  ("dense data-first" vs "calm editorial"). Five tints of one aesthetic is no choice.
-- Argue each direction honestly — a set where only your favorite gets a case made
-  for it is a rigged vote.
-- Name directions once and keep the names; the chosen one continues in its file.
-- If you cannot ask, pick the direction best supported by the material, deliver it
-  fully, state the assumption in one line, and put one low-fi alternate beside it —
-  never instead of it.
+| Operation | Contract |
+| --- | --- |
+| Author files or save a source revision | [Document transaction](references/formats/document.md) |
+| Add pages, boards or objects; change model geometry or resources | [Canvas model](references/formats/canvas.md) |
+| Edit a selected element or region | [Target evidence](references/review/anchors.md) |
+| Recover input, navigate history, export or hand off review | [Workspace state](references/review/workspace.md) |
+| Inspect a saved board or diagnose capture | [Render evidence](references/review/visual-check.md) |
+| Use product source or a fixed system | [Source facts](references/authoring/code-grounding.md), then [components](references/authoring/components.md) if needed |
+| Decide a composition | [Brief decisions](references/authoring/direction.md), [diagrams](references/authoring/diagrams.md) or [print](references/authoring/print.md) as applicable |
+| Check presentation before delivery | [Visual checks](references/authoring/visual-craft.md) |
+| Deliver only one HTML file when explicitly requested | [Single-file contract](references/formats/single-html.md) |
 
-Decision fidelity is not deliverable fidelity: direction candidates may be low-fi;
-the chosen direction gets built fully.
+The separately attributed craft directories provide optional advice on
+[interaction](references/craft/interaction/), [foundations](references/craft/foundations/) and
+[composition](references/craft/composition/). Load an individual page for a concrete issue.
 
-## Grounding in the codebase
+## Establish the document state
 
-Before inventing an aesthetic for a product that already exists in this workspace,
-sample it: tokens (`tailwind.config`, CSS custom properties, theme files), UI
-components, control heights, radii, font stacks, exact grays. Use the values you
-found — do not round them to your habits — and report in one line what you matched.
-For an existing product, consistency beats novelty; spend the creativity on layout
-and hierarchy.
+For a new document, choose a valid slug and documentId once. For an existing document, retain
+its directory, documentId, board IDs and saved Canvas identities. A different title does not
+create a different document.
 
-## Craft criteria
+A Page groups boards and objects. A board contains HTML at a declared viewport. A revision
+identifies a complete saved source set. The recovery checkpoint holds view state and unfinished
+input. A Page switch or camera move therefore does not save a new source revision.
+Canvas notes are document objects; review opinions belong to the separate review/handoff state.
 
-Numbers first; deviate only deliberately, and say why.
+Read the selected source before writing. Preserve model-owned object layers when editing board
+HTML. Workspace creation actions allocate their own IDs; do not add caller IDs to their commands.
+A preview anchor or historical card supplies evidence, not permission to edit a foreign Chat,
+change execution computer or use a stale lifecycle generation.
 
-**Color.** At most 2 accent hues; if two, give them the same perceived lightness and
-saturation, differing in hue only. Body text contrast ≥4.5:1; large text and
-essential UI ≥3:1. Tint large neutral fields slightly toward the design's hue
-instead of pure `#fff`/`#000`. Dark surfaces are designed, not inverted.
+## Complete one source transaction
 
-**Type.** ≤2 families and usually ≤4 sizes per screen; adjacent scale steps differ
-by ≥1.2×. Body ≥14px (16px when reading matters). Line-height: Latin body 1.4–1.6,
-headings 1.1–1.25, CJK body 1.6–1.9. Line length: 45–75 characters Latin, 15–35
-characters CJK. ALL-CAPS labels take letter-spacing ≥0.06em and a size step down.
-Use `font-variant-numeric: tabular-nums` wherever numbers align.
+Use the current workspace's authorized file tools for authored HTML/CSS/resources. Finish every
+writer before requesting a source check. The saving sequence is:
 
-**Space.** One base unit (4px or 8px); every gap a multiple of it. Between-section
-space ≥2× within-section space — grouping is hierarchy. Lay out siblings with
-flex/grid + `gap`, not per-element margins: gaps survive reordering and editing.
+1. Call `design_check` for the selected `design/<slug>` directory.
+2. Use its ready result's `expectedRevision` and `readSetDigest` with a fresh `requestId`
+   in `design_commit`.
+3. Keep the returned document/revision/snapshot identity. Inspect the saved board with
+   `design_render_check`, using that documentId and revision rather than a live source path.
 
-**Depth.** One depth model per design — borders or shadows dominate, not both
-everywhere. At most 2 shadow levels. One radius family (e.g. 4/8/12px) used
-consistently.
+The document reference defines refusal, retry and prepared-operation recovery. If a response
+is unknown, retain the original request and parameters. A second request cannot determine what
+the first one did. Do not increase expectedRevision to make a refusal disappear.
 
-**Interaction.** Interactive targets ≥44×44px. Every interactive element has
-visible hover and focus states. Icons are inline SVG on a 16/20/24px grid with one
-stroke width — never emoji.
+Canvas direct edits are workspace actions admitted by the host. They share this document
+journal, CAS and semantic Undo/Redo. The three tools named in this entry do not create a
+general-purpose Canvas command tool. Use only actions that the current host actually exposes;
+otherwise make an authorized source revision or report the missing capability.
 
-## Anti-slop
+## Deliver a verifiable result
 
-Named bans; each needs a deliberate reason to override. The product's advisory-only
-lint in `electron/main/design/anti-slop.ts` mirrors the mechanically detectable
-subset of these rules.
+Identify what was saved and what was inspected. A valid manifest proves structure. A JPEG proves
+only the visible captured state after you view it. Interaction, native focus, touch input,
+encrypted remote transfer and Provider quality require their own observed evidence.
 
-- Default AI indigo/violet accents (`#6366f1` and friends) unless the brand truly
-  is that — derive hue from the content or brand.
-- Decorative gradient washes; glassmorphism as a default; the rounded card with a
-  left accent border.
-- Uniform card grids where the content has hierarchy — size the important thing
-  bigger.
-- Invented metrics, fake testimonials, decorative stat blocks, lorem ipsum, and
-  "Welcome to our website" copy. Missing facts get visible placeholders
-  (`[PRICE]`), never fabrication.
-- Motion without purpose; anything animating on page load.
-- Filler sections added to look complete — an empty section is a composition
-  problem; solve it by composition.
-- Converging on the same fonts, palette, and layout across generations — vary your
-  defaults deliberately.
+Retain unfinished input when a capability, resource, CAS or capture is refused. Give the user
+the concrete limitation and the saved result that still exists. Export only a selected saved
+range; a live camera or unsaved proposal is not the export source.
 
-## Content
-
-Write real, specific copy in the design's voice; keep microcopy short. Adding
-sections, pages, or material the user didn't ask for: propose it in your reply,
-don't build it unprompted — the user knows their audience better than you.
-
-## Genre notes
-
-- **Landing**: the hero states the offer in one sentence with one primary CTA;
-  repeat that CTA; check the layout at 390px width before delivering.
-- **Dashboards / data**: hierarchy by size and position, not by decorating every
-  tile; tabular numerals; design the empty, zero, and error states instead of
-  omitting them.
-- **Mobile screens**: design at 390×844; do not draw OS chrome (status bar,
-  keyboard).
-- **Recreating an existing UI**: fidelity is the brief — sample spacing, weights,
-  and exact grays; do not "improve" it.
-
-## Targeted revisions
-
-Numbered anchor blocks arriving as `[n]` define a hard boundary: change ONLY the
-elements explicitly identified. If you notice an issue outside those anchors,
-report it in prose — do not "clean it up" opportunistically. An unresolvable anchor
-is a reason to ask or report, never permission to broaden scope. The same
-discipline applies to any small ask: change the words, the color, the one element —
-leave everything else byte-identical where possible. If a broader change would
-help, finish the ask, then suggest it.
-
-## Completion
-
-Deliver with one or two plain sentences: what you made, what you assumed, what is
-placeholder. Don't explain the canvas, the files, or the mechanics — the product
-shows the work itself. Iterate in place; the artboard updates when you finish
-writing.
+Current instructions describe Bottega's own host contracts.
+[Source records and retained licenses](references/PROVENANCE.md) distinguish this writing pass
+from the historical adaptation and the separately licensed craft material.

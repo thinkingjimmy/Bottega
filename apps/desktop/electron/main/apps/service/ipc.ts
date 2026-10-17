@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on typed Apps IPC, main-owned services and explicit author-manifest or Agent-analysis install intents
  * [OUTPUT]: Registers strict residence-fenced operations and publishes main-owned Studio and cloud-management projections; `apps:open` goes through lifecycle/open-runtime.ts. Adds main-window-only impact and enablement operations.
- * [POS]: apps/service generic renderer adapter; Design command parsing and authority live in integrations/design-ipc.ts
+ * [POS]: Trusted residence-fenced Apps renderer adapter; Artifact design requests use the separate Artifact IPC owner.
  */
 
 import { assertAppEnabled } from "./availability/guard";
@@ -26,7 +26,6 @@ import {
   type RemoveAppMode,
   type RenameAppInput,
   type SaveAsAppResult,
-  type SetAppAgentInput,
   type BeginFileExportInputV1,
   beginFileExportInputV1Schema,
   completeFileExportInputV1Schema,
@@ -69,21 +68,16 @@ import {
   assertRemoveMode,
   assertRenameInput,
   assertSaveAsAppInput,
-  assertSetAgentInput,
   assertSetPinnedInput,
 } from "../service-inputs";
 import type { AppPackageController } from "../share/app-package-controller";
 import { assertAddAppInput, createInstallingAppRecord } from "../support";
+import { isRetiredApp } from "./availability/guard";
 import { normalizeGithubRepoUrl } from "../../../../shared/platform/github-repo";
 import type { AppLifecycleAdmissionGate } from "../../lifecycle/app-platform-admission";
 import { surfaceWindowController } from "../../window/surfaces/surface-window-controller";
 import type { TrustedRendererContext } from "../../window/surfaces/trusted-renderer-context";
-import {
-  registerDesignIpc,
-  type DesignIpcDependencies,
-} from "./integrations/design-ipc";
-
-type AppsIpcDependencies = DesignIpcDependencies & {
+type AppsIpcDependencies = {
   enablement: import("./availability/service").AppEnablementService;
   store: AppStore;
   runtime: AppRuntime;
@@ -109,7 +103,6 @@ type AppsIpcDependencies = DesignIpcDependencies & {
   rebuildExtensionGeneration(appId: string): Promise<AppRecord>;
   remove(appId: string, mode?: RemoveAppMode, requestId?: string): Promise<void>;
   readLogTail(appId: string): Promise<string>;
-  setAgent(input: SetAppAgentInput): Promise<AppRecord>;
   rename(input: RenameAppInput): Promise<AppRecord>;
   ensureChatSlot(input: EnsureAppChatSlotInput): unknown;
   /* Use/Edit 的六条导航同属一个叶子，逐条转手只会让签名抄两遍。 */
@@ -324,9 +317,6 @@ export function registerAppsIpc(
     .handle(APPS_CHANNEL.readLog, (rawId) =>
       deps.readLogTail(assertAppId(rawId))
     )
-    .handle(APPS_CHANNEL.setAgent, (value) =>
-      deps.setAgent(assertSetAgentInput(value))
-    )
     .handle(APPS_CHANNEL.saveAsApp, async (value) => {
       const service = deps.saveAsApp();
       if (!service) throw new Error("Save as App 尚未初始化");
@@ -376,7 +366,7 @@ export function registerAppsIpc(
     .handleWithContext(APPS_CHANNEL.list, (context) => {
       if (context.role !== "app-window") {
         return {
-          apps: deps.store.list().map(project),
+          apps: deps.store.list().filter(record => !isRetiredApp(record)).map(project),
           runtimeWarning: deps.gatewayWarning(),
         } satisfies AppsProjectionSnapshot;
       }
@@ -385,7 +375,7 @@ export function registerAppsIpc(
       surfaceWindowController.assertAppStudioMutation(context, appId);
       const record = deps.store.get(appId);
       return {
-        apps: record ? [project(record)] : [],
+        apps: record && !isRetiredApp(record) ? [project(record)] : [],
         runtimeWarning: deps.gatewayWarning(),
       } satisfies AppsProjectionSnapshot;
     })
@@ -522,7 +512,6 @@ export function registerAppsIpc(
       return deps.guiRuntime.cancelExport(input);
     });
 
-  registerDesignIpc(studioIpc, deps);
 
   deps.packages.register(
     mainIpc,

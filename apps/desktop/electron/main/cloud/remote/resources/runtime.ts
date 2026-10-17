@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on account-scope admission, encrypted resource codecs, owner Project/workflow/App/record ports, plugin request inbox and Memory barriers.
- * [OUTPUT]: Provides ResourceCommandRuntime and ResourceCommandPorts with verified operator identity, exact action classes, durable receipts and no replay of unknown effects.
+ * [INPUT]: Account/connection admission, encrypted resource codecs, Project/workflow/App/record/Artifact owners, plugin inbox and Memory barriers.
+ * [OUTPUT]: Operator-fenced resource dispatch, exact action classes, durable receipts and original unknown-effect recovery.
  * [POS]: Owner-computer executor; installation commands enqueue a source or read requester-bound status; record commands use owner-bound ports and account-fenced encrypted replies.
  */
 import { setAppEnabledInputSchema, type AppDisableImpact, type SetAppEnabledInput } from "@ai-chat/cloud-protocol/apps/build-status/enablement";
@@ -178,6 +178,7 @@ export class ResourceCommandRuntime {
   /** The operator is the account and the device the server verified as sender, never a payload field (F10). */
   private async execute(command: EncryptedResourceCommand, body: ResourceCommandBody, operator: VerifiedOperator, current: () => void): Promise<ResourceResultBody> {
     const input = body.input as Record<string, unknown>;
+    if (command.resourceKind === "artifact") return (await import("./artifacts")).artifactResourceAction(command.resourceId, body, current, this.ports.deviceId);
     if (command.resourceKind === "project") {
       if (!this.ports.projects) throw new Refused("project-git-unavailable");
       return { ok: true, projectGit: await this.ports.projects.execute(body.action, command.resourceId, body.input, operator.userId, current) };

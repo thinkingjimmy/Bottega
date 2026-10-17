@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Canonical manual/workflow submissions, input staging, resource receipts and main-owned Skill selection callbacks.
- * [OUTPUT]: Provides prepareManualTurn and prepared-turn contracts with immutable inputs and pinned Skill generations; workflow receipts are narrowed before custody.
+ * [INPUT]: Canonical submissions, staged resources, main Skill custody and typed design-reference authorization.
+ * [OUTPUT]: Immutable manual/workflow preparation, pinned Skill generations and fixed design-reference validation before admission effects.
  * [POS]: Coordinator admission boundary; package Providers still freeze no Skill catalog.
  */
 
@@ -501,6 +501,8 @@ export async function prepareManualTurn(
   dependencies: PreparationDependencies
 ): Promise<PreparedManualLease> {
   const submission = normalizeManualSubmission(input);
+  await (await import("../../../artifacts/workspace/references")).assertDesignReferences(submission.turn.scope.conversationId,
+    submission.precondition.kind === "existing" ? submission.precondition.incarnationId : undefined, submission.content.content.richValue);
   const stagingDir = join(dependencies.stagingRoot, submission.intentId);
   const reservations: FileReservation[] = [];
   const explicitSkills: ExplicitSkillRequirementReceipt[] = [];

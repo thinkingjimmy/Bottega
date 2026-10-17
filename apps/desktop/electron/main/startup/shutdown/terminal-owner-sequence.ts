@@ -1,11 +1,13 @@
 /**
  * [INPUT]: Depends on the composition root's already-fenced terminal owner ports, irreversible-boundary callback and the E2E fault seam (a named owner can be made to fail)
- * [OUTPUT]: Closes the quota service and every desktop durable/runtime owner in the single canonical shutdown order, each in isolation, then reports every failure together
+ * [OUTPUT]: Canonical isolated owner closure with workspace/document draining before Artifact/Chat custody and aggregate failure reporting.
  * [POS]: Terminal shutdown ordering authority; admission fencing, recovery, UI notification, and Electron quit remain outside this module
  */
 
-import { artifactRuntime, configureArtifactRuntime } from "../../artifacts/runtime";
+import { artifactRuntime, configureArtifactRuntime } from "../../artifacts/core/runtime";
 import { interruptionPoint } from "../boot/composition-hooks";
+import { closeDesignDocuments } from "../../design/documents/runtime";
+import { closeArtifactWorkspace } from "../../artifacts/workspace/runtime";
 
 type Maybe<T> = T | null | undefined;
 type Shutdown = { shutdown(): Promise<unknown> | unknown };
@@ -65,6 +67,8 @@ export async function closeTerminalOwnerSequence(owners: TerminalOwnerSequence) 
   await step("memory.closeAndFlush", () => owners.memory?.closeAndFlush());
   await step("archive", () => owners.archive?.closeAndFlush());
   await step("lifecycleIntents", () => owners.lifecycleIntents?.closeAndFlush());
+  await step("design-documents", () => closeDesignDocuments());
+  await step("artifact-workspace", () => closeArtifactWorkspace());
   await step("artifacts", () => artifactRuntime()?.close());
   await step("artifact-runtime", () => { configureArtifactRuntime(undefined); });
   await step("chatMirrors", () => owners.chatMirrors?.close());

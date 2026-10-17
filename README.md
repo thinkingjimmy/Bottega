@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.4"><img alt="0.2.4 prerelease" src="https://img.shields.io/badge/release-0.2.4%20prerelease-blue"></a>
+  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.5"><img alt="0.2.5 prerelease" src="https://img.shields.io/badge/release-0.2.5%20prerelease-blue"></a>
   <a href="https://github.com/thinkingjimmy/Bottega/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/thinkingjimmy/Bottega?style=flat&amp;logo=github"></a>
   <a href="./LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
@@ -21,7 +21,7 @@
   <a href="https://www.getbottega.app">Website</a> ·
   <a href="./docs/README.md">Docs</a> ·
   <a href="./docs/getting-started/README.md">Quickstart</a> ·
-  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.4">Download</a> ·
+  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.5">Download</a> ·
   <a href="./docs/features/README.md">Features</a> ·
   <a href="./docs/changelog/README.md">Changelog</a> ·
   <a href="https://x.com/hellojimmywong">X</a>
@@ -39,6 +39,7 @@
 
 - **Your Agents, one sidebar.** Run Codex, Claude Code, Kimi Code, and OpenCode through their official local CLIs. Switch Agents for the next turn in an idle chat while keeping the same transcript.
 - **Make the workspace yours.** Manage built-in plugins and their settings, choose Agent models and reasoning levels from dropdowns, and place Bottega Dock on your preferred display and edge.
+- **Work with Artifacts.** Open saved files in a workspace and edit Canvas pages, boards, text, and object properties.
 - **Sketch your next prompt.** Draw, add text and shapes, and erase details in the composer. Keep sketches editable until they are sent as PNG images.
 - **Build AI-native Apps.** Describe the workflow you need and turn it into a durable App with its own interface, data, and permissions—not another result trapped in a transcript.
 - **Customize by chatting.** Open an editable App's source Chat, describe the change, and let your Agent update its features, data, and interface directly.
@@ -56,17 +57,17 @@ Choose a prebuilt desktop release or run Bottega directly from source. Before la
 
 ## Download
 
-[Download 0.2.4 →](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.4)
+[Download 0.2.5 →](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.5)
 
 | Platform | Download |
 | --- | --- |
 | macOS (Apple silicon) | DMG or ZIP |
 
-0.2.4 ships for **macOS on Apple silicon only**. Automatic updates are disabled for this prerelease; download and replace the app manually. Quit Bottega and back up your Bottega folder and application data before upgrading.
+0.2.5 ships for **macOS on Apple silicon only**. Automatic updates are disabled for this prerelease; download and replace the app manually. Quit Bottega and back up your Bottega folder and application data before upgrading.
 
-This release keeps **protocol 16**. Update the computer that runs your Agents to 0.2.4 to receive the remote-control and sync fixes, then reload Bottega Web. No cloud-data reset, sync-password change or account-key replacement is required. See the [0.2.4 changelog](./docs/changelog/README.md#2026-10-12--v024) and [upgrade guide](./docs/getting-started/README.md#upgrading-to-024).
+This release uses **protocol 19**. Update the computer that runs your Agents to 0.2.5 to use Artifact workspaces and the updated cloud connection, then reload Bottega Web. No cloud-data reset, sync-password change or account-key replacement is required. See the [0.2.5 changelog](./docs/changelog/README.md#2026-10-17--v025) and [upgrade guide](./docs/getting-started/README.md#upgrading-to-025).
 
-The package has **ad-hoc signatures**, with no Developer ID signature or Apple notarization. Download the DMG or ZIP and `release-manifest.json` from the release page. Run `shasum -a 256` on the installer and compare the output with that installer's `sha256` in the manifest, then copy Bottega into `Applications`. See the [installation guide](./docs/getting-started/README.md#download-and-install) if macOS blocks the verified download.
+The release requires **Developer ID signatures and Apple notarization**. Product acceptance continues through owner testing after publication. Download the DMG or ZIP and `release-manifest.json` from the release page. Run `shasum -a 256` on the installer and compare the output with that installer's `sha256` in the manifest, then copy Bottega into `Applications`. See the [installation guide](./docs/getting-started/README.md#download-and-install) if macOS blocks the verified download.
 
 Bottega drives the Codex, Claude Code, Kimi Code, and OpenCode CLIs already installed and logged in on your machine. On first launch, pick your Bottega folder, let Bottega detect the CLIs, then create a task and choose its Agent before sending the first message. Setup never asks about an account: signing in is a later step, from Settings. The [getting-started guide](./docs/getting-started/README.md) lists the supported CLI versions.
 
@@ -94,9 +95,9 @@ A signed distribution requires your own Apple signing configuration. A local bui
 
 ## Build provenance
 
-The [macOS candidate workflow](./.github/workflows/build-macos.yml) builds the production source in this repository. Its [Actions runs](https://github.com/thinkingjimmy/Bottega/actions/workflows/build-macos.yml) record the exact source commit, pinned tools, installer hashes and GitHub provenance. Future releases use those same installers after private native acceptance.
+The [macOS candidate workflow](./.github/workflows/build-macos.yml) builds the production source in this repository. Its [Actions runs](https://github.com/thinkingjimmy/Bottega/actions/workflows/build-macos.yml) record the exact source commit, pinned tools, installer hashes and GitHub provenance. Published installers keep the original GitHub build bytes and their recorded hashes. For 0.2.5, the owner performs product acceptance after publication.
 
-Build-only candidates validate this build process and expire after one day. They do not replace the published 0.2.4 download. Personal installers continue to use ad-hoc signatures, require manual updates and have no Apple notarization.
+Build-only candidates validate this build process and expire after one day. They do not replace the published 0.2.5 download. Personal installers require manual updates. Signed release candidates require Developer ID signing and Apple notarization.
 
 # Collaboration
 

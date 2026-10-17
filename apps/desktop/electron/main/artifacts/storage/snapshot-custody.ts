@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Admitted immutable bytes, exact Chat incarnations and parent-synced persistence primitives.
- * [OUTPUT]: Cross-Chat reference-counted snapshots named with their real extension (OPT-42; a v1 index drops its `.img`/`.bin` records once), restart reconstruction and independent Fork references.
+ * [OUTPUT]: MIME-named immutable snapshots, document/export custody, cross-Chat reference retention, restart reconstruction and independent Fork references.
  * [POS]: Local artifact authority independent of cloud credentials or key availability; bytes live beside their Chat in the folder, so Chat deletion collects them with the directory.
  */
 import { z } from "zod";
@@ -10,10 +10,11 @@ import { artifactFenceSchema, type ArtifactFence } from "@ai-chat/cloud-protocol
 import { artifactRefSchema, ARTIFACT_BUDGET, type ArtifactRef } from "../../../../shared/ipc/apps/artifact-ipc";
 import { DurableJson, durableReplaceBytes } from "../../persistence/durable-json";
 import { SerialQueue } from "../../persistence/serial-queue";
-import { artifactHash } from "../admission";
+import { artifactHash } from "../admission/files";
 import { artifactExtension } from "@ai-chat/cloud-protocol/artifacts/media-types";
 import { libraryChatPath, libraryDirectory, libraryObjectId } from "../../library/paths";
-const recordSchema = z.object({ ref: artifactRefSchema, fence: artifactFenceSchema, messageId: z.string().max(128), committed: z.boolean(), remote: z.string().max(1024).optional() }).strict();
+const recordSchema = z.object({ ref: artifactRefSchema, fence: artifactFenceSchema, messageId: z.string().max(128), committed: z.boolean(), remote: z.string().max(1024).optional(),
+  derivedFrom: z.object({ artifactId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional() }).strict();
 /* v2 (OPT-42): snapshot file names carry the real extension. A v1 index is converted once: records whose file name changes
    (`.img`/`.bin`) are dropped with their files — there are no real users to migrate (ruling), and a record never points at a
    name that no longer exists. */
@@ -96,7 +97,7 @@ export class SnapshotCustody {
   commit(chatId: string, messageId: string, retained: ReadonlySet<string>) {
     return this.queue.enqueue(async () => {
       await this.write(state => {
-        state.records = state.records.filter(record => record.ref.chatId !== chatId || record.messageId !== messageId || retained.has(record.fence.id));
+        state.records = state.records.filter(record => record.ref.chatId !== chatId || record.messageId !== messageId || retained.has(record.derivedFrom?.artifactId ?? record.fence.id));
         for (const record of state.records) if (record.ref.chatId === chatId && record.messageId === messageId) record.committed = true;
       });
     });

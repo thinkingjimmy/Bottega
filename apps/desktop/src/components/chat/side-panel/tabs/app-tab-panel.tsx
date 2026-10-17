@@ -34,7 +34,6 @@ import { guiFailureKind } from "@/components/apps/surface/app-gui-surface-failur
 import { useAppGui } from "@/components/apps/surface/use-app-gui";
 import { appendComposerText } from "@/lib/chat/state/composer/chat-composer-store";
 import { focusComposer } from "@/lib/gallery/focus-controller";
-import { DesignHistoryButton } from "@/components/apps/design/design-history-dialog";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 
 async function loadAppPanelState(appId: string) {
@@ -64,14 +63,14 @@ export function AppTabPanel({
   const [origin, setOrigin] = useState("");
   const [error, setError] = useState("");
   const [surface, setSurface] = useState<AppAttachmentSurface | null>(null);
-  const designGui = Boolean(
+  const compiledGui = Boolean(
     record?.manifest?.kind === "base" &&
     record.manifest.gui?.capabilities.includes("workspace-read")
   );
   const gui = useAppGui({
     appId: app.appId,
     appSurfaceLeaseId: surface?.surfaceLeaseId,
-    enabled: designGui && Boolean(surface),
+    enabled: compiledGui && Boolean(surface),
     revisionKey: record?.generationBinding.active
       ? `${record.generationBinding.active.generationId}:${record.lifecycleRevision}`
       : "",
@@ -283,15 +282,10 @@ export function AppTabPanel({
       ) : (
         /* no-data App（static/server）没有 Base 面：数据形态分流就地判定，
            不再经由已退化的 AppDomainSurface 壳。 */
-        designGui && surface ? (
+        compiledGui && surface ? (
           <AppGuiSurface
             gui={gui}
             onGoToData={() => openData()}
-            toolbar={<DesignHistoryButton
-              appId={record.id}
-              appSurfaceLeaseId={surface.surfaceLeaseId}
-              onRestored={gui.refresh}
-            />}
             onHostAction={(action, context) =>
               hostAction(action, context, {
                 appId: record.id,

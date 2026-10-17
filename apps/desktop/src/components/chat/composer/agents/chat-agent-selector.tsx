@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Pure lib/agent/picker policy over shared availability and quota facts, draft cancellation, bounded quota demand, localized copy and injected management/Usage navigation.
- * [OUTPUT]: Renders installed Providers in Settings order, prioritizing login and quota over update notices, with scoped quota demand, draft cancellation and row-anchored Usage access.
+ * [OUTPUT]: Renders the same installed Provider choices for ordinary and App Chats, with login recovery, scoped quota demand, cancellation and Usage access.
  * [POS]: apps/desktop/src/components/chat/composer/agents; Composer identity and availability control; the row is the only control and the menu has no footer, so nothing competes with the selected mark.
  */
 import { useCallback, useId, useRef, useState, useSyncExternalStore } from "react";
@@ -44,19 +44,19 @@ const TONE: Record<AvailabilityState, Tone> = {
 /* 槽里永远只有一个记号——✓、转圈、或一个动词——因为一行永远不会同时是两者。
    动词只留给「此刻就能做完」的事；安装与更新要去 Settings 办，于是把病因交给
    第二行，跳转交给行本身：`Manage Agents` 从来没解释过任何东西。
-   App 窗里所有修复都由 Settings 承接，动词在那里说不出真话，一并让位。 */
+   App and ordinary Chats use the same recovery actions. */
 const SLOT_VERB: Partial<Record<AvailabilityState, "login" | "retry">> = {
   "sign-in": "login", "recent-sign-in": "login",
   connection: "retry", service: "retry", "cannot-check": "retry", "cannot-start": "retry",
 };
 type Recovery = "login" | "retry" | "manage";
-const recoveryFor = (state: AvailabilityState, appBound: boolean): Recovery | undefined => {
+const recoveryFor = (state: AvailabilityState): Recovery | undefined => {
   if (state === "missing" || state === "unsupported") return "manage";
   const verb = SLOT_VERB[state];
-  return verb ? (appBound ? "manage" : verb) : undefined;
+  return verb;
 };
 
-export function ChatAgentSelector({ value, draft = false, revertTo, backends, locked, disabled, saving, onChange, onRecheck, onRepair, onManage, appBound = false, now, currentState, reason, onOpenUsage, customProvider = false, usageResetsAt }: {
+export function ChatAgentSelector({ value, draft = false, revertTo, backends, locked, disabled, saving, onChange, onRecheck, onRepair, onManage, now, currentState, reason, onOpenUsage, customProvider = false, usageResetsAt }: {
   reason?: string;
   /** The card beside a row opens Usage on that Agent's tab; the menu itself offers no other way there. */
   onOpenUsage?: (trigger: HTMLElement | null, agent: AgentBackendId) => void;
@@ -76,7 +76,6 @@ export function ChatAgentSelector({ value, draft = false, revertTo, backends, lo
   onRepair?: (backend: AgentBackendId, action: "login") => void;
   /** Receives the row's state so missing/signed-out Agents open setup and outdated ones open Updates. */
   onManage?: (backend: AgentBackendId, state: AvailabilityState) => void;
-  appBound?: boolean;
   now: number;
   currentState?: AvailabilityState;
   /** 只有 usage-limit 用得上：拦下这一回合的那个窗口何时恢复。等待是唯一的动作，等多久就是唯一有用的事实。 */
@@ -101,7 +100,7 @@ export function ChatAgentSelector({ value, draft = false, revertTo, backends, lo
   const catalog = useProviderCatalog();
   const agentName = useProviderName();
   const turnedOff = useTurnedOffPlugins();
-  const candidates = (appBound ? catalog.entries.filter((entry) => entry.id === value) : orderedProviders(settings, catalog))
+  const candidates = orderedProviders(settings, catalog)
     .filter(entry => !isAgentBackendId(entry.id) || !turnedOff.has(entry.id));
   const entries = candidates.filter(entry => installedPickerProvider(entry, backends.find(backend => backend.id === entry.id)));
   const discovering = candidates.some(entry => entry.source === "builtin" &&
@@ -144,8 +143,8 @@ export function ChatAgentSelector({ value, draft = false, revertTo, backends, lo
     const limits = quota.snapshot.agents.find(entry => entry.backend === id);
     const presentation = projectPickerPresentation(backend, derived === "unavailable" ? derived : id === value && currentState ? currentState : base.state, limits);
     const rowState = presentation.state;
-    const reverting = id === revertTo && !appBound;
-    const recovery = reverting || !agent ? undefined : recoveryFor(rowState, appBound);
+    const reverting = id === revertTo;
+    const recovery = reverting || !agent ? undefined : recoveryFor(rowState);
     const current = id === value;
     const canSelect = derived !== "unavailable" && !pinned && !locked && !disabled && !saving &&
       (reverting || base.policy.decision === "allow" && !["sign-in", "recent-sign-in"].includes(rowState));

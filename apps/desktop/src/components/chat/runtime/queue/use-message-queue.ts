@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Depends on React effects, app i18n, composer external store, reported-failure markers, message-queue state modules, and assembly/admit/steer/outcome/ack ports
  * [OUTPUT]: Provides a per-chat queue controller with localized model errors, tooltip-owned capacity rejection, workspace-file Steer, durable/manual custody, outcome settlement, and edit swap
+ * Review queue admission deduplicates exact request identity and preserves mismatched input rather than replacing it.
  * [POS]: apps/desktop/src/components/chat/runtime/queue; The root of the renderer queue of chat/runtime; The state is stored, attached/admission/steer rules are narrowed down to modules
  */
 
@@ -376,7 +377,7 @@ export function useMessageQueue({
     updateComposer(chatId, (current) => {
       const result = enqueueItem(
         current.queue,
-        createQueueItem(queuedPrompt(message)),
+        createQueueItem(queuedPrompt(message), message.requestKey?.createdAt, message.requestKey ? `review_${message.requestKey.id}` : undefined),
         globalQueuedBytes(),
         sketchQueueExtraBytes(current.sketch)
       );

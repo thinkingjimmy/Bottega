@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared AgentWorkspaceScope
- * [OUTPUT]: Provides COMPOSER_DRAFTS_CHANNEL, BLANK_DRAFT_PREFIX, the durable composer draft DTOs (F-12) and ComposerDraftsBridgeApi
+ * [OUTPUT]: Durable composer/queue contracts and bridge channels retaining original review request ID/time through reload and transfer.
  * [POS]: Shared wire contract between the renderer's composer store and main's durable draft owner; file chips cross it as grant refs only, never paths
  */
 import type { AgentWorkspaceScope } from "../ipc/agent/agent-ipc";
@@ -17,6 +17,7 @@ export type DurableUnavailable = Readonly<{ id: string; name: string }>;
 
 export type DurableQueueItem = Readonly<{
   id: string;
+  requestKey?: { id: string; createdAt: number };
   /** Rich nodes; a file node's `ref` is a live grant on save and a fresh grant on load. */
   richValue: unknown;
   displayText: string;

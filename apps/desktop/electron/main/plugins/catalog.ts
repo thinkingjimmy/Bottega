@@ -2,11 +2,13 @@
  * [INPUT]: Depends on the plugin contract (BUILTIN_PLUGINS, views, details, settings, contract kinds), the one resolver (resolve.ts), the
  *           projections (describe.ts), the reserved identity policy, provenance-bearing owners, plugin state and settings stores, and read/disable ports over the Extension Registry, host-package
  *           manifests, each Agent's native plugins, Agent configurations and health; uses SerialQueue for settings persistence.
+ * Artifact switch transitions use checkpoint/closing hooks and persisted generation under one serialized mutation lane.
  * [OUTPUT]: Provides PluginCatalog — list, detail, setEnabled (C.3's rules: always-on, setup-required, unsupported, not-switchable),
  *           settings / setSettings (serialized persistence and revision-bound restart acknowledgement, or the owner's adapter with confirm), stopAdmission / close (flush accepted settings), resolve (the shared Resolution over every plugin),
  *           refresh (re-read and announce) / resolveNow, providerEnabled, workflowEnabled, workflowBlockedBy (named reasons for admission), dependentsOf, effectsOf and providersOf (impact),
  *           providerOverrides (what the Provider adapters may send), applyStoredStates, onChanged — plus PluginError, BuiltinOwner, CatalogPorts and
  *           installProviderPluginSettings / providerPluginSettings (the turn freeze's read of it).
+ * Artifact disable waits for trusted recovery input before persistence; re-enable rotates generation and publishes current state.
  * [POS]: The desktop owner of the plugins page (T-P1/T-P4/T-P5). Built-ins switch in plugin-states.json (or through their own owner),
  *        installed packages through the Registry's disable convergence and re-enable, Agent-native plugins by their Agent. App packages
  *        participate in dependency resolution but stay outside plugin-facing views; disabled packages retain their manifest metadata.
@@ -89,6 +91,7 @@ export class PluginCatalog {
   private readonly pendingRestart = new Map<string, symbol>();
   private readonly settingsQueues = new Map<string, SerialQueue>();
   private settingsClosed = false;
+  private readonly artifactSwitch = new SerialQueue();
   constructor(private readonly ports: CatalogPorts) {}
   onChanged(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
 
@@ -186,6 +189,10 @@ export class PluginCatalog {
 
   /** Turning on needs no confirmation; turning off is confirmed by the page after the impact preview (Q29). */
   async setEnabled(pluginId: string, enabled: boolean) {
+    if (pluginId === "artifact") return this.artifactSwitch.enqueue(() => this.setEnabledNow(pluginId, enabled));
+    return this.setEnabledNow(pluginId, enabled);
+  }
+  private async setEnabledNow(pluginId: string, enabled: boolean) {
     const entry = await this.fieldsOf(pluginId);
     const { descriptor } = entry;
     if (!descriptor.turnOff.allowed) throw new PluginError(descriptor.turnOff.reason === "always-on" ? "plugin-always-on" : "plugin-not-switchable");
@@ -198,7 +205,11 @@ export class PluginCatalog {
       return this.emit();
     }
     if (this.isStateBuiltin(pluginId)) {
-      await this.ports.states.set(pluginId, enabled, this.ports.now());
+      const artifact = pluginId === "artifact" ? await import("../artifacts/workspace/runtime") : null;
+      if (artifact && !enabled && entry.enabled) await artifact.prepareArtifactDisable();
+      try {
+        await this.ports.states.set(pluginId, enabled, this.ports.now());
+      } finally { artifact?.finishArtifactToggle(); }
       if (descriptor.kind === "provider") this.ports.applyProvider(pluginId, enabled);
       return this.emit();
     }
@@ -236,11 +247,13 @@ export class PluginCatalog {
 
   stopAdmission() {
     this.settingsClosed = true;
+    this.artifactSwitch.close();
     for (const queue of this.settingsQueues.values()) queue.close();
   }
 
   async close() {
     this.stopAdmission();
+    await this.artifactSwitch.flush();
     await Promise.all([...this.settingsQueues.values()].map(queue => queue.flush()));
   }
 
@@ -307,6 +320,9 @@ export class PluginCatalog {
   effectsOf(pluginId: string) { return this.owner(pluginId)?.effects?.() ?? Promise.resolve([]); }
   /** Whether the Workflow switch is on (running runs pause when it goes off). */
   workflowEnabled() { return this.ports.states.turnedOffAt("workflow") === null; }
+  /** Artifact's one local admission state; retained files do not depend on it. */
+  artifactEnabled() { return this.ports.states.turnedOffAt("artifact") === null; }
+  artifactGeneration() { return this.ports.states.generation(); }
   /** Workflow admission's named reason (T-D10): what Workflow waits for, or null when it can start runs. */
   workflowBlockedBy() {
     const state = this.resolve().plugins.workflow;

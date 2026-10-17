@@ -57,7 +57,11 @@
     "./remote/memory-status": "./src/remote/memory/memory-status.ts",
     "./remote/memory": "./src/remote/memory/memory.ts",
     "./remote/quota-view": "./src/remote/quota/quota-view.ts",
-    "./remote/quota": "./src/remote/quota/quota.ts"
+    "./remote/quota": "./src/remote/quota/quota.ts",
+    "./artifacts/design/anchors": "./src/artifacts/design/core/anchors.ts",
+    "./artifacts/design/capability": "./src/artifacts/design/core/capability.ts",
+    "./artifacts/design/parameters": "./src/artifacts/design/core/parameters.ts",
+    "./artifacts/design/summary": "./src/artifacts/design/core/summary.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -67,7 +71,8 @@
     "@bottega/contracts": "workspace:*",
     "@noble/hashes": "2.0.1",
     "zod": "4.6.4",
-    "@ai-chat/base-core": "workspace:*"
+    "@ai-chat/base-core": "workspace:*",
+    "parse5": "7.3.0"
   },
   "devDependencies": {
     "@types/node": "22.18.6",

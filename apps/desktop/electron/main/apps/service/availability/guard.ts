@@ -1,13 +1,14 @@
 /**
- * [INPUT]: Depends on the App record's independent enabled flag and typed product failures.
- * [OUTPUT]: Provides the shared App execution guard and a synchronous fence during durable disable.
+ * [INPUT]: App enabled/preset identity and typed product failures.
+ * [OUTPUT]: Shared execution refusal, synchronous durable-disable fence and explicit retired Design preset exclusion.
  * [POS]: Every App launch and turn admission uses this main-owned availability boundary.
  */
 import { agentRuntimeFailure, ProductFailureError } from "@ai-chat/cloud-protocol/chats/content/failure";
 const closing = new Set<string>();
-type App = { id?: string; enabled?: boolean };
+type App = { id?: string; enabled?: boolean; presetId?: string };
+export const isRetiredApp = (app: App | null | undefined) => app?.presetId === "design-canvas";
 export function isAppEnabled(app: App | null | undefined): boolean {
-  return Boolean(app && app.enabled !== false && (!app.id || !closing.has(app.id)));
+  return Boolean(app && !isRetiredApp(app) && app.enabled !== false && (!app.id || !closing.has(app.id)));
 }
 export function assertAppEnabled(app: App | null | undefined) {
   if (!app) throw Object.assign(new Error("app-not-found"), { code: "app-not-found", status: 404 });

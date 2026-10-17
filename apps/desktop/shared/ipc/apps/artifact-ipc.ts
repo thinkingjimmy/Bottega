@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Shared artifact fence schemas and the closed Chat lifecycle identity.
- * [OUTPUT]: Path-free artifact leases/imports, explicit preview and captured-service restart contracts, and storage budgets.
+ * [INPUT]: Closed Artifact fences, Chat incarnation and shared workspace request/event contracts.
+ * [OUTPUT]: ID-scoped file/import/preview/workspace methods, lifecycle subscriptions and fixed storage budgets.
  * [POS]: apps/desktop/shared/ipc/apps; Desktop artifact boundary; only main resolves stored snapshot paths.
  */
 import { z } from "zod";
@@ -14,6 +14,8 @@ export type ArtifactLease = { id: string; url: string; origin: string; expiresAt
 export type ArtifactAction = "quick-look" | "reveal" | "open" | "save";
 export type ArtifactWorkbook = { exists: boolean; sheets: { name: string; imported: boolean; hasId: boolean }[] };
 export interface ArtifactBridge {
+  workspace(input: import("@ai-chat/cloud-protocol/artifacts/design/model").WorkspaceCommand): Promise<unknown>;
+  onWorkspaceEvent(listener: (event: { type: "before-disable" | "changed"; nonce?: string; generation: string; enabled?: boolean; scope?: string }) => void): () => void;
   preview(ref: ArtifactRef, action: "preview-status" | "preview-start" | "preview-stop" | "preview-issue-code" | "preview-keep-running"): Promise<import("@ai-chat/cloud-protocol/resources/preview").PreviewView>;
   lease(ref: ArtifactRef): Promise<ArtifactLease>;
   release(id: string): Promise<void>;

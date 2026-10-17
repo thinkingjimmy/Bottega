@@ -8,3 +8,20 @@ OpenDesign is licensed under the Apache License, Version 2.0.
 
 The audited upstream commit contains no root NOTICE file. This NOTICE records
 Bottega's attribution and modification boundary; it does not imply endorsement.
+
+Modified English design methods from BaoCut, commit 7aa049e82e1367da013b7aba80f0b79033fa04ad.
+Copyright (c) 2026 Jim Liu and BaoCut contributors.
+Internal development under BaoCut Community License. Full license/notices: formats/upstream-license/.
+
+Workspace rollout modifications adapt pinned view-state and fast-edit scope text
+to Bottega's fixed references, finite source patches, durable explicit handoff,
+saved revision exports and fixed design-system consumption. No prompt module,
+streaming jQuery interpreter or separate fast editing agent is imported.
+
+Current Bottega instruction writing (2026-10-14)
+The BaoCut adaptation description above records content before the Bottega-Dev
+69e9e3f054dfc9a0fdc0ca33c74c317bba7ea020 writing baseline. The current mapped
+instruction pages were newly written from Bottega's schema, tool and journal contracts.
+The historical source/modification record, copyright and full original license/notices
+remain retained. This statement does not assert clean-room history, entire-Canvas
+originality or an obtained commercial agreement.

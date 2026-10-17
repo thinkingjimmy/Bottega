@@ -5,7 +5,7 @@
  */
 
 import { recordWorkflowCommandExit } from "../../../workflows/turn-policy";
-import { artifactRuntime } from "../../../artifacts/runtime";
+import { artifactRuntime } from "../../../artifacts/core/runtime";
 import type { SessionServiceTierEffective } from "../../../../../shared/ipc/agent/agent-ipc";
 import { applySubagent } from "../../../../../shared/chats/model/chat-turn-reducer";
 import { backendRuntimeRegistry } from "../../../backends";

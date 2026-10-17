@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the shared preset DTO; product source owns publishing metadata, canonical GitHub URLs, immutable pins, and the packaged React Design factory digest
- * [OUTPUT]: Provides FIRST_PARTY_PRESETS and PresetCatalog with stable presetId, sourceDirectory, canonical URL, immutable source/compatibility pin, requirements, icons, and optional factory tree digest
+ * [INPUT]: Shared preset DTOs and exact Expense/Fitness source publication, compatibility, requirements and icon facts.
+ * [OUTPUT]: FIRST_PARTY_PRESETS and PresetCatalog with stable IDs, source directories, canonical URLs and immutable pins.
  * [POS]: apps/desktop/electron/main/presets; The main process trust root for preset source identity and install facts; renderer projects product copy from presetId through its locale catalog
  */
 
@@ -10,21 +10,9 @@ export type PresetCatalogEntry = PresetAppSummary & {
   canonicalRepoUrl: string;
   catalogPin: string;
   sourceDirectory: string;
-  factoryTreeDigest?: `sha256:${string}`;
 };
 
 export const FIRST_PARTY_PRESETS = [
-  {
-    id: "design-canvas",
-    icon: "✦",
-    requirements: [],
-    canonicalRepoUrl:
-      "https://github.com/thinkingjimmy/Bottega-app-design-canvas.git",
-    catalogPin: "13e0558131b55fce96d5392797be0bf12e72d272",
-    sourceDirectory: "Bottega-app-design-canvas",
-    factoryTreeDigest:
-      "sha256:b3bdc4105f25d83124a250179388f07e09dc2160d7fd55e87b52909194240786",
-  },
   {
     id: "expense-tracker",
     icon: "💰",
@@ -56,7 +44,6 @@ export class PresetCatalog {
         canonicalRepoUrl: _url,
         catalogPin: _pin,
         sourceDirectory: _directory,
-        factoryTreeDigest: _factoryDigest,
         ...summary
       }) =>
         structuredClone(summary)

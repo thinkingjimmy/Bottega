@@ -1,12 +1,13 @@
 /**
  * [INPUT]: Depends on OpenCode CLI native ACP, the launch-environment external-override gate, model catalog, frozen third-party plus turn-leased built-in MCP overlay, AcpTurn and ACP failure classification
- * [OUTPUT]: Provides opencodeBackend, its minimum supported version, override validation against the spawn environment, authenticated local transport, permission modes, read-only tools, models with optional probe admission, provider-scoped auth checks and its Provider bridge readiness plan (behind the same override gate).
+ * [OUTPUT]: Provides opencodeBackend, its minimum supported version, override validation against the spawn environment, authenticated local transport, permission modes, turn-leased tools and explicit Skill roots, models with optional probe admission, provider-scoped auth checks and its Provider bridge readiness plan (behind the same override gate).
  * [POS]: The only installation point for the OpenCode descriptor; it stats but never reads or copies user/agent override configuration or credentials. Its turns are BridgedAcpTurns over this spawn config
  */
 
 import { opencodeQuota } from "./quota";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { systemSkillsPath } from "../../skills/catalog/system-skills";
 import type { OpencodeTurnOptions } from "../../../../shared/ipc/agent/agent-ipc";
 import { npmLatestVersion } from "../../setup/latest-version";
 import type { AcpSpawnConfig } from "../../backends/acp/launch";
@@ -161,9 +162,8 @@ export const opencodeBackend: BackendDescriptor = {
     planMode: true,
     headless: [],
     maintenance: false,
-    // OpenCode receives the product-owned read-only MCP through the same isolated
-    // backend-config overlay already used for frozen third-party servers.
-    builtinTools: "read",
+    // Mutations use the same main-owned lease/Plan fence; document commits need this capability.
+    builtinTools: "mutate",
   }),
   classifyFailure: opencodeClassifyFailure,
   // readiness 只证明 ACP 健康，单个 provider/model turn 也证明不了整个后端；
@@ -185,6 +185,13 @@ export const opencodeBackend: BackendDescriptor = {
     assertNoExternalOpencodeOverrides(spawnConfig.env);
     /* Switched on, the launch (overlay and server credentials included) is sealed in main; the bridge gets only the values (C9, D2 5). */
     return new BridgedAcpTurn(options, spawnConfig, requireProviderBridge());
+  },
+  skills: {
+    sources: workspace => [
+      { path: join(homedir(), ".agents", "skills"), scope: "user" },
+      { path: join(workspace, ".agents", "skills"), scope: "repo" },
+      { path: systemSkillsPath(), scope: "system" },
+    ],
   },
   setup: {
     latestVersion: () => npmLatestVersion("opencode-ai"),

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on type-only Apps lifecycle, grant, package, surface, and Design command DTOs
+ * [INPUT]: Type-only App lifecycle, grant, package and generic surface DTOs.
  * [OUTPUT]: Defines App lifecycle/package bridges, compatibility and tool inspection, plus main-owned Studio and cloud-management facts. Adds owner-controlled disableImpact and setEnabled commands.
  * [POS]: apps/desktop/shared/ipc/apps; Shared Apps wire boundary; keeps channel routing and preload shape separate from durable domain records
  */
@@ -37,7 +37,6 @@ import type {
   RenameAppInput,
   SaveAsAppInput,
   SaveAsAppResult,
-  SetAppAgentInput,
   SetAppPinnedInput,
   SetAppGrantInput,
   SetAppGrantStateInput,
@@ -57,15 +56,6 @@ import type {
   AppGuiReadyInput,
   AppGuiReadyResult,
   AppSurfaceAcquireInput,
-  DeleteDesignDataInput,
-  DesignAutoOpenInput,
-  DesignCanvasVersion,
-  DesignDataStatus,
-  DesignSurfaceInput,
-  ImportDesignCanvasInput,
-  ListDesignVersionsInput,
-  RestoreDesignVersionInput,
-  SetDesignEnabledInput,
 } from "./apps-surface-ipc";
 import type {
   BeginFileExportInputV1,
@@ -119,7 +109,6 @@ export type AppsBridgeApi = {
   readLog: (appId: string) => Promise<string>;
   retry: (appId: string) => Promise<void | AppCompatibilityBlocked>;
   repair: (appId: string) => Promise<void | AppCompatibilityBlocked>;
-  setAgent: (input: SetAppAgentInput) => Promise<AppRecord>;
   saveAsApp: (input: SaveAsAppInput) => Promise<SaveAsAppResult>;
   rename: (input: RenameAppInput) => Promise<AppRecord>;
   ensureChatSlot: (input: EnsureAppChatSlotInput) => Promise<EnsureAppChatSlotResult>;
@@ -146,15 +135,6 @@ export type AppsBridgeApi = {
   fileExportFinalize: (input: CompleteFileExportInputV1) => Promise<CompleteFileExportResultV1>;
   fileExportCancel: (input: CompleteFileExportInputV1) => Promise<CompleteFileExportResultV1>;
   setPinned: (input: SetAppPinnedInput) => Promise<AppRecord>;
-  importDesignCanvas: (input: ImportDesignCanvasInput) => Promise<{ file: string }>;
-  listDesignImportCandidates: (input: DesignSurfaceInput) => Promise<string[]>;
-  listDesignFiles: (input: DesignSurfaceInput) => Promise<string[]>;
-  listDesignVersions: (input: ListDesignVersionsInput) => Promise<DesignCanvasVersion[]>;
-  restoreDesignVersion: (input: RestoreDesignVersionInput) => Promise<DesignCanvasVersion>;
-  setDesignAutoOpen: (input: DesignAutoOpenInput) => Promise<boolean>;
-  designDataStatus: (appId: string) => Promise<DesignDataStatus>;
-  deleteDesignData: (input: DeleteDesignDataInput) => Promise<boolean>;
-  setDesignEnabled: (input: SetDesignEnabledInput) => Promise<AppRecord>;
   readReadme: (appId: string) => Promise<string | null>;
   onCompatibilityChanged: (callback: () => void) => () => void;
   compatibilityRequests: () => Promise<AppCompatibilityFailure[]>;

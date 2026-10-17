@@ -59,6 +59,12 @@ See the [features guide](../features/README.md) for the product model and its fo
 
 Authenticate with the CLI provider before starting Bottega. Bottega never asks for or imports that credential.
 
+## Upgrading to 0.2.5
+
+This release uses **protocol 19**. Update every computer that uses cloud features to 0.2.5, then reload Bottega Web. Keep your existing Bottega folder, cloud content, sync password, and account keys; no data reset is required.
+
+Quit Bottega completely and back up your Bottega folder and application data before replacing the app. This macOS Apple silicon prerelease uses manual updates and is excluded from GitHub Latest. Release packages require Developer ID signing and Apple notarization. The owner performs functional, visual, and interaction acceptance after publication; follow-up issues are handled as bugs. See the [0.2.5 changelog](../changelog/README.md#2026-10-17--v025).
+
 ## Upgrading to 0.2.4
 
 This release keeps **protocol 16**. Update the computer that runs your Agents to 0.2.4 to receive the remote-control, reply-publication and sync fixes, then reload Bottega Web. Existing 0.2.3 clients use the same protocol; clients on protocol 15 or earlier still need to upgrade. No cloud-data reset, sync-password change or account-key replacement is required.
@@ -75,29 +81,25 @@ Cloud Sync now uses protocol 15. Update all computers that use cloud features to
 
 ## Download and install
 
-[Download 0.2.4](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.4) for **macOS on Apple silicon**. It is a prerelease and is excluded from GitHub Latest. Windows, Linux, and Android distribution are scheduled separately. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
+[Download 0.2.5](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.5) for **macOS on Apple silicon**. It is a prerelease and is excluded from GitHub Latest. Windows, Linux, and Android distribution are scheduled separately. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| macOS (Apple silicon) | `Bottega-0.2.4-arm64.dmg` or `Bottega-0.2.4-arm64-mac.zip` | Manual installation and updates. |
+| macOS (Apple silicon) | `Bottega-0.2.5-arm64.dmg` or `Bottega-0.2.5-arm64-mac.zip` | Manual installation and updates. |
 
-Apple Developer enrollment is pending. These packages use **ad-hoc signatures**, with **no Developer ID signature or Apple notarization**. Automatic updates are disabled: download each new version from the Releases page and replace the installed app manually.
+Release packages require **Developer ID signing and Apple notarization**. Automatic updates are disabled: download each new version from the Releases page and replace the installed app manually.
 
 1. Quit Bottega completely and back up both your Bottega folder and application data.
 2. Download the DMG or ZIP and `release-manifest.json` from the same release. Run the command below and manually compare its output with the matching installer's `sha256` in the manifest. Use the ZIP filename instead if you downloaded the ZIP:
 
 ```bash
-shasum -a 256 Bottega-0.2.4-arm64.dmg
+shasum -a 256 Bottega-0.2.5-arm64.dmg
 ```
 
 3. Open the DMG and drag Bottega into `Applications`, or extract the ZIP and copy the app there.
-4. If Gatekeeper blocks the download after you have verified its digest and source, remove the quarantine attribute from this app only, then launch it:
+4. Open Bottega from `Applications` and confirm the normal macOS first-launch prompt. If macOS reports a signature or notarization problem, keep the error details and report the bug before opening that package.
 
-```bash
-xattr -rd com.apple.quarantine /Applications/Bottega.app
-```
-
-Detailed feature and physical-device walkthroughs continue during this prerelease; follow-up fixes will ship as 0.2.x.
+The owner tests this prerelease after publication. Functional, visual, and interaction acceptance remains pending until that testing is complete; follow-up fixes ship as bugs.
 
 ## Cloud Sync and Cloud Web
 

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on type-only Apps manifest, record, domain, grant, and availability primitives
- * [OUTPUT]: Provides enumerable Base GUI capabilities, compatibility-bound capability decisions, derived Studio data grants, content-layout-aware surface leases, staged GUI readiness/bindings, actions, and trusted Design history commands
+ * [OUTPUT]: Base GUI capabilities/decisions, Studio data grants, generic App leases/readiness/bindings and allowlisted actions.
  * [POS]: apps/desktop/shared/ipc/apps; Shared Apps wire leaf for renderer surfaces; Base query validation is consumed directly from the cloud-protocol Query V1 contract, keeping its runtime out of navigation; apps-ipc re-exports it while lifecycle/install contracts remain separate
  */
 
@@ -179,47 +179,4 @@ export type AppGuiReadyInput = AppGuiInfoInput & Readonly<{
 
 export type AppGuiReadyResult = Readonly<{
   outcome: "committed" | "aborted";
-}>;
-
-export type DesignCanvasVersion = Readonly<{
-  versionId: string;
-  file: string;
-  digest: string;
-  source: "ai" | "manual" | "restore";
-  parentVersion: string | null;
-  restoredFromVersion?: string;
-  provenance: Readonly<{
-    chatId?: string;
-    conversationIncarnationId?: string;
-    turnId?: string;
-  }>;
-  createdAt: number;
-}>;
-
-export type DesignSurfaceInput = Readonly<{
-  appId: string;
-  appSurfaceLeaseId: string;
-}>;
-export type ImportDesignCanvasInput = DesignSurfaceInput & Readonly<{ file: string }>;
-export type ListDesignVersionsInput = ImportDesignCanvasInput;
-export type RestoreDesignVersionInput = DesignSurfaceInput &
-  Readonly<{ versionId: string; confirmed: true }>;
-export type DesignAutoOpenInput = Readonly<{
-  appId: string;
-  conversationId: string;
-  conversationIncarnationId: string;
-  suppressed: boolean;
-}>;
-export type DesignDataStatus = Readonly<{
-  dataCustodyId: string;
-  stableWorkspaceOwnerId: string;
-}> | null;
-export type DeleteDesignDataInput = Readonly<{
-  appId: string;
-  dataCustodyId: string;
-  confirmed: true;
-}>;
-export type SetDesignEnabledInput = Readonly<{
-  appId: string;
-  enabled: boolean;
 }>;

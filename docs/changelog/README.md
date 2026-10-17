@@ -4,6 +4,18 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-10-17 — v0.2.5
+
+[Download 0.2.5](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.5) for macOS on Apple silicon, or [open Bottega Web](https://app.getbottega.app).
+
+- **Artifact workspaces.** Open saved Artifacts with navigation, previews, references, exports, and version history.
+- **Canvas editing.** Work with pages, boards, text, object properties, typography, and transforms. Save changes with explicit recovery and conflict handling.
+- **Shared design tools.** Desktop and Web use common Artifact and Canvas contracts, with tools for Agents to read and edit design content.
+
+Cloud features use **protocol 19**. Update desktop computers to 0.2.5 and reload Bottega Web. Existing content, sync passwords, and account keys remain. No cloud-data reset is required.
+
+This is an owner-testing prerelease with manual updates, excluded from GitHub Latest. Release packages require Developer ID signing and Apple notarization. Functional, visual, and interaction acceptance takes place after publication; it is not recorded as passed. Follow-up issues are handled as bugs. See the [upgrade guide](../getting-started/README.md#upgrading-to-025).
+
 ## 2026-10-12 — Inspectable macOS candidate builds
 
 Production macOS Apple silicon candidates now have a build workflow in this same repository. Source, workflow, exact tool pins, installer hashes and GitHub provenance can be inspected together. The signing scanner checks every file with bounded concurrency. Future release candidates use the original cloud-built files after private native acceptance. An upload-only retry preserves the original installers.

@@ -79,6 +79,7 @@ export function usePluginSwitch({ bridge, workbench, locale, computerName, plugi
       description={confirm ? (
         <div className="flex flex-col gap-3 text-left">
           <p>{formatWorkbench(copy.turnOffBody, { name, computer: computerName ?? copy.thisComputer })}</p>
+          {confirm.plugin.id === "artifact" && <p>{copy.builtin.artifact.disableHint}</p>}
           {dependents.length > 0 && (
             <div className="flex flex-col gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3" data-testid="turn-off-dependents">
               <p className="font-medium text-amber-900 dark:text-amber-300">{copy.dependentsTitle}</p>

@@ -16,7 +16,6 @@ export const chatAgentSwitchJa = {
   "queue": "送信待ちメッセージを処理してください。",
   "recovery": "復旧が完了するまでお待ちください。",
   "readonly": "このチャットは読み取り専用のため、Agent を切り替えられません。",
-  "app-bound": "Agent は App によって指定されています。",
   "archived": "アーカイブ済みチャットでは変更できません。",
   "approval": "保留中の承認を処理してください。",
   "plan-review": "Plan の確認を完了してください。",

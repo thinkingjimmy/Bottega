@@ -76,7 +76,6 @@ export type AppExtensionInstallPreflight = Readonly<{
 
 /** 线上身份只穿过稳定 ID；产品文案由 renderer 的五语目录投影。 */
 export const PRESET_APP_IDS = [
-  "design-canvas",
   "expense-tracker",
   "fitness-log",
 ] as const;

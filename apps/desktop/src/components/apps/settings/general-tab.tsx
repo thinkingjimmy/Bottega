@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on the Apps/Setup providers, App config read/write IPC, AgentSelect, AppRequirementsForm, SidebarRenameDialog, the Design danger section, and Settings primitives
- * [OUTPUT]: Provides GeneralTab with identity, Agent roles, pending configuration, shared generation history and the Design danger zone.
+ * [INPUT]: Apps provider, App config IPC, requirements/rename controls, shared generation history and Settings primitives.
+ * [OUTPUT]: App identity, pending configuration and shared App/plugin generation history; Chat owns Agent selection.
  * [POS]: First App settings body; configuration and version reads mount only with this tab.
  */
 
@@ -12,33 +12,26 @@ import {
   SettingsButton,
   SettingsCanvas,
   SettingsList,
-  SettingsRow,
   SettingsSection,
   SettingsSurface,
 } from "@/components/settings/settings-layout";
 import { SidebarRenameDialog } from "@/components/sidebar/rename/sidebar-rename-dialog";
 import { useApps } from "@/components/providers/content/apps-provider";
-import { useSetup } from "@/components/providers/setup-provider";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { isBuiltinBackendInfo, maintenanceCapableBackends } from "@/lib/agent/agent-backends";
 import { readAppConfig, writeAppConfig } from "@/lib/apps/apps-client";
 import type { AppConfigValue } from "../../../../shared/ipc/apps/apps-ipc";
-import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
-import { AgentSelect } from "../install/agent-select";
 import {
   AppRequirementsForm,
   appRequirementsSatisfied,
 } from "../install/app-requirements-form";
-import { DesignDangerSection } from "../design/design-data-settings";
 import type { AppSettingsTabProps } from "./tab-shell";
 import {GuiHistoryList} from '@/components/gui-history/list';
 
 const EMPTY_CONFIG: AppConfigValue = { values: {}, agentReadableKeys: [] };
 
 export function GeneralTab({ record, busy, fail, run }: AppSettingsTabProps) {
-  const { renameApp, setAgent } = useApps();
+  const { renameApp } = useApps();
   const { t, i18n } = useAppTranslation();
-  const setup = useSetup();
   const requirements = record.manifest?.requirements?.tools ?? record.pendingInstallRequirements?.tools ?? [];
   const [config, setConfig] = useState<AppConfigValue>(EMPTY_CONFIG);
   const [renaming, setRenaming] = useState(false);
@@ -52,14 +45,6 @@ export function GeneralTab({ record, busy, fail, run }: AppSettingsTabProps) {
       .catch((cause) => { if (active) fail(cause, t("apps.settingsReadFailed")); });
     return () => { active = false; };
   }, [fail, record.id, t]);
-
-  const updateAgent = (
-    role: "interactive" | "maintenance",
-    agent: AgentBackendId | "auto"
-  ) => void run(
-    () => setAgent({ appId: record.id, role, agent }),
-    t("apps.settingsAgentFailed")
-  );
 
   return (
     <SettingsCanvas>
@@ -95,37 +80,6 @@ export function GeneralTab({ record, busy, fail, run }: AppSettingsTabProps) {
                 {t("apps.settingsRename")}
               </SettingsButton>
             </div>
-            <SettingsRow
-              label={t("apps.settingsInteractiveAgent")}
-              description={t("apps.settingsInteractiveAgentHint")}
-              control={
-                <AgentSelect
-                  className="w-fit"
-                  disabled={busy}
-                  label={t("apps.settingsInteractiveAgent")}
-                  onChange={(value) => updateAgent("interactive", value as AgentBackendId)}
-                  options={(setup.status?.backends ?? []).filter(isBuiltinBackendInfo)}
-                  size="lg"
-                  value={record.agent}
-                />
-              }
-            />
-            <SettingsRow
-              label={t("apps.settingsMaintenanceAgent")}
-              description={t("apps.settingsMaintenanceAgentHint")}
-              control={
-                <AgentSelect
-                  allowAuto
-                  className="w-fit"
-                  disabled={busy}
-                  label={t("apps.settingsMaintenanceAgent")}
-                  onChange={(value) => updateAgent("maintenance", value)}
-                  options={maintenanceCapableBackends(setup.status?.backends ?? [], setup.now)}
-                  size="lg"
-                  value={record.maintenanceAgent}
-                />
-              }
-            />
           </SettingsList>
         </SettingsSection>
 
@@ -156,13 +110,6 @@ export function GeneralTab({ record, busy, fail, run }: AppSettingsTabProps) {
           </SettingsSection>
         )}
 
-        {/* 危险区坐末位，手要多走一段才够得着它。段落自己判断有没有话说。 */}
-        {record.presetId === "design-canvas" && (
-          <DesignDangerSection
-            onError={(cause) => fail(cause, t("apps.settingsSaveFailed"))}
-            record={record}
-          />
-        )}
       </div>
 
       <SidebarRenameDialog

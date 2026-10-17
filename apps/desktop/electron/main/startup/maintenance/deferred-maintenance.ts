@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on ACP trace rotation, the artifact runtime, Gallery/App/Chat/Project/History/Archive services, committed folder settings, the relay ledger and folder trash retention.
- * [OUTPUT]: Provides startDeferredMaintenance: ordered post-window GC/sweep/reconciliation with Design factory provisioning deferred until folder mounting completes, returning `drain` (quit waits for the running task, and any later provisioning run, before the owners close). Admission-closed sweeps stay in index.ts.
+ * [OUTPUT]: Ordered post-window GC/sweep/reconciliation and tracked shutdown drain without factory provisioning or external-history scanning.
  * [POS]: The post-window half of the composition root; it owns no lifetime and only names work index.ts used to run before the first frame.
  */
 
 import { recoverOrDefer } from "../../persistence/recovery-policy";
 import type { AppsService } from "../../apps/apps-service";
-import { artifactRuntime } from "../../artifacts/runtime";
+import { artifactRuntime } from "../../artifacts/core/runtime";
 import type { ArchiveService } from "../../archive/archive-service";
 import { rotateAcpTracesAsync } from "../../backends/acp/trace";
 import type { ChatStore } from "../../chats/chat-store";
@@ -57,7 +57,7 @@ export function startDeferredMaintenance(
 ) {
   const flights = new PostWindowFlights();
   const timer = setTimeout(() => {
-    void recoverOrDefer(async () => { await flights.run(maintenanceTasks(dependencies, flights), { cancelled: dependencies.cancelled }); });
+    void recoverOrDefer(async () => { await flights.run(maintenanceTasks(dependencies), { cancelled: dependencies.cancelled }); });
   }, POST_WINDOW_SETTLE_MS);
   timer.unref();
   /* Quit drains whatever maintenance is running before any owner closes; a quit before the settle delay starts none. */
@@ -65,8 +65,7 @@ export function startDeferredMaintenance(
 }
 
 function maintenanceTasks(
-  dependencies: DeferredMaintenanceDependencies,
-  flights: PostWindowFlights
+  dependencies: DeferredMaintenanceDependencies
 ): readonly PostWindowTask[] {
   const {
     apps,
@@ -136,10 +135,6 @@ function maintenanceTasks(
       },
     },
     {
-      name: "design-factory",
-      run: () => provisionDesignFactoryWhenReady(dependencies, flights),
-    },
-    {
       name: "chat-attachment-sweep",
       run: async () => {
         const sweep = await chats.sweepAttachments();
@@ -169,26 +164,4 @@ function maintenanceTasks(
       },
     },
   ];
-}
-
-async function provisionDesignFactoryWhenReady(dependencies: DeferredMaintenanceDependencies, flights: PostWindowFlights) {
-  const ready = () => {
-    const { libraryRoot, chatHomeState } = dependencies.settings.get();
-    return Boolean(libraryRoot) && chatHomeState === "ready";
-  };
-  const task: PostWindowTask = {
-    name: "design-factory",
-    run: async () => void (await dependencies.apps.ensureDesignFactory()),
-  };
-  if (ready()) { await task.run(); return; }
-  /* Selecting a folder first records its path, then mounts the stores. Source installation
-     may start only after that final ready commit, without holding up other maintenance. */
-  const unsubscribe = dependencies.settings.onChanged(() => {
-    if (dependencies.cancelled()) { unsubscribe(); return; }
-    if (!ready()) return;
-    unsubscribe();
-    void recoverOrDefer(async () => {
-      await flights.run([task], { cancelled: dependencies.cancelled });
-    });
-  });
 }

@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides the complete Simplified Chinese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery General appearance provides theme, language and archive confetti.
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
  * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
+ * Artifact workspace labels are supplied by the shared workspace catalogs.
  * [POS]: zh-CN desktop locale; compile-time structure must match English exactly
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/zh-cn";
@@ -147,8 +148,6 @@ promoteBaseToApp: "将 {{name}} 升级为应用"
     browser: settingsBrowserZhCN,
     extensions: settingsExtensionsZhCN,
     providers: {
-      toolAccess: "工具访问范围",
-      toolAccessHint: "Agent 工具无法读取 GitHub CLI 凭据、Git 凭据文件或 SSH 私钥。需要认证的 gh 和 git 命令，请在系统终端执行。随包 Node 不继承额外 CA 文件；需要企业 CA 的工具，请使用管理员配置好的终端。",
       title: "Providers",
       description: "设置默认 Agent，以及它们在 Agent 选择器中的顺序。",
       default: "默认",
@@ -359,13 +358,9 @@ currentModelUnavailable: "{{model}}（当前不可用）"
     settingsGeneral: "通用",
     settingsBasics: "基本信息",
     settingsNameAndIcon: "名称与图标",
-    designHiddenHint: "这款 App 现在处处打不开，$design 不会出现在 Chat 里。",
-    designReopen: "重新打开",
     settingsRename: "重命名",
     settingsRenameTitle: "重命名 App",
     settingsRenameDescription: "这个名字出现在侧栏、Chat 的 @ 提示和分享链接里。",
-    settingsInteractiveAgentHint: "在对话里让它改功能、改界面时，由它动手。",
-    settingsMaintenanceAgentHint: "重建版本、修环境这类后台活儿归它。选「自动」就由系统挑一个能干的。",
     settingsDanger: "危险区",
     settingsRequirements: "机器配置",
     settingsToolsHint: "这款 App 自己声明了要用哪些工具，下面是它们此刻在你机器上的状态。",
@@ -399,10 +394,6 @@ currentModelUnavailable: "{{model}}（当前不可用）"
     settingsCapabilities: "它能碰到什么",
     settingsCapabilitiesHint: "下面每一项都能单独关掉，关掉后这款 App 仍然可用，只是少一样本事。",
     settingsDataAccessHint: "它能不能打开你 Base 里的表，以及能不能改动里面的行。",
-    designDeleteHint: "连同每一份历史版本一起永久删掉，删了找不回来。这款 App 本身还在，重装后是一张白纸。",
-    designDeleteTitle: "确定删除全部画布？",
-    settingsInteractiveAgent: "编辑 Agent",
-    settingsMaintenanceAgent: "维护 Agent",
     settingsSave: "保存",
     settingsLiveSnapshot: "它要用的工具",
     settingsRedetect: "重新检查",
@@ -421,21 +412,9 @@ currentModelUnavailable: "{{model}}（当前不可用）"
     settingsStudioAccessStale: "此前已允许，但这份授权与当前版本不再匹配。打开 App 重新授权。",
     settingsRevokeStudioAccess: "撤销 App 内权限",
     settingsStudioRevokeFailed: "撤销 App 内权限失败",
-    designCanvasFile: "画布文件",
-    designNoImportCandidates: "没有可导入画布",
     guiChecking: "正在检查应用界面…",
     baseOpening: "正在打开数据…",
     surfacePreparing: "正在准备应用界面…",
-    designImport: "导入",
-    designVersion: "画布版本",
-    designRestore: "恢复",
-    designRestoreConfirm: "恢复此版本并替换当前画布？",
-    designHistory: "版本历史",
-    designHistoryHint: "选择一张画布与一个已保存版本，用它替换当前画布。",
-    designNoVersions: "还没有保存过版本",
-    designDeleteData: "删除全部画布",
-    designDeleteConfirm: "全部画布和它们的历史版本会一起被永久删除。这台机器上不会留备份，我们也恢复不了。这款 App 本身还在。",
-    designPresetReinstallHint: "可以重新安装 Design；此前保留的数据仍在，明确删掉的不会自动回来。",
     baseGuiConsent: {
       simpleTitle: "允许“{{name}}”使用以下权限",
       allowOpenTitle: "允许并打开“{{name}}”",
@@ -480,7 +459,6 @@ currentModelUnavailable: "{{model}}（当前不可用）"
     settingsOpenGlobalPlugins: "为所有 App 管理插件",
     settingsReadFailed: "App 设置读取失败",
     settingsSaveFailed: "App 设置保存失败",
-    settingsAgentFailed: "App Agent 设置失败",
     settingsDefaultFailed: "默认授权更新失败",
     settingsPluginRevokeFailed: "插件撤权失败",
     settingsPluginRebuildFailed: "插件换代失败",

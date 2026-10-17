@@ -263,6 +263,7 @@ export const ja: WorkbenchCopy = {
       memory: memoryPluginCopy,
       dock,
       sketch: { name: "スケッチ", summary: "描画、消去、再編集できる画像の添付。", description: "スケッチは入力欄に描画キャンバスを追加します。描く、消す、書き込むことができ、結果を再編集できる画像としてメッセージに添付します。" },
+      artifact: { name: "Artifact", summary: "ビジュアルデザインを作成し、会話の成果物をプレビューします。", description: "Artifact は Chat にデザインツールとインタラクティブなプレビューを追加します。デザイン文書は完全なアーカイブとバージョン画像として保存されます。", disableHint: "閉じる前に入力を保存します。プレビューを閉じ、受け付けた保存処理は完了します。" },
       base: {
         name: "Base",
         summary: "すべての Project にある表、ボード、リスト、フォーム。ワークフローと Base 型 App の土台です。",

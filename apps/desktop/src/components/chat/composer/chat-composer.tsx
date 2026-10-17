@@ -655,7 +655,6 @@ function ChatComposerContent({
               customProvider={Boolean(recent?.target.providerId || recent?.target.configKey)}
               now={setup.now}
               currentState={availability.state}
-              appBound={controller.project.kind === "fixed-app"}
               onRecheck={(backend) => void setup.recheckBackend(backend)}
               onRepair={(backend, action) => void setup.terminalAction(backend, action)}
               usageResetsAt={recent?.limit?.resetsAt}

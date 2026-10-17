@@ -61,7 +61,7 @@ export type AgentSwitchReceipt = Readonly<{
   historyView: HistoryViewFence;
 }>;
 export const AGENT_SWITCH_BLOCK_REASONS = [
-  "readonly", "app-bound", "archived", "running", "approval", "plan-review",
+  "readonly", "archived", "running", "approval", "plan-review",
   "queue", "paused", "submission", "recovery", "revision-stale",
 ] as const;
 export type AgentSwitchBlockReason = typeof AGENT_SWITCH_BLOCK_REASONS[number];

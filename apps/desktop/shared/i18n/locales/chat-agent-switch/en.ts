@@ -16,7 +16,6 @@ export const chatAgentSwitchEn = {
   "queue": "Handle queued messages before switching.",
   "recovery": "Finish recovery before switching.",
   "readonly": "This Chat is read-only and cannot switch Agents.",
-  "app-bound": "This Agent is set by the App.",
   "archived": "Archived Chats cannot switch Agents.",
   "approval": "Resolve the pending approval first.",
   "plan-review": "Finish the Plan review first.",

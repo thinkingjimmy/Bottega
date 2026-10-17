@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Apps package IPC, RepoProbe/main-owned PresetCatalog/SourceResolver/AppConfig/gh Detection, Base importer, optional immutable factory flow, ShareFlow, and canonical AppRecord query port
+ * [INPUT]: Apps package IPC, main preset/source/config/probe owners, GitHub detection, Base importer, ShareFlow and canonical App queries.
  * [OUTPUT]: Provides typed package admission, durable original-candidate resumption, explicit update application, pending configuration and existing install/share ownership.
  * [POS]: apps/share package-installation front door; AppsService retains only the general App lifecycle while package/distribution details stay encapsulated here
  */
@@ -30,7 +30,6 @@ import { detectGhStatus } from "./gh-detect";
 import { AppCandidateUnavailableError, RepoProbeService } from "./package/repo-probe";
 import {
   PresetInstallService,
-  type PresetFactoryFlow,
 } from "./preset/preset-install-service";
 import { PresetSourceResolver } from "./preset/preset-source";
 import type { ShareFlow } from "./share-flow";
@@ -72,10 +71,6 @@ export class AppPackageController {
     if (this.importer || this.shareFlow) throw new Error("App package flows 已配置");
     this.importer = importer;
     this.shareFlow = shareFlow;
-  }
-
-  configureFactoryPreset(factory: PresetFactoryFlow) {
-    this.presetInstaller.configureFactory(factory);
   }
 
   configureExtensions(integration: AppExtensionIntegration) {

@@ -263,6 +263,7 @@ export const fr: WorkbenchCopy = {
       memory: memoryPluginCopy,
       dock,
       sketch: { name: "Croquis", summary: "Dessinez, effacez et joignez une image modifiable.", description: "Croquis ajoute une zone de dessin au compositeur. Dessinez, effacez, annotez, puis joignez le résultat à votre message comme image modifiable." },
+      artifact: { name: "Artifact", summary: "Créez des designs et prévisualisez les fichiers de la conversation.", description: "Artifact ajoute des outils de design et des aperçus interactifs à Chat. Les documents sont enregistrés dans des archives complètes avec des captures de chaque version.", disableHint: "Vos commentaires sont enregistrés avant la fermeture. Les aperçus se ferment et les sauvegardes admises se terminent." },
       base: {
         name: "Base",
         summary: "Tableaux, Kanban, listes et formulaires dans chaque Project. Les Workflows et les Apps basées sur Base s’appuient dessus.",

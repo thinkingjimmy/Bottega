@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React, AI SDK FileUIPart, host-injected UI text, pure file-admission rules, and typed useAttachmentList commands
- * [OUTPUT]: Provides the PromptInput value model, the shared file-admission helpers (usePromptInputFileMessages/admitAttachmentFiles), workspace entry projection, and attachment access hooks
+ * [OUTPUT]: Rich draft types including fixed design references, shared file admission, workspace projection and attachment access.
  * [POS]: packages/ui/src/components/ai-elements/prompt; The state contract layer of ai-elements PromptInput; Draft owners can upgrade the lifecycle of the attachment to a cross-mounted store
  */
 
@@ -35,6 +35,7 @@ export type PromptInputFilePart = FileUIPart & {
 };
 
 export type RichNode =
+  | { id: string; type: "design"; name: string; reference: import("@bottega/contracts/model/artifacts/design").DesignReference }
   | { id: string; type: "text"; value: string }
   | {
       id: string;
@@ -88,6 +89,7 @@ export function richValueDisplayText(value: RichValue) {
     .map((node) => {
       if (node.type === "text") return node.value;
       if (node.type === "skill") return `$${node.label}`;
+      if (node.type === "design") return `@${node.name}`;
       if (node.type === "section" || node.type === "history") return `@${node.name}`;
       if (node.type === "workspace-file") {
         return `@${node.path}${node.entryKind === "dir" ? "/" : ""}`;

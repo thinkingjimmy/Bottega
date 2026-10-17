@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Reads saved App configuration through the common command resolver; Depends on sealed generations, shared command plans, platform readiness, loopback listener audit and durable server custody
- * [OUTPUT]: Hosts qualified App execution; passive inventory reads use a binding-scoped cache, invalidated by explicit checks and repopulated only by the current successful inspection. Checks availability before cached or new starts and preserves lifecycle state on an intentional close.
+ * [INPUT]: Reads saved configuration; depends on automatic purpose-scoped maintenance selection, sealed generations, command plans, platform readiness, listener audit and server custody.
+ * [OUTPUT]: Hosts qualified App execution with a consent-bound frozen upkeep Agent; explicit inventory selects automatically while passive reads stay cached. Closed Apps retain lifecycle state.
  * [POS]: In-memory apps runtime state only, never a source of truth, and empty at the end of its lifecycle; process truth always lives in ProcessCustodyJournal, no PID table is kept here
  */
 
@@ -20,11 +20,13 @@ import {
   type ServerAppManifest,
 } from "../../../../shared/ipc/apps/apps-ipc";
 import { platformCapabilityUnavailable } from "../../../../shared/platform/platform-capabilities";
+import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
 import { sanitizedProcessEnvironment } from "../../backends/runtime/runtime-probe";
-import { backendById, backendRuntimeRegistry } from "../../backends";
+import { backendRuntimeRegistry } from "../../backends";
 import { headlessExecutor } from "../../backends/jobs/executor";
 import { acquireAgentProcessLease } from "../../agent-process-supervisor";
 import type {
+  BackendDescriptor,
   HeadlessRun,
   MaintenanceSession,
 } from "../../backends/types";
@@ -53,12 +55,13 @@ import type {
   AppServerCustodyRuntime,
 } from "../runtime/server-custody";
 import { assertAgentRequirements, type AgentToolInventory } from "../runtime/agent-tools";
+import { maintenanceAgentForTask, MaintenanceAgentUnavailableError, recordMaintenanceAgent, resolveMaintenanceAgent } from "../runtime/maintenance-agent";
 
 const START_TIMEOUT_MS = 60_000;
 const AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
 
 function inventoryBindingKey(record: AppRecord) {
-  return `${record.maintenanceAgent}:${record.bindingRevision}:${record.dir}`;
+  return `${record.bindingRevision}:${record.dir}`;
 }
 
 type RuntimeEntry = {
@@ -80,7 +83,7 @@ type RuntimeEntry = {
 export const APP_DATA_ENV = "APP_DATA_DIR";
 
 export class AppRuntime {
-  private readonly inventoryCache = new Map<string, { key: string; inventory: AgentToolInventory }>();
+  private readonly inventoryCache = new Map<string, { key: string; backend: AgentBackendId; generation: number; inventory: AgentToolInventory }>();
   private readonly inventoryInspections = new Map<string, symbol>();
   private readonly running = new Map<string, RuntimeEntry>();
 
@@ -106,7 +109,8 @@ export class AppRuntime {
   cachedToolInventory(appId: string): AgentToolInventory | null {
     const record = this.store.get(appId);
     const cached = this.inventoryCache.get(appId);
-    return record && cached?.key === inventoryBindingKey(record) ? cached.inventory : null;
+    return record && cached?.key === inventoryBindingKey(record) &&
+      backendRuntimeRegistry.snapshot(cached.backend).generation === cached.generation ? cached.inventory : null;
   }
 
   /** An explicit attempt retires old health, including when admission or inspection fails. */
@@ -117,15 +121,18 @@ export class AppRuntime {
     try {
       const record = this.store.get(appId);
       if (!record) throw new Error("App 不存在");
-      if (record.maintenanceAgent === "auto") return null;
-      const descriptor = backendById(record.maintenanceAgent);
-      if (!descriptor.maintenance) return null;
+      const selected = await resolveMaintenanceAgent("serve", { cwd: record.dir }).catch(cause => {
+        if (cause instanceof MaintenanceAgentUnavailableError) return null;
+        throw cause;
+      });
+      if (!selected) return null;
+      const { descriptor, maintenance, snapshot } = selected;
       const key = inventoryBindingKey(record);
       const isCurrent = () => {
         const current = this.store.get(appId);
-        return this.inventoryInspections.get(appId) === inspection && current && inventoryBindingKey(current) === key;
+        return this.inventoryInspections.get(appId) === inspection && current && inventoryBindingKey(current) === key &&
+          backendRuntimeRegistry.snapshot(descriptor.id).generation === snapshot.generation;
       };
-      const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
       if (snapshot.runtimeStatus !== "installed" ||
         (await backendRuntimeRegistry.operationEligibility(descriptor.id, "serve", { cwd: record.dir, ignoreUserConfig: true }, snapshot)).decision !== "allow") return null;
       const signal = AbortSignal.timeout(START_TIMEOUT_MS);
@@ -134,12 +141,12 @@ export class AppRuntime {
         if (!await backendRuntimeRegistry.confirmForSpawn(descriptor.id, snapshot, signal) || !isCurrent()) {
           throw new Error("App inventory execution identity changed");
         }
-        const session = await descriptor.maintenance.open({
+        const session = await maintenance.open({
           backend: descriptor.id, userData: this.userData, appId: record.id, workspace: record.dir, runtime: snapshot.runtime,
         });
         const inventory = await session.inspectToolInventory(record.dir);
         if (!isCurrent()) return null;
-        this.inventoryCache.set(appId, { key, inventory });
+        this.inventoryCache.set(appId, { key, backend: descriptor.id, generation: snapshot.generation, inventory });
         return inventory;
       } finally { lease.release(); }
     } finally {
@@ -539,13 +546,10 @@ export class AppRuntime {
   ) {
     try {
       if (entry.stopping || this.running.get(record.id) !== entry) return;
-      if (record.maintenanceAgent === "auto") {
-        throw new Error("App 尚未钉住维护 Agent");
-      }
-      const descriptor = backendById(record.maintenanceAgent);
-      if (!descriptor.maintenance || !descriptor.headless) {
-        throw new Error(`${descriptor.displayName} 不支持 App 伺服维护`);
-      }
+      const { descriptor, maintenance } = await maintenanceAgentForTask(entry, "serve", {
+        cwd: record.dir, requireConsent: true, consent: record.headlessConsent,
+        onSelected: selected => recordMaintenanceAgent(this.store, record.id, selected.descriptor.id),
+      });
       const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
       if (
         snapshot.runtimeStatus !== "installed" ||
@@ -563,7 +567,7 @@ export class AppRuntime {
       if (record.headlessConsent?.backend !== descriptor.id) {
         throw new Error(`${descriptor.displayName} 缺少无人值守维护授权`);
       }
-      const session = await descriptor.maintenance.open({
+      const session = await maintenance.open({
         backend: descriptor.id,
         userData: this.userData,
         appId: record.id,
@@ -638,7 +642,7 @@ export class AppRuntime {
   private async runAgentTurn(
     record: AppRecord,
     entry: RuntimeEntry,
-    descriptor: ReturnType<typeof backendById>,
+    descriptor: BackendDescriptor,
     session: MaintenanceSession,
     prompt: string
   ) {

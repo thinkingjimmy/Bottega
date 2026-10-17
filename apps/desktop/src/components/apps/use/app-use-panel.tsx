@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on AppUseChat explicit state machine, AppSidePanel chrome, fixed-App ChatView, i18n, and accessible UI primitives
- * [OUTPUT]: Provides separate Conversation and History surfaces with deterministic focus return, Back, New Chat, one refresh entry, frozen incremental history announced on its status line only, switching recovery, bottom dock, and consistent 32px panel chrome
+ * [OUTPUT]: Provides Conversation and History surfaces with Chat-owned Agent choice, focus return, New Chat, frozen history, switching recovery and bottom dock.
  * [POS]: App Use product surface; history is a first-class state rather than a chat selector embedded in Conversation chrome
  */
 
@@ -186,7 +186,6 @@ function ConversationSurface({
       <Suspense fallback={<div className="grid size-full place-items-center text-muted-foreground text-sm">{t("apps.usePanel.loading")}</div>}>
         <ChatView
           key={`${chat.chatId}:${chat.incarnationId}`}
-          draftAgent={record.agent}
           emptyDescription={t("apps.usePanel.emptyDescription")}
           emptyTitle={t("apps.usePanel.emptyTitle", { name: record.displayName })}
           enableSidePanel={false}

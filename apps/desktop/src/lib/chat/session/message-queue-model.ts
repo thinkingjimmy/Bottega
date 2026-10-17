@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Depends on shared ManualTurnSubmission, shared SubmissionContentV1, PromptInput/RichInput types, and GalleryAttachmentOrigin
  * [OUTPUT]: Provides isEmptyMessage (F-06: never sent or queued), submissionRoute (the session layer's send/queue/refuse decision, empty first), answerRoute (an answer to the ended turn — Retry, Plan decision, auth retry — never jumps ahead of queued messages; F-46 ③), QueuedAttachment/QueuedPrompt/MessageQueue DTOs, a queue that is never paused while empty (F-05), typed QueueError classification, budget and workspace-identity fencing, Steer custody over workspace files, CAS-based ownership claims, and pure queue state-transition functions (enqueue/removeItem/moveItem/etc.) An item held for an unavailable attachment is skipped by claims and Steer.
+ * QueuedPrompt retains an optional stable review request key for durable original-submission recovery.
  * [POS]: apps/desktop/src/lib/chat/session; lib's message-queue state machine; React/store layers are only responsible for holding state and executing side effects
  */
 
@@ -34,6 +35,7 @@ export type QueuedAttachment =
     };
 
 export type QueuedPrompt = {
+  requestKey?: { id: string; createdAt: number };
   richValue: RichValue;
   attachments: QueuedAttachment[];
   displayText: string;
@@ -196,6 +198,7 @@ export function queuedPrompt(
       attachmentFromPart(file, (file as { id?: string }).id ?? createId())
     ),
     displayText: message.input.displayText,
+    ...(message.requestKey ? { requestKey: structuredClone(message.requestKey) } : {}),
     ...(message.submissionData !== undefined
       ? { submissionData: structuredClone(message.submissionData) }
       : {}),
@@ -278,6 +281,9 @@ export function enqueue(
   globalBytes?: number,
   extraBytes: QueueExtraBytes = noExtraBytes
 ): QueueMutationResult {
+  const existing = queue.items.find(value => value.id === item.id);
+  if (existing) return JSON.stringify(existing.prompt) === JSON.stringify(item.prompt)
+    ? { queue, accepted: true } : { queue, accepted: false, reason: "Review request parameters changed" };
   if (queue.items.length >= QUEUE_LIMIT) {
     return {
       queue,

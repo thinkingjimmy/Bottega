@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on outcome-aware ChatStore, ChatHomeService, App agent/project validation ports, project serialization, and mutation publication
- * [OUTPUT]: Provides createDormantAppChat, an idempotent Chat Home + canonical App ChatRecord transaction whose unknown commit never rolls back Home
+ * [OUTPUT]: Provides idempotent App Chat creation with ordinary initial Agent preferences; recovery preserves each Chat's canonical Agent and ownership.
  * [POS]: chats/lifecycle transaction owner for use-slot identity; ChatsService remains a thin trusted facade
  */
 
 import { randomUUID } from "node:crypto";
-import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
+import type { AgentBackendId, AgentTurnOptions } from "../../../../shared/ipc/agent/agent-ipc";
 import type { AppChatRole, ChatRecord } from "../../../../shared/ipc/content/chats-ipc";
 import type { ChatHomeService } from "../../chat-home/chat-home-service";
 import {
@@ -31,6 +31,7 @@ type Dependencies = {
     "commitCreation" | "rollbackCreation"
   > | undefined;
   resolveAgent(appId: string, projectId: string): AgentBackendId | undefined;
+  resolveOptions?(agent: AgentBackendId): AgentTurnOptions;
   withProject<T>(projectId: string, task: () => Promise<T>): Promise<T>;
   publish(mutation: ChatMessageMutation): void;
   now?: () => number;
@@ -57,7 +58,7 @@ export async function createDormantAppChat(
       await homes!.markPrepared(input.id);
       const existing = await dependencies.store.getConversation(input.id);
       if (existing) {
-        assertExisting(existing, input, agent);
+        assertExisting(existing, input);
         await homes!.commitCreation(input.id);
         return { record: existing, mutation: null };
       }
@@ -82,6 +83,7 @@ export async function createDormantAppChat(
           incarnationId: home.incarnationId,
           homeDir: home.homeDir,
           title: input.title,
+          options: dependencies.resolveOptions?.(agent),
           appRole: input.appRole,
           appId: input.appId,
           dormantNotice: true,
@@ -102,13 +104,13 @@ export async function createDormantAppChat(
 
 function assertExisting(
   existing: ChatRecord,
-  input: DormantAppChatInput,
-  agent: AgentBackendId
+  input: DormantAppChatInput
 ) {
   if (
     existing.projectId !== input.projectId ||
     existing.appRole !== input.appRole ||
-    existing.agent !== agent
+    existing.context.kind === "ordinary" ||
+    existing.context.appId !== input.appId
   ) {
     throw new Error("App chat slot 与已有 canonical chat 冲突");
   }

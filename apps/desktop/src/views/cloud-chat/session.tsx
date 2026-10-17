@@ -50,7 +50,7 @@ export function DesktopCloudSession({ head, sources, draft, renderPage, focusCom
   const CloudChatSession = page.CloudChatSession;
   return <PluginSurfaceEnvironmentProvider value={nativePluginEnvironment}><CloudChatSession renderPage={renderPage} head={head} platform={sources} locale={i18n.language} panels={panels} draft={remoteDraft} focusComposer={focusComposer}
     chrome={{ chrome: "native", collapsedInset: state === "collapsed" ? isApplePlatform() ? "mac" : "compact" : undefined }}
-    artifacts={(children, openPanel) => <MirrorArtifacts chatId={head.chat.id} incarnationId={head.chat.incarnationId} locale={i18n.language} openPanel={openPanel}>{children}</MirrorArtifacts>}
+    artifacts={(children, openPanel) => <MirrorArtifacts chatId={head.chat.id} incarnationId={head.chat.incarnationId} ownerDeviceId={head.ownerDeviceId} locale={i18n.language} openPanel={openPanel}>{children}</MirrorArtifacts>}
     headerActions={<Popover open={menuOpen} onOpenChange={open => { if (open || !menuLocked) setMenuOpen(open); }}><PopoverTrigger asChild><Button size="icon-lg" variant="ghost" aria-label={t("chat.sidePanel.more")}><Ellipsis /></Button></PopoverTrigger>
       <PopoverContent align="end" className="max-h-[80dvh] w-80 overflow-y-auto"><DesktopFactsEntry chatId={head.chat.id} onBlockingChange={setMenuLocked} /></PopoverContent></Popover>}
     notices={head.chat.classification.appId && <SourceApp appId={head.chat.classification.appId} />}

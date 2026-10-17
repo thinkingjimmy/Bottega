@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Authorized immutable snapshots, exact caller window IDs and the existing loopback gateway origin factory.
- * [OUTPUT]: Revocable per-artifact origins, read-only resource serving, CSP and bounded Range responses.
+ * [INPUT]: Authorized immutable snapshots, exact caller windows/generation, prepared design HTML and existing loopback origin factory.
+ * [OUTPUT]: Revocable bounded leases, ordinary read-only resources and opaque offline prepared design origins with strict navigation policy.
  * [POS]: Artifact HTTP boundary; never resolves request paths against a workspace or filesystem root.
  */
 import { randomUUID } from "node:crypto";
@@ -8,17 +8,37 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { unpackArtifactArchive } from "@ai-chat/cloud-protocol/artifacts/archive";
 import { ARTIFACT_FRAGMENT_CSP, artifactDirectoryCsp } from "@ai-chat/cloud-protocol/artifacts/frame-security";
 import type { ArtifactRef, ArtifactLease } from "../../../../shared/ipc/apps/artifact-ipc";
-import { artifactMime } from "../admission";
-import type { ArtifactService } from "../service";
+import { artifactMime } from "../admission/files";
+import type { ArtifactService } from "../core/service";
+import { assertArtifactAdmission, artifactGeneration } from "../admission/state";
+import { DESIGN_FRAME_CSP } from "@ai-chat/cloud-protocol/artifacts/design/frame";
 type Lease = { lease: ArtifactLease; ref: ArtifactRef; windowId: number; source: Awaited<ReturnType<ArtifactService["resolve"]>>;
-  files: Map<string, Uint8Array>; entry: string };
+  files: Map<string, Uint8Array>; entry: string; generation?: string; prepared?: boolean };
 export class ArtifactGateway {
   private readonly leases = new Map<string, Lease>();
   private origin: ((id: string) => string) | null = null;
   constructor(private readonly service: ArtifactService) {}
   configure(origin: (id: string) => string) { this.origin = origin; }
+  revokeAll() { this.leases.clear(); }
+  facts() { this.purge(); return { count: this.leases.size, leases: [...this.leases.values()].map(value => ({ id: value.lease.id,
+    windowId: value.windowId, chatId: value.ref.chatId, artifactId: value.ref.artifactId, generation: value.generation })) }; }
+  async issuePrepared(ref: ArtifactRef, windowId: number, id: string, html: string) {
+    assertArtifactAdmission(); this.purge();
+    const generation = artifactGeneration();
+    if (!this.origin || this.leases.size >= 8) throw new Error("artifact-lease-budget");
+    const source = await this.service.resolve(ref), bytes = new TextEncoder().encode(html);
+    const retained = [...this.leases.values()].reduce((total, value) => total + [...value.files.values()].reduce((sum, data) => sum + data.length, 0), 0);
+    assertArtifactAdmission();
+    if (generation !== artifactGeneration()) throw new Error("Artifact generation expired");
+    if (this.leases.size >= 8 || retained + bytes.length > 256 * 1024 * 1024) throw new Error("artifact-lease-budget");
+    const origin = this.origin("art-" + id), entry = "board.html";
+    const lease: ArtifactLease = { id, origin, expiresAt: Date.now() + 30 * 60_000, url: `${origin}/_artifact/${id}/${entry}`, sandbox: "allow-scripts" };
+    this.leases.set(id, { lease, ref, windowId, source, files: new Map([[entry, bytes]]), entry, generation, prepared: true });
+    return lease;
+  }
   private purge() { for (const [id, value] of this.leases) if (value.lease.expiresAt <= Date.now()) this.leases.delete(id); }
   async issue(ref: ArtifactRef, windowId: number) {
+    assertArtifactAdmission();
     this.purge();
     if (!this.origin || this.leases.size >= 8) throw new Error("artifact-lease-budget");
     const source = await this.service.resolve(ref);
@@ -39,6 +59,7 @@ export class ArtifactGateway {
     try {
       const url = new URL(value), id = url.pathname.split("/")[2], lease = id ? this.leases.get(id) : null;
       if (!lease || (windowId !== undefined && lease.windowId !== windowId) || lease.lease.expiresAt <= Date.now()) return false;
+      if (lease.generation && lease.generation !== artifactGeneration()) return false;
       this.service.assert(lease.ref);
       return url.origin === lease.lease.origin && url.pathname === new URL(lease.lease.url).pathname &&
         [...url.searchParams].every(([key, value]) => key === "theme" && ["light", "dark"].includes(value));
@@ -59,8 +80,9 @@ export class ArtifactGateway {
     if (!bytes) return deny(404);
     const fence = lease.source.record.fence, directory = fence.kind === "static-site";
     let body = bytes, mime = directory ? artifactMime(filename) : fence.mime!;
-    const csp = directory ? artifactDirectoryCsp(lease.lease.origin) : ARTIFACT_FRAGMENT_CSP;
-    const shell = mime === "text/html" || fence.kind === "svg";
+    const csp = lease.prepared ? DESIGN_FRAME_CSP : directory ? artifactDirectoryCsp(lease.lease.origin) : ARTIFACT_FRAGMENT_CSP;
+    const shell = !lease.prepared && (mime === "text/html" || fence.kind === "svg");
+    if (lease.prepared) mime = "text/html";
     if (shell) {
       /* Loaded on the first shell response, not with main's startup bundle (~60 KB of vendored viewer assets). */
       const { artifactViewerShell } = await import("@ai-chat/cloud-protocol/artifacts/viewer-shell");

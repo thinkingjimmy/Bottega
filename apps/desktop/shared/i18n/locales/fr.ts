@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides the complete French catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery General appearance provides theme, language and archive confetti.
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
  * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
+ * Artifact workspace labels are supplied by the shared workspace catalogs.
  * [POS]: French desktop locale; compile-time structure must match English exactly
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/fr";
@@ -147,8 +148,6 @@ promoteBaseToApp: "Promouvoir {{name}} en App"
     browser: settingsBrowserFr,
     extensions: settingsExtensionsFr,
     providers: {
-      toolAccess: "Accès des outils",
-      toolAccessHint: "Les outils Agent ne peuvent pas lire les identifiants GitHub CLI, les fichiers d’identifiants Git ni les clés privées SSH. Exécutez les commandes gh et git authentifiées dans le terminal système. Le Node intégré ne reprend pas les fichiers CA supplémentaires ; utilisez le terminal configuré par votre administrateur pour les outils qui exigent le CA de votre entreprise.",
       title: "Fournisseurs",
       description: "Définissez l’Agent par défaut et son ordre dans les sélecteurs d’Agent.",
       default: "Par défaut",
@@ -362,13 +361,9 @@ currentModelUnavailable: "{{model}} (indisponible)"
     settingsGeneral: "Général",
     settingsBasics: "Informations",
     settingsNameAndIcon: "Nom et icône",
-    designHiddenHint: "Cette App ne peut s’ouvrir nulle part pour l’instant, donc $design n’apparaîtra pas dans le Chat.",
-    designReopen: "Rouvrir",
     settingsRename: "Renommer",
     settingsRenameTitle: "Renommer l’App",
     settingsRenameDescription: "Ce nom apparaît dans la Sidebar, dans les suggestions @ du Chat et dans les liens de partage.",
-    settingsInteractiveAgentHint: "Quand vous lui demandez de changer une fonction ou l’interface dans une conversation, c’est cet Agent qui agit.",
-    settingsMaintenanceAgentHint: "Reconstructions, réparation de l’environnement et installation de plugins lui reviennent. « Auto » laisse le produit choisir.",
     settingsDanger: "Zone dangereuse",
     settingsRequirements: "Configuration de la machine",
     settingsToolsHint: "Cette App déclare les outils dont elle a besoin. Voici où ils en sont sur votre machine.",
@@ -402,10 +397,6 @@ currentModelUnavailable: "{{model}} (indisponible)"
     settingsCapabilities: "Ce qu’elle peut atteindre",
     settingsCapabilitiesHint: "Chacune de ces options se coupe séparément. L’App continue de fonctionner, avec une capacité en moins.",
     settingsDataAccessHint: "Si elle peut ouvrir les tables de votre Base, et si elle peut modifier les lignes qu’elles contiennent.",
-    designDeleteHint: "Toutes les versions passées partent avec, définitivement. Aucun retour en arrière. L’App reste ; réinstallez-la et vous repartez d’une page blanche.",
-    designDeleteTitle: "Supprimer tous les canevas ?",
-    settingsInteractiveAgent: "Agent d’édition",
-    settingsMaintenanceAgent: "Agent de maintenance",
     settingsSave: "Enregistrer",
     settingsLiveSnapshot: "Les outils qu’elle utilise",
     settingsRedetect: "Revérifier",
@@ -424,21 +415,9 @@ currentModelUnavailable: "{{model}} (indisponible)"
     settingsStudioAccessStale: "Autorisée auparavant, mais cette approbation ne correspond plus à la build actuelle. Ouvrez l’App pour autoriser à nouveau.",
     settingsRevokeStudioAccess: "Révoquer l’accès dans l’App",
     settingsStudioRevokeFailed: "Échec de la révocation de l’accès dans l’App",
-    designCanvasFile: "Fichier de canevas",
-    designNoImportCandidates: "Aucun canevas à importer",
     guiChecking: "Vérification de l’interface de l’App…",
     baseOpening: "Ouverture des données…",
     surfacePreparing: "Préparation de l’interface de l’App…",
-    designImport: "Importer",
-    designVersion: "Version du canevas",
-    designRestore: "Restaurer",
-    designRestoreConfirm: "Restaurer cette version et remplacer le canevas actuel ?",
-    designHistory: "Historique des versions",
-    designHistoryHint: "Choisissez un canevas et une version enregistrée, puis remplacez le canevas actuel.",
-    designNoVersions: "Aucune version enregistrée",
-    designDeleteData: "Supprimer tous les canevas",
-    designDeleteConfirm: "Tous les canevas et toutes leurs versions passées seront supprimés définitivement. Aucune sauvegarde n’est conservée sur cette machine et nous ne pouvons rien restaurer. L’App elle-même reste.",
-    designPresetReinstallHint: "Design peut être réinstallée. Les données conservées sont toujours là ; ce que vous avez explicitement supprimé ne revient pas.",
     baseGuiConsent: {
       simpleTitle: "Autoriser « {{name}} » à utiliser ces accès",
       allowOpenTitle: "Autoriser et ouvrir « {{name}} »",
@@ -483,7 +462,6 @@ currentModelUnavailable: "{{model}} (indisponible)"
     settingsOpenGlobalPlugins: "Gérer les plugins de toutes les Apps",
     settingsReadFailed: "Impossible de lire les réglages de l’App",
     settingsSaveFailed: "Impossible d’enregistrer les réglages de l’App",
-    settingsAgentFailed: "Impossible de modifier l’Agent de l’App",
     settingsDefaultFailed: "Impossible de modifier l’autorisation par défaut",
     settingsPluginRevokeFailed: "Impossible de révoquer le plugin",
     settingsPluginRebuildFailed: "Impossible de reconstruire la génération du plugin",

@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Depends on closed protocol identities, portable Agent options, canonical content hashing and standalone interaction contracts.
  * [OUTPUT]: Provides the closed remote reasons (plan refusals included), bounded remote commands (including catalog-backed model, effort and speed choices), execution evidence carrying the device that produced it, the steer outcome (consumed / transferred) in the encrypted receipt, the shared interaction-source identity, `handledElsewhere`, target capabilities with each Agent's model catalog, and content-free deleted creation receipts. Names disabled App first-message reservation refusals. Protocol 16 binds atomic queue exchange, queued Steer and source-pausing cancellation to immutable commands.
+ * Protocol 17 carries typed fixed design references and optional encrypted exact-computer Artifact capability.
  * [POS]: Shared remote control boundary; local sessions, paths, grants and execution recovery have no command representation.
  */
 import { remoteMemoryStatusSchema } from "./memory/memory-status";
@@ -9,6 +10,7 @@ import { interactionSourceSchema, remoteApprovalDecisionSchema } from "./input/i
 export { interactionSourceSchema, remoteApprovalDecisionSchema, type InteractionSource } from "./input/interactions";
 import { z } from "zod";
 import { remotePluginCatalogSchema } from "../surfaces/plugin/catalog";
+import { artifactCapabilitySchema } from "../artifacts/design/core/capability";
 import { REMOTE_REASONS } from "./reasons";
 import { cloudIdSchema as id, deviceNameSchema, devicePlatformSchema, lastSeenReasonSchema } from "../auth";
 import { protocolHeaderSchema } from "../config";
@@ -158,7 +160,7 @@ export const remoteTargetSchema = z.object({ deviceId: id, name: deviceNameSchem
   agents: remoteAgentsSchema, projectBound: z.boolean().nullable(), sessionContinuity: z.enum(["original-device", "new-session"]),
   homeBytes: rev, homeState: cloudChatHeadSchema.shape.homeState,
   /** R-33: the computer's last published Memory status; absent when its phone facade is off. */
-  plugins: remotePluginCatalogSchema.optional(), memory: remoteMemoryStatusSchema.nullable().optional() }).strict();
+  artifact: artifactCapabilitySchema.nullable().optional(), plugins: remotePluginCatalogSchema.optional(), memory: remoteMemoryStatusSchema.nullable().optional() }).strict();
 export type RemoteTarget = z.infer<typeof remoteTargetSchema>;
 export const remoteTargetsSchema = z.object({ items: z.array(remoteTargetSchema).max(REMOTE_LIMITS.pageRows), cursor: z.string().nullable(), complete: z.boolean(),
   sourceDeviceId: id, sourceProtocolVersion: rev, remoteControlEnabled: z.boolean(), serverTime: rev }).strict();

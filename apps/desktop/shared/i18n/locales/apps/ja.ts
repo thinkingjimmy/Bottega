@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
  * [OUTPUT]: Provides the Apps Japanese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
+ * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Japanese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
 
@@ -11,10 +12,6 @@ export const appsJa: typeof appsEn = {
     listFailed: "App の読み込みに失敗しました：{{message}}",
   },
   presets: {
-    designCanvas: {
-      name: "Bottega Design Canvas",
-      description: "Bottega が対応するコーディング Agent で自己完結型 HTML キャンバスを作成・比較・レビューし、要素や領域のアンカーを Chat に戻して反復を続けます。",
-    },
     expenseTracker: {
       name: "支出記録",
       description: "一文で支出を記録して構造化された明細に変換し、カテゴリ別の割合や日々の推移をいつでも確認できます。",
@@ -408,7 +405,7 @@ export const appsJa: typeof appsEn = {
     crashed: "App プロセスが予期せず終了しました",
     stopped: "App は停止しました",
     viewLog: "ログを表示",
-    settings: "App Agent 設定",
+    settings: "App 設定",
     edit: "App を編集",
     rebuilding: "変更を適用して App を再ビルド中",
     agentWarning: "Agent が起動しませんでした：{{warning}}",

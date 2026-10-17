@@ -154,7 +154,7 @@ export type AppendTurnResult = {
 };
 
 export type BridgeEntry = TurnEntry<AgentTurn> & {
-  artifacts?: ReturnType<import("../../artifacts/service").ArtifactService["begin"]>;
+  artifacts?: ReturnType<import("../../artifacts/core/service").ArtifactService["begin"]>;
   payload?: AgentSendPayload;
   context?: AgentContext;
   builtinMcp?: IssuedBuiltinMcp;

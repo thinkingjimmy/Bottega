@@ -4,7 +4,7 @@
  * [POS]: apps/desktop/electron/main/window/security; Main/window browsing-context security boundary; product entry points cannot widen navigation, RTC, or permission authority
  */
 
-import { artifactRuntime } from "../../artifacts/runtime";
+import { artifactRuntime } from "../../artifacts/core/runtime";
 import { pluginSurfaceIntegration } from "../../plugins/surface-integration/runtime";
 import {
   session,

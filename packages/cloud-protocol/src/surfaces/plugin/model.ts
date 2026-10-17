@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Zod, immutable encrypted files and shared Surface digests and budgets.
+ * [INPUT]: Zod, the path-only snapshot rule, encrypted files and Surface digests/budgets.
  * [OUTPUT]: Plugin subject, manifest/head validation, operation declarations and owner identity.
  * [POS]: Plugin Surface identity boundary; plugins receive no App ID or App grant.
  */
@@ -7,7 +7,7 @@ import { z } from "zod";
 import { PLUGIN_SURFACE_OPERATIONS } from "@bottega/contracts/plugins/surface/contract";
 import { encryptedFileDescriptorSchema } from "../../blobs/encrypted/model";
 import { hashCanonical, canonicalJson } from "../../encryption/encoding";
-import { artifactRelativePathSchema } from "../../turns/text/artifact-reference";
+import { artifactRelativePathSchema } from "../../turns/text/artifact-path";
 import { APP_SURFACE_LIMITS, APP_SURFACE_FILE_MIME, appSurfaceTreeDigest } from "../manifest";
 const id = z.string().regex(/^[a-zA-Z0-9_.:-]{1,128}$/);
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);

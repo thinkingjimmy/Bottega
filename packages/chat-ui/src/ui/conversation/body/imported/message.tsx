@@ -1,9 +1,9 @@
 /**
- * [INPUT]: Depends on immutable imported fields, scoped verification, shared native message surfaces, the shared artifact renderer boundary and localized controls.
+ * [INPUT]: Immutable imported fields, scoped verification, text-only Artifact markers, native message surfaces and localized controls.
  * [OUTPUT]: Renders imported messages once in the native conversation layout, with immediate prepared bodies or bounded reads, native Agent/duration headings, lazy activity including folded-tool notes and explicit complete-body copy.
  * [POS]: The imported leaf beside the conversation body's native message.tsx; previews remain explicit until verified content replaces them.
  */
-import { projectUnavailableArtifacts } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
+import { projectUnavailableArtifacts } from "@ai-chat/cloud-protocol/turns/text/artifact-markers";
 import type { ImportedEntry } from "@ai-chat/cloud-protocol/chats/imported/model";
 import {
   Message,

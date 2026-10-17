@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on zod, app-store-schema APP_ID_PATTERN, the shared agent backend order, and the apps-ipc input DTOs
- * [OUTPUT]: Provides strict parsers for App id, pin, agent, rename, chat slot, Use history/open, Editor open, Save as App, and removal inputs
+ * [INPUT]: Depends on zod, app-store-schema APP_ID_PATTERN and the apps-ipc input DTOs.
+ * [OUTPUT]: Provides strict parsers for App id, pin, rename, chat slot, Use history/open, Editor open, Save as App and removal inputs.
  * [POS]: The input boundary of the apps IPC layer; every parser is a pure function so AppsService only decides domain outcomes and never re-checks shapes
  */
 
@@ -14,10 +14,8 @@ import {
   type RemoveAppMode,
   type RenameAppInput,
   type SaveAsAppInput,
-  type SetAppAgentInput,
   type SetAppPinnedInput,
 } from "../../../shared/ipc/apps/apps-ipc";
-import { AGENT_BACKEND_ORDER } from "../../../shared/ipc/agent/agent-ipc";
 import { APP_ID_PATTERN } from "./store/app-store-schema";
 
 /* ── 共用字面量:同一个概念只允许有一份形状定义 ───────────────────── */
@@ -25,7 +23,6 @@ const appId = z.string().regex(APP_ID_PATTERN);
 const requestId = z.string().min(1).max(256);
 const chatId = z.string().min(1);
 const incarnationId = z.string().regex(/^[a-f0-9]{32}$/);
-const backend = z.enum(AGENT_BACKEND_ORDER);
 
 /** zod 只判形状,报错文案仍归领域所有——渲染进程按这句话认错，不按 zod 的路径认错。 */
 function parse<T>(schema: z.ZodType<T>, value: unknown, message: string): T {
@@ -35,11 +32,6 @@ function parse<T>(schema: z.ZodType<T>, value: unknown, message: string): T {
 }
 
 const setPinned = z.object({ appId, pinned: z.boolean() }).strict();
-const setAgent = z.object({
-  appId,
-  role: z.enum(["interactive", "maintenance"]),
-  agent: z.union([z.literal("auto"), backend]),
-});
 const rename = z.object({ appId, name: z.string() });
 const chatSlot = z.object({
   appId,
@@ -80,10 +72,6 @@ export function assertAppId(value: unknown) {
 
 export function assertSetPinnedInput(value: unknown): SetAppPinnedInput {
   return parse(setPinned, value, "App pin 参数无效");
-}
-
-export function assertSetAgentInput(value: unknown): SetAppAgentInput {
-  return parse(setAgent, value, "App Agent 设置参数无效");
 }
 
 export function assertRenameInput(value: unknown): RenameAppInput {

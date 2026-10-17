@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on browser fetch/location/history/visibility, FileReader, AbortController, host inserted parent origin and synchronous source /_api/base
- * [OUTPUT]: The globalThis.BottegaBase provides fragment consumption, Base operations, attachment reads, scoped read-only Design list/history/source-line/preview URLs, and acknowledged allowlisted host actions
+ * [OUTPUT]: The globalThis.BottegaBase provides fragment consumption, Base operations, attachment reads, acknowledged allowlisted host actions
  * [POS]: The only product of resources/GUI-sdk is the Base GUI client; The App page does not contain token, split page, CAS or routing protocol details
  */
 (function installBaseGuiSdk(global) {
@@ -247,27 +247,6 @@
       client.deleteRows(expectedBaseInstanceId, expectedRevision, rowIds, signal),
     getAttachment: (attachmentId, signal) => client.getAttachment(attachmentId, signal),
     getAttachmentDataUrl: (attachmentId, signal) => client.getAttachmentDataUrl(attachmentId, signal),
-    workspaceFiles: (signal) => client.request("/_api/workspace/files", signal),
-    workspaceVersions: (file, signal) =>
-      client.request("/_api/workspace/versions?file=" + encodeURIComponent(file), signal),
-    workspaceSourceLine: (file, htmlHint, signal) =>
-      client.request("/_api/workspace/source-line?file=" + encodeURIComponent(file) +
-        "&hint=" + encodeURIComponent(htmlHint), signal),
-    previewUrl: (file) => {
-      if (!fragment.surfaceLeaseId) throw new Error("Workspace preview surface missing");
-      var canonical = String(file || "").replace(/^design\//, "");
-      if (!canonical || canonical.includes("\\") || canonical.split("/").some((part) => !part || part === "." || part === "..")) {
-        throw new Error("Workspace preview path invalid");
-      }
-      return "/_preview/" + fragment.surfaceLeaseId + "/design/" + canonical.split("/").map(encodeURIComponent).join("/");
-    },
-    workspaceVersionUrl: (versionId) => {
-      if (!fragment.surfaceLeaseId) throw new Error("Workspace preview surface missing");
-      if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(String(versionId || ""))) {
-        throw new Error("Workspace version identity invalid");
-      }
-      return "/_preview/" + fragment.surfaceLeaseId + "/versions/" + versionId + ".html";
-    },
     startPolling: (onSnapshot, onError, interval) => client.startPolling(onSnapshot, onError, interval),
     stopPolling: () => client.stopPolling(),
     hostAction: (action) => {

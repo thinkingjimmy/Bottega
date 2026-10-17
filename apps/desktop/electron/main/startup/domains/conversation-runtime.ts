@@ -34,6 +34,7 @@ import { TitleEligibilityDeferred } from "../../chats/projection/chat-title-jobs
 import { assertAgentAvailable, assertInstalledRuntime } from "../../agent/admission/runtime-gate";
 import { backendById, backendRuntimeRegistry, providerDisplayName } from "../../backends";
 import { builtinAgent } from "../../../../shared/chat-agent/options";
+import { newChatBackend } from "../../../../shared/chat-agent/preferences";
 import { agentProcessSafetyLock } from "../../agent-process-supervisor";
 import type { BaseStore } from "../../bases/base-store";
 import type { BasesService } from "../../bases/bases-service";
@@ -128,10 +129,14 @@ export function createChatsService({
       Boolean(projectStore.get(projectId)?.archivedAt),
     libraryRoot: () => settings.get().libraryRoot ?? null,
     exportsRoot: join(userData, "exports"),
-    resolveAppAgent: (appId, projectId) =>
-      projects.isAppBinding(projectId, appId)
-        ? apps.resolveInteractiveAgent(appId)
-        : undefined,
+    resolveAppAgent: (appId, projectId) => {
+      if (!projects.isAppBinding(projectId, appId) || !apps.isProjectAvailable(appId)) return undefined;
+      const preferences = settings.get();
+      const preferred = newChatBackend(preferences, id => builtinAgent(id) !== null &&
+        backendRuntimeRegistry.snapshot(id).runtimeStatus === "installed");
+      return builtinAgent(preferred) ?? builtinAgent(preferences.defaultBackend) ?? "codex";
+    },
+    resolveAppChatOptions: agent => settings.getBackendDefaults(agent),
     isAppProject: (projectId) =>
       projectStore.get(projectId)?.workspaceBinding.kind === "app",
     resolveProjectWorkspace: (projectId) =>

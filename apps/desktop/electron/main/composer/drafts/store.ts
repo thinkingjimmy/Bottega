@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs/path/crypto, zod, persistence durableReplaceFile/SerialQueue, a FileAuthorizationStore-shaped grant port, a workspace resolver,
  *          the current account identity, and the shared durable draft DTOs
- * [OUTPUT]: Provides ComposerDraftStore (load/save/removeChat, F-12), read-only queue identities for App impact and removeAccountComposerDrafts (account erase, called by the account cleanup step)
+ * [OUTPUT]: Durable rich drafts/queues with original review request identity, file-grant restoration, read-only App impact facts and account erasure.
  * [POS]: Main's owner of durable composer drafts: one file per (account, Chat, incarnation) under userData/composer-drafts; file chips are recorded
  *        from main's own grants (path, device, inode) and granted again on restore only while the same file is at that path
  */
@@ -52,6 +52,7 @@ const storedSchema = z.object({
     unavailableAttachments: z.array(z.object({ id: z.string(), name: z.string() })),
     queue: z.object({ paused: z.boolean(), items: z.array(z.object({
       id: z.string(), richValue: z.array(z.unknown()), displayText: z.string(), imageNames: z.array(z.string()).optional(), content: z.unknown().optional(),
+      requestKey: z.object({ id: z.string().uuid(), createdAt: z.number().int().nonnegative() }).strict().optional(),
       custodyIntentId: z.string().optional(), outboxRef: z.string().optional(), state: z.enum(["queued", "ambiguous"]),
       unavailableAttachment: z.string().optional(), createdAt: z.number(),
     })) }),

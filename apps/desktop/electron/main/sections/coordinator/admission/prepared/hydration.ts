@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on durable PreparedManualTurn shapes, workspace/submission schemas, sealed Project Tools hydration, canonical backend runtime identity, staged blob bytes, exact Skill receipts, and shared staging custody
- * [OUTPUT]: Provides PreparedManualTurn hydration into canonical submission, resolved Agent input, runtime-reprojected frozen Project Tools, and static custody-backed release
+ * [OUTPUT]: Canonical prepared-turn hydration, frozen tool reprojection, custody release and exact design-reference revalidation before dispatch.
  * [POS]: Prepared admission read boundary; the sibling staging primitive owns integrity/release while prepared-manual-turn owns writes
  */
 
@@ -131,12 +131,15 @@ export async function hydratePreparedTurn(
       });
     }
   }
+  const persistence = await hydratePersistence(prepared.persistence);
+  await (await import("../../../../artifacts/workspace/references")).assertDesignReferences(prepared.turn.scope.conversationId,
+    prepared.precondition.kind === "existing" ? prepared.precondition.incarnationId : undefined, prepared.content.content.richValue);
   return {
     submission: {
       agentSwitch: prepared.agentSwitch,
       expectedAgentRevision: prepared.expectedAgentRevision,
       intentId: prepared.intentId,
-      persistence: await hydratePersistence(prepared.persistence),
+      persistence,
       content: prepared.content,
       precondition: prepared.precondition,
       workspacePrecondition,

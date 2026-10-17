@@ -1,12 +1,13 @@
 /**
- * [INPUT]: One-use capabilities from the exact application, pure snapshot preparation and host-observed activation.
- * [OUTPUT]: startArtifact: an opaque offline frame, permanent parent navigation policy and authenticated interaction relay.
+ * [INPUT]: One-use capability, exact fixed design-view identity, pure snapshot preparation and host-observed activation.
+ * [OUTPUT]: Opaque frames, fixed navigation and authenticated selection/hover/camera/key relay and transient display commands without source authority.
  * [POS]: Credential-free trusted artifact wrapper, started by main.ts on artifact hosts; untrusted content has no hosting-origin or Service Worker authority.
  */
 import { artifactFenceSchema, artifactRelativePathSchema } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import { ARTIFACT_FRAGMENT_CSP } from "@ai-chat/cloud-protocol/artifacts/viewer-shell";
 import { ArtifactFollowUpGuard } from "@ai-chat/cloud-protocol/artifacts/frame-security";
 import { prepareContent, type ArtifactResource } from "./content";
+import { designFrameViewSchema as viewSchema } from "@ai-chat/cloud-protocol/artifacts/design/model";
 declare const __ARTIFACT_PARENT_ORIGIN__: string;
 export function startArtifact() {
   const params = new URLSearchParams(location.search), nonce = location.hash.slice(1);
@@ -27,8 +28,10 @@ export function startArtifact() {
       return { path, bytes: value.bytes, mime: String(value.mime).slice(0, 128) };
     });
     if (new Set(entries.map(file => file.path)).size !== entries.length) throw new Error("artifact-duplicate-resource");
-    if (fence.kind !== "static-site" && (entries.length !== 1 || total > 16_777_216)) throw new Error("artifact-resource-budget");
-    const html = prepareContent(fence, entries, params.get("theme") === "dark" ? "dark" : "light");
+    if (fence.kind !== "static-site" && !fence.design && (entries.length !== 1 || total > 16_777_216)) throw new Error("artifact-resource-budget");
+    const design = fence.design ? viewSchema.parse(event.data.designView) : undefined;
+    if (design && !fence.design!.boards.some(board => board.id === design.boardId)) throw new Error("artifact-board-missing");
+    const html = prepareContent(fence, entries, params.get("theme") === "dark" ? "dark" : "light", design);
     // This ancestor policy survives child navigation and cannot be changed by artifact code.
     const policy = document.createElement("meta");
     policy.httpEquiv = "Content-Security-Policy"; policy.content = ARTIFACT_FRAGMENT_CSP.replace("frame-src 'none'", "frame-src blob:"); document.head.append(policy);
@@ -41,10 +44,13 @@ export function startArtifact() {
     document.title = fence.title;
     const guard = new ArtifactFollowUpGuard();
     const relay = (message: MessageEvent) => {
-      if (message.source === host && message.origin === __ARTIFACT_PARENT_ORIGIN__ && message.data?.type === "bottega:artifact:theme") {
+      if (message.source === host && message.origin === __ARTIFACT_PARENT_ORIGIN__ && ["bottega:artifact:theme", "bottega:design:select", "bottega:design:targets", "bottega:design:tool", "bottega:design:display", "bottega:design:editor"].includes(message.data?.type)) {
         frame.contentWindow?.postMessage(message.data, "*"); return;
       }
       if (message.source !== frame.contentWindow || message.origin !== "null") return;
+      if (design && ["bottega:design:anchor", "bottega:design:navigate", "bottega:design:escape", "bottega:design:geometry", "bottega:design:hover", "bottega:design:gesture", "bottega:design:key", "bottega:design:text"].includes(message.data?.type) && message.data?.id === design.id && message.data?.nonce === design.nonce && message.data?.generation === design.generation && (message.data.type === "bottega:design:navigate" || message.data.boardId === design.boardId && message.data.boardDigest === design.boardDigest)) {
+        host.postMessage(message.data, __ARTIFACT_PARENT_ORIGIN__); return;
+      }
       if (message.data?.type === "bottega:artifact:follow-up") {
         const payload = guard.accept(message.data.payload, navigator.userActivation.isActive);
         if (payload) host.postMessage({ type: message.data.type, payload, nonce, activated: true }, __ARTIFACT_PARENT_ORIGIN__);

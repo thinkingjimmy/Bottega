@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "iconName": "Bottega",
+  "sourceSha256": "351c1ac00b65fe700a017e99f84aea4afb7982077d93103c97b31592e70f32c4",
+  "appearanceSha256": "23351fd31257f43a61153d3f44ff9c9efb8ab686f314d9d2caf9106b608a0bc2",
+  "catalogSha256": "6b96c07d72c1fa6f7b2fe9527cdf027e5386c76980b7d6ca52c658a4dda6c3a9",
+  "compiler": "Xcode 26.6\nBuild version 17F113"
+}

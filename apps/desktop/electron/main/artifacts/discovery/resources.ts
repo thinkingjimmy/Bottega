@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical entry/root paths and guarded artifact source reads.
- * [OUTPUT]: Bounded static resource closures and explicit artifact-directory trees.
+ * [OUTPUT]: Reserved design-document source detection, bounded resource closures and explicit artifact-directory trees.
  * [POS]: Discovery narrows workspace access; a single resource never authorizes a whole workspace tree.
  */
 import { lstat, readdir } from "node:fs/promises";
@@ -9,6 +9,8 @@ import { MAX_BLOB_BYTES } from "@ai-chat/cloud-protocol";
 import type { ArtifactFile } from "@ai-chat/cloud-protocol/artifacts/archive";
 import { readArtifactSource } from "../storage/guarded-read";
 export const ignoredArtifactName = (name: string) => name.startsWith(".") || ["node_modules", "__pycache__"].includes(name);
+export const designDocumentSource = (workspace: string, path: string) =>
+  /^design\/[a-z0-9][a-z0-9_-]{0,63}\//.test(relative(workspace, resolve(workspace, path)).split(sep).join("/"));
 export function resourceReferences(text: string): string[] {
   const values: string[] = [];
   for (const match of text.matchAll(/\b(?:src|href)\s*=\s*["']([^"']+)["']/gi)) values.push(match[1]!);

@@ -1,14 +1,14 @@
 /**
- * [INPUT]: Closed resource/import maps, a serializable module resolver and the original document's virtual path.
- * [OUTPUT]: Relative fetch/XHR, scoped module resolution, parsed-HTML resource compatibility and a read-only `__artifactResource` lookup inside an opaque frame.
+ * [INPUT]: Resource/import maps, module resolver, virtual source path and manifest-owned navigation policy.
+ * [OUTPUT]: Relative resource compatibility and lookup; design links retain their attested original href.
  * [POS]: Untrusted-document convenience adapter; browser sandbox/CSP enforce security even if this is replaced.
  */
 import { resolveArtifactModule, type ArtifactModuleMap } from "./modules";
-export function artifactResourceRuntime(files: Record<string, string>, base: string, moduleMap: ArtifactModuleMap) {
+export function artifactResourceRuntime(files: Record<string, string>, base: string, moduleMap: ArtifactModuleMap, preserveNavigation = false) {
   const json = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");
-  return `(${installResources.toString()})(${json(files)},${json(base)},${json(moduleMap)},${resolveArtifactModule.toString()});`;
+  return `(${installResources.toString()})(${json(files)},${json(base)},${json(moduleMap)},${resolveArtifactModule.toString()},${json(preserveNavigation)});`;
 }
-function installResources(files: Record<string, string>, base: string, moduleMap: ArtifactModuleMap, resolveModule: typeof resolveArtifactModule) {
+function installResources(files: Record<string, string>, base: string, moduleMap: ArtifactModuleMap, resolveModule: typeof resolveArtifactModule, preserveNavigation: boolean) {
   const resolve = (input: string | URL, from = base) => {
     if (String(input).startsWith("#")) return String(input);
     try { const url = new URL(String(input), from), hash = url.hash; url.search = ""; url.hash = ""; return (files[url.href] ?? String(input)) + (files[url.href] ? hash : ""); }
@@ -47,10 +47,11 @@ function installResources(files: Record<string, string>, base: string, moduleMap
   };
   const srcset = (value: string) => value.includes("data:") ? value : value.split(",").map(item => item.trim().replace(/^\S+/, path => resolve(path))).join(", ");
   const attributes = ["src", "href", "poster", "data", "srcset"];
-  const attributeUrl = (name: string, value: string) => name === "srcset" ? srcset(value) : attributes.includes(name) ? resolve(value) : value;
+  const attributeUrl = (element: Element, name: string, value: string) => preserveNavigation && name === "href" && ["a", "area"].includes(element.localName)
+    ? value : name === "srcset" ? srcset(value) : attributes.includes(name) ? resolve(value) : value;
   const setAttribute = Element.prototype.setAttribute;
   Element.prototype.setAttribute = function(name, value) {
-    setAttribute.call(this, name, attributeUrl(name.toLowerCase(), String(value)));
+    setAttribute.call(this, name, attributeUrl(this, name.toLowerCase(), String(value)));
   };
   for (const [prototype, properties] of [
     [HTMLImageElement.prototype, ["src", "srcset"]], [HTMLScriptElement.prototype, ["src"]], [HTMLLinkElement.prototype, ["href"]],
@@ -58,13 +59,13 @@ function installResources(files: Record<string, string>, base: string, moduleMap
   ] as [object, string[]][]) {
     for (const property of properties) {
       const descriptor = Object.getOwnPropertyDescriptor(prototype, property);
-      if (descriptor?.set) Object.defineProperty(prototype, property, { ...descriptor, set(value: string) { descriptor.set!.call(this, attributeUrl(property, String(value))); } });
+      if (descriptor?.set) Object.defineProperty(prototype, property, { ...descriptor, set(this: Element, value: string) { descriptor.set!.call(this, attributeUrl(this, property, String(value))); } });
     }
   }
   const rewrite = (element: Element) => {
     for (const name of attributes) {
       const value = element.getAttribute(name); if (value === null) continue;
-      const resolved = attributeUrl(name, value);
+      const resolved = attributeUrl(element, name, value);
       if (resolved !== value) setAttribute.call(element, name, resolved);
     }
   };

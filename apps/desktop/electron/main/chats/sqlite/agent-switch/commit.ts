@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the canonical Chat commit kernel, validators, and SQLite row writers
- * [OUTPUT]: Commits the Agent notice, user, options and session clearing under the original caller CAS.
+ * [OUTPUT]: Commits ordinary/App Chat Agent changes under the original caller CAS, preserving context, ownership and immutable historical authors.
  * [POS]: Worker-only atomic switch transition; the repository owns the transaction and receipt
  */
 
@@ -29,7 +29,7 @@ export function commitAgentSwitch(
   if (current.agent !== intent.expectedAgent || current.agentRevision !== intent.expectedAgentRevision ||
       current.chatRecordRevision !== command.expectedAggregateRevision ||
       command.expectedAggregateRevision !== intent.expectedChatRecordRevision + 1) throw new Error("AGENT_REVISION_STALE");
-  if (current.readOnlyReason || current.context.kind !== "ordinary" || current.archivedAt) {
+  if (current.readOnlyReason || current.archivedAt) {
     throw new Error("AGENT_SWITCH_NOT_WRITABLE");
   }
   if (command.targetOptions.backend !== intent.targetAgent ||

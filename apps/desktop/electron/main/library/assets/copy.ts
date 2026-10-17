@@ -10,7 +10,7 @@ import type { ChatRecord } from "../../../../shared/ipc/content/chats-ipc";
 import { durableReplaceBytes } from "../../persistence/durable-json";
 import { scanHomeFiles } from "../../cloud/sync-home/scan";
 import { fileFingerprint } from "../../cloud/sync-home/incremental/identity";
-import { messageArtifactFences } from "../../artifacts/service";
+import { messageArtifactFences } from "../../artifacts/core/service";
 import { libraryChatPath, libraryDirectory, libraryHomePath } from "../paths";
 import { LibraryAttachments } from "./attachments";
 export async function copyLibraryAssets(root: string, sourceId: string, child: ChatRecord) {

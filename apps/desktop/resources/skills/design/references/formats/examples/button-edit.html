@@ -1,0 +1,7 @@
+<!doctype html>
+<!--
+[INPUT]: Browser HTML/CSS/JS with no external dependencies
+[OUTPUT]: Executable offline design method example
+[POS]: Artifact design task example; adapt to the current brief
+-->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Targeted button edit</title><style>body{margin:0;font:16px/1.5 system-ui;color:#172c27;background:#f5f4ee}main{max-width:960px;margin:auto;padding:32px}button{min-height:44px;padding:8px 20px;background:#225c4d;color:white;border:0;border-radius:8px;font:inherit;cursor:pointer}button:hover{background:#174336}button:focus-visible{outline:3px solid #a45820;outline-offset:3px}h1{font-size:clamp(28px,5vw,48px);line-height:1.15}</style></head><body><main><h1>Team settings</h1><p id="unchanged">Keep this copy and layout unchanged.</p><button id="save">Save</button><p id="status" role="status"></p></main><script>document.getElementById('save').addEventListener('click',()=>document.getElementById('status').textContent='Saved in memory.')</script></body></html>

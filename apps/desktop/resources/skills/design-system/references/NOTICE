@@ -1,0 +1,17 @@
+Modified English design-system methods from BaoCut.
+Copyright (c) 2026 Jim Liu and BaoCut contributors.
+Source commit: 7aa049e82e1367da013b7aba80f0b79033fa04ad.
+
+These files adapt selected source methods to Bottega's Artifact document,
+source inventory, finite tools, fixed versions and explicit durable handoff.
+They are not official BaoCut releases and do not import its restored runtime.
+Internal development under BaoCut Community License.
+Full byte-exact license and third-party notices: upstream-license/.
+
+Current Bottega instruction writing (2026-10-14)
+The BaoCut adaptation description above records content before the Bottega-Dev
+69e9e3f054dfc9a0fdc0ca33c74c317bba7ea020 writing baseline. The current mapped
+instruction pages were newly written from Bottega's schema, tool and journal contracts.
+The historical source/modification record, copyright and full original license/notices
+remain retained. This statement does not assert clean-room history, entire-Canvas
+originality or an obtained commercial agreement.

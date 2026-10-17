@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Canonical built-in Provider ids; Portable messages, shared turn and action views, artifact renderers, private file access and host-owned detail callbacks.
+ * [INPUT]: Canonical built-in Provider ids; Portable messages, text-only Artifact markers, turn/action views, private files and host detail callbacks.
  * [OUTPUT]: Renders origin-free canonical user bubbles, Agent/process headings, Plan, tools, media and subagents with Edit/Fork/copy actions and localized failure or interruption presentation.
  * [POS]: Canonical transcript adapter for Web and desktop mirrors; no execution command or local authority is reconstructed.
  */
 import { BUILTIN_PROVIDER_IDS } from "@ai-chat/cloud-protocol/chats/backend-id";
-import { projectUnavailableArtifacts } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
+import { projectUnavailableArtifacts } from "@ai-chat/cloud-protocol/turns/text/artifact-markers";
 import { ArtifactMessageRenderers } from "../../../artifacts/renderer";
 import { lazy, memo, Suspense, useMemo, useState, type ComponentProps } from "react";
 import {

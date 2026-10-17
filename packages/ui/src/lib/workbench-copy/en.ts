@@ -261,6 +261,7 @@ export const en = {
       memory: memoryPluginCopy,
       dock,
       sketch: { name: "Sketch", summary: "Draw, erase and attach an editable image.", description: "Sketch adds a drawing canvas to the composer. Draw, erase and annotate, then attach the result to your message as an editable image." },
+      artifact: { name: "Artifact", summary: "Create visual designs and preview conversation artifacts.", description: "Artifact adds design tools and interactive previews to Chat. Design documents are saved as complete archives with version screenshots.", disableHint: "Your feedback is saved before closing. Open previews close. Admitted saves finish." },
       base: {
         name: "Base",
         summary: "Tables, boards, lists and forms in every Project. Workflows and Base-backed Apps build on it.",

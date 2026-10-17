@@ -343,7 +343,9 @@ export type AppRecord = {
     reason?: "interrupted";
   } | null;
   agentWarning: string | null;
+  /** Creation or legacy execution metadata, never a default or constraint for App Chats. */
   agent: AgentBackendId;
+  /** Most recently selected maintenance executor, never an App preference. */
   maintenanceAgent: AgentBackendId | "auto";
   installStrategy?: AppInstallStrategy;
   /** Admitted install form fields only; never an active generation or executable manifest. */
@@ -498,15 +500,6 @@ export type AppInstallEvent =
   | { appId: string; type: "log"; line: string }
   | { appId: string; type: "runtime"; state: AppRuntimeState }
   | { appId: string; type: "gui" }
-  | {
-      type: "design-canvases-changed";
-      appId: string;
-      chatId: string;
-      conversationIncarnationId: string;
-      turnId: string;
-      files: readonly string[];
-      drafting: boolean;
-    }
   | { appId: string; type: "removed" }
   /** U06 Q7-c3: a remote first message made this App's Edit Chat; the unsent local Edit draft follows it there. */
   | { appId: string; type: "edit-draft-superseded"; draftId: string; chatId: string; incarnationId: string }
@@ -627,12 +620,6 @@ export type AppGrantCandidatesInput = Readonly<{
 }>;
 
 export type AvailableAppsInput = { conversationId: string; conversationIncarnationId: string };
-export type SetAppAgentInput = {
-  appId: string;
-  role: "interactive" | "maintenance";
-  agent: AgentBackendId | "auto";
-};
-
 export type RenameAppInput = {
   appId: string;
   name: string;
