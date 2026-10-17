@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Canonical GitHub build/provenance bytes, exact installers/update assets, physical CLI identity, GitHub context and release API readback.
+ * [INPUT]: Canonical GitHub build/provenance bytes, exact installers/update assets, physical CLI identity, GitHub context and complete release discovery/pinned-ID readback from release.mjs.
  * [OUTPUT]: Uploads immutable candidate bytes only to a profile-matched unpublished draft and reports exact asset custody; personal is prerelease, official-macos is stable.
  * [POS]: Production cloud-side upload boundary; it never publishes, clobbers assets, signs, or rebuilds. It accepts only a Developer ID notarized draft record.
  */
@@ -12,21 +12,17 @@ import { pathToFileURL } from "node:url";
 import { assertGithubContext } from "./build.mjs";
 import { canonicalJson, hashFile, publicConfigurationIdentity, PUBLIC_REPOSITORY } from "./identity.mjs";
 import { githubBuildAssets, readGithubBuildRecord, verifyGithubAssets } from "./record.mjs";
+import { findGithubRelease, readGithubRelease } from "./release.mjs";
 
 function gh(args) {
   const result = spawnSync("gh", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
   if (result.error) throw result.error; return result;
 }
-function jsonApi(endpoint) {
-  const result = gh(["api", endpoint]);
-  assert.equal(result.status, 0, `GitHub read failed: ${endpoint}`); return JSON.parse(result.stdout);
+function readJson(args) {
+  const result = gh(args);
+  assert.equal(result.status, 0, `GitHub read failed: ${args.join(" ")}`); return JSON.parse(result.stdout);
 }
-function lookup(tag) {
-  const result = gh(["api", `repos/${PUBLIC_REPOSITORY}/releases/tags/${tag}`]);
-  if (result.status === 0) return JSON.parse(result.stdout);
-  if (/\bHTTP[\s:(]+404\b/.test(result.stderr)) return null;
-  throw new Error("GitHub release state is unknown; no write is allowed");
-}
+const jsonApi = endpoint => readJson(["api", endpoint]);
 function validateDraft(release, record) {
   assert(release && release.draft === true && release.prerelease === (record.profile === "personal"), "Only an unpublished draft matching the build profile may receive candidate bytes");
   assert.equal(release.tag_name, record.tag, "Draft tag mismatch");
@@ -40,14 +36,14 @@ function validateDraft(release, record) {
 function sameAsset(asset, expected) {
   assert(asset.state === "uploaded" && asset.size === expected.bytes && asset.digest === expected.sha256, `Conflicting draft asset: ${expected.name}`);
 }
-function verifyRemoteAsset(record, asset, expected) {
+function verifyRemoteAsset(record, releaseId, asset, expected) {
   sameAsset(asset, expected);
   const directory = mkdtempSync(join(tmpdir(), "bottega-draft-readback-"));
   const result = gh(["release", "download", record.tag, "--repo", PUBLIC_REPOSITORY, "--pattern", expected.name, "--dir", directory]);
   assert.equal(result.status, 0, `Exact-byte draft readback failed: ${expected.name}`);
   const path = join(directory, expected.name), stat = lstatSync(path);
   assert(stat.isFile() && stat.size === expected.bytes && hashFile(path) === expected.sha256, `Downloaded draft bytes differ: ${expected.name}`);
-  const current = validateDraft(lookup(record.tag), record).assets.find(item => item.name === expected.name);
+  const current = validateDraft(readGithubRelease(releaseId, record.tag, readJson), record).assets.find(item => item.name === expected.name);
   assert(current && current.id === asset.id, `Draft asset identity changed during readback: ${expected.name}`); sameAsset(current, expected);
   return { id: asset.id, name: expected.name, bytes: expected.bytes, sha256: expected.sha256 };
 }
@@ -91,7 +87,7 @@ export function uploadDraft(directory) {
   verifyGithubAssets(directory, record); verifyTag(record);
   const expected = [...githubBuildAssets(record).map(asset => ({ name: asset.name, bytes: asset.bytes, sha256: asset.sha256 })),
     ...["github-build.json", "build-provenance.jsonl"].map(name => ({ name, bytes: lstatSync(join(directory, name)).size, sha256: hashFile(join(directory, name)) }))];
-  let release = lookup(record.tag);
+  let release = findGithubRelease(record.tag, readJson);
   if (release) validateDraft(release, record);
   else {
     const requestDirectory = mkdtempSync(join(tmpdir(), "bottega-draft-create-")), requestPath = join(requestDirectory, "request.json");
@@ -99,26 +95,34 @@ export function uploadDraft(directory) {
       body: "Production macOS ARM64 candidate, Developer ID signed and notarized. Private installer acceptance is pending.",
       draft: true, prerelease: record.profile === "personal", make_latest: "false" }));
     const created = gh(["api", "--method", "POST", `repos/${PUBLIC_REPOSITORY}/releases`, "--input", requestPath]);
-    release = lookup(record.tag);
+    const response = created.status === 0 ? JSON.parse(created.stdout) : null;
+    release = findGithubRelease(record.tag, readJson);
     assert(release, created.status === 0 ? "Created draft cannot be read back" : "Draft creation result is unknown; no retry is allowed");
+    if (created.status === 0) {
+      assert(response && typeof response === "object" && !Array.isArray(response), "Created release response is malformed");
+      assert(Number.isSafeInteger(response.id) && response.id > 0, "Created release ID is invalid");
+      assert.equal(release.id, response.id, "Created release ID mismatch");
+      validateDraft(response, record);
+    }
     validateDraft(release, record);
   }
+  const releaseId = release.id;
   for (const asset of release.assets) {
     const match = expected.find(item => item.name === asset.name);
     assert(match, `Unexpected draft asset: ${asset.name}`); sameAsset(asset, match);
   }
   const custody = [];
   for (const asset of expected) {
-    release = validateDraft(lookup(record.tag), record);
+    release = validateDraft(readGithubRelease(releaseId, record.tag, readJson), record);
     let remote = release.assets.find(item => item.name === asset.name);
     if (!remote) {
       const uploaded = gh(["release", "upload", record.tag, "--repo", PUBLIC_REPOSITORY, join(directory, asset.name)]);
-      release = validateDraft(lookup(record.tag), record); remote = release.assets.find(item => item.name === asset.name);
+      release = validateDraft(readGithubRelease(releaseId, record.tag, readJson), record); remote = release.assets.find(item => item.name === asset.name);
       assert(remote, uploaded.status === 0 ? `Uploaded asset is missing: ${asset.name}` : `Upload result is unknown: ${asset.name}; no retry is allowed`);
     }
-    custody.push(verifyRemoteAsset(record, remote, asset));
+    custody.push(verifyRemoteAsset(record, releaseId, remote, asset));
   }
-  release = validateDraft(lookup(record.tag), record);
+  release = validateDraft(readGithubRelease(releaseId, record.tag, readJson), record);
   assert.deepEqual(release.assets.map(asset => asset.name).sort(), expected.map(asset => asset.name).sort(), "Draft inventory changed");
   for (const fact of custody) {
     const current = release.assets.find(asset => asset.id === fact.id); assert(current, "Draft asset disappeared"); sameAsset(current, fact);
