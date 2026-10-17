@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Chat identity, Router takeover history, host catalog visibility, shared ConversationModel and authority-checked Base resolution.
- * [OUTPUT]: Shared session-owned panels, Artifact takeover/presentation, awaited handoff and retained Base/Plan/subagent state.
+ * [OUTPUT]: Shared session-owned panels, Artifact-owned design headers and takeover/presentation, awaited handoff and retained Base/Plan/subagent state.
  * [POS]: Shared panel composition with host-owned Base authority, navigation, draft guards and artifact callbacks.
  */
 import { MessageResponse } from "@ai-chat/ui/components/ai-elements/message";
@@ -135,7 +135,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
       </div> })),
   ];
   const element = (eligible || baseEngaged) && <SidePanelShell open={visible} takeover={history.takeover || artifactFull} {...geometry} onWidthChange={widthChange} onClose={close} resizeLabel={copy.resize} resizeHint={copy.resizeHint}>
-    <PanelHost close={close} backRef={backRef} takeover={history.takeover} copy={copy}
+    <PanelHost hideHeader={Boolean(preview && "fence" in preview && preview.fence.design)} close={close} backRef={backRef} takeover={history.takeover} copy={copy}
       extraActions={!preview && slots.active === "base" ? <span ref={setBaseHeaderActions} className="flex items-center empty:hidden" /> : undefined}
       title={preview || history.takeover ? (preview ? "fence" in preview ? preview.fence.title : "workspace" in preview ? preview.workspace.title : turnCopy(locale).plan.title : null) ?? items.find(item => item.selected)?.label ?? copy.tabs : undefined}
       hideTabs={Boolean(preview)} items={items} refs={tabRefs} tabsLabel={copy.tabs} closeTabLabel={copy.closeTab}

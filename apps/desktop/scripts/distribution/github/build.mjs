@@ -1,18 +1,18 @@
 /**
  * [INPUT]: Public GitHub run metadata, a clean snapshot for production commands, physical CLI identity, pinned Node/pnpm, production builder and owned signing material.
- * [OUTPUT]: Strict assertGithubContext admission, fresh macOS ARM64 personal installers, canonical provenance and run-bound cleanup independent of fresh source eligibility.
+ * [OUTPUT]: Strict profile-aware assertGithubContext admission, fresh macOS ARM64 installers and official update assets, canonical provenance and run-bound cleanup independent of fresh source eligibility.
  * [POS]: Public GitHub producer and owned cleanup dispatcher; private native acceptance remains separate. build-only never accesses signing material.
  */
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { builderEnvironment } from "../../assembly/package-manager.mjs";
 import { locateCurrentPlatformArtifact, locateInstallers } from "../product-artifact.mjs";
-import { canonicalJson, payloadIdentity, publicConfigurationIdentity, publicSourceIdentity, PUBLIC_REPOSITORY, PUBLIC_WORKFLOW } from "./identity.mjs";
-import { assertGithubBuildRecord, readGithubBuildRecord, verifyGithubAssets } from "./record.mjs";
+import { canonicalJson, hashFile, payloadIdentity, publicConfigurationIdentity, publicSourceIdentity, PUBLIC_REPOSITORY, PUBLIC_WORKFLOW } from "./identity.mjs";
+import { assertGithubBuildProfile, assertGithubBuildRecord, githubBuildAssets, githubUpdateAssetSpecs, readGithubBuildRecord, verifyGithubAssets } from "./record.mjs";
 import { assertPreparedSigning, cleanupSigning, preparedSigningEnvironment, prepareSigning, signingForMode, unsignedPackagingEnvironment, verifyNotarizedInstallers } from "./signing.mjs";
 
 const root = resolve(import.meta.dirname, "../../../../..");
@@ -36,6 +36,8 @@ function assertGithubRunContext() {
 
 export function assertGithubContext() {
   const { environment, mode, signing, runId, runAttempt } = assertGithubRunContext();
+  const profile = assertGithubBuildProfile(environment.BOTTEGA_PUBLIC_RELEASE_PROFILE ?? "personal");
+  if (profile === "official-macos") assert.equal(signing, "developer-id-notarized", "Official macOS requires signed or draft mode");
   const requested = environment.BOTTEGA_PUBLIC_BUILD_COMMIT;
   assert(OID.test(requested ?? ""), "Production build requires a full source commit");
   assert.equal(environment.GITHUB_SHA, requested, "Requested source commit differs from workflow dispatch");
@@ -50,7 +52,7 @@ export function assertGithubContext() {
   assert.equal(packageJson.engines?.node, node.version, "Public Node engine pin mismatch");
   assert.equal(process.version, `v${node.version}`, "GitHub Node differs from the source runtime pin");
   assert(/^pnpm@\d+\.\d+\.\d+$/.test(packageJson.packageManager ?? ""), "Missing public pnpm pin");
-  return { source, version: app.version, mode, signing, packageManager: packageJson.packageManager,
+  return { source, version: app.version, mode, signing, profile, packageManager: packageJson.packageManager,
     workflow: { path: PUBLIC_WORKFLOW, runId, runAttempt, ref: environment.GITHUB_WORKFLOW_REF, sha: requested } };
 }
 
@@ -74,20 +76,20 @@ function verifyAdHoc(path) {
 }
 
 function build(context) {
-  assert.equal(process.platform, "darwin", "Production personal build requires macOS");
-  assert.equal(process.arch, "arm64", "Production personal build requires ARM64");
+  assert.equal(process.platform, "darwin", "Production GitHub build requires macOS");
+  assert.equal(process.arch, "arm64", "Production GitHub build requires ARM64");
   const signed = context.signing === "developer-id-notarized";
   if (signed) assertPreparedSigning();
   const output = paths(); assert(!existsSync(output.candidate), "A build candidate directory cannot be reused");
   mkdirSync(output.assets, { recursive: true });
-  const startedAt = Date.now(), configuration = publicConfigurationIdentity(desktop, context.signing);
+  const startedAt = Date.now(), configuration = publicConfigurationIdentity(desktop, context.signing, context.profile);
   const actualPnpm = execFileSync("pnpm", ["--version"], { encoding: "utf8" }).trim();
   assert.equal(`pnpm@${actualPnpm}`, context.packageManager, "Installed pnpm differs from source pin");
   const inherited = signed ? preparedSigningEnvironment(process.env) : unsignedPackagingEnvironment(process.env);
   const environment = builderEnvironment({ ...inherited, BOTTEGA_CLOUD_BUILD: "production", BOTTEGA_WORKBENCH_UI: "1",
     pnpm_config_verify_deps_before_run: "error" });
   const builderArgs = ["node_modules/electron-builder/cli.js", "--config", "electron-builder.yml", "--mac", "--arm64", "--publish", "never",
-    "-c.extraMetadata.bottegaReleaseProfile=personal", `-c.directories.output=${output.packages}`];
+    `-c.extraMetadata.bottegaReleaseProfile=${context.profile}`, `-c.directories.output=${output.packages}`];
   if (signed) builderArgs.push("-c.forceCodeSigning=true", `-c.mac.identity=${environment.CSC_NAME}`);
   else builderArgs.push("-c.mac.identity=-", "-c.mac.notarize=false");
   run("pnpm", ["--dir", desktop, "build"], environment);
@@ -105,23 +107,31 @@ function build(context) {
     const name = installer.path.split("/").at(-1); copyFileSync(installer.path, join(output.assets, name));
     return { id, name, bytes: installer.bytes, sha256: installer.sha256 };
   });
+  const official = context.profile === "official-macos";
+  const updateAssets = official ? githubUpdateAssetSpecs(context.version).map(({ id, name }) => {
+    const path = join(output.packages, name), stat = lstatSync(path);
+    assert(stat.isFile() && stat.size > 0 && stat.mtimeMs >= startedAt - 2_000, `Missing or stale generated update asset: ${name}`);
+    const asset = { id, name, bytes: stat.size, sha256: hashFile(path) };
+    copyFileSync(path, join(output.assets, name)); return asset;
+  }) : [];
   assert.deepEqual(publicSourceIdentity(root), context.source, "Public source changed during packaging");
-  assert.deepEqual(publicConfigurationIdentity(desktop, context.signing), configuration, "Public configuration changed during packaging");
+  assert.deepEqual(publicConfigurationIdentity(desktop, context.signing, context.profile), configuration, "Public configuration changed during packaging");
   const payloadDigest = payloadIdentity(artifact.appPath);
-  const record = { schema: "bottega.github-build/v1", repository: PUBLIC_REPOSITORY, delivery: context.mode === "draft" ? "draft" : "artifact",
-    tag: `v${context.version}`, version: context.version, profile: "personal", buildId: randomUUID(), startedAt, completedAt: Date.now(),
+  const record = { schema: official ? "bottega.github-build/v2" : "bottega.github-build/v1", repository: PUBLIC_REPOSITORY, delivery: context.mode === "draft" ? "draft" : "artifact",
+    tag: `v${context.version}`, version: context.version, profile: context.profile, buildId: randomUUID(), startedAt, completedAt: Date.now(),
     source: context.source, configuration, payloadDigest, workflow: context.workflow,
-    runner: { platform: "darwin-arm64", node: process.version, pnpm: actualPnpm }, assets };
+    runner: { platform: "darwin-arm64", node: process.version, pnpm: actualPnpm }, assets, ...(official ? { updateAssets } : {}) };
   assertGithubBuildRecord(record); writeFileSync(join(output.assets, "github-build.json"), canonicalJson(record));
   verifyGithubAssets(output.assets, record, { provenance: false });
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-    `### macOS ARM64 candidate\n\nCommit: \`${context.source.commit}\`\n\nMode: \`${context.mode}\`\n\nSigning: \`${context.signing}\`\n\n${assets.map(asset => `- ${asset.name}: \`${asset.sha256}\` (${asset.bytes} bytes)`).join("\n")}\n`);
+    `### macOS ARM64 candidate\n\nCommit: \`${context.source.commit}\`\n\nProfile: \`${context.profile}\`\n\nMode: \`${context.mode}\`\n\nSigning: \`${context.signing}\`\n\n${githubBuildAssets(record).map(asset => `- ${asset.name}: \`${asset.sha256}\` (${asset.bytes} bytes)`).join("\n")}\n`);
   console.log(canonicalJson(record));
 }
 
 function provenance(context) {
   const output = paths(), record = readGithubBuildRecord(join(output.assets, "github-build.json"));
   assert.deepEqual(record.source, context.source); assert.equal(record.workflow.runId, context.workflow.runId);
+  assert.equal(record.profile, context.profile, "Build profile changed before provenance");
   const source = process.env.BOTTEGA_PUBLIC_ATTESTATION_BUNDLE;
   assert(isAbsolute(source ?? ""), "Build provenance bundle path is required");
   const bundle = JSON.parse(readFileSync(source, "utf8"));

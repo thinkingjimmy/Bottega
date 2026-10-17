@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Platform-projected tabs, preview identity, retained leaf panels and supplemental or replacement header actions.
+ * [INPUT]: Platform-projected tabs, preview identity, retained leaf panels, content-owned headers and supplemental or replacement header actions.
  * [OUTPUT]: Shared third-column header with a scrollbar-free horizontal tab strip, narrow takeover navigation and accessible retained panel regions.
  * [POS]: Single panel composition view; platform hooks own authority, tab facts and effects.
  */
@@ -10,17 +10,17 @@ import { Button } from "@ai-chat/ui/components/ui/button";
 import { toastClearanceRef } from "@ai-chat/ui/components/ui/sonner";
 import { panelChromeClassName } from "@ai-chat/ui/components/workspace/page";
 import { cn } from "@ai-chat/ui/lib/utils";
-export function PanelFrame({ title, tabs, add, actions, extraActions, takeover = false, native = false, backRef, close, copy, children }: {
+export function PanelFrame({ title, tabs, add, actions, extraActions, hideHeader = false, takeover = false, native = false, backRef, close, copy, children }: {
   title?: ReactNode; tabs?: ReactNode; add?: ReactNode; actions?: ReactNode; extraActions?: ReactNode; takeover?: boolean; native?: boolean;
-  backRef?: Ref<HTMLButtonElement>; close(): void; copy: { close: string; back?: string }; children: ReactNode;
+  hideHeader?: boolean; backRef?: Ref<HTMLButtonElement>; close(): void; copy: { close: string; back?: string }; children: ReactNode;
 }) {
   return <div className="flex h-full min-h-0 flex-1 flex-col bg-background">
-    <header ref={toastClearanceRef} data-toast-clearance="" className={cn("web-panel-header flex h-[var(--page-shell-header-height,40px)] shrink-0 items-center gap-1 border-b px-2", native && "[-webkit-app-region:drag]")}>
+    {!hideHeader && <header ref={toastClearanceRef} data-toast-clearance="" className={cn("web-panel-header flex h-[var(--page-shell-header-height,40px)] shrink-0 items-center gap-1 border-b px-2", native && "[-webkit-app-region:drag]")}>
       {takeover && <Button ref={backRef} variant="ghost" className="min-h-11 shrink-0 max-sm:min-w-11" aria-label={copy.back} title={copy.back} onClick={close}><ArrowLeft /><span className="max-sm:sr-only">{copy.back}</span></Button>}
       {title ? <span className="min-w-0 flex-1 truncate px-2 text-sm font-medium">{title}</span> : <div className="flex min-w-0 flex-1 items-center gap-1 [-webkit-app-region:no-drag]">{tabs}{add}</div>}
       <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">{extraActions}{actions ?? <Button variant="ghost" size="icon-lg" className={cn("shrink-0 cursor-pointer", native ? panelChromeClassName : "max-lg:min-h-11 max-lg:min-w-11")}
         aria-label={copy.close} title={copy.close} onClick={close}><X /></Button>}</div>
-    </header>
+    </header>}
     {takeover && tabs && <div ref={toastClearanceRef} data-toast-clearance="" className="flex shrink-0 items-center gap-1 border-b p-2">{tabs}{add}</div>}
     {children}
   </div>;

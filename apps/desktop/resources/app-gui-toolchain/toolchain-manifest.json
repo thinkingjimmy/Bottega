@@ -32,16 +32,16 @@
   "lockfileDigest": "sha256:985c529e76e0a1fca29d28c0e7b2ae9d1ba71563ab3620c779f22560fba0aa89",
   "formalReleaseTrust": {
     "schema": "bottega.formal-release-trust/v1",
-    "status": "unprovisioned",
+    "status": "provisioned-macos",
     "releasePublicKey": {
       "path": "release-public-key.pem",
-      "digest": null
+      "digest": "sha256:72ec5c9a52cf618db28e46065470189bf40257aeb3dc8a73f05ff3a79e5b8e4b"
     },
     "platformAttestationKeys": [
       {
         "platform": "darwin-arm64",
         "path": "release-attestation-keys/darwin-arm64.pem",
-        "digest": null
+        "digest": "sha256:6f1ebdb8a769ce8bc6a4bacb3d3a207e9f338353d2582305c460143b09213dcb"
       },
       {
         "platform": "win32-x64",
@@ -79,12 +79,12 @@
   ],
   "sliceDigests": {
     "gate-1": "sha256:6e47ccb97101dac5aab4bc1f0c32f2859e987d3565a89672be6880668b594460",
-    "gate-2": "sha256:ea0a57707bfb10454ba906306aa5bf5326e11632665197dbbc3312f6de922642",
+    "gate-2": "sha256:1eee5cc4e4a6c6022ff86d9d49796ed4daab608c6dfdedf92f7a850920017daf",
     "gate-3": "sha256:c32fb0493ac6a291fa1cb088e3876c27143e64dd764e5b66d3bdba3a1c2a3f31"
   },
   "authoringCatalogDigest": "sha256:7f09b176b96cca667c74a2e90bfb9b1fb10b13475530b4312c29ab40ce5c408f",
   "compatibilitySupportDigest": "sha256:5a876d99d1fef6e30040d49ea6283feabaecd97a871ee4955b98610a9cbbdba7",
-  "performanceBaselineDigest": "sha256:73285c2d1c9ae2efd75ec1e2cfff400348361a2e6499a5db54479450e8818460",
+  "performanceBaselineDigest": "sha256:7db09a5cf0a49845dae21dfe3902e0670125101a1afc423832910492e65f61e0",
   "runtimeSbomDigest": "sha256:0ce0782ae77aab6acb1469fa910664976e7983f2687a246012f6901e9a7112b0",
   "noticesDigest": "sha256:6df76f9d823ebe833f5a30bf73a99b41d6dd18815983e3b892796dfbc2b55923",
   "artifactPaths": {

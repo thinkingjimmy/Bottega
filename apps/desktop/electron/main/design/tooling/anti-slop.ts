@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on complete UTF-8 Design HTML source
- * [OUTPUT]: Provides deterministic AntiSlopAdvisory records for Artifact document render checks
+ * [OUTPUT]: Provides deterministic Artifact render advisories without overlapping tag or selector scans over embedded resources.
  * [POS]: Design's advisory-only visual-quality lint; it shares rule intent with resources/skills/design/SKILL.md without becoming a release gate
  */
 
@@ -32,7 +32,7 @@ const RULES: readonly Rule[] = [
   {
     ruleId: "emoji-icon",
     message: "Emoji used as interface icons vary by platform and weaken visual consistency.",
-    pattern: /<(?:button|a|span)[^>]*(?:class=["'][^"']*(?:icon|avatar|badge)[^"']*["'])?[^>]*>\s*[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/giu,
+    pattern: /<(?:button|a|span)\b[^<>]*>\s*[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/giu,
   },
   {
     ruleId: "generic-display-font",
@@ -42,7 +42,8 @@ const RULES: readonly Rule[] = [
   {
     ruleId: "decorative-card-stripe",
     message: "Rounded cards with decorative colored side borders add chrome without hierarchy.",
-    pattern: /[^{}]+\{(?=[^{}]*border-radius\s*:)(?=[^{}]*border-(?:left|inline-start)\s*:)[^{}]*\}/gi,
+    // Match the block directly; retrying a selector prefix across data URLs stalls main.
+    pattern: /\{(?=[^{}]*border-radius\s*:)(?=[^{}]*border-(?:left|inline-start)\s*:)[^{}]*\}/gi,
   },
   {
     ruleId: "invented-metric",
@@ -65,7 +66,8 @@ export function lintDesignHtml(source: string | Buffer): readonly AntiSlopAdviso
   const html = Buffer.isBuffer(source) ? source.toString("utf8") : source;
   const advisories: AntiSlopAdvisory[] = [];
   for (const rule of RULES) {
-    const count = [...html.matchAll(rule.pattern)].length;
+    let count = 0;
+    while (rule.pattern.exec(html)) count++;
     if (count) advisories.push({
       ruleId: rule.ruleId,
       message: rule.message,

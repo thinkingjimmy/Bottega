@@ -1,8 +1,8 @@
 /**
- * [INPUT]: Depends on lucide icons, Agent identity, the Settings switch/button primitives, workbench-copy and the plugin view.
+ * [INPUT]: Depends on lucide icons, Agent identity, the Settings switch primitive, workbench-copy and the plugin view.
  * [OUTPUT]: Provides PluginGlyph (built-in icon, Provider mark or package mark) and PluginIcon (that glyph on a md / lg / xl tile), PluginCard (icon, name that opens the plugin's
- *           introduction, publisher, two-line summary, actionable notes and a top-right control: switch, "Turn on…" / "Set up…"
- *           for a setup plugin, or a fixed badge; button-matched corners and no redundant status row), CardState (what the page
+ *           introduction, publisher, two-line summary, actionable notes and a top-right switch or fixed badge; setup plugins open
+ *           their existing flow from the switch and reflect the confirmed catalog state), CardState (what the page
  *           knows beyond the catalog: switching now, busy, changed files) and lockedCard.
  * [POS]: One card of the All plugins catalog (redesign 2026-10-02: All plugins introduces, the sidebar entry holds settings). The whole
  *        card opens the introduction through its name's stretched button and shows a pointer; keyboard users reach the name and the control as two stops.
@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 import { Box, Brain, Globe, LoaderCircle, Lock, PanelBottom, PanelsTopLeft, PenTool, Puzzle, Table2, Workflow } from "lucide-react";
 import { formatWorkbench, type WorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
 import { cn } from "@ai-chat/ui/lib/utils";
-import { SettingsButton, SettingsSwitch } from "@/components/settings/settings-layout";
+import { SettingsSwitch } from "@/components/settings/settings-layout";
 import { AgentBackendIcon, backendLabel, isAgentBackendId } from "@/lib/agent/agent-backends";
 import { ReportIssueButton } from "@/components/report-issue-button";
 import type { PluginView } from "@ai-chat/cloud-protocol/contracts/plugins/catalog";
@@ -63,15 +63,13 @@ export function PluginCard({ plugin, workbench, state, onOpen, onToggle, onSetup
     const text = plugin.turnOff.reason === "always-on" ? copy.alwaysOn : plugin.turnOff.reason === "project-scoped" ? copy.projectScopedBadge
       : formatWorkbench(copy.nativeManagedBy, { agent: backendLabel(plugin.managedBy ?? "") });
     control = <span className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-muted-foreground text-xs"><Lock aria-hidden className="size-3" />{text}</span>;
-  } else if (!plugin.enabled && plugin.turnOn.mode === "setup") {
-    control = <SettingsButton className="pointer-events-auto" variant="outline" disabled={lockedCard(state, plugin.id) || plugin.availability.state === "unsupported"} onClick={() => onSetup(plugin)}>
-      {copy.setupDock}</SettingsButton>;
   } else if (note === "reinstall") {
     /* Always shown, not only on hover (touch has none); the one thing to do now is tell us. */
     control = <span className="pointer-events-auto"><ReportIssueButton title={formatWorkbench(copy.reinstallIssueTitle, { name })} body={`Plugin: ${name}\nError: plugin-reinstall-required`} /></span>;
   } else {
     control = <span className="pointer-events-auto"><SettingsSwitch id={`plugin-${plugin.id}`} label={formatWorkbench(copy.switchLabel, { name })} checked={plugin.enabled}
-      disabled={lockedCard(state, plugin.id) || (!plugin.enabled && plugin.availability.state === "unsupported")} onToggle={next => onToggle(plugin, next)} /></span>;
+      disabled={lockedCard(state, plugin.id) || (!plugin.enabled && plugin.availability.state === "unsupported")}
+      onToggle={next => { if (next && plugin.turnOn.mode === "setup") onSetup(plugin); else onToggle(plugin, next); }} /></span>;
   }
   const line = note === "busy" && !pending ? formatWorkbench(copy.busyNote, { name })
     : note === "reinstall" ? formatWorkbench(copy.reinstallRequired, { name })

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Canonical GitHub build/provenance bytes, exact installers, physical CLI identity, GitHub context and release API readback.
- * [OUTPUT]: Uploads immutable candidate bytes only to a personal prerelease draft and reports exact asset custody.
+ * [INPUT]: Canonical GitHub build/provenance bytes, exact installers/update assets, physical CLI identity, GitHub context and release API readback.
+ * [OUTPUT]: Uploads immutable candidate bytes only to a profile-matched unpublished draft and reports exact asset custody; personal is prerelease, official-macos is stable.
  * [POS]: Production cloud-side upload boundary; it never publishes, clobbers assets, signs, or rebuilds. It accepts only a Developer ID notarized draft record.
  */
 import assert from "node:assert/strict";
@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { assertGithubContext } from "./build.mjs";
 import { canonicalJson, hashFile, publicConfigurationIdentity, PUBLIC_REPOSITORY } from "./identity.mjs";
-import { readGithubBuildRecord, verifyGithubAssets } from "./record.mjs";
+import { githubBuildAssets, readGithubBuildRecord, verifyGithubAssets } from "./record.mjs";
 
 function gh(args) {
   const result = spawnSync("gh", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
@@ -28,7 +28,7 @@ function lookup(tag) {
   throw new Error("GitHub release state is unknown; no write is allowed");
 }
 function validateDraft(release, record) {
-  assert(release && release.draft === true && release.prerelease === true, "Only an existing personal prerelease draft may receive candidate bytes");
+  assert(release && release.draft === true && release.prerelease === (record.profile === "personal"), "Only an unpublished draft matching the build profile may receive candidate bytes");
   assert.equal(release.tag_name, record.tag, "Draft tag mismatch");
   assert.equal(release.target_commitish, record.source.commit, "Draft source commit mismatch");
   assert(Array.isArray(release.assets), "Draft asset inventory is unavailable");
@@ -84,18 +84,20 @@ export function uploadDraft(directory) {
   assert.equal(record.delivery, "draft", "Build-only candidates cannot access a Release");
   const context = assertGithubContext(); assert.equal(context.mode, "draft", "Only draft mode may upload candidate assets");
   assert.deepEqual(record.source, context.source); assert.equal(record.tag, `v${context.version}`);
+  assert.equal(record.profile, context.profile, "Draft profile differs from original build");
   assert.equal(record.workflow.runId, context.workflow.runId); assert(record.workflow.runAttempt <= context.workflow.runAttempt, "Invalid candidate run attempt");
   assert.equal(record.configuration.signing, "developer-id-notarized", "Draft upload requires a Developer ID notarized candidate");
-  assert.deepEqual(record.configuration, publicConfigurationIdentity(resolve(import.meta.dirname, "../../.."), record.configuration.signing), "Candidate configuration differs from public source");
+  assert.deepEqual(record.configuration, publicConfigurationIdentity(resolve(import.meta.dirname, "../../.."), record.configuration.signing, record.profile), "Candidate configuration differs from public source");
   verifyGithubAssets(directory, record); verifyTag(record);
-  const expected = [...record.assets.map(asset => ({ name: asset.name, bytes: asset.bytes, sha256: asset.sha256 })),
+  const expected = [...githubBuildAssets(record).map(asset => ({ name: asset.name, bytes: asset.bytes, sha256: asset.sha256 })),
     ...["github-build.json", "build-provenance.jsonl"].map(name => ({ name, bytes: lstatSync(join(directory, name)).size, sha256: hashFile(join(directory, name)) }))];
   let release = lookup(record.tag);
   if (release) validateDraft(release, record);
   else {
     const requestDirectory = mkdtempSync(join(tmpdir(), "bottega-draft-create-")), requestPath = join(requestDirectory, "request.json");
     writeFileSync(requestPath, canonicalJson({ tag_name: record.tag, target_commitish: record.source.commit, name: `${record.tag} candidate`,
-      body: "Production macOS ARM64 candidate, Developer ID signed and notarized. Private installer acceptance is pending.", draft: true, prerelease: true, make_latest: "false" }));
+      body: "Production macOS ARM64 candidate, Developer ID signed and notarized. Private installer acceptance is pending.",
+      draft: true, prerelease: record.profile === "personal", make_latest: "false" }));
     const created = gh(["api", "--method", "POST", `repos/${PUBLIC_REPOSITORY}/releases`, "--input", requestPath]);
     release = lookup(record.tag);
     assert(release, created.status === 0 ? "Created draft cannot be read back" : "Draft creation result is unknown; no retry is allowed");
@@ -123,7 +125,7 @@ export function uploadDraft(directory) {
   }
   const transfer = cleanupTransfer(record, custody);
   const result = { schema: "bottega.github-draft-upload/v1", releaseId: release.id, tag: record.tag, commit: record.source.commit,
-    draft: true, prerelease: true, assets: custody, transfer };
+    draft: true, prerelease: record.profile === "personal", assets: custody, transfer };
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY,
     `### Verified candidate draft\n\nRelease ID: \`${release.id}\`\n\n${custody.map(asset => `- ${asset.name}: ID \`${asset.id}\`, \`${asset.sha256}\``).join("\n")}\n\nTransfer artifact: ${transfer ? `\`${transfer.id}\` (${transfer.status})` : "retained"}\n`);
   console.log(canonicalJson(result)); return result;

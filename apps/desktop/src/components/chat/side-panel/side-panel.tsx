@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, PanelSessionContext, horizontal resize, PanelTabs, Plan/file/Workspace previews, Gallery projection, and the shared SidePanelShell and localized shell catalog
- * [OUTPUT]: Provides localized panel chrome, Artifact takeover/close hooks and canonical context for each consumer
+ * [OUTPUT]: Provides localized panel chrome, design-owned unified headers and Artifact takeover/guarded-close hooks and canonical context for each consumer
  * [POS]: The visual shell of chat/side-panel; ChatView owns width and visibility
  */
 
@@ -81,6 +81,7 @@ export const SidePanel = memo(function SidePanel({
   const registerArtifactClose = useCallback((handler: () => Promise<unknown>) => { beforeArtifactClose.current = handler; return () => { if (beforeArtifactClose.current === handler) beforeArtifactClose.current = null; }; }, []);
   const closeArtifact = () => { void Promise.resolve().then(() => beforeArtifactClose.current?.()).then(onClose).catch(() => setArtifactCloseFailed(true)); };
   const artifactId = state?.kind === "artifact-preview" ? state.fence.id : null;
+  const designPreview = state?.kind === "artifact-preview" && Boolean(state.fence.design);
   const artifactFull = Boolean(artifactId && fullArtifactId === artifactId);
   const setArtifactFull = (full: boolean) => setFullArtifactId(full ? artifactId : null);
   const documentState =
@@ -119,9 +120,9 @@ export const SidePanel = memo(function SidePanel({
           </Suspense>
         ) : (
           <>
-            <header className="flex h-[var(--page-shell-header-height)] shrink-0 items-center gap-3 border-b px-4 [-webkit-app-region:drag]">
+            {!designPreview && <header className="flex h-[var(--page-shell-header-height)] shrink-0 items-center gap-3 border-b px-4 [-webkit-app-region:drag]">
               <h2 className="min-w-0 flex-1 truncate font-medium text-sm">
-                {documentState?.kind === "artifact-preview" && documentState.fence.design ? documentState.fence.title.replace(/ · v\d+$/, "") : title}
+                {title}
               </h2>
               <Button
                 aria-label={t("chat.sidePanel.shell.closePreview")}
@@ -136,7 +137,7 @@ export const SidePanel = memo(function SidePanel({
               >
                 <XIcon />
               </Button>
-            </header>
+            </header>}
             {/* 正文基准归容器，不归分支：加载/报错/文档三态同处一栏，字号本就
                 该是这一栏的属性。此前只有前两态各自写了 text-sm，文档态漏写，
                 于是同一段 Markdown 在聊天流是 14px、在这里回落根字号 16px，

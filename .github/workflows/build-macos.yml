@@ -1,5 +1,5 @@
 # [INPUT]: Clean public production source, fixed toolchain pins and GitHub-hosted standard ARM64 runners. Signing material comes only from the protected release environment on thinkingjimmy/Bottega.
-# [OUTPUT]: Attested macOS personal installers. build-only stays ad-hoc. signed and draft are Developer ID signed and Apple notarized. Publication follows private acceptance.
+# [OUTPUT]: Attested personal installers or official-macos installers and update assets. build-only stays personal/ad-hoc. Official macOS requires Developer ID signing and Apple notarization. Publication follows private acceptance.
 # [POS]: The only public production workflow, maintained in the development source and exported byte-for-byte. Bottega-Dev never holds the signing secrets.
 name: Build macOS candidate
 
@@ -23,6 +23,14 @@ on:
           - build-only
           - signed
           - draft
+      profile:
+        description: Personal manual updates or official macOS automatic updates (requires signed or draft)
+        required: true
+        default: personal
+        type: choice
+        options:
+          - personal
+          - official-macos
 
 permissions: {}
 
@@ -34,6 +42,7 @@ env:
   BOTTEGA_PUBLIC_BUILD_COMMIT: ${{ inputs.source }}
   BOTTEGA_PUBLIC_RELEASE_TAG: ${{ inputs.tag }}
   BOTTEGA_PUBLIC_BUILD_MODE: ${{ inputs.mode }}
+  BOTTEGA_PUBLIC_RELEASE_PROFILE: ${{ inputs.profile }}
 
 jobs:
   build:
@@ -78,9 +87,9 @@ jobs:
         run: node apps/desktop/scripts/distribution/github/build.mjs toolchain
       - name: Install exact production dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build personal production installers
+      - name: Build production installers and selected update assets
         run: pnpm exec node apps/desktop/scripts/distribution/github/build.mjs build
-      - name: Attest exact installers and build record
+      - name: Attest exact candidate assets and build record
         id: provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:

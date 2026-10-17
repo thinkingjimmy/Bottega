@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron lifecycle, Node filesystem, installation-scoped device identity, on-demand English-plus-active-locale translation (shared and main-only native catalogs), and every main-owned service, including signed-update compatibility, scoped Extensions, Project cleanup/Tools, Agent policy, Chat continuation recovery, coordinator/custody, Apps, Artifact document commit/recovery, browser, local usage history, account quota service seeded from its durable last-known snapshot, presence lifecycle/composition and crash-aware main readiness, and the build-gated cloud account lifecycle with consent restoration, cross-Store cleanup and original-coordinator remote intake.
- * Artifact workspace/checkpoint ownership composes with the existing document journal and plugin lifecycle.
+ * Artifact workspace/checkpoint ownership composes with the existing document journal and plugin lifecycle. App surface leases share the canonical effective-workspace resolver used by files and tools.
  * [OUTPUT]: Provides the desktop composition root with parallel pre-window store initialization, the two-phase Chat store open/adopt that spawns the SQLite worker ahead of custody recovery and adopts it alongside, early CLI-discovery warm-up feeding the persisted Agent runtime snapshot that seeds the window's startup snapshot, a post-window maintenance queue that also finishes a window-first folder mount and remounts the Bases its new Chat identities unblock, pre-Project App authority repair, the trust-gated signed candidate preflight, App Query snapshot wiring, scoped inventory and Project Tools wiring, Chat Home/SQLite continuation reconciliation, post-reconciliation external-history sync, the periodic chat-store maintenance gate, cleanup participants, recovery order, windows, and two-phase shutdown, background retention based on actual entry availability, shared quit authorization, and task status startup. Agent configuration inventory resolves live library Skills and scoped MCP servers; workflow defaults read Provider preferences.
  * Plugin Surface composition owns source authoring, sealed generations and delivery; Memory exposes its existing owners and remote pause port, and Dock retains its original owner and recovery lifecycle. Managed previews follow committed App conversation availability and drain before App disable returns.
  * Folder ownership shares cloud identity; quit reports live process/task facts and named unconfirmed drafts, cancellation restores editing, and failure dialogs load only when requested by startup/shutdown/runtime.
@@ -514,6 +514,7 @@ if (!hasSingleInstanceLock) {
         chatStore,
         bases: basesService,
         baseStore,
+        resolveEffectiveWorkspace,
         intents: lifecycleIntents,
         coordinator: sectionCoordinator,
         skills: skillsCatalog,

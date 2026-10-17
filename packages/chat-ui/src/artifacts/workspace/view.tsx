@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Fixed Artifact scope, actual owner chrome measurements, guarded navigation/checkpoints, trusted mounted-view lifetime and explicit UI text-input intent.
- * [OUTPUT]: Canvas workspace with measured inspector bounds, transient text ownership, editor-owned zoom/fit, scoped disable acknowledgement and retained drafts/settings.
+ * [OUTPUT]: Canvas workspace with unified header, inline review actions, direct export access, floating work/version/history controls, viewport-bound comments with retained board-switch intent, measured inspector bounds and retained drafts/settings.
  * [POS]: Shared design workbench; main owns source mutations, history, custody and authorization.
  */
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -11,6 +11,7 @@ import type { ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-
 import type { WorkspaceRead } from "@ai-chat/cloud-protocol/artifacts/design/model";
 import { checkpointSchema, type DesignReference, type DesignAnchor, type DesignCheckpoint } from "@ai-chat/cloud-protocol/artifacts/design/review";
 import { useArtifactHost, useArtifactPresentation } from "../context";
+import { ArtifactHeader } from "../presentation/header";
 import { DesignPreview, type FrameEditorSession } from "./preview";
 import { CanvasObjectProperties } from "./canvas/editor/stage/panels/object-properties";
 import { DesignProperties } from "./canvas/editor/stage/panels/properties";
@@ -22,17 +23,16 @@ import type { CanvasOperation } from "@ai-chat/cloud-protocol/artifacts/design/c
 import { CanvasEditor, type BoardNavigationRequest } from "./canvas/editor/stage/editor";
 import { useCanvasTarget } from "./canvas/editor/stage/state/target";
 import { useDesignEdits, type CanvasEdit } from "./canvas/edits";
-import { BoardNavigation, BoardOverview } from "./canvas/navigation";
 import { ContextAnnotation, FeedbackNotes, type AnnotationDraft } from "./canvas/notes";
-import { WorkspaceToolbar, type Inspector, type CanvasTool } from "./canvas/toolbar";
+import { WorkspaceHeader, WorkspaceActions, WorkspaceHistory, type Inspector, type CanvasTool } from "./canvas/toolbar";
 import "./canvas/workspace.css";
 const DesignSystem = lazy(() => import("./system/view").then(module => ({ default: module.DesignSystemView })));
 type Camera = NonNullable<DesignCheckpoint["view"]>["cameras"][string];
 export function ArtifactWorkspaceView({ fence }: { fence: ArtifactFence }) {
   const host = useArtifactHost()!, presentation = useArtifactPresentation(), copy = workspaceCopy(host.locale), [artifactId, setArtifactId] = useState(fence.id), [state, setState] = useState<WorkspaceRead | null>(null), [loadedId, setLoadedId] = useState(fence.id);
-  const [boardId, setBoardId] = useState(fence.design!.launchBoard), [comparison, setComparison] = useState(""), [mode, setMode] = useState<"focus" | "overview">("focus"), [cameras, setCameras] = useState<Record<string, Camera>>({});
+  const [boardId, setBoardId] = useState(fence.design!.launchBoard), [comparison, setComparison] = useState(""), [cameras, setCameras] = useState<Record<string, Camera>>({});
   const [tool, setTool] = useState<CanvasTool>("preview"), [selecting, setSelecting] = useState(false), [selectionMode, setSelectionMode] = useState<"element" | "region">("element"), [anchor, setAnchor] = useState<DesignAnchor | null>(null);
-  const [panel, setPanel] = useState<Inspector | null>(null), [boardsOpen, setBoardsOpen] = useState(false), [notes, setNotes] = useState<DesignCheckpoint["notes"]>([]), [annotation, setAnnotation] = useState<AnnotationDraft | undefined>(), [annotationOpen, setAnnotationOpen] = useState(false), [locate, setLocate] = useState<string | null>(null);
+  const [panel, setPanel] = useState<Inspector | null>(null), [notes, setNotes] = useState<DesignCheckpoint["notes"]>([]), [annotation, setAnnotation] = useState<AnnotationDraft | undefined>(), [annotationOpen, setAnnotationOpen] = useState(false), [locate, setLocate] = useState<string | null>(null);
   const [canvasDraft, setCanvasDraft] = useState<DesignCheckpoint["canvas"]>(), [reselect, setReselect] = useState<string | null>(null);
   const [textSession, setTextSession] = useState<FrameEditorSession>({ id: 0, focus: false });
   const beginTextSession = useCallback((focus: boolean) => setTextSession(current => ({ id: current.id + 1, focus })), []);
@@ -45,7 +45,7 @@ export function ArtifactWorkspaceView({ fence }: { fence: ArtifactFence }) {
   const onPropertyUncheckpointed = useCallback((value: boolean) => { uncheckpointed.current.properties = value; setInputBlocked(value || uncheckpointed.current.canvas); }, []);
   const hasUncheckpointed = useCallback(() => uncheckpointed.current.canvas || uncheckpointed.current.properties, []);
   const canLeaveWorkspace = useCallback(() => { if (!hasUncheckpointed()) return true; setError(true); return false; }, [hasUncheckpointed]);
-  const edit = useRef(editDraft), system = useRef(systemDraft), annotationRef = useRef(annotation), view = useRef<DesignCheckpoint["view"]>({ mode, cameras }), handoff = useRef<DesignCheckpoint["handoff"]>(undefined), retarget = useRef<string | null>(null);
+  const edit = useRef(editDraft), system = useRef(systemDraft), annotationRef = useRef(annotation), view = useRef<DesignCheckpoint["view"]>({ mode: "focus", cameras }), handoff = useRef<DesignCheckpoint["handoff"]>(undefined), retarget = useRef<string | null>(null);
   const latest = useRef({ state, notes, boardId, artifactId: loadedId }), flight = useRef(Promise.resolve<unknown>(undefined)), lifetime = useRef(Promise.resolve<unknown>(undefined));
   const documentId = fence.design!.documentId;
   useLayoutEffect(() => { latest.current = { state, notes, boardId, artifactId: loadedId }; }, [state, notes, boardId, loadedId]);
@@ -105,7 +105,7 @@ export function ArtifactWorkspaceView({ fence }: { fence: ArtifactFence }) {
       restoredCanvas = { ...restoredCanvas, selection: restoredCanvas.selection.filter(id => read.manifest.boards.some(board => board.id === id) || read.manifest.objects?.some(object => object.id === id)) };
       canvasEdit.current = restoredCanvas; setCanvasDraft(restoredCanvas); commitIntent.current = null;
       if (!intent && checkpoint?.edit?.anchor) setReselect(checkpoint.edit.anchor.selector);
-      const restored = checkpoint?.view ?? { mode: "focus" as const, cameras: {} }; view.current = restored; setMode(restored.mode); setCameras(restored.cameras);
+      const restored = { mode: "focus" as const, cameras: checkpoint?.view?.cameras ?? {} }; view.current = restored; setCameras(restored.cameras);
       if (checkpoint?.edit?.sourceConflict || checkpoint?.edit?.request || checkpoint?.canvas?.sourceConflict || checkpoint?.canvas?.request) setPanel("properties");
     }).catch(() => { if (current) setError(true); });
     return () => { current = false; };
@@ -124,18 +124,17 @@ export function ArtifactWorkspaceView({ fence }: { fence: ArtifactFence }) {
     });
     observer.observe(node); observer.observe(body); for (const element of chrome) observer.observe(element);
     return () => { current = false; observer.disconnect(); };
-  }, [state, loadedId, artifactId, mode, comparison, boardsOpen]);
+  }, [state, loadedId, artifactId, comparison]);
   const update = (values: DesignCheckpoint["notes"]) => { latest.current.notes = values; setNotes(values); handoff.current = undefined; void save(values).catch(() => setError(true)); };
   const changeAnnotation = (value: AnnotationDraft | undefined) => { annotationRef.current = value; setAnnotation(value); void save(latest.current.notes).catch(() => setError(true)); };
-  const storeView = (nextMode = mode, nextCameras = cameras) => { view.current = { mode: nextMode, cameras: nextCameras }; setMode(nextMode); setCameras(nextCameras); void save(latest.current.notes).catch(() => setError(true)); };
-  const chooseBoard = (id: string) => { if (!canLeaveWorkspace()) return false; setBoardNavigation(null); latest.current.boardId = id; setBoardId(id); setReselect(null); setMode("focus"); setAnchor(null); setSelecting(false); setAnnotationOpen(false); storeView("focus"); if (area.width < 900) setBoardsOpen(false); return true; };
+  const storeView = (nextCameras = cameras) => { view.current = { mode: "focus", cameras: nextCameras }; setCameras(nextCameras); void save(latest.current.notes).catch(() => setError(true)); };
+  const chooseBoard = (id: string) => { if (!canLeaveWorkspace()) return false; setBoardNavigation(null); latest.current.boardId = id; setBoardId(id); setReselect(null); setAnchor(null); setSelecting(tool === "annotate" && !annotationRef.current); setAnnotationOpen(false); storeView(); return true; };
   const requestBoard = (id: string) => { if (!chooseBoard(id)) return; setBoardNavigation({ artifactId: latest.current.artifactId, boardId: id, scope: host.scope }); };
-  const showOverview = () => { if (!canLeaveWorkspace()) return; setBoardNavigation(null); storeView("overview"); setPanel(null); setAnnotationOpen(false); setSelecting(false); };
   const openVersion = (id: string) => { if (!canLeaveWorkspace()) return; void save(notes).then(() => { setArtifactId(id); setAnchor(null); }).catch(() => setError(true)); };
   const onTool = (next: CanvasTool) => { if (hasUncheckpointed()) { setError(true); return; }
-    setMode("focus"); storeView("focus"); setTool(next); setAnnotationOpen(false);
+    storeView(); setTool(next); setAnnotationOpen(false);
     if (next === "preview") { setSelecting(false); setPanel(null); return; }
-    if (next === "annotate" && annotationRef.current) { requestBoard(annotationRef.current.anchor.boardId); setAnnotationOpen(true); setSelecting(false); setPanel(null); return; }
+    if (next === "annotate" && annotationRef.current) { requestBoard(annotationRef.current.anchor.boardId); setAnchor(annotationRef.current.anchor); setAnnotationOpen(true); setSelecting(false); setPanel(null); return; }
     setSelecting(true); if (next === "annotate") setPanel(null);
   };
   const selected = (value: DesignAnchor) => {
@@ -146,12 +145,12 @@ export function ArtifactWorkspaceView({ fence }: { fence: ArtifactFence }) {
   };
   const locateNote = (id: string) => { const note = notes.find(note => note.id === id); if (!note?.anchor) return; requestBoard(note.anchor.boardId); setLocate(null); requestAnimationFrame(() => setLocate(id)); setPanel("comments"); };
   const focusTrigger = (label: string) => requestAnimationFrame(() => root.current?.querySelector<HTMLButtonElement>(`button[aria-label="${CSS.escape(label)}"]`)?.focus());
-  if (!state || loadedId !== artifactId) return <div className="grid min-h-0 flex-1 place-content-center gap-3 p-6"><p role={error ? "alert" : "status"}>{error ? copy.failed : copy.loading}</p>{error && <Button onClick={() => void refresh().catch(() => setError(true))}>{copy.retry}</Button>}</div>;
+  if (!state || loadedId !== artifactId) return <section className="artifact-workspace"><ArtifactHeader title={fence.title} /><div className="grid min-h-0 flex-1 place-content-center gap-3 p-6"><p role={error ? "alert" : "status"}>{error ? copy.failed : copy.loading}</p>{error && <Button onClick={() => void refresh().catch(() => setError(true))}>{copy.retry}</Button>}</div></section>;
   const board = state.manifest.boards.find(board => board.id === boardId) ?? state.manifest.boards[0]!, cameraKey = `${state.revision}:${board.id}`, camera = cameras[cameraKey] ?? { width: board.viewport.width, zoom: 1, fit: board.mode === "fixed" ? "board" as const : "width" as const };
   const width = camera.width, height = board.viewport.height;
   const zoom = camera.fit === "manual" ? camera.zoom : Math.max(.05, Math.min(1, (area.width - 32) / width, camera.fit === "board" ? (area.height - 72) / height : 3));
-  const changeCamera = (next: Camera) => { const entries = Object.entries(cameras).filter(([key]) => key !== cameraKey).slice(-31); storeView(mode, Object.fromEntries([...entries, [cameraKey, next]])); };
-  const counts = Object.fromEntries(state.manifest.boards.map(board => [board.id, notes.filter(note => note.anchor?.boardId === board.id).length])), titles = Object.fromEntries(state.manifest.boards.map(board => [board.id, board.title]));
+  const changeCamera = (next: Camera) => { const entries = Object.entries(cameras).filter(([key]) => key !== cameraKey).slice(-31); storeView(Object.fromEntries([...entries, [cameraKey, next]])); };
+  const titles = Object.fromEntries(state.manifest.boards.map(board => [board.id, board.title]));
   const compareBoard = comparison.startsWith("board:") ? state.manifest.boards.find(board => board.id === comparison.slice(6)) : board, compareVersion = comparison.startsWith("version:") ? state.versions.find(value => value.revision === Number(comparison.slice(8))) : null;
   const modelSelection = canvasDraft?.selection[0], selectedObject = state.canvas?.objects.find(object => object.id === modelSelection), selectedBoard = state.canvas?.boards.find(board => board.id === modelSelection);
   const displayPanel = panel;
@@ -161,23 +160,21 @@ export function ArtifactWorkspaceView({ fence }: { fence: ArtifactFence }) {
     try { annotationRef.current = undefined; await save(values); latest.current.notes = values; setNotes(values); setAnnotation(undefined); setAnnotationOpen(false); setPanel("comments"); }
     catch { annotationRef.current = draft; setError(true); } finally { setAnnotationBusy(false); }
   };
-  return <section ref={root} data-artifact-workspace={state.documentId} data-workspace-view={mode} aria-label={state.title} className="artifact-workspace" onKeyDown={event => {
+  return <section ref={root} data-artifact-workspace={state.documentId} data-workspace-view="focus" aria-label={state.title} className="artifact-workspace" onKeyDown={event => {
     if (event.key !== "Escape" || event.defaultPrevented) return;
     if (annotationOpen) { event.preventDefault(); event.stopPropagation(); setAnnotationOpen(false); focusTrigger(copy.annotation); }
     else if (displayPanel) { event.preventDefault(); event.stopPropagation(); setPanel(null); focusTrigger(copy.more); }
-    else if (boardsOpen) { event.preventDefault(); setBoardsOpen(false); focusTrigger(copy.boards); }
     else if (selecting) { event.preventDefault(); setSelecting(false); setTool("preview"); retarget.current = null; focusTrigger(copy.select); }
     else if (presentation?.full && presentation.canExpand) { presentation.setFull(false); focusTrigger(copy.full); }
   }}>
-    <WorkspaceToolbar state={state} tool={tool} selecting={selecting} overview={mode === "overview"} controls={controls} commentCount={notes.length} onTool={onTool} onBoards={() => setBoardsOpen(value => !value)} onOverview={showOverview} onPanel={setPanel} onRefresh={() => { if (canLeaveWorkspace()) void refresh().catch(() => setError(true)); }} onCurrent={() => { const latest = state.versions.find(value => value.revision === state.latestRevision); if (latest) openVersion(latest.artifactId); }} />
+    <WorkspaceHeader state={state} controls={controls} onCurrent={() => { const latest = state.versions.find(value => value.revision === state.latestRevision); if (latest) openVersion(latest.artifactId); }} />
     <div className="artifact-workspace-body">
-      {boardsOpen && <div className="artifact-board-rail"><BoardNavigation artifactId={artifactId} manifest={state.manifest} boardId={boardId} overview={mode === "overview"} counts={counts} choose={requestBoard} showOverview={showOverview} close={() => setBoardsOpen(false)} /></div>}
       <div ref={canvas} data-workspace-canvas="" className="artifact-canvas">
-        <div data-workspace-canvas-header="" className="flex min-h-[36px] shrink-0 items-center gap-2 border-b border-border/50 px-3 text-xs text-muted-foreground"><span className="min-w-0 flex-1 truncate">{mode === "overview" ? `${copy.overview} · ${state.manifest.boards.length}` : `${board.title} · ${width} × ${height}`}</span>{controls.edit.sourceConflict && <Button variant="ghost" className="min-h-[44px] text-xs" onClick={() => setPanel("properties")}>{copy.properties}</Button>}</div>
-        {mode === "overview" ? <BoardOverview artifactId={artifactId} manifest={state.manifest} counts={counts} choose={requestBoard} /> : <div className={comparison ? "artifact-canvas-pair" : "flex min-h-0 flex-1 flex-col"}>
-          <CanvasEditor artifactId={artifactId} state={state} checkpoint={canvasDraft ?? { pageId: canvasPages(state.manifest)[0]!.id, selection: [], tool: "select", preview: false }} controls={controls} boardId={board.id} anchor={anchor} source={sourceTarget} textSession={textSession} onTextSession={beginTextSession} forceTool={tool === "annotate" ? "annotate" : null} selecting={selecting} selectionMode={selectionMode} propertiesOpen={displayPanel === "properties"} viewportWidth={width} reselect={reselect} notes={notes} locate={locate} onAnchor={selected} onBoard={chooseBoard} boardNavigation={boardNavigation} onBoardNavigation={requestBoard} onBoardNavigated={onBoardNavigated} onPin={locateNote} onTool={() => onTool("select")} onProperties={() => setPanel(value => value === "properties" ? null : "properties")} onUncheckpointed={onUncheckpointed} hasUncheckpointed={hasUncheckpointed} inputBlocked={inputBlocked} onClearSource={() => { setAnchor(null); setReselect(null); }} onEscape={() => { setSelecting(false); setTool("preview"); retarget.current = null; focusTrigger(copy.select); }} annotation={(id, width, height, zoom, geometry) => annotationOpen && annotation && annotation.anchor.boardId === id ? <ContextAnnotation draft={annotation} boardTitle={titles[id] ?? id} width={width} height={height} zoom={zoom} bounds={geometry?.selected} busy={annotationBusy} change={text => changeAnnotation({ ...annotation, text })} save={() => void commitAnnotation()} close={() => { setAnnotationOpen(false); focusTrigger(copy.annotation); }} /> : null} />
+        {controls.edit.sourceConflict && <div data-workspace-canvas-header="" className="flex min-h-[36px] shrink-0 items-center gap-2 border-b border-border/50 px-3 text-xs text-muted-foreground"><span className="min-w-0 flex-1 truncate">{copy.sourceChanged}</span>{controls.edit.sourceConflict && <Button variant="ghost" className="min-h-[44px] text-xs" onClick={() => setPanel("properties")}>{copy.properties}</Button>}</div>}
+        <div className={comparison ? "artifact-canvas-pair" : "flex min-h-0 flex-1 flex-col"}>
+          <CanvasEditor actions={<WorkspaceActions state={state} tool={tool} commentCount={notes.length} onTool={onTool} onPanel={setPanel} onRefresh={() => { if (canLeaveWorkspace()) void refresh().catch(() => setError(true)); }} />} artifactId={artifactId} state={state} checkpoint={canvasDraft ?? { pageId: canvasPages(state.manifest)[0]!.id, selection: [], tool: "select", preview: false }} controls={controls} boardId={board.id} anchor={anchor} source={sourceTarget} textSession={textSession} onTextSession={beginTextSession} forceTool={tool === "annotate" ? "annotate" : null} selecting={selecting} selectionMode={selectionMode} exportOpen={displayPanel === "export"} onExport={() => setPanel(value => value === "export" ? null : "export")} propertiesOpen={displayPanel === "properties"} viewportWidth={width} reselect={reselect} notes={notes} locate={locate} onAnchor={selected} onBoard={chooseBoard} boardNavigation={boardNavigation} onBoardNavigation={requestBoard} onBoardNavigated={onBoardNavigated} onPin={locateNote} onTool={() => onTool("select")} onProperties={() => setPanel(value => value === "properties" ? null : "properties")} onUncheckpointed={onUncheckpointed} hasUncheckpointed={hasUncheckpointed} inputBlocked={inputBlocked} onClearSource={() => { setAnchor(null); setReselect(null); }} onEscape={() => { setSelecting(false); setTool("preview"); retarget.current = null; focusTrigger(copy.select); }} annotation={(id, target, viewport) => annotationOpen && annotation && annotation.anchor.boardId === id ? <ContextAnnotation draft={annotation} boardTitle={titles[id] ?? id} target={target} viewport={viewport} busy={annotationBusy} change={text => changeAnnotation({ ...annotation, text })} save={() => void commitAnnotation()} close={() => { setAnnotationOpen(false); focusTrigger(copy.annotation); }} /> : null} />
           {comparison && compareBoard && <div className="flex min-h-0 flex-col border-l"><p className="shrink-0 border-b px-3 py-2 text-xs text-muted-foreground">{compareBoard.title} · v{compareVersion?.revision ?? state.revision}</p><DesignPreview artifactId={compareVersion?.artifactId ?? artifactId} boardId={compareBoard.id} title={`${compareBoard.title} · v${compareVersion?.revision ?? state.revision}`} generation={state.generation} width={width} height={compareBoard.viewport.height} zoom={Math.min(zoom, (area.width / 2 - 32) / width)} enabled={state.previewEnabled ?? state.enabled} selecting={false} /></div>}
-        </div>}
+        </div>
       </div>
       <aside data-workspace-inspector={displayPanel ?? "none"} className="artifact-inspector" hidden={!displayPanel} aria-label={panelTitle}>
         <header className="flex min-h-[44px] shrink-0 items-center gap-1 border-b px-3"><h3 className="min-w-0 flex-1 text-sm font-medium">{panelTitle}</h3><Button type="button" variant="ghost" size="icon" aria-label={copy.closePanel} className="min-h-[44px] min-w-[44px]" onClick={() => { setPanel(null); focusTrigger(copy.more); }}><X className="size-4" /></Button></header>
@@ -190,7 +187,7 @@ export function ArtifactWorkspaceView({ fence }: { fence: ArtifactFence }) {
         {displayPanel === "settings" && <div className="space-y-4 overflow-auto p-4"><label className="flex flex-col gap-2 text-sm">{copy.responseWidth}<input aria-label={copy.width} type="number" min={40} max={8000} value={width} className="min-h-[44px] rounded-md border bg-background px-3" onChange={event => { const width = Number(event.target.value); if (width >= 40 && width <= 8000) changeCamera({ ...camera, width }); }} /></label><label className="flex flex-col gap-2 text-sm">{copy.select}<select aria-label={copy.select} value={selectionMode} className="min-h-[44px] rounded-md border bg-background" onChange={event => setSelectionMode(event.target.value as "element" | "region")}><option value="element">{copy.element}</option><option value="region">{copy.region}</option></select></label><Button className="min-h-[44px]" variant="outline" onClick={() => changeCamera({ ...camera, zoom: 1, fit: "manual" })}>{copy.actualSize}</Button></div>}
       </aside>
     </div>
-    <footer className="flex min-h-[36px] shrink-0 items-center gap-2 border-t bg-background px-3 text-xs text-muted-foreground"><ArtifactDirectory fence={state.fence ?? fence} /><span className="flex-1" />{notes.length > 0 && <Button type="button" variant="ghost" className="min-h-[44px] text-xs" onClick={() => setPanel("comments")}>{notes.length} {copy.commentCount}</Button>}{annotation && !annotationOpen && <Button type="button" variant="ghost" className="min-h-[44px] text-xs" onClick={() => { requestBoard(annotation.anchor.boardId); setAnnotationOpen(true); }}>{copy.annotation}</Button>}</footer>
+    <footer data-workspace-footer="" className="flex shrink-0 items-center justify-between gap-3 p-3 text-xs"><div data-workspace-directory="" className="artifact-floating-toolbar min-w-0 text-muted-foreground"><ArtifactDirectory state={state} artifactId={artifactId} onVersion={openVersion} /></div><WorkspaceHistory state={state} controls={controls} /></footer>
     {error && !confirm && <div role="alert" className="flex shrink-0 items-center gap-2 border-t bg-destructive/5 px-3 py-2 text-xs"><p className="flex-1">{copy.failed}</p><Button variant="ghost" className="min-h-[44px]" onClick={() => void save(notes).then(() => setError(false)).catch(() => {})}>{copy.retry}</Button></div>}
     <Dialog open={Boolean(confirm)} onOpenChange={open => { if (!open && !transferring) setConfirm(null); }}><DialogContent><DialogTitle>{confirm === "send" ? copy.confirmSend : copy.confirmDraft}</DialogTitle><DialogDescription>{state.title} · v{state.revision} · {notes.length} {copy.commentCount}</DialogDescription>{confirm && error && <p role="alert">{copy.failed}</p>}<div className="flex justify-end gap-2"><Button variant="outline" disabled={transferring} className="min-h-[44px]" onClick={() => setConfirm(null)}>{copy.cancel}</Button><Button disabled={transferring} className="min-h-[44px]" onClick={() => {
       const action = confirm!; handoff.current ??= { id: crypto.randomUUID(), createdAt: Date.now(), action, status: "pending" }; setTransferring(true); setError(false);

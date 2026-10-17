@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Apps/Projects/Chats/Bases services, profile-local share staging, lifecycle, current locale, SkillsCatalog, settings/archive, package import/share, Agent turn control, and the extension trust anchor (Electron's packaged flag and resources path)
+ * [INPUT]: Depends on Apps/Projects/Chats/Bases services, the canonical effective-workspace resolver, profile-local share staging, lifecycle, current locale, SkillsCatalog, settings/archive, package import/share, Agent turn control, and the extension trust anchor (Electron's packaged flag and resources path)
  * [OUTPUT]: Provides shared lifecycle admission, conversion and install recovery, and separate local App removal using the existing drain, Chat, grant and data participants. U06-d: configures the Apps service's Edit Chat notice for a declined extension. Binds enablement to active Chat cancellation, retained queue wakeup, notices, window closure and managed-preview cleanup across all historical App Chats.
- * [POS]: Apps-domain composition root; wires Project grant commits to durable Project publication; ChatsService owns session record publication
+ * [POS]: Apps-domain composition root; configures surface workspace authority before publication and wires Project grant commits to durable Project publication; ChatsService owns session record publication
  */
 
 import { queuedComposerDraft } from "../composer/drafts/runtime";
@@ -56,6 +56,7 @@ import { createAppExtensionIntegration } from "../extensions/integration/app-ext
 import { readTrustAnchor } from "../extensions/trust/anchor";
 import { createExtensionTrustGate } from "../extensions/trust/gate";
 import { desktopDevelopmentRoot } from "../skills/catalog/system-skills";
+import type { EffectiveWorkspaceResolver } from "../workspace/files/workspace-resolver";
 
 type AppModeDependencies = {
   cloudEnabled?: boolean;
@@ -66,6 +67,7 @@ type AppModeDependencies = {
   chatStore: ChatStore;
   bases: BasesService;
   baseStore: BaseStore;
+  resolveEffectiveWorkspace: EffectiveWorkspaceResolver;
   intents: LifecycleIntentStore;
   coordinator: ConversationCoordinator;
   skills: SkillsCatalog;
@@ -188,6 +190,7 @@ export function configureAppMode(dependencies: AppModeDependencies) {
     dependencies.projectStore,
     grantAuthority
   );
+  surfaceLeases.configureWorkspaceAuthority(dependencies.resolveEffectiveWorkspace);
   dependencies.apps.configureSurfaceLeases(surfaceLeases);
   dependencies.bases.configureAppSurfaceValidator(surfaceLeases);
   dependencies.bases.ownerResolver.configureAppAttachments({

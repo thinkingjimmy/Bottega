@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Prepared board HTML, owner-issued frame identity and transient UI edit sessions.
- * [OUTPUT]: Opaque preview with trusted interaction events, session-owned native text and authenticated display metadata.
+ * [OUTPUT]: Opaque preview with trusted editor wheel panning, native Preview scrolling, session-owned text and authenticated display metadata.
  * [POS]: Canvas frame interaction bridge; source authority and shared schemas remain with the owner service.
  */
 import { DESIGN_PROPERTIES } from "./canvas/model";
@@ -103,7 +103,7 @@ export function designFrameHtml(html: string, identity: DesignFrameIdentity) {
     addEventListener('touchmove',event=>{if(event.isTrusted&&(tool==='hand'||space)&&!nativeTarget(event.target)&&event.cancelable)event.preventDefault();},{capture:true,passive:false});
     addEventListener('wheel',event=>{
       if(!event.isTrusted||typing(event.target)||nativeTarget(event.target))return;
-      if(!event.ctrlKey&&!event.metaKey&&tool!=='hand')return;event.preventDefault();event.stopImmediatePropagation();const unit=event.deltaMode===1?16:event.deltaMode===2?innerHeight:1;
+      if(!event.ctrlKey&&!event.metaKey&&tool==='preview')return;event.preventDefault();event.stopImmediatePropagation();const unit=event.deltaMode===1?16:event.deltaMode===2?innerHeight:1;
       const kind=event.ctrlKey||event.metaKey?'zoom':'pan';gesture(kind,'change',event,(kind==='pan'?-1:1)*event.deltaX*unit,(kind==='pan'?-1:1)*event.deltaY*unit);clearTimeout(wheelEnd);wheelEnd=setTimeout(()=>gesture(kind,'end',event),180);
     },{capture:true,passive:false});
     addEventListener('pointerdown',event=>{

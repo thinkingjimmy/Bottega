@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on localized surface migration failure projection; Depends on Base App lifecycle/generation, the main-owned AppRecordProjection, declaresBaseGui, BaseWorkbench/AppGuiSurface, trusted file-export IPC, shared editor and skill-feedback hooks, use-chat, routing, and window surface capsule checkpoints
- * [OUTPUT]: Provides BaseAppDetail with a main-derived studioSurfaceReady gate that discloses every requested capability and offers allow/decline, a re-authorize exit from surface failures, uniformly styled tri-zone header actions, shared skill-failure feedback with persistent menu recovery, explicit App-window handoff, generation-bound native file export, Use panel/dock, Editor navigation, settings, and normal-close checkpoints
+ * [OUTPUT]: Provides BaseAppDetail with a main-derived studioSurfaceReady gate that discloses every requested capability and offers allow/decline, visible surface failures and reauthorization on the App route, uniformly styled tri-zone header actions, shared skill-failure feedback with persistent menu recovery, explicit App-window handoff, generation-bound native file export, Use panel/dock, Editor navigation, settings, and normal-close checkpoints
  * [POS]: Resident Base App Studio; the App-window shell removes global chrome while this component keeps the same main and third-panel product structure
  */
 
@@ -238,7 +238,7 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
   >(undefined);
   const settingsOpen = rightSurface === "settings";
   const hasGui = gui.pages.includes("index.html");
-  const hasAppSurface = hasGui || (surface === "app" && Boolean(gui.error));
+  const hasAppSurface = hasGui || (surface === "app" && Boolean(gui.error || appSurfaceError));
   const showSurfaceTabs = !gui.loading && hasAppSurface;
   const mainSurface: MainSurface =
     surface === "data" ? "data" : surface === "app" ? "app" : hasGui ? "app" : "data";
@@ -294,7 +294,7 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
   };
 
   useEffect(() => {
-    if (loading || !ownerKey || gui.loading || waitingForStudioSurface) return;
+    if (loading || !ownerKey || gui.loading || waitingForStudioSurface || appSurfaceError) return;
     const target = surface === "app" && !hasGui && !gui.error
       ? "data"
       : surface === "app" || surface === "data"
@@ -304,7 +304,7 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
     navigate(`/apps/${record.id}/${target}`, {
       replace: true,
     });
-  }, [gui.error, gui.loading, hasGui, loading, navigate, ownerKey, record.id, surface, waitingForStudioSurface]);
+  }, [appSurfaceError, gui.error, gui.loading, hasGui, loading, navigate, ownerKey, record.id, surface, waitingForStudioSurface]);
 
   useEffect(() => {
     checkpointSurface(residenceSurface, {

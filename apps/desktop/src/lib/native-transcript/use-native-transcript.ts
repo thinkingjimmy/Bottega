@@ -1,8 +1,8 @@
 /**
  * [INPUT]: Depends on React external-store hooks, the shared TranscriptSession, the native TranscriptSource/rows, the chats timeline client and the
- *          chat-messages event store (for the Chat's head: newest seq, message revision, rewrites)
+ *          chat-messages event store (for the Chat's head and bounded canonical rows, including late reserved replies)
  * [OUTPUT]: Provides useNativeTranscript: one bounded TranscriptSession per native Chat incarnation, its snapshot as ChatMessage rows, and
- *           earlier/seek/latest actions for the timeline (TASK-25 S4d), and useWindowRows for readers that look rows up by id; after a rewrite the window stands down until the tail is re-read
+ *           earlier/seek/latest actions for the timeline (TASK-25 S4d), and useWindowRows for readers that look rows up by id; late reserved replies fill the loaded window without resetting it
  * [POS]: lib/native-transcript's React seam; the transcript view reads its window here instead of the unbounded session projection
  */
 
@@ -59,9 +59,10 @@ export function useNativeTranscript(chatId: string, incarnationId: string | null
   useEffect(() => {
     if (!session || !events || events.incarnationId !== incarnationId) return;
     const replaceKey = `${events.incarnationId}:${events.revision}`;
+    const native = events.messages.filter(row => row.segment !== "imported");
+    const headSeq = native.reduce((top, row) => Math.max(top, row.seq), 0);
     if (events.mode === "replace" && epoch.current.key !== replaceKey) epoch.current = { key: replaceKey, value: epoch.current.value + 1 };
-    const headSeq = events.messages.reduce((top, row) => (row.segment === "imported" ? top : Math.max(top, row.seq)), 0);
-    session.setHead({ chat: { id: chatId, incarnationId }, kind: "native", headSeq, bodyRevision: events.revision, rewriteEpoch: epoch.current.value });
+    session.setHead({ chat: { id: chatId, incarnationId }, kind: "native", headSeq, bodyRevision: events.revision, rewriteEpoch: epoch.current.value }, native);
   }, [chatId, events, incarnationId, session]);
 
   /* A rewrite (a revision) replaces the tail; until the session has re-read it, the window still holds the old rows, which must not be

@@ -1,10 +1,14 @@
 /**
- * [INPUT]: Original scoped workspace catalog and fixed Artifact card identity.
- * [OUTPUT]: One shared catalog, central work picker and compact explicit current-version links.
+ * [INPUT]: Original scoped workspace catalog, displayed immutable version history and owner-guarded version navigation.
+ * [OUTPUT]: One shared catalog, an app work/version menu and compact explicit current-version links.
  * [POS]: Work navigation reader; catalog reads never register documents or import old source.
  */
 import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { Button } from "@ai-chat/ui/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@ai-chat/ui/components/ui/dropdown-menu";
 import type { ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
+import type { WorkspaceRead } from "@ai-chat/cloud-protocol/artifacts/design/model";
 import { useArtifactHost, type ArtifactHost } from "../context";
 import { workspaceCopy } from "./copy";
 export type ArtifactWork = { documentId: string; title: string; revision: number; dirty: boolean; artifactRef: { artifactId: string }; fence?: ArtifactFence; format?: string };
@@ -26,12 +30,23 @@ export function useArtifactCatalog() {
   }, [catalog]);
   return catalog?.works ?? [];
 }
-export function ArtifactDirectory({ fence }: { fence: ArtifactFence }) {
+export function ArtifactDirectory({ state, artifactId, onVersion }: { state: WorkspaceRead; artifactId: string; onVersion(id: string): void }) {
   const host = useArtifactHost()!, copy = workspaceCopy(host.locale), works = useArtifactCatalog(), [failed, setFailed] = useState(false);
-  return <nav aria-label={copy.works} className="flex min-w-0 items-center gap-2"><select aria-label={copy.works} value={fence.design?.documentId ?? ""} className="min-h-[44px] max-w-56 truncate rounded-md border-0 bg-transparent px-1 text-xs" onChange={event => {
-    const work = works.find(work => work.documentId === event.target.value); if (!work) return;
-    setFailed(false); void host.workspace!({ action: "read", artifactId: work.artifactRef.artifactId }).then(value => host.open((value as { fence: ArtifactFence }).fence, host.followUp)).catch(() => setFailed(true));
-  }}><option value="" disabled>{copy.works}</option>{works.map(work => <option key={work.documentId} value={work.documentId}>{work.title} · v{work.revision}{work.dirty ? " *" : ""}</option>)}</select>{failed && <span role="alert" className="text-xs">{copy.failed}</span>}</nav>;
+  const others = works.filter(work => work.documentId !== state.documentId);
+  return <nav aria-label={copy.works} className="flex min-w-0 items-center gap-2"><DropdownMenu>
+    <DropdownMenuTrigger asChild><Button type="button" variant="ghost" aria-label={copy.works} className="min-h-[44px] w-56 min-w-0 max-w-full justify-between gap-2 px-2 text-xs font-normal">
+      <span className="truncate">{state.title} · v{state.revision}{state.revision === state.latestRevision && state.dirty ? " *" : ""}</span><ChevronDown className="size-4 shrink-0" />
+    </Button></DropdownMenuTrigger>
+    <DropdownMenuContent side="top" align="start" className="w-72 max-w-[calc(100vw-24px)]" data-workspace-directory-menu="" data-canvas-chrome="">
+      <DropdownMenuLabel className="truncate" title={state.title}>{state.title}</DropdownMenuLabel>
+      <DropdownMenuRadioGroup aria-label={copy.version} value={artifactId} onValueChange={id => { setFailed(false); if (id !== artifactId) onVersion(id); }}>
+        {[...state.versions].sort((left, right) => right.revision - left.revision).map(version => <DropdownMenuRadioItem key={version.artifactId} value={version.artifactId} className="min-h-[44px]">v{version.revision}</DropdownMenuRadioItem>)}
+      </DropdownMenuRadioGroup>
+      {others.length > 0 && <><DropdownMenuSeparator /><DropdownMenuLabel>{copy.works}</DropdownMenuLabel>{others.map(work => <DropdownMenuItem key={work.documentId} className="min-h-[44px]" onSelect={() => {
+        setFailed(false); void host.workspace!({ action: "read", artifactId: work.artifactRef.artifactId }).then(value => host.open((value as { fence: ArtifactFence }).fence, host.followUp)).catch(() => setFailed(true));
+      }}><span className="truncate">{work.title} · v{work.revision}</span></DropdownMenuItem>)}</>}
+    </DropdownMenuContent>
+  </DropdownMenu>{failed && <span role="alert" className="text-xs">{copy.failed}</span>}</nav>;
 }
 export function CurrentVersionLink({ fence }: { fence: ArtifactFence }) {
   const host = useArtifactHost()!, copy = workspaceCopy(host.locale), works = useArtifactCatalog(), latest = works.find(work => work.documentId === fence.design?.documentId), [failed, setFailed] = useState(false);

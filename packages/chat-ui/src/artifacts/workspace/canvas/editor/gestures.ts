@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Trusted host pointer/wheel events and the viewport camera callbacks.
- * [OUTPUT]: Native-input-safe Hand/pinch/wheel gestures with one checkpoint settlement per gesture.
+ * [OUTPUT]: Native-input-safe Hand/pinch gestures and tool-independent wheel panning with checkpoint settlement.
  * [POS]: Parent canvas gesture adapter; frame gestures use the same camera calculations.
  */
 import { useEffect, useRef, type RefObject } from "react";
@@ -47,7 +47,6 @@ export function useCanvasGestures(root: RefObject<HTMLDivElement | null>, camera
     };
     const wheel = (event: WheelEvent) => {
       if (!event.isTrusted || isNativeScrollTarget(event.target, element)) return;
-      if (!event.ctrlKey && !event.metaKey && !live.current.hand) return;
       event.preventDefault(); const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientHeight : 1;
       apply(event.ctrlKey || event.metaKey ? zoomAt(live.current.camera, local(event.clientX, event.clientY), live.current.camera.zoom * Math.max(.8, Math.min(1.25, Math.exp(-event.deltaY * unit * .01)))) : panCamera(live.current.camera, -event.deltaX * unit, -event.deltaY * unit));
       clearTimeout(wheelEnd); wheelEnd = setTimeout(() => live.current.settle(), 180);

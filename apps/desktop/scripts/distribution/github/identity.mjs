@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Node crypto/filesystem/process APIs, physical repository-root resolution and committed public build configuration.
- * [OUTPUT]: Canonical JSON, public source/configuration identities and packaged application digests. Signing is an explicit build claim, defaulting to ad-hoc.
+ * [INPUT]: Node crypto/filesystem/process APIs, physical repository-root resolution and committed public build configuration with explicit profile/signing claims.
+ * [OUTPUT]: Canonical JSON, public source/configuration identities and packaged application digests. Personal configuration preserves its v1 digest; official-macos binds its profile and requires notarized signing.
  * [POS]: Production identity shared by GitHub packaging and private exact-installer acceptance.
  */
 import assert from "node:assert/strict";
@@ -50,8 +50,10 @@ export function publicSourceIdentity(root) {
     entry.type === "commit" ? entry.oid : hashes.get(entry.oid)])), dirty: false };
 }
 
-export function publicConfigurationIdentity(desktop, signing = "ad-hoc-unnotarized") {
+export function publicConfigurationIdentity(desktop, signing = "ad-hoc-unnotarized", profile = "personal") {
   assert(["ad-hoc-unnotarized", "developer-id-notarized"].includes(signing), "Invalid public signing claim");
+  assert(["personal", "official-macos"].includes(profile), "Invalid public build profile");
+  if (profile === "official-macos") assert.equal(signing, "developer-id-notarized", "Official macOS requires Developer ID notarization");
   const files = ["electron-builder.yml", "config/cloud-assembly.ts", "electron.vite.config.ts", "package.json"];
   const assembly = readFileSync(join(desktop, "config/cloud-assembly.ts"), "utf8");
   for (const [key, value] of Object.entries(PRODUCTION_CLOUD)) {
@@ -64,8 +66,9 @@ export function publicConfigurationIdentity(desktop, signing = "ad-hoc-unnotariz
   assert(/const\s+outputRoot\s*=\s*["']out["']/.test(vite), "Public Vite must select out");
   const builder = readFileSync(join(desktop, "electron-builder.yml"), "utf8");
   assert(/^appId: com\.jimmywong\.bottega$/m.test(builder) && /^productName: Bottega$/m.test(builder), "Public builder identity mismatch");
+  const fileDigests = Object.fromEntries(files.map(path => [path, hashFile(join(desktop, path))]));
   return { workbenchUi: true, cloud: { ...PRODUCTION_CLOUD }, builder: "electron-builder.yml",
-    digest: digestJson(Object.fromEntries(files.map(path => [path, hashFile(join(desktop, path))]))), signing };
+    digest: digestJson(profile === "personal" ? fileDigests : { profile, files: fileDigests }), signing };
 }
 
 export function payloadIdentity(root) {

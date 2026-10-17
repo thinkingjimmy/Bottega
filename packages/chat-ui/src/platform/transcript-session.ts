@@ -1,7 +1,8 @@
 /**
- * [INPUT]: Depends on injected transcript pages, verified Chat heads, bounded imported-body preparation an optional host cache of prepared bodies and bounded local receive diagnostics.
+ * [INPUT]: Depends on injected transcript pages, verified Chat heads, optional bounded canonical native rows, bounded imported-body preparation, an optional host cache of prepared bodies and bounded local receive diagnostics.
  * [OUTPUT]: Records opaque installed body watermarks independently of live settlement. Publishes complete initial windows once (a first read that failed is read again on the next head update, F07), retains readable content during revision refresh, reads only appended messages for a new head within one rewrite epoch (R-04) against an installed watermark kept apart from the observed head, catching up after any read (initial, delta or earlier()) a head that arrived meanwhile (C2-02, C3-01), and keeps earlier() contiguous after appends trim the window (its cursor moves to the oldest row still shown), and reuses verified imported bodies across virtual row mounts and, where a host offers one, across sessions.
  * A failed initial imported window can retry latest even when native rows already loaded.
+ * Canonical native rows fill reserved-sequence gaps inside the loaded window without discarding loaded history or stitching the tail onto older pages.
  * [POS]: Session-scoped presentation state, generic over its rows and head (cloud rows by default; a host such as desktop native supplies its own), with ordered, bounded imported-prefix/native-suffix paging and cancellable reads.
  */
 import type { ChatBody } from "@ai-chat/cloud-protocol/chats/transcript/body";
@@ -56,6 +57,7 @@ export class TranscriptSession<Native = ChatBody, Imported = ImportedEntry, Head
   private nativePage: SessionPage<Native, Imported> | null = null;
   private importedPage: SessionPage<Native, Imported> | null = null;
   private head: Head | undefined;
+  private observedNative: readonly Native[] = [];
   /** What the tail on screen holds (R-04): kept apart from the observed head, which can move while a read is in flight. */
   private installed: { incarnationId: string; epoch: number; seq: number } | null = null;
   private closed = true;
@@ -68,10 +70,23 @@ export class TranscriptSession<Native = ChatBody, Imported = ImportedEntry, Head
   }
   snapshot = () => this.value;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
-  private update(value: Partial<Snapshot<Native, Imported>>) { if (!this.closed) { if (value.error) this.progress?.update({ phase: "failed" }); this.value = { ...this.value, ...value }; for (const listener of this.listeners) listener(); } }
-  setHead(head: Head) {
+  private fillNativeGaps(value: Snapshot<Native, Imported>): Snapshot<Native, Imported> {
+    if (value.busy || !this.observedNative.length) return value;
+    const native = value.items.filter(item => item.kind === "native");
+    if (!native.length) return value;
+    const oldest = this.rows.nativeSeq(native[0]!.body), newest = this.rows.nativeSeq(native.at(-1)!.body);
+    const known = new Set(native.map(item => this.rows.nativeKey(item.body)));
+    const missing = this.observedNative.filter(body => !known.has(this.rows.nativeKey(body)) && this.rows.nativeSeq(body) >= oldest && this.rows.nativeSeq(body) <= newest);
+    if (!missing.length) return value;
+    const ordered = [...native, ...missing.map(body => ({ kind: "native" as const, body }))].sort((a, b) => this.rows.nativeSeq(a.body) - this.rows.nativeSeq(b.body));
+    const items = [...value.items.filter(item => item.kind === "imported"), ...ordered];
+    return { ...value, items: items.slice(0, 200), latest: value.latest && items.length <= 200 };
+  }
+  private update(value: Partial<Snapshot<Native, Imported>>) { if (!this.closed) { if (value.error) this.progress?.update({ phase: "failed" }); this.value = this.fillNativeGaps({ ...this.value, ...value }); for (const listener of this.listeners) listener(); } }
+  /** A native host may supply its bounded canonical event projection; late reserved rows belong inside the current window. */
+  setHead(head: Head, native: readonly Native[] = []) {
     if (head.chat.id !== this.chatId || this.incarnationId && head.chat.incarnationId !== this.incarnationId) throw new Error("CHAT_IDENTITY_CHANGED");
-    const previous = this.head; this.head = head;
+    const previous = this.head; this.head = head; this.observedNative = native;
     if (!this.closed && previous && (previous.chat.incarnationId !== head.chat.incarnationId || previous.rewriteEpoch !== head.rewriteEpoch)) {
       this.progress?.close(); this.progress = beginReceive("body");
     }
@@ -81,11 +96,11 @@ export class TranscriptSession<Native = ChatBody, Imported = ImportedEntry, Head
       void (this.targetMessageId && this.source.locate ? this.seek(this.targetMessageId) : this.latest());
       return;
     }
-    /* R-04: within one incarnation and rewrite epoch the rows shown never change; a tail on screen gains only what followed,
-       and a reader scrolled back keeps its window. */
+    /* R-04: within one incarnation and rewrite epoch existing rows never change. Late reserved rows fill gaps in place;
+       a tail on screen gains what followed, and a reader scrolled back keeps its window. */
     if (previous && !this.closed && previous.chat.incarnationId === head.chat.incarnationId && previous.rewriteEpoch === head.rewriteEpoch) {
       // A head that arrives mid-read is picked up when that read finishes (catchUp).
-      if (!this.value.busy) this.catchUp();
+      if (!this.value.busy) { this.update({}); this.catchUp(); }
       return;
     }
     if (previous && !this.closed && (previous.bodyRevision !== head.bodyRevision || previous.chat.incarnationId !== head.chat.incarnationId)) {

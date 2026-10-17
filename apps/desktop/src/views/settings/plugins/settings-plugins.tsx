@@ -1,16 +1,16 @@
 /**
  * [INPUT]: Depends on React Router, SettingsPage, the Settings canvas and alert, workbench-copy, the main window's plugins bridge, settings
  *           navigation, and settings/plugins (list hook, grid, the plugin introduction and settings pages, shared switch, and lazy native package lifecycle panel).
- * [OUTPUT]: Provides PluginsSettingsView — All plugins (the catalog grid), a plugin's introduction, or a plugin's settings page; every
- *           switch goes through the same confirmation. Memory's settings page directly reuses its existing settings UI; Dock's reuses its
+ * [OUTPUT]: Provides PluginsSettingsView — All plugins (the complete grouped catalog), a plugin's introduction, or a plugin's settings page; turning
+ *           off uses the shared impact confirmation. Memory's settings page directly reuses its existing settings UI; Dock's reuses its
  *           original sections and target-scoped setup flow. Related pages use the same Settings navigation; source authoring prepares a
- *           scoped Skill Chat. Completed package uninstall returns to the catalog and its retained-data controls.
+ *           scoped Skill Chat for source editing. Completed package uninstall returns to the catalog and its retained-data controls.
  * [POS]: apps/desktop/src/views/settings/plugins; Reached only when the workbench build flag is on. ProductApp owns the target: a card or a background surface opens the
  *        introduction; the sidebar's Plugins entries (turned-on plugins with settings) and the introduction's Settings icon open the
- *        settings page. The introduction has one hero H1 and the catalog's page actions sit beside its content H1. Turning a plugin off on its settings
+ *        settings page. The catalog has no creation or installation actions; introductions keep a catalog return and one hero H1. Turning a plugin off on its settings
  *        page keeps the page, so owner recovery (Dock) stays reachable while off.
  */
-import { ArrowLeft, ArrowUpRight, Plus } from "lucide-react";
+import { ArrowLeft, ArrowUpRight } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { formatWorkbench, useWorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
@@ -19,7 +19,6 @@ import { useAppTranslation } from "@/components/providers/preferences/i18n-provi
 import { SettingsAlert, SettingsButton, SettingsCanvas } from "@/components/settings/settings-layout";
 import { openPluginAuthoring } from "@/components/settings/plugins/authoring/open";
 import { pluginText } from "@/components/settings/plugins/copy";
-import { PluginIcon } from "@/components/settings/plugins/card";
 import { PluginGrid } from "@/components/settings/plugins/grid";
 import { PluginAboutPage, PluginControl } from "@/components/settings/plugins/detail/about";
 import { PluginSettingsPage } from "@/components/settings/plugins/detail/settings-page";
@@ -51,7 +50,6 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
   const workbench = useWorkbenchCopy(locale);
   const copy = workbench.plugins;
   const navigate = useNavigate();
-  const [installHost, setInstallHost] = useState<HTMLDivElement | null>(null);
   /* Dock setup opens where it was asked for; going to another page ends that setup session. */
   const page = target ? `${target.view}:${target.id}` : "";
   const [dockSetup, setDockSetup] = useState({ page, open: false });
@@ -59,7 +57,7 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
   const setDockSetupOpen = (open: boolean) => setDockSetup({ page, open });
   const [authoringError, setAuthoringError] = useState("");
   const authoringBusy = useRef(false);
-  const openAuthoring = (id?: string) => {
+  const openAuthoring = (id: string) => {
     if (authoringBusy.current) return;
     authoringBusy.current = true; setAuthoringError("");
     void openPluginAuthoring(workbench.guiHistory, id).then(route => navigate(route))
@@ -120,9 +118,8 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
     return (
       <SettingsPage>
         <SettingsCanvas>
-        <div className="mb-5 flex items-center gap-2 [-webkit-app-region:no-drag]">
+        <div className="mb-5 [-webkit-app-region:no-drag]">
         <SettingsButton data-plugin-back="" variant="ghost" onClick={() => onOpenPlugin(null)}><ArrowLeft className="size-3.5" />{copy.back}</SettingsButton>
-        {plugin && <span data-plugin-crumb="" className="inline-flex items-center gap-2 text-sm text-muted-foreground"><PluginIcon plugin={plugin} size="md" />{name}</span>}
         </div>
           {alerts}
           <PluginAboutPage key={target.id} pluginId={target.id} bridge={bridge} workbench={workbench} locale={locale} plugins={plugins ?? []}
@@ -136,17 +133,14 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
   }
 
   return (
-    <SettingsPage title={copy.sidebarAll} actions={<>
-      <SettingsButton onClick={() => openAuthoring()}><Plus aria-hidden />{copy.newPlugin}</SettingsButton>
-      {window.extensions && <div ref={setInstallHost} />}
-    </>}>
+    <SettingsPage title={copy.sidebarAll}>
       <SettingsCanvas>
         {alerts}
         <div className="flex flex-col gap-5">
           <p className="text-pretty text-muted-foreground text-sm">{copy.description}</p>
-          {plugins && <PluginGrid plugins={plugins} workbench={workbench} locale={locale} state={switching.state}
+          {plugins && <PluginGrid plugins={plugins} workbench={workbench} state={switching.state}
             onOpen={item => openAbout(item.id)} onToggle={switching.toggle} onSetup={setup} />}
-          {window.extensions && <Suspense fallback={null}><NativePackagePanel toolbarHost={installHost} /></Suspense>}
+          {window.extensions && <Suspense fallback={null}><NativePackagePanel /></Suspense>}
         </div>
       </SettingsCanvas>
       {dialogs}

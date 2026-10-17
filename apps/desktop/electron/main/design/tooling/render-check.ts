@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on parse5 source spans, Electron BrowserWindow/CDP, an already authorized complete HTML canvas, a fixed viewport, AbortSignal, and an image byte target, and statusError from main/errors
- * [OUTPUT]: Hermetic live/static opaque-child captures with script-free static mode, bounded lifetime, teardown and exact-size PNG exports.
+ * [OUTPUT]: Hermetic live/static opaque srcdoc captures with optional hidden scrollbars, script-free static mode, bounded lifetime, teardown and exact-size PNG exports.
  * [POS]: Design's screenshot renderer; workspace authorization stays in the toolset and no renderer/user identity enters this process-owned window
  */
 
@@ -26,6 +26,7 @@ type DesignRenderInput = Readonly<{
   size?: Readonly<{ width: number; height: number }>;
   format?: "jpeg" | "png";
   static?: boolean;
+  hideScrollbars?: boolean;
 }>;
 
 type DesignRenderWindow = Pick<BrowserWindow, "webContents" | "isDestroyed" | "destroy">;
@@ -111,12 +112,14 @@ export async function captureDesignCanvasWithRuntime(
     const policy = "default-src 'none'; script-src 'unsafe-inline' data: blob:; style-src 'unsafe-inline' data: blob:; img-src data: blob:; font-src data: blob:; media-src data: blob:; connect-src data: blob:; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'";
     // Install policy and the UDP-network backstop before any authored script, including scripts outside head.
     const guard = "for(const name of ['RTCPeerConnection','webkitRTCPeerConnection','RTCIceGatherer']){try{Object.defineProperty(globalThis,name,{value:undefined,writable:false,configurable:false})}catch{}}";
-    const guarded = source.replace(/<html\b[^>]*>/i, value => `${value}<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${input.static ? "" : `<script>${guard}</script>`}</head>`);
-    const authoredUrl = `data:text/html;base64,${Buffer.from(guarded).toString("base64")}`;
+    // Apply thumbnail presentation inside the opaque child, not the capture shell.
+    const scrollbars = input.hideScrollbars ? "<style>*{scrollbar-width:none!important}::-webkit-scrollbar{display:none!important}</style>" : "";
+    const guarded = source.replace(/<html\b[^>]*>/i, value => `${value}<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${scrollbars}${input.static ? "" : `<script>${guard}</script>`}</head>`);
     const shell = `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style><body></body>`;
     trace("load");
     // The process-owned top document remains stable while authored HTML runs in
     // an opaque sandboxed child, so `top` navigation cannot replace the capture.
+    // srcdoc keeps large embedded resources out of the child navigation URL.
     const domReady = waitForDomReady(contents, input.signal);
     void contents
       .loadURL(`data:text/html;base64,${Buffer.from(shell).toString("base64")}`)
@@ -126,7 +129,7 @@ export async function captureDesignCanvasWithRuntime(
     await within(contents.debugger.sendCommand("Page.addScriptToEvaluateOnNewDocument", { source: guard }),
       2_000, "Design network isolation", input.signal);
     await within(contents.executeJavaScript(
-      `const frame=document.createElement('iframe');frame.id='canvas';frame.title='Design canvas';frame.setAttribute('sandbox',${JSON.stringify(input.static ? "" : "allow-scripts")});frame.onload=()=>{frame.dataset.ready='1'};frame.src=${JSON.stringify(authoredUrl)};document.body.append(frame);`, true
+      `const frame=document.createElement('iframe');frame.id='canvas';frame.title='Design canvas';frame.setAttribute('sandbox',${JSON.stringify(input.static ? "" : "allow-scripts")});frame.onload=()=>{frame.dataset.ready='1'};frame.srcdoc=${JSON.stringify(guarded)};document.body.append(frame);`, true
     ), 2_000, "Design child creation", input.signal);
     trace("settle");
     await within(

@@ -117,6 +117,7 @@
     {"path":"../../packages/cloud-protocol/src/encryption/base64url.ts","bytes":1409,"sha256":"sha256:2f4e20e6e5a919fdfe0df9111e434bff07e90f0133109b55e70bc4f854bbf7f1"},
     {"path":"../../packages/sdk/contracts/src/core/canonical-json.ts","bytes":1428,"sha256":"sha256:4a2b47986155e3f8e21cdada6cb06b8b1cd2bf199fde859dd160f39df9a464d9"},
     {"path":"electron/main/apps/base-gui/api/query/query-executor.ts","bytes":14155,"sha256":"sha256:af0bb046a8eec2328871a65bac8e623a33869419e7a19fed33c32f4851eb4033"},
+    {"path":"electron/main/apps/base-gui/api/query/query-worker-client.ts","bytes":9695,"sha256":"sha256:29bbfa9ce49eb8d101afdd9043517008e5213e16dc96f9879c88da53c1ddcb3c"},
     {"path":"electron/main/apps/base-gui/api/query/query-worker.ts","bytes":4344,"sha256":"sha256:62e7f343f6282c4fbf90f92d92c12e30bc5684b836acd6412eda62478ad89a34"},
     {"path":"electron/main/apps/base-gui/compiled-workspace.ts","bytes":19766,"sha256":"sha256:43914edf1bcb8a53799c8973ff395339139335ba31f7c8706d02f504d650e54d"},
     {"path":"electron/main/apps/base-gui/workspace-preview.ts","bytes":3660,"sha256":"sha256:77ad3b405a9d0d1cc0267b756e73aa476b2f564d16c1ddf53add049ea4c849af"},

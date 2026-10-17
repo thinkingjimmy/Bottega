@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on component-catalog.mjs, apps/desktop/runtime-dependencies.json (package slice membership and appGui set), the installed production dependency graph and lockfile, package/license bytes, explicit compiler/import-policy/snapshot/query/preferences/workspace/export/Workbench source slices, signed components, Starters, legacy GUI SDK bytes, and external release/platform public keys
- * [OUTPUT]: Generates and checks component catalog, Sketch resources and exact-source toolchain metadata, including native esbuild resolution, legacy GUI SDK custody, compact source facts, transport and platform sandbox identities
+ * [INPUT]: Depends on component-catalog.mjs, apps/desktop/runtime-dependencies.json (package slice membership and appGui set), the installed production dependency graph and lockfile, package os/cpu/libc constraints and license bytes, Lightning CSS's detect-libc dependency on Linux, explicit runtime/build source slices with three reviewed public export transformations, signed components, Starters, legacy GUI SDK bytes, external release/platform public keys, and optional measured performance evidence
+ * [OUTPUT]: Generates and checks component catalog, Sketch resources and exact-source toolchain metadata from the host-eligible dependency graph, including native esbuild resolution, legacy GUI SDK custody, compact source facts, transport/platform identities, and performance receipts bound to public-equivalent runtime/build inputs without changing thresholds
  * [POS]: apps/desktop/scripts/generation; App GUI release metadata authority; receipts consume generated digests instead of hand-maintained placeholders; `--check` runs first in the desktop `typecheck`, so a drifting source change fails there
  */
 
@@ -111,6 +111,7 @@ const gateFiles = {
   "gate-2": [
     "electron/main/workers/app-gui-query-worker-entry.ts",
     "electron/main/apps/base-gui/api/query/query-executor.ts",
+    "electron/main/apps/base-gui/api/query/query-worker-client.ts",
     "electron/main/apps/base-gui/api/query/query-worker.ts",
     "electron/main/apps/base-gui/compiled-workspace.ts",
     "electron/main/apps/base-gui/workspace-preview.ts",
@@ -146,6 +147,7 @@ authoringFiles.push("resources/gui-sdk/base-api.js");
 authoringFiles.push("electron/main/apps/gui-build/product-modules/blocks.ts");
 authoringFiles.sort(compareText);
 const installedPackageCache = new Map();
+const packagePlatform = await installedPackagePlatform();
 const packageGraphs = {};
 for (const [gate, names] of Object.entries(gateDependencyNames)) {
   packageGraphs[gate] = await collectInstalledGraph(names);
@@ -236,6 +238,7 @@ outputs.set("compatibility-support.json", json(compatibilitySupport));
 const performanceBaseline = {
   schema: "bottega.app-gui-performance-baseline/v1",
   status: "pending-external-platform-evidence",
+  sourceInputDigest: await performanceSourceIdentity(),
   fixture: {
     rows: 10_000,
     columns: 20,
@@ -271,8 +274,9 @@ const performanceBaseline = {
     receipt: null,
     requiredIdentity: ["hardwareSku", "cpu", "ramBytes", "osBuild", "electronBuild", "powerMode", "fixtureDigest"],
   })),
-  releasePolicy: "No performance number is release evidence until all three platform receipts match this descriptor and threshold set.",
+  releasePolicy: "Only platforms with matching measured receipts are verified. The original official profile requires all three platforms; an explicitly scoped profile must verify every platform it selects.",
 };
+await retainPerformanceEvidence(performanceBaseline);
 outputs.set("app-gui-performance-baseline.json", json(performanceBaseline));
 
 const sbom = createSbom("bottega-react-v1", packages, dependencyNames);
@@ -327,26 +331,164 @@ if (mismatches.length) {
 }
 process.stdout.write(check ? "[app-gui-metadata] PASS\n" : `[app-gui-metadata] wrote ${outputs.size} artifacts\n`);
 
+async function performanceSourceIdentity() {
+  const { transform } = desktopRequire("esbuild");
+  const paths = [...new Set(Object.values(gateFiles).flat())].sort(compareText);
+  const files = [];
+  for (const path of paths) {
+    const bytes = await readFile(join(desktopRoot, path));
+    const extension = path.match(/\.([cm]?[jt]sx?)$/)?.[1];
+    const normalized = extension ? (await transform(bytes.toString("utf8"), {
+      loader: extension.endsWith("tsx") ? "tsx" : extension.endsWith("ts") ? "ts" : "js",
+      legalComments: "none", minifyWhitespace: true, target: "esnext",
+    })).code : performanceResourceBytes(path, bytes);
+    files.push({ path, digest: sha256(normalized) });
+  }
+  return digest({ schema: "bottega.performance-runtime-input/v1", files,
+    packages: packages.map(({ ref, packageDigest }) => ({ ref, packageDigest })) });
+}
+
+function performanceResourceBytes(path, bytes) {
+  if (path === "../../packages/base-ui/package.json") {
+    const manifest = JSON.parse(bytes.toString("utf8"));
+    const scripts = { ...manifest.scripts };
+    delete scripts.dev;
+    return canonical({ ...manifest, scripts });
+  }
+  // These are the only non-JS source headers changed by the public export.
+  if (["resources/app-gui-toolchain/native/linux-x64/install.py",
+    "resources/app-gui-toolchain/native/linux-x64/src/exec-policy.c"].includes(path)) {
+    const protocol = /^(?: \* )?\[PROTOCOL\]: Update this header when making changes, then check README\.md\.$/;
+    return bytes.toString("utf8").split("\n").filter((line, index) => index >= 8 || !protocol.test(line)).join("\n");
+  }
+  return bytes;
+}
+
+async function retainPerformanceEvidence(baseline) {
+  const path = process.env.BOTTEGA_APP_GUI_PERFORMANCE_EVIDENCE;
+  const incomingBytes = path ? await readFile(resolve(path)) : null;
+  const incoming = incomingBytes ? JSON.parse(incomingBytes.toString("utf8")) : null;
+  const retained = JSON.parse(await readFile(join(outputRoot, "app-gui-performance-baseline.json"), "utf8").catch(() => "null"));
+  for (const item of retained?.requiredPlatforms ?? []) {
+    if (item.status !== "passed" || item.platform === incoming?.platform) continue;
+    const target = baseline.requiredPlatforms.find(entry => entry.platform === item.platform);
+    if (!target) throw new Error("Retained performance platform is unknown");
+    verifyPerformanceReceipt(item.receipt, baseline, item.platform);
+    Object.assign(target, { status: "passed", receipt: item.receipt });
+  }
+  if (path) {
+    const bytes = incomingBytes;
+    const evidence = incoming;
+    if (evidence.schema !== "bottega.app-gui-performance-evidence/v1") throw new Error("Unknown measured performance evidence");
+    const target = baseline.requiredPlatforms.find(entry => entry.platform === evidence.platform);
+    if (!target) throw new Error("Unknown measured performance platform");
+    if (evidence.sourceInputDigest !== baseline.sourceInputDigest || evidence.fixtureDigest !== baseline.fixture.descriptorDigest ||
+        canonical(evidence.thresholds) !== canonical(baseline.thresholds)) throw new Error("Measured performance inputs changed");
+    const fixture = evidence.fixture;
+    if (fixture?.rows !== 10000 || fixture.columns !== 20 || fixture.filterClauses !== 3 || fixture.sortColumns !== 2 ||
+        fixture.projectionColumns !== 5 || fixture.aggregates !== 2 || fixture.rowsJsonBytes > baseline.fixture.maximumRowsJsonBytes ||
+        fixture.rowsJsonBytes <= 0 || !fixture.hasFormula || !fixture.hasEmpty || !fixture.hasDuplicateSortKeys) throw new Error("Measured fixture is incomplete");
+    const samples = evidence.samples;
+    for (const kind of ["cold", "warm"]) {
+      if (!Array.isArray(samples) || samples.filter(sample => sample.kind === kind).length < 20) throw new Error("Performance p95 needs twenty cold and warm samples");
+    }
+    const values = (key, kind) => samples.filter(sample => !kind || sample.kind === kind).flatMap(sample => sample[key]);
+    const finite = list => list.length && list.every(value => Number.isFinite(value) && value >= 0);
+    const scalarKeys = ["ttiMs", "mountedDomNodes", "mountedVirtualRows", "rendererHeapDeltaBytes", "initialQueries"];
+    const arrayKeys = ["queryDurationsMs", "interactionDurationsMs", "interactionQueryCounts", "startupLongTasksMs", "readyLongTasksMs"];
+    for (const sample of samples) {
+      if (!["cold", "warm"].includes(sample.kind) || sample.observerStartedBeforeNavigation !== true ||
+          !scalarKeys.every(key => finite([sample[key]])) || !arrayKeys.every(key => Array.isArray(sample[key]) && sample[key].every(value => Number.isFinite(value) && value >= 0)) ||
+          !sample.queryDurationsMs.length || !sample.interactionDurationsMs.length || !sample.interactionQueryCounts.length) throw new Error("Incomplete performance sample");
+    }
+    const proof = evidence.deadlineProof;
+    if (proof?.schema !== "bottega.query-deadline-proof/v1" || proof.configuredDeadlineMs !== baseline.thresholds.queryHardTimeoutMs ||
+        proof.fault !== "pause-real-worker-after-production-started-reply" || proof.pause?.source !== "production-started-reply" ||
+        proof.outcome?.code !== "query_timeout" || proof.resets?.length !== 1 || !(proof.recovery?.rows > 0) ||
+        proof.termination?.threadIdAfter !== -1 || !(proof.termination?.threadIdBefore > 0) ||
+        !(proof.termination?.at >= proof.outcome?.startEpochMs && proof.termination?.at < proof.pause?.at + proof.pause?.requestedPauseMs) ||
+        !(proof.outcome.elapsedMs >= proof.configuredDeadlineMs - 10 && proof.outcome.elapsedMs < proof.pause.requestedPauseMs)) throw new Error("Real worker deadline enforcement proof is missing");
+    const maximum = list => Math.max(0, ...list);
+    const p95 = list => [...list].sort((a, b) => a - b)[Math.ceil(list.length * .95) - 1];
+    const measurements = { coldSurfaceTtiP95Ms: p95(values("ttiMs", "cold")), warmSurfaceTtiP95Ms: p95(values("ttiMs", "warm")),
+      query10kP95Ms: p95(values("queryDurationsMs")), queryHardTimeoutMs: proof.configuredDeadlineMs,
+      interactionP95Ms: p95(values("interactionDurationsMs")), readyLongTaskMaxMs: maximum(values("readyLongTasksMs")),
+      startupLongTaskMaxMs: maximum(values("startupLongTasksMs")), mountedDomNodes: maximum(values("mountedDomNodes")),
+      mountedVirtualRows: maximum(values("mountedVirtualRows")), rendererHeapDeltaBytes: maximum(values("rendererHeapDeltaBytes")),
+      initialQueries: maximum(values("initialQueries")), interactionQueries: maximum(values("interactionQueryCounts")) };
+    const receipt = { ...evidence.identity, platform: evidence.platform, fixtureDigest: evidence.fixtureDigest,
+      sourceInputDigest: evidence.sourceInputDigest, rawSampleDigest: sha256(bytes), fixtureBytesDigest: fixture.bytesDigest,
+      buildDigest: evidence.buildDigest, producerDigest: evidence.producerDigest, thresholds: baseline.thresholds, measurements,
+      deadlineProofDigest: digest(proof), deadlineObservedElapsedMs: proof.outcome.elapsedMs };
+    verifyPerformanceReceipt(receipt, baseline, evidence.platform);
+    Object.assign(target, { status: "passed", receipt });
+  }
+  const selected = baseline.requiredPlatforms.filter(item => item.status === "passed").map(item => item.platform).sort(compareText);
+  if (selected.length === baseline.requiredPlatforms.length) baseline.status = "verified-external-platform-evidence";
+  else if (selected.length) {
+    baseline.status = "verified-selected-platform-evidence";
+    baseline.selectedPlatforms = selected;
+  }
+}
+
+function verifyPerformanceReceipt(receipt, baseline, platform) {
+  const identity = baseline.requiredPlatforms.find(item => item.platform === platform).requiredIdentity;
+  const validDigest = value => typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
+  if (!receipt || receipt.platform !== platform || receipt.sourceInputDigest !== baseline.sourceInputDigest ||
+      receipt.fixtureDigest !== baseline.fixture.descriptorDigest || canonical(receipt.thresholds) !== canonical(baseline.thresholds) ||
+      !identity.every(key => receipt[key] !== undefined && receipt[key] !== null && receipt[key] !== "") ||
+      ![receipt.rawSampleDigest, receipt.fixtureBytesDigest, receipt.buildDigest, receipt.producerDigest, receipt.deadlineProofDigest].every(validDigest)) throw new Error("Performance receipt has stale or incomplete identity");
+  if (Object.keys(receipt.measurements ?? {}).sort().join() !== Object.keys(baseline.thresholds).sort().join() ||
+      Object.entries(baseline.thresholds).some(([key, limit]) => !Number.isFinite(receipt.measurements[key]) || receipt.measurements[key] < 0 || receipt.measurements[key] > limit)) throw new Error("Measured performance exceeds the unchanged baseline");
+}
+
 async function collectInstalledGraph(rootNames) {
   const graph = new Map();
-  const visit = async (name, issuerRoot = null) => {
-    const root = await resolvePackageRoot(name, issuerRoot);
-    const item = await readInstalledPackage(root);
+  const visit = async (name, issuerRoot = null, optional = false) => {
+    let root, item;
+    try {
+      root = await resolvePackageRoot(name, issuerRoot);
+      const value = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+      if (!matchesPackagePlatform(value)) {
+        if (optional) return null;
+        throw new Error(`${name} is incompatible with ${packagePlatform.os}-${packagePlatform.cpu}`);
+      }
+      item = await readInstalledPackage(root, value);
+    } catch (error) {
+      if (optional) return null;
+      throw error;
+    }
     if (graph.has(item.ref)) return item.ref;
     graph.set(item.ref, item);
     for (const dependency of item.dependencyNames) {
-      try {
-        const dependencyRef = await visit(dependency, root);
-        if (!item.dependencies.includes(dependencyRef)) item.dependencies.push(dependencyRef);
-      } catch (error) {
-        if (!item.optionalDependencies.has(dependency)) throw error;
-      }
+      const dependencyRef = await visit(dependency, root, item.optionalDependencies.has(dependency));
+      if (dependencyRef && !item.dependencies.includes(dependencyRef)) item.dependencies.push(dependencyRef);
     }
     item.dependencies.sort(compareText);
     return item.ref;
   };
   for (const name of rootNames) await visit(name);
   return [...graph.values()].sort((left, right) => compareText(left.ref, right.ref));
+}
+
+async function installedPackagePlatform() {
+  const platform = { os: process.platform, cpu: process.arch, libc: "unknown" };
+  if (platform.os === "linux") {
+    const tailwind = await resolvePackageRoot("@tailwindcss/node", null);
+    const lightningcss = await resolvePackageRoot("lightningcss", tailwind);
+    platform.libc = createRequire(join(lightningcss, "package.json"))("detect-libc").familySync() ?? "unknown";
+  }
+  return platform;
+}
+
+function matchesPackagePlatform(value) {
+  return Object.entries(packagePlatform).every(([key, current]) => {
+    if (!value[key] || key === "libc" && current === "unknown") return true;
+    const list = (typeof value[key] === "string" ? [value[key]] : value[key]).filter(entry => typeof entry === "string");
+    if (list.length === 1 && list[0] === "any") return true;
+    if (list.includes(`!${current}`)) return false;
+    return list.includes(current) || list.every(entry => entry.startsWith("!"));
+  });
 }
 
 async function resolvePackageRoot(name, issuerRoot) {
@@ -381,10 +523,9 @@ async function packageHasName(root, name) {
   return source ? JSON.parse(source).name === name : false;
 }
 
-async function readInstalledPackage(root) {
+async function readInstalledPackage(root, value) {
   const cached = installedPackageCache.get(root);
   if (cached) return cached;
-  const value = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
   const license = typeof value.license === "string" ? value.license : "";
   if (!license || /SEE LICENSE|UNLICENSED|NOASSERTION/i.test(license)) {
     throw new Error(`${value.name}@${value.version} has no admitted SPDX license identity`);
@@ -498,9 +639,11 @@ async function readFormalReleaseTrust() {
       digest: await publicKeyIdentity(`release-attestation-keys/${platform}.pem`),
     }))
   );
+  if (releasePublicKey && platformAttestationKeys.some((item) => item.digest === releasePublicKey)) throw new Error("Publisher and platform attestation keys must be distinct");
   return {
     schema: "bottega.formal-release-trust/v1",
-    status: releasePublicKey && platformAttestationKeys.every((item) => item.digest) ? "provisioned" : "unprovisioned",
+    status: releasePublicKey && platformAttestationKeys.every((item) => item.digest) ? "provisioned"
+      : releasePublicKey && platformAttestationKeys.find((item) => item.platform === "darwin-arm64").digest ? "provisioned-macos" : "unprovisioned",
     releasePublicKey: { path: "release-public-key.pem", digest: releasePublicKey },
     platformAttestationKeys,
   };
@@ -509,6 +652,7 @@ async function readFormalReleaseTrust() {
 async function publicKeyIdentity(path) {
   const bytes = await readFile(join(outputRoot, path)).catch(() => null);
   if (!bytes) return null;
+  if (!bytes.toString("utf8").trim().startsWith("-----BEGIN PUBLIC KEY-----")) throw new Error(`${path} must contain only a public key`);
   const key = createPublicKey(bytes);
   if (key.asymmetricKeyType !== "ed25519") throw new Error(`${path} is not an Ed25519 public key`);
   return sha256(key.export({ type: "spki", format: "der" }));

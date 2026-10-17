@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node Ed25519 verification, a synchronous bundled toolchain-manifest read, bounded HTTPS fetch, and the shared strict App GUI support-matrix schema
- * [OUTPUT]: Provides readFormalReleaseTrust, exact-byte detached-signature verification, and GitHub release-asset loading for candidate compatibility preflight
+ * [INPUT]: Depends on Node Ed25519 verification, runtime platform/architecture, a synchronous bundled toolchain-manifest read, bounded HTTPS fetch, and the shared strict App GUI support-matrix schema
+ * [OUTPUT]: Provides readFormalReleaseTrust with macOS ARM64-only admission for provisioned-macos, exact-byte detached-signature verification, and GitHub release-asset loading for candidate compatibility preflight
  * [POS]: Update supply-chain boundary; trust is read once at assembly so an unprovisioned build omits the preflight entirely instead of failing every download, and UpdateService still never parses unsigned candidate policy
  */
 
@@ -55,8 +55,7 @@ function readOptionalText(path: string): string | null {
   }
 }
 
-/* 只认字面量：schema 对得上、status 恰好是 provisioned 才算数。
-   第三种 status 与畸形 JSON 走同一条出口，故这里没有第三个分支。 */
+/* macOS-only trust must not enable formal updates on an unsupported host. */
 function declaresProvisionedTrust(source: string): boolean {
   try {
     const { formalReleaseTrust } = JSON.parse(source) as {
@@ -64,7 +63,9 @@ function declaresProvisionedTrust(source: string): boolean {
     };
     return (
       formalReleaseTrust?.schema === TRUST_SCHEMA &&
-      formalReleaseTrust.status === "provisioned"
+      (formalReleaseTrust.status === "provisioned" ||
+        (formalReleaseTrust.status === "provisioned-macos" &&
+          process.platform === "darwin" && process.arch === "arm64"))
     );
   } catch {
     return false;

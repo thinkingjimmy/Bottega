@@ -1,0 +1,9 @@
+/**
+ * [INPUT]: Shared theme tokens and the fixed saved-board image in DesignArtifactCard.
+ * [OUTPUT]: Large responsive static previews with a soft fade into the bottom action area.
+ * [POS]: Chat card presentation; no iframe or canvas interaction is mounted here.
+ */
+.artifact-design-card { container-type: inline-size; }
+.artifact-design-card-preview { height: clamp(180px, 38cqw, 320px); overflow: hidden; }
+.artifact-design-card .artifact-design-card-image { height: 100%; min-height: 100%; border-radius: 0; background: transparent; }
+.artifact-design-card-image img { object-fit: cover; object-position: top left; mask-image: linear-gradient(to bottom, #000 45%, transparent 100%); }
