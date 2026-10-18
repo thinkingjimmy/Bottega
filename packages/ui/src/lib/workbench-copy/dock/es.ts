@@ -5,8 +5,14 @@
  */
 export const dock = {
   "name": "Bottega Dock",
-  "summary": "Accesos a Apps y widgets de uso junto al Dock de macOS. Desactivado por defecto.",
-  "description": "El Bottega Dock se coloca junto al Dock de macOS con accesos a tus Apps y widgets de uso.\n\nEstá desactivado por defecto. Configúralo para elegir su aspecto y cuándo se muestra.",
+  "summary": "Accesos a apps y widgets de uso. Conserva el Dock del sistema o sustitúyelo tras confirmar.",
+  "description": "Bottega Dock sitúa Apps, accesos del sistema y widgets de uso en el borde de la pantalla.\n\nDock está en fase Alpha y desactivado por defecto. Elige una disposición y un modo. La sustitución requiere una instalación firmada y verificada, y tu confirmación. Al salir de Bottega o desactivar Dock, se restaura el Dock del sistema.",
+  "systemRequirement": "macOS {{version}} · Chip de Apple",
+  "replacementAvailable": "Disponible tras confirmar",
+  "replacementChecking": "Verificando la instalación…",
+  "replacementDevelopment": "Versión de desarrollo: solo coexistencia",
+  "replacementUnverified": "No se pudo verificar la firma de la instalación. Instala una copia firmada de Bottega.",
+  "replacementHelperMissing": "Falta el asistente de recuperación. Reinstala Bottega.",
   "running": "Dock en ejecución",
   "off": "Desactivado",
   "loading": "Comprobando Dock…",
@@ -14,7 +20,6 @@ export const dock = {
   "recoveryPending": "La restauración requiere atención. Reintenta la restauración en los ajustes del Dock.",
   "coexist": "Junto al Dock del sistema",
   "replace": "Reemplaza el Dock del sistema",
-  "replacementPending": "No disponible en 0.2.0; pendiente de validar su seguridad",
   "autohide": "Ocultar automáticamente",
   "pinned": "Siempre visible",
   "settings": {
@@ -74,9 +79,9 @@ export const dock = {
     "error": "Error al sincronizar; diseño conservado"
   },
   "unsupportedReason": {
-    "platform": "Requiere macOS 15 o posterior",
+    "platform": "Requiere macOS 27",
     "architecture": "Requiere un chip de Apple",
-    "osVersion": "Requiere macOS 15 o posterior",
+    "osVersion": "Requiere macOS 27",
     "helperMissing": "Falta el asistente de Dock. Reinstala Bottega."
   },
   "effects": {

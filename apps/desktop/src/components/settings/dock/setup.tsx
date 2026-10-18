@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Depends on React, the desktop i18n provider, the shared Dialog root and StepDialogContent shell, Settings primitives, the Dock settings store/session calls, the shared candidate checklist, and Dock layout/preview projections.
- * [OUTPUT]: Provides `DockSetupDialog`: choose mode → layout preview (replace: system Dock Apps preselected, uncheck or skip; coexist: nothing until "Copy from System Dock"; an existing layout is kept) → impact and acknowledgement (replace) → confirm; `flow: "consent"` opens straight on the impact step to switch to replacement later. Cancelling, closing or leaving releases the preview session, including previews returned after cancellation.
+ * [OUTPUT]: Distinguishes signed-installation admission states.
+ * Provides `DockSetupDialog`: choose mode → layout preview (replace: system Dock Apps preselected, uncheck or skip; coexist: nothing until "Copy from System Dock"; an existing layout is kept) → impact and acknowledgement (replace) → confirm; `flow: "consent"` opens straight on the impact step to switch to replacement later. Cancelling, closing or leaving releases the preview session, including previews returned after cancellation.
  * [POS]: settings/dock onboarding flow (3.1, DCK-08, DCK-46, INV-01), opened by the master switch; nothing is written before confirm, and the page reports the resulting phase honestly instead of declaring success here.
  */
 
@@ -125,7 +126,9 @@ function SetupFlow({ capability, consentOnly, onExit }: { capability: DockCapabi
       {step.kind === "mode" && <div role="radiogroup" aria-label={t("systemDock.settings.modeTitle")} className="divide-inset rounded-lg ring-1 ring-foreground/10">
         <SettingsChoiceRow label={t("systemDock.settings.modeReplace")} checked={step.mode === "replace"} disabled={!capability.replacement}
           labelMeta={capability.replacement ? <span className="text-muted-foreground text-xs">{t("systemDock.settings.recommended")}</span> : undefined}
-          description={capability.replacement ? t("systemDock.settings.modeReplaceDescription") : t(capability.reason === "helper-missing" ? "systemDock.settings.replacementHelperMissing" : capability.reason === "replacement-pending" ? "systemDock.settings.replacementPending" : "systemDock.settings.replacementDevelopment")}
+          description={capability.replacement ? t("systemDock.settings.modeReplaceDescription") : t(capability.reason === "helper-missing" ? "systemDock.settings.replacementHelperMissing"
+            : capability.reason === "checking" ? "systemDock.settings.replacementChecking" : capability.reason === "signature-unverified"
+            ? "systemDock.settings.replacementUnverified" : "systemDock.settings.replacementDevelopment")}
           onSelect={() => setStep({ kind: "mode", mode: "replace" })} />
         <SettingsChoiceRow label={t("systemDock.settings.modeCoexist")} checked={step.mode === "coexist"} description={t("systemDock.settings.modeCoexistDescription")}
           onSelect={() => setStep({ kind: "mode", mode: "coexist" })} />

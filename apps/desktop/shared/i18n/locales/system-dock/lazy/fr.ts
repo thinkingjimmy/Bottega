@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain fr copy.
- * [OUTPUT]: Provides systemDockLazyFr, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, coexistence availability and unresolved recovery status.
+ * [OUTPUT]: Provides systemDockLazyFr, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../fr.ts.
  */
 
@@ -224,23 +224,25 @@ export const systemDockLazyFr: typeof systemDockLazyEn = {
     shortcutChange: "Modifier…",
     shortcutRecording: "Saisissez le raccourci",
     shortcutRecordingHint: "Appuyez sur le nouveau raccourci. Supprimer le retire, Échap annule.",
-    preamble: "Bottega Dock est une barre à côté du Dock système pour vos apps, le Finder, les Téléchargements, la Corbeille et l’utilisation de l’IA.",
+    preamble: "Raccourcis et widgets d’utilisation au bord de l’écran. Conservez le Dock système ou remplacez-le après confirmation.",
     loadFailed: "Impossible de charger les réglages du Dock.",
     unsupportedTitle: "Bottega Dock n’est pas disponible",
     unsupportedPlatform: "Bottega Dock n’est disponible que sur macOS.",
-    unsupportedVersion: "Bottega Dock nécessite macOS 15 ou une version ultérieure.",
+    unsupportedVersion: "Dock Alpha prend en charge macOS 27 uniquement. Les autres versions ne sont pas encore vérifiées.",
     unsupportedArchitecture: "Bottega Dock nécessite un Mac avec puce Apple.",
-    replacementPending: "Le remplacement du Dock système n’est pas encore disponible. Utilisez Bottega Dock à côté.",
     unsupportedHelperMissing: "Un composant nécessaire à Bottega Dock manque dans cette installation. Réinstallez Bottega pour utiliser le Dock.",
     registrationUnknown: "Non vérifié",
     registrationUnknownDescription: "L’enregistrement de l’élément de récupération en arrière-plan n’a pas pu être vérifié. Réessayez la récupération avant d’activer le Dock.",
     unsupportedOther: "Tout le reste de Bottega fonctionne normalement.",
-    replacementDevelopment: "Cette version permet d’utiliser Bottega Dock à côté du Dock système. Son remplacement n’est pas encore disponible.",
-    replacementHelperMissing: "Le composant de récupération nécessaire au remplacement du Dock système manque dans cette installation. Le remplacement n’est pas encore disponible ; Bottega Dock peut toujours s’afficher à côté.",
+    replacementDevelopment: "La version de développement peut coexister avec le Dock système. Installez une copie signée de Bottega pour le remplacer.",
+    replacementHelperMissing: "L’assistant de restauration ou sa configuration de service est absent. Réinstallez Bottega pour utiliser le remplacement.",
+    replacementChecking: "Vérification de la signature, des assistants et du service de restauration…",
+    replacementUnverified: "Cette installation n’a pas pu être vérifiée. Installez une copie signée de Bottega pour utiliser le remplacement.",
+    continueEnabling: "Poursuivre l’activation",
     modeTitle: "Comment Bottega Dock doit-il fonctionner ?",
     modeReplace: "Remplacer le Dock système",
     recommended: "Recommandé",
-    modeReplaceDescription: "Bottega Dock prend place en bas de l’écran et le Dock système reste masqué jusqu’à ce que vous en ayez besoin.",
+    modeReplaceDescription: "Bottega Dock occupe le bord d’écran choisi. Le Dock système reste masqué jusqu’à sa restauration.",
     modeCoexist: "Conserver le Dock système",
     modeCoexistDescription: "Utilisez Bottega Dock pour vos raccourcis et widgets, à côté du Dock système. Le Dock système reste inchangé.",
     continue: "Continuer",
@@ -275,7 +277,7 @@ export const systemDockLazyFr: typeof systemDockLazyEn = {
     impactAutohide: "Le Dock système est réglé pour se masquer automatiquement et son délai d’affichage est allongé, afin que Bottega Dock prenne sa place.",
     impactRecoveryItem: "Un petit élément de récupération est ajouté à vos éléments en arrière-plan. Tant que le remplacement reste activé, il reste enregistré même après avoir quitté Bottega, pour que le Dock système puisse toujours être rétabli.",
     impactNoApp: "L’élément de récupération n’ouvre jamais l’app Bottega complète.",
-    impactRestore: "Vous pouvez rétablir le Dock système à tout moment : clic droit sur Bottega Dock, Réglages › Dock, ou Dock dans le menu de Bottega de la barre des menus.",
+    impactRestore: "Restaurez le Dock système à tout moment : faites un clic droit sur Bottega Dock, ouvrez les réglages du plugin Dock ou utilisez le menu Dock dans la barre des menus de Bottega.",
     impactShortcuts: "Les raccourcis système restent disponibles en secours : Option-Commande-D active ou désactive le masquage du Dock, et Fn-A affiche le Dock sur les Mac compatibles. Ce ne sont pas les seuls moyens de revenir en arrière.",
     impactLogin: "Ouvrir Bottega à la connexion est un choix distinct dans les réglages Général.",
     acknowledge: "J’ai compris ce qui change",

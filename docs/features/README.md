@@ -106,8 +106,14 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 
 ## Bottega Dock
 
-- On macOS 15 or later with Apple silicon, keep the Apps you build in Bottega, your other Apps, Finder, Downloads, the Trash, and an AI-limits ring per Agent in one Dock.
-- Enable it from Settings › Plugins › Dock. This prerelease supports coexistence with the system Dock; system Dock replacement is unavailable in this prerelease.
+**Alpha · macOS 27 · Apple silicon**
+
+The current source contains the [Dock Alpha candidate](../changelog/README.md#2026-10-18--bottega-dock-alpha-source-candidate). Native acceptance of its signed installer is pending. Published 0.2.6 downloads remain unchanged.
+
+- On macOS 27.x with Apple silicon, keep the Apps you build in Bottega, your other Apps, Finder, Downloads, the Trash, and an AI-limits ring per Agent in one Dock. This requirement applies to the entire Dock plugin; the main application's requirements stay unchanged.
+- Enable it from Settings › Plugins › Dock. Choose coexistence, or replacement after the installed app, native helper, recovery executable and bundled background-service configuration pass verification. Development and unsigned builds offer coexistence.
+- Choose a mode and layout, then confirm the impact before replacement registers a background item or changes the system Dock. Existing coexistence settings and layouts are retained.
+- If background approval is needed, open System Settings from Dock settings. Returning refreshes the status; use Continue enabling to resume. Replacement becomes active only after the recovery handshake, Dock entry and preference writes are confirmed. Failed restoration retains its record and Retry action.
 - Choose the primary display, prefer an external display, or select a specific display, then place the Dock on the left, bottom, or right edge. Display and edge preferences stay on this computer.
 - Use the native glass appearance where supported, with a fallback background when it is unavailable. Turning the plugin off preserves your layout.
 - Keep the same end-to-end encrypted Dock layout on every computer in your account; simultaneous changes merge, and real conflicts ask you.

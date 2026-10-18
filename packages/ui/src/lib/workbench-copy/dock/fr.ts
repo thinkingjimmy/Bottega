@@ -5,8 +5,14 @@
  */
 export const dock = {
   "name": "Bottega Dock",
-  "summary": "Raccourcis d’Apps et widgets d’utilisation à côté du Dock macOS. Désactivé par défaut.",
-  "description": "Le Bottega Dock se place à côté du Dock macOS, avec des raccourcis vers vos Apps et des widgets d’utilisation.\n\nIl est désactivé par défaut. Configurez-le pour choisir son apparence et quand il s’affiche.",
+  "summary": "Raccourcis et widgets d’utilisation. Conservez le Dock système ou remplacez-le après confirmation.",
+  "description": "Bottega Dock place vos Apps, raccourcis système et widgets d’utilisation au bord de l’écran.\n\nDock est en phase Alpha et désactivé par défaut. Choisissez une disposition et un mode. Le remplacement exige une installation signée vérifiée et votre confirmation. Quitter Bottega ou désactiver Dock restaure le Dock système.",
+  "systemRequirement": "macOS {{version}} · Puce Apple",
+  "replacementAvailable": "Disponible après confirmation",
+  "replacementChecking": "Vérification de l’installation…",
+  "replacementDevelopment": "Version de développement : coexistence uniquement",
+  "replacementUnverified": "La signature de l’installation n’a pas pu être vérifiée. Installez une copie signée de Bottega.",
+  "replacementHelperMissing": "L’assistant de restauration est absent. Réinstallez Bottega.",
   "running": "Le Dock est actif",
   "off": "Désactivé",
   "loading": "Vérification du Dock…",
@@ -14,7 +20,6 @@ export const dock = {
   "recoveryPending": "La restauration nécessite votre attention. Réessayez la restauration dans les réglages du Dock.",
   "coexist": "À côté du Dock système",
   "replace": "Remplace le Dock système",
-  "replacementPending": "Indisponible en 0.2.0 ; validation de sécurité en attente",
   "autohide": "Masquer automatiquement",
   "pinned": "Toujours visible",
   "settings": {
@@ -74,9 +79,9 @@ export const dock = {
     "error": "Échec de synchronisation ; disposition conservée"
   },
   "unsupportedReason": {
-    "platform": "Nécessite macOS 15 ou ultérieur",
+    "platform": "Nécessite macOS 27",
     "architecture": "Nécessite une puce Apple",
-    "osVersion": "Nécessite macOS 15 ou ultérieur",
+    "osVersion": "Nécessite macOS 27",
     "helperMissing": "Le programme auxiliaire du Dock est absent. Réinstallez Bottega."
   },
   "effects": {

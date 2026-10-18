@@ -5,8 +5,14 @@
  */
 export const dock = {
   "name": "Bottega Dock",
-  "summary": "App shortcuts and usage widgets alongside the macOS Dock. Off by default.",
-  "description": "The Bottega Dock sits next to the macOS Dock with shortcuts to your Apps and small widgets for usage.\n\nIt is off by default. Set it up to choose how it looks and when it shows.",
+  "summary": "App shortcuts and usage widgets. Keep the system Dock or replace it after confirmation.",
+  "description": "Bottega Dock brings Apps, system shortcuts and usage widgets to the edge of your screen.\n\nDock is in Alpha and is off by default. Choose a layout and mode. Replacement requires a verified signed installation and your confirmation. Quitting Bottega or turning Dock off restores the system Dock.",
+  "systemRequirement": "macOS {{version}} · Apple silicon",
+  "replacementAvailable": "Available after confirmation",
+  "replacementChecking": "Checking installation…",
+  "replacementDevelopment": "Development build: coexistence only",
+  "replacementUnverified": "Installation signature could not be verified. Install a signed copy of Bottega.",
+  "replacementHelperMissing": "Recovery helper missing. Reinstall Bottega.",
   "running": "Dock is running",
   "off": "Off",
   "loading": "Checking Dock…",
@@ -14,7 +20,6 @@ export const dock = {
   "recoveryPending": "Recovery needs attention. Retry recovery in Dock settings.",
   "coexist": "Alongside the system Dock",
   "replace": "Replacing the system Dock",
-  "replacementPending": "Unavailable in 0.2.0; safety validation pending",
   "autohide": "Auto-hide",
   "pinned": "Always visible",
   "settings": {
@@ -74,9 +79,9 @@ export const dock = {
     "error": "Sync failed; layout kept"
   },
   "unsupportedReason": {
-    "platform": "Requires macOS 15 or later",
+    "platform": "Requires macOS 27",
     "architecture": "Requires Apple silicon",
-    "osVersion": "Requires macOS 15 or later",
+    "osVersion": "Requires macOS 27",
     "helperMissing": "Dock helper is missing. Reinstall Bottega."
   },
   "effects": {

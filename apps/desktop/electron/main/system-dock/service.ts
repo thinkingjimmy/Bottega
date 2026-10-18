@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron screen/power/shortcut/menu/shell, the Dock stores, native bridge adapters, entries, Usage adapter, replacement controller, window surfaces/geometry/panel lifecycle, projections, and caller ports (Bottega Apps, main-window destinations, tray refresh, background retention).
+ * [INPUT]: Depends on Electron screen/power/shortcut/menu/shell, the Dock stores, native bridge adapters, entries, Usage adapter, replacement controller, read-only signed-installation verification, window surfaces/geometry/panel lifecycle, projections, and caller ports (Bottega Apps, main-window destinations, tray refresh, background retention).
  * [OUTPUT]: Provides DockService: the single main-owned Dock runtime — enable/start/stop, actual mode, three-edge display directory/placement and revision-fenced hover, authoritative presentation, bounded transparent-frame transitions, the revealed bar's native glass, lazy panel orchestration, bar/panel/settings snapshots with coalesced publication, consumer demand per ready visible surface, serialized startup cleanup, generation-fenced startup, renderer recovery, intent admission and resolution, disabled recovery responsibility, truthful recovery/permission health, keyboard entry, temporary hide, and the replacement admission facts.
  * [POS]: system-dock orchestrator; intents live in intents.ts and Settings flows in setup.ts, both acting through this service. It is the only writer of DockConfigStore's working layout and DockLocalStore.
  */
@@ -24,6 +24,7 @@ import { entryLabel, isDockEmpty, maskFace, metricItems, projectPinned, projectR
 import { ReplacementController, type ReplacementAdmission } from "./replacement/controller";
 import { RecoveryFiles } from "./replacement/journal";
 import { createRegistration, type LoginItemApi } from "./replacement/registration";
+import { verifyDockInstallation } from "./replacement/installation";
 import type { DockConfigStore } from "./store/config-store";
 import type { DockLocalStore } from "./store/local-store";
 import { buildPanel, panelDemand } from "./panel-snapshot";
@@ -117,6 +118,8 @@ export class DockService {
   private unavailableRecovery = false;
   private previousRecovery: DockSettingsSnapshot["recovery"]["lastResult"] = "none";
   private quitRestore: Promise<void> | null = null;
+  private verifiedCapability: DockPlatform["capability"] | null = null;
+  private capabilityCheck: Promise<void> | null = null;
   private layoutQueue: Promise<void> = Promise.resolve();
   private revealTimer: ReturnType<typeof setTimeout> | null = null;
   private resolveRetry: ReturnType<typeof setTimeout> | null = null;
@@ -132,7 +135,7 @@ export class DockService {
   constructor(readonly ports: DockServicePorts) {
     this.displayDirectory = new DisplayDirectory(() => this.publish(), this.clock);
     const supported = ports.platform.capability.supported;
-    this.native = supported ? new DockNativeBridge(ports.platform.paths.bridge, (code) => console.warn("[system-dock] native helper stopped", code)) : null;
+    this.native = supported || ports.platform.nativeRecoveryAvailable ? new DockNativeBridge(ports.platform.paths.bridge, (code) => console.warn("[system-dock] native helper stopped", code)) : null;
     this.apps = this.native ? new NativeApps(this.native, ports.ownBundleId) : null;
     this.trash = this.native ? new TrashEntry(this.native, () => this.schedule()) : null;
     this.downloads = new DownloadsEntry({ openPath: (path) => import("electron").then(({ shell }) => shell.openPath(path)) }, () => this.schedule());
@@ -164,8 +167,10 @@ export class DockService {
     this.previousRecovery = (await this.files.readLastResult())?.result ?? "none";
     if (this.replacement) {
       await this.replacement.recoverPrevious();
-      if (!this.ports.local.get().enabled) await this.replacement.unregister().catch((cause) => console.warn("[system-dock] disabled recovery pending", cause));
-      if (!this.ports.local.get().enabled) this.native?.release();
+      if (!this.ports.local.get().enabled || !this.capability.supported) {
+        await this.replacement.unregister().catch((cause) => console.warn("[system-dock] disabled recovery pending", cause));
+        this.native?.release();
+      }
     } else this.unavailableRecovery = await this.files.exists();
     this.refreshAccessibility();
     if (this.quitRestore) return;
@@ -174,11 +179,36 @@ export class DockService {
     // Local preferences change what the Dock shows too (e.g. hiding the running area can leave it empty).
     this.ports.local.onChanged(() => { this.schedule(); this.ports.refreshMenu(); this.checkEmpty(); });
     this.ports.config.onChanged(() => { this.pruneDrafts(); if (this.runtime.started) void this.resolveAll(); this.schedule(); this.checkEmpty(); });
+    if (this.ports.local.get().enabled && this.ports.local.get().replacementEnabled) await this.checkCapability();
+    if (this.quitRestore) return;
     if (this.ports.local.get().enabled && this.capability.supported && !this.settingsSnapshot().recovery.pending)
       await this.start().catch((cause) => console.warn("[system-dock] start failed", cause));
     this.publish();
   }
-  get capability() { return this.ports.platform.capability; }
+  get capability() { return this.verifiedCapability ?? this.ports.platform.capability; }
+  assertOpen() { if (this.quitRestore) throw new Error("DOCK_CLOSING"); }
+  async checkCapability(force = false): Promise<void> {
+    this.assertOpen();
+    if (!this.capability.supported || !this.ports.platform.recoveryAvailable) return;
+    if (!force && this.capability.reason !== "checking") return;
+    if (!this.capabilityCheck) this.capabilityCheck = verifyDockInstallation(this.ports.platform, this.ports.appPath).then(async (capability) => {
+      this.assertOpen();
+      if (!capability.replacement && this.replacement?.status().phase === "active") await this.replacement.suspend("unsupported");
+      this.verifiedCapability = capability;
+      this.schedule();
+    }).finally(() => { this.capabilityCheck = null; });
+    await this.capabilityCheck;
+    this.assertOpen();
+  }
+  async refreshSettings(): Promise<DockSettingsSnapshot> {
+    await this.checkCapability();
+    if (!this.quitRestore) {
+      const registration = this.replacement?.readRegistration();
+      if (registration !== "enabled" && this.replacement?.status().phase === "active") await this.replacement.suspend("registration-disabled");
+      this.refreshAccessibility(); this.schedule();
+    }
+    return this.settingsSnapshot();
+  }
   get revision() { return this.runtime.revision; }
   /** Darwin 24 = macOS 15: translucency is not part of the supported look there (5.6). */
   private barMaterial: "under-window" | null = null;
@@ -304,11 +334,11 @@ export class DockService {
   /* ============================================================ replacement admission (INV-01/07/10) */
   admission(): ReplacementAdmission {
     const state = this.ports.local.get();
-    if (!this.capability.replacement) return { ok: false, reason: "unsupported" };
+    if (!this.capability.replacement || this.quitRestore) return { ok: false, reason: "unsupported" };
     if (!state.enabled || !state.replacementEnabled || state.consentVersion !== DOCK_CONSENT_VERSION || this.runtime.temporarilyHidden || !this.runtime.started)
       return { ok: false, reason: "unsupported" };
     if (this.isEmpty()) return { ok: false, reason: "empty-layout" };
-    if (!this.runtime.bar || this.runtime.bar.isDestroyed() || !this.runtime.placement || this.runtime.placement.hidden) return { ok: false, reason: "entry-unreachable" };
+    if (!this.barReady || !this.runtime.bar || this.runtime.bar.isDestroyed() || !this.runtime.placement || this.runtime.placement.hidden) return { ok: false, reason: "entry-unreachable" };
     return { ok: true };
   }
   /**

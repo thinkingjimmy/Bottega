@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, the Dock layout/local-state models, Agent/usage identities, and the shared locale type.
- * [OUTPUT]: Provides the least-privilege bar/panel channels, snapshots with display placement/presentation, revision-fenced bar intents and layout ACK, enumerated intents with strict validators, the isolated `systemDock` bridge type, and the main-window Settings → Dock channels, snapshot and bridge.
+ * [OUTPUT]: Provides the least-privilege bar/panel channels, snapshots with display placement/presentation, revision-fenced bar intents and layout ACK, enumerated intents with strict validators, the isolated `systemDock` bridge type, and the main-window Settings → Dock channels, snapshot with signed-installation capability reasons, and bridge.
  * [POS]: shared/system-dock transport contract; auxiliary renderers receive projections and opaque short-lived references only, never paths, accounts, shell, AX or Apple Event senders (INV-13).
  */
 
@@ -155,9 +155,9 @@ export { SYSTEM_DOCK_SETTINGS_CHANNEL } from "../ipc-channels/window";
 
 export type DockCapability = Readonly<{
   supported: boolean;
-  /** Replacement is release-gated until M0; bundled recovery remains independently available. */
+  /** Main verifies the signed installation before admitting replacement; recovery is independent. */
   replacement: boolean;
-  reason: "platform" | "os-version" | "architecture" | "development" | "helper-missing" | "replacement-pending" | null;
+  reason: "platform" | "os-version" | "architecture" | "development" | "helper-missing" | "checking" | "signature-unverified" | null;
 }>;
 export type ImportCandidate = Readonly<{ key: string; label: string; bundleIdentifier: string | null; iconKey: string | null;
   status: "ok" | "unresolved" | "unsupported"; note: "recent-apps" | "file" | "url" | "spacer" | "managed" | "unknown" | null; preselected: boolean }>;

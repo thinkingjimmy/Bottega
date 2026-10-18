@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, the desktop i18n provider, Settings primitives, the shared Select and confirmation dialog, the Dock settings store, and the Settings → Dock snapshot.
- * [OUTPUT]: Provides `DockUnsupported` (why this Mac cannot run the Dock), `DockMaster` (the one on/off switch with the phase badge, pause reason and recovery results, the mode select, Restore/Resume; turning on asks for setup, turning off asks for confirmation) and `DockRecovery` (the recovery result, retry while off, and background registration with the Login Items path).
+ * [OUTPUT]: Provides `DockUnsupported` (why this Mac cannot run the Dock), `DockMaster` (the one on/off switch with the phase badge, pause reason and recovery results, the mode select, Restore/Resume; turning on asks for setup, turning off asks for confirmation) and `DockRecovery` (the recovery result, retry while off, and background registration with the Login Items path and explicit continuation after approval).
  * [POS]: settings/dock status and recovery surface (3.1, INV-02~05); it only states what main reports — a replace-mode Dock that is not active is never shown as working.
  */
 
@@ -30,7 +30,8 @@ const RECOVERY_KEYS: Record<Exclude<DockSettingsSnapshot["recovery"]["lastResult
 };
 const UNSUPPORTED_KEYS: Record<NonNullable<DockCapability["reason"]>, string> = {
   platform: "systemDock.settings.unsupportedPlatform", "os-version": "systemDock.settings.unsupportedVersion", architecture: "systemDock.settings.unsupportedArchitecture",
-  development: "systemDock.settings.replacementDevelopment", "helper-missing": "systemDock.settings.unsupportedHelperMissing", "replacement-pending": "systemDock.settings.replacementPending",
+  development: "systemDock.settings.replacementDevelopment", "helper-missing": "systemDock.settings.unsupportedHelperMissing",
+  checking: "systemDock.settings.replacementChecking", "signature-unverified": "systemDock.settings.replacementUnverified",
 };
 
 export function DockUnsupported({ capability }: { capability: DockCapability }) {
@@ -78,9 +79,11 @@ export function DockMaster({ snapshot, pending, onTurnOn, onSwitchToReplace, sho
   const phase = snapshot.phase;
   const paused = snapshot.phase === "suspended";
   const registration = snapshot.registration;
-  const why = paused && snapshot.suspendReason ? t(REASON_KEYS[snapshot.suspendReason])
-    : replace && phase !== "active" && registration === "requires-approval" ? t("systemDock.settings.registrationApproval")
-      : replace && phase !== "active" && registration === "not-found" ? t("systemDock.settings.registrationMissing") : null;
+  const why = replace && phase !== "active" && registration === "requires-approval" ? t("systemDock.settings.registrationApproval")
+    : replace && phase !== "active" && registration === "not-found" ? t("systemDock.settings.registrationMissing")
+    : paused && snapshot.suspendReason ? t(REASON_KEYS[snapshot.suspendReason]) : null;
+  const resumeDisabled = busy || snapshot.recovery.pending || replace && (!snapshot.capability.replacement || ["requires-approval", "not-found"].includes(registration));
+  const resumeLabel = t(snapshot.suspendReason === "registration-disabled" ? "systemDock.settings.continueEnabling" : "systemDock.settings.resume");
   const recovery = snapshot.recovery.lastResult;
   const notes = [why, snapshot.recovery.pending ? t("systemDock.settings.recoveryPending") : null, recovery !== "none" ? t(RECOVERY_KEYS[recovery]) : null]
     .filter((note): note is string => note !== null);
@@ -96,18 +99,18 @@ export function DockMaster({ snapshot, pending, onTurnOn, onSwitchToReplace, sho
           {!replace && phase === "active" ? t("systemDock.settings.phaseCoexist") : t(PHASE_KEYS[phase])}</SettingsBadge>}
         description={notes.length ? <>{notes.map((note) => <span key={note} className="block" role="status">{note}</span>)}</> : t("systemDock.settings.preamble")}
         control={<span className="flex items-center gap-3">
-          {paused && <SettingsButton disabled={busy} onClick={() => void store.resume()}>{t("systemDock.settings.resume")}</SettingsButton>}
+          {paused && <SettingsButton disabled={resumeDisabled} onClick={() => void store.resume()}>{resumeLabel}</SettingsButton>}
           <SettingsSwitch id="dock-enabled" label={t("systemDock.settings.enabledLabel")} describedBy="dock-enabled-description" checked
             disabled={busy} onToggle={(next) => { if (!next) setConfirmOff(true); }} />
         </span>} />}
       {!showToggle && paused && <SettingsRow label={t(PHASE_KEYS[phase])} description={why}
-        control={<SettingsButton disabled={busy} onClick={() => void store.resume()}>{t("systemDock.settings.resume")}</SettingsButton>} />}
+        control={<SettingsButton disabled={resumeDisabled} onClick={() => void store.resume()}>{resumeLabel}</SettingsButton>} />}
       <SettingsRow label={t("systemDock.settings.modeLabel")} htmlFor="dock-mode"
         description={t(replace ? "systemDock.settings.modeReplaceDescription" : snapshot.capability.replacement ? "systemDock.settings.modeCoexistDescription" : "systemDock.settings.modeCoexistOnly")}
-        control={<Select value={mode} disabled={busy || !snapshot.capability.replacement} onValueChange={pickMode}>
+        control={<Select value={mode} disabled={busy} onValueChange={pickMode}>
           <SelectTrigger id="dock-mode" size="lg" aria-describedby="dock-mode-description"><SelectValue /></SelectTrigger>
           <SelectContent align="end" className="text-sm">
-            <SelectItem value="replace">{t("systemDock.settings.modeReplace")}</SelectItem>
+            <SelectItem value="replace" disabled={!snapshot.capability.replacement}>{t("systemDock.settings.modeReplace")}</SelectItem>
             <SelectItem value="coexist">{t("systemDock.settings.modeCoexist")}</SelectItem>
           </SelectContent>
         </Select>} />

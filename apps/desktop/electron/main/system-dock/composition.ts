@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron app, the Dock platform gate, stores, DockService/DockSetup, PluginCatalog, native menus, main-role renderer IPC, the window registry/surface residence, Bottega App records, and caller-provided Usage owners, presence destinations and background residence.
+ * [INPUT]: Depends on Electron app, the macOS product-version Dock gate, stores, DockService/DockSetup, PluginCatalog, native menus, main-role renderer IPC, the window registry/surface residence, Bottega App records, and caller-provided Usage owners, presence destinations and background residence.
  * [OUTPUT]: Provides createSystemDockRuntime: (its account watch hears built-ins only) constructs the Dock (stores under userData, gate evaluated before any Dock window/registration/write), registers Settings → Dock IPC for the main window only, publishes settings snapshots, exposes the Presence submenu, the plugin owner, sync attachment seam and ordered close.
  * [POS]: system-dock composition beneath the desktop root; the bar/panel never receive product capabilities and the main window never receives Dock paths or permissions.
  */
@@ -47,7 +47,7 @@ export type SystemDockRuntimePorts = {
 
 export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
   const platform = evaluateDockPlatform({ platform: process.platform, arch: process.arch, packaged: app.isPackaged,
-    resourcesPath: process.resourcesPath, mainDirectory: ports.mainDirectory });
+    systemVersion: process.platform === "darwin" ? process.getSystemVersion() : "", resourcesPath: process.resourcesPath, mainDirectory: ports.mainDirectory });
   const rendererUrl = devRendererUrl(app.isPackaged) ?? pathToFileURL(join(ports.mainDirectory, "../renderer/index.html")).href;
   const apps = {
     list: () => (ports.apps()?.store.list() ?? []).filter((record) => !["deleting", "quarantined"].includes(record.state))
@@ -84,7 +84,7 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
   // Every flow except the snapshot needs loaded stores; a request racing startup fails instead of reading an empty file.
   const loaded = <T>(run: () => T): T => { if (!service.initialized) throw new Error("DOCK_NOT_READY"); return run(); };
   rendererIpc(rendererUrl, "Rejected untrusted Dock settings request")
-    .handle(SYSTEM_DOCK_SETTINGS_CHANNEL.snapshot, () => service.settingsSnapshot())
+    .handle(SYSTEM_DOCK_SETTINGS_CHANNEL.snapshot, () => service.refreshSettings())
     .handle(SYSTEM_DOCK_SETTINGS_CHANNEL.beginSetup, (value) => loaded(() => setup.beginSetup(mode(value))))
     .handle(SYSTEM_DOCK_SETTINGS_CHANNEL.confirmSetup, (value) => loaded(() => setup.confirmSetup(setupConfirmSchema.parse(value))))
     .handle(SYSTEM_DOCK_SETTINGS_CHANNEL.cancelSetup, (value) => loaded(() => setup.cancelSetup(session(value))))

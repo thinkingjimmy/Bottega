@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on launchd (RunAtLoad + MachServices from the bundled LaunchAgent plist), NSXPCListener, ~/.bottega/system-dock recovery.json / last-result.json (journal.ts formats), CFPreferences via shared.m, and NSRunningApplication for the Dock reload.
- * [OUTPUT]: Provides the `bottega-dock-recovery` executable: login/on-demand conditional restore of autohide/autohide-delay for a dead, hung, or exited owner, the prepare/renew/release/status XPC handshake, and bounded idle exit.
+ * [OUTPUT]: Provides the `bottega-dock-recovery` executable: login/on-demand conditional restore of autohide/autohide-delay for a dead, hung, or exited owner, verified original values and Dock reload before durable result and journal cleanup, the prepare/renew/release/status XPC handshake, and bounded idle exit.
  * [POS]: system-dock/native last line of defence (PRD 5.5, INV-02..05); independent of Electron, never launches Bottega, never touches anything but the journal's two keys and its own result file.
  */
 
@@ -101,6 +101,13 @@ static BOOL equalsWritten(NSDictionary *current, NSDictionary *field) {
   return ([current[@"type"] isEqualToString:@"real"] || [current[@"type"] isEqualToString:@"int"]) && BDIsNumber(current[@"value"]) &&
     fabs([current[@"value"] doubleValue] - [written doubleValue]) < 1e-9;
 }
+static BOOL equalsOriginal(NSDictionary *current, NSDictionary *field) {
+  if (![field[@"originalPresent"] boolValue]) return ![current[@"present"] boolValue];
+  if (![current[@"present"] boolValue] || ![current[@"type"] isEqual:field[@"originalType"]]) return NO;
+  id original = field[@"originalValue"], value = current[@"value"];
+  if ([field[@"originalType"] isEqualToString:@"bool"]) return BDIsBool(original) && BDIsBool(value) && [value boolValue] == [original boolValue];
+  return BDIsNumber(original) && BDIsNumber(value) && [value doubleValue] == [original doubleValue];
+}
 static BOOL durableWrite(NSString *path, NSString *text) {
   NSString *temporary = [NSString stringWithFormat:@"%@.%@.tmp", path, NSUUID.UUID.UUIDString.lowercaseString];
   NSData *bytes = [text dataUsingEncoding:NSUTF8StringEncoding];
@@ -111,14 +118,18 @@ static BOOL durableWrite(NSString *path, NSString *text) {
   ok = ok && rename(temporary.fileSystemRepresentation, path.fileSystemRepresentation) == 0;
   if (!ok) { unlink(temporary.fileSystemRepresentation); return NO; }
   int dir = open(directory.fileSystemRepresentation, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-  if (dir >= 0) { fsync(dir); close(dir); }
-  return YES;
+  if (dir < 0) return NO;
+  ok = fsync(dir) == 0;
+  close(dir);
+  return ok;
 }
-static void writeLastResult(NSString *operationId, NSString *result) {
+static BOOL writeLastResult(NSString *operationId, NSString *result) {
   // Same bytes as JSON.stringify(lastResult) + "\n" in journal.ts, field order included.
   NSString *text = [NSString stringWithFormat:@"{\"version\":1,\"operationId\":\"%@\",\"result\":\"%@\",\"by\":\"agent\",\"at\":%lld}\n",
     operationId, result, wallMs()];
-  if (!durableWrite([directory stringByAppendingPathComponent:@"last-result.json"], text)) note(@"could not write last-result.json (errno %d)", errno);
+  BOOL ok = durableWrite([directory stringByAppendingPathComponent:@"last-result.json"], text);
+  if (!ok) note(@"could not write last-result.json (errno %d)", errno);
+  return ok;
 }
 static void clearOwnership(void) {
   if (ownerWatch) { dispatch_source_cancel(ownerWatch); ownerWatch = nil; }
@@ -127,31 +138,40 @@ static void clearOwnership(void) {
 }
 /** Puts back only what still holds our written value; everything else stays with whoever changed it. */
 static NSString *restore(NSDictionary *journal, NSString *reason) {
-  BOOL changed = NO, kept = NO, failed = NO;
+  BOOL reloadNeeded = [journal[@"reload"] boolValue], kept = NO, failed = NO;
   for (NSDictionary *field in journal[@"fields"]) {
     if (![field[@"written"] boolValue]) continue;
     NSString *key = field[@"key"], *type = field[@"originalType"];
     id original = field[@"originalValue"], value = nil;
-    if (!equalsWritten(BDPrefRead(domain, key), field)) { kept = YES; continue; }
+    NSDictionary *current = BDPrefRead(domain, key);
+    // A prior attempt may have restored the value but failed before confirming the Dock reload.
+    if (equalsOriginal(current, field)) { reloadNeeded = YES; continue; }
+    if (!equalsWritten(current, field)) { kept = YES; continue; }
+    if ([current[@"forced"] boolValue]) { failed = YES; continue; }
     if ([field[@"originalPresent"] boolValue]) {
       if ([type isEqualToString:@"bool"] && BDIsBool(original)) value = [original boolValue] ? @YES : @NO;
       else if ([type isEqualToString:@"real"] && BDIsNumber(original)) value = @([original doubleValue]);
       else if ([type isEqualToString:@"int"] && BDIsNumber(original)) value = @([original longLongValue]);
       // An original of an unexpected type was refused at takeover; reaching here means the journal lies.
-      else { kept = YES; continue; }
+      else { failed = YES; continue; }
     }
-    if (BDPrefWrite(domain, key, value)) changed = YES; else failed = YES;
+    reloadNeeded = YES;
+    if (!BDPrefWrite(domain, key, value) || !equalsOriginal(BDPrefRead(domain, key), field)) failed = YES;
   }
-  if (changed && [domain isEqualToString:BD_DOCK_DOMAIN]) {
-    // The Dock only rereads autohide on start; launchd relaunches it right away.
-    for (NSRunningApplication *dock in [NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.apple.dock"]) [dock forceTerminate];
-  }
+  if (reloadNeeded && [domain isEqualToString:BD_DOCK_DOMAIN] && !BDReloadDock()) failed = YES;
   NSString *result = failed ? @"failed" : kept ? @"kept-external" : @"restored";
   NSString *operationId = journal[@"operationId"];
-  writeLastResult(operationId, result);
+  if (!writeLastResult(operationId, result)) { failed = YES; result = @"failed"; }
   NSDictionary *latest = nil;
-  // A failed restore keeps its journal as evidence for the next attempt (next login or next owner).
-  if (!failed && readJournal(&latest) == JournalOk && [latest[@"operationId"] isEqualToString:operationId]) unlink(journalPath().fileSystemRepresentation);
+  // Keep recovery responsibility until both the native outcome and its durable receipt are verified.
+  if (!failed) {
+    JournalKind kind = readJournal(&latest);
+    if (kind == JournalCorrupt || (kind == JournalOk && [latest[@"operationId"] isEqualToString:operationId] && unlink(journalPath().fileSystemRepresentation) != 0 && errno != ENOENT)) {
+      result = @"failed";
+      writeLastResult(operationId, result);
+      note(@"could not clear verified recovery journal (errno %d)", errno);
+    }
+  }
   note(@"%@: operation %@ -> %@", reason, operationId, result);
   // A newer owner's lease survives the cleanup of someone else's stale journal.
   if (!owner || [owner[@"operationId"] isEqual:operationId] || !alive([owner[@"pid"] longLongValue], [owner[@"startedAt"] longLongValue])) clearOwnership();
@@ -336,13 +356,15 @@ int main(int argc, const char *argv[]) {
     queue = dispatch_queue_create("bottega.dock-recovery", DISPATCH_QUEUE_SERIAL);
     startedNs = uptimeNs();
     if (onceMode) {
-      __block NSString *outcome;
-      dispatch_sync(queue, ^{ outcome = startupCheck(); });
-      printf("%s\n", outcome.UTF8String);
-      return 0;
+      dispatch_async(queue, ^{
+        NSString *outcome = startupCheck();
+        printf("%s\n", outcome.UTF8String);
+        exit(0);
+      });
+      dispatch_main();
     }
-    requirement = BDTeamRequirement();
-    if (!requirement) note(@"unsigned or ad-hoc build: peers are checked by uid and parent pid only");
+    requirement = BDPeerRequirement(BD_BRIDGE_IDENTIFIER);
+    if (!requirement) { note(@"valid signing identity unavailable; refusing recovery XPC"); return 77; }
     // Logout/shutdown: whatever restore is running on the queue finishes first, then we leave without a grace period.
     signal(SIGTERM, SIG_IGN);
     dispatch_source_t term = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, SIGTERM, 0, queue);

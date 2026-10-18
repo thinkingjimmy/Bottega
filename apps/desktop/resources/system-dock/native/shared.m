@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on sysctl KERN_PROC_PID, CFPreferences (CurrentUser/AnyHost writes, effective reads), and SecCode signing information.
- * [OUTPUT]: Implements shared.h: process start identity, typed Dock preference read/write, JSON scalar predicates, and the same-team XPC requirement.
+ * [INPUT]: Depends on sysctl KERN_PROC_PID, AppKit running application discovery, CFPreferences (CurrentUser/AnyHost writes, effective reads), and validated SecCode signing information.
+ * [OUTPUT]: Implements shared.h: process start identity, typed Dock preference read/write, bounded Dock restart verification, JSON scalar predicates, and fail-closed same-team helper XPC requirements.
  * [POS]: system-dock/native common implementation compiled into both system-dock-bridge and bottega-dock-recovery so ownership and restore facts match byte for byte.
  */
 
 #import "shared.h"
+#import <AppKit/AppKit.h>
 #import <Security/Security.h>
 #import <sys/sysctl.h>
 
@@ -51,15 +52,51 @@ BOOL BDPrefWrite(NSString *domain, NSString *key, id value) {
   return CFPreferencesAppSynchronize(app);
 }
 
+BOOL BDReloadDock(void) {
+  // AppKit refreshes running application facts through the main run loop; never wait on that thread.
+  if (NSThread.isMainThread) return NO;
+  uint64_t deadline = clock_gettime_nsec_np(CLOCK_UPTIME_RAW) + 4 * NSEC_PER_SEC;
+  NSMutableDictionary<NSNumber *, NSNumber *> *previous = [NSMutableDictionary dictionary];
+  for (NSRunningApplication *dock in [NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.apple.dock"]) {
+    int64_t startedAt = BDProcessStartMs(dock.processIdentifier);
+    if (startedAt < 0) continue;
+    previous[@(dock.processIdentifier)] = @(startedAt);
+    if (![dock forceTerminate] && BDProcessStartMs(dock.processIdentifier) == startedAt) return NO;
+  }
+  if (previous.count == 0) return NO;
+  do {
+    @autoreleasepool {
+      BOOL oldAlive = NO;
+      for (NSNumber *pid in previous) if (BDProcessStartMs(pid.intValue) == previous[pid].longLongValue) { oldAlive = YES; break; }
+      if (!oldAlive) {
+        for (NSRunningApplication *dock in [NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.apple.dock"]) {
+          int64_t startedAt = BDProcessStartMs(dock.processIdentifier);
+          NSNumber *oldStart = previous[@(dock.processIdentifier)];
+          if (startedAt >= 0 && (!oldStart || oldStart.longLongValue != startedAt)) return YES;
+        }
+      }
+    }
+    [NSThread sleepForTimeInterval:0.05];
+  } while (clock_gettime_nsec_np(CLOCK_UPTIME_RAW) < deadline);
+  return NO;
+}
+
 NSString *BDTeamRequirement(void) {
   SecCodeRef code = NULL;
   if (SecCodeCopySelf(kSecCSDefaultFlags, &code) != errSecSuccess) return nil;
+  if (SecCodeCheckValidity(code, kSecCSDefaultFlags, NULL) != errSecSuccess) { CFRelease(code); return nil; }
   CFDictionaryRef info = NULL;
   OSStatus status = SecCodeCopySigningInformation((SecStaticCodeRef)code, kSecCSSigningInformation, &info);
   CFRelease(code);
   if (status != errSecSuccess || !info) return nil;
   NSDictionary *signing = CFBridgingRelease(info);
   NSString *team = signing[(__bridge NSString *)kSecCodeInfoTeamIdentifier];
-  if (![team isKindOfClass:NSString.class] || team.length == 0) return nil;
+  NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"];
+  if (![team isKindOfClass:NSString.class] || team.length != 10 || [team rangeOfCharacterFromSet:allowed.invertedSet].location != NSNotFound) return nil;
   return [NSString stringWithFormat:@"anchor apple generic and certificate leaf[subject.OU] = \"%@\"", team];
+}
+NSString *BDPeerRequirement(NSString *identifier) {
+  if (![@[BD_BRIDGE_IDENTIFIER, BD_RECOVERY_IDENTIFIER] containsObject:identifier ?: @""]) return nil;
+  NSString *team = BDTeamRequirement();
+  return team ? [NSString stringWithFormat:@"%@ and identifier \"%@\"", team, identifier] : nil;
 }

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on lucide icons, Agent identity, the Settings switch primitive, workbench-copy and the plugin view.
+ * [INPUT]: Depends on lucide icons, Agent identity, the Settings switch primitive, workbench-copy, shared stage/requirement metadata and the plugin view.
  * [OUTPUT]: Provides PluginGlyph (built-in icon, Provider mark or package mark) and PluginIcon (that glyph on a md / lg / xl tile), PluginCard (icon, name that opens the plugin's
  *           introduction, publisher, two-line summary, actionable notes and a top-right switch or fixed badge; setup plugins open
  *           their existing flow from the switch and reflect the confirmed catalog state), CardState (what the page
@@ -16,6 +16,7 @@ import { AgentBackendIcon, backendLabel, isAgentBackendId } from "@/lib/agent/ag
 import { ReportIssueButton } from "@/components/report-issue-button";
 import type { PluginView } from "@ai-chat/cloud-protocol/contracts/plugins/catalog";
 import { pluginPublisher, pluginText } from "./copy";
+import { PluginRequirement, PluginStage } from "./detail/metadata";
 
 const BUILTIN_ICONS: Record<string, typeof Table2> = { base: Table2, workflow: Workflow, memory: Brain, tunnel: Globe, dock: PanelBottom, sketch: PenTool, artifact: PanelsTopLeft };
 
@@ -82,13 +83,15 @@ export function PluginCard({ plugin, workbench, state, onOpen, onToggle, onSetup
       <div className="flex min-w-0 items-center gap-2.5">
         <span className={cn(!plugin.enabled && plugin.source !== "agent-native" && "opacity-60")}><PluginIcon plugin={plugin} size="md" /></span>
         <span className="flex min-w-0 flex-1 flex-col">
-          <button type="button" data-card-open="" onClick={() => onOpen(plugin)}
+          <span className="flex min-w-0 items-center gap-1.5"><button type="button" data-card-open="" onClick={() => onOpen(plugin)}
             className="min-w-0 cursor-pointer truncate text-left font-semibold text-[13px] leading-5 outline-none after:absolute after:inset-0 after:cursor-pointer after:rounded-md after:content-['']">{name}</button>
+            <PluginStage plugin={plugin} workbench={workbench} /></span>
           <span className="truncate text-muted-foreground text-xs">{pluginPublisher(plugin, workbench)}</span>
         </span>
         {control && <span className="pointer-events-none relative z-10 flex min-h-5 max-w-1/2 shrink-0 items-center self-start" aria-busy={pending ? true : undefined}>{control}</span>}
       </div>
       <p className="line-clamp-2 min-h-[2lh] text-pretty text-muted-foreground text-xs leading-[18px]">{pluginText(plugin.summary, workbench) || fallbackSummary(plugin, copy)}</p>
+      <PluginRequirement plugin={plugin} workbench={workbench} />
       {line && <p className={cn("text-xs leading-[17px]", note === "reinstall" ? "text-destructive" : note === "busy" || blocked ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}
         data-plugin-note={note ?? (plugin.availability.state === "unsupported" ? "unsupported" : blocked ? "blocked" : "scoped")}>{line}</p>}
     </div>

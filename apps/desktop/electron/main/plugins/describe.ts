@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the plugin contract (descriptor, catalog, contracts, settings types) and the host-package manifest type.
  * [OUTPUT]: Provides PluginEntry (one plugin as the catalog sees it: descriptor, switch state, platform support and extras), builtinEntry,
- *           packageEntry, nativeEntry, nodeOf (the resolver's input) and viewOf (the page's card, availability from the resolution).
+ *           packageEntry, nativeEntry, nodeOf (the resolver's input) and viewOf (the page's card, descriptor metadata and resolved availability).
  * [POS]: The pure projection step of electron/main/plugins: catalog.ts gathers facts through ports, this file turns them into one shape
  *        for every source (built-in, package, Agent-native) so list, detail, impact and negotiation read the same thing.
  */
@@ -61,6 +61,8 @@ export function viewOf(entry: PluginEntry, resolution: Resolution, extras: Pick<
   const blockedBy = resolution.plugins[descriptor.id]?.blockedBy ?? [];
   return {
     id: descriptor.id, name: descriptor.name, summary: descriptor.summary, icon: descriptor.icon ? { builtin: descriptor.icon } : null,
+    ...(descriptor.releaseStage ? { releaseStage: descriptor.releaseStage } : {}),
+    ...(descriptor.systemRequirement ? { systemRequirement: descriptor.systemRequirement } : {}),
     kind: descriptor.kind, source: descriptor.source, official: entry.official, version: entry.version, enabled: entry.enabled,
     availability: entry.unsupported ? { state: "unsupported", reason: "platform", detail: entry.unsupported }
       : blockedBy.length ? { state: "blocked", blockedBy: [...blockedBy] } : { state: "usable" },

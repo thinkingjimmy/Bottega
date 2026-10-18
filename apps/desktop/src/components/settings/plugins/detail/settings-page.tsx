@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the plugins bridge (detail, settings), workbench-copy, the declarative settings form, an optional owner settings
- *           slot, and the read-only sections.
+ *           slot, shared requirements, and the read-only sections.
  * [OUTPUT]: Provides PluginSettingsPage — one plugin's settings: the one banner that matters, its settings (the owner's own interface
  *           when it has one, otherwise the declared form), Health with its fixes, and Used by.
  * [POS]: Opened from the plugin's own entry in the Settings sidebar, which lists turned-on plugins that have settings. The view puts the
@@ -15,6 +15,7 @@ import { usePluginDetail } from "../use-plugins";
 import { PluginLoadState, type Switching } from "./about";
 import { PluginSettingsForm } from "./settings-form";
 import { HealthSection, PluginBanners, UsedBySection } from "./sections";
+import { PluginRequirement } from "./metadata";
 
 export function PluginSettingsPage({ pluginId, bridge, workbench, locale, switching, onOpenRelated, settingsContent }: {
   pluginId: string;
@@ -30,6 +31,7 @@ export function PluginSettingsPage({ pluginId, bridge, workbench, locale, switch
   if (!detail) return <PluginLoadState error={error} retry={retry} workbench={workbench} />;
   return (
     <div className="flex flex-col gap-8">
+      <PluginRequirement plugin={detail} workbench={workbench} />
       <PluginBanners detail={detail} workbench={workbench} note={switching.state.notes[detail.id]} onOpenRelated={onOpenRelated} />
       {settingsContent ?? (detail.settings && <PluginSettingsForm pluginId={detail.id} name={pluginText(detail.name, workbench)} provider={detail.kind === "provider"}
         view={detail.settings} bridge={bridge} workbench={workbench} />)}

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Canonical built-in Provider ids; Depends on ./en for the WorkbenchCopy shape.
  * [OUTPUT]: Provides ja, the Japanese workbench catalog.
- * Names built-in recipes and Workflow plugins and explains missing workflow measurements.
+ * Includes shared plugin release-stage labels. Names built-in recipes and Workflow plugins and explains missing workflow measurements.
  * [POS]: Lazy workbench-copy locale; the interface says only ワークフロー and 実行.
  */
 import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
@@ -89,6 +89,7 @@ export const ja: WorkbenchCopy = {
     clearFilters: "検索と絞り込みをクリア",
     emptyAll: "プラグインはまだインストールされていません。",
     official: "公式",
+    stageAlpha: "Alpha",
     badgeBuiltin: "内蔵",
     badgePackage: "拡張機能 · v{{version}}",
     badgeNative: "Agent ネイティブ",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the authoritative Dock settings snapshot and plugin health/effect contracts.
- * [OUTPUT]: Provides localized Dock health and read-only, mode-aware disable effects.
+ * [OUTPUT]: Provides localized Dock health with authoritative replacement availability and read-only, mode-aware disable effects.
  * [POS]: Dock plugin projection; no native calls, authorization or persistence occur here.
  */
 import type { PluginHealth } from "@bottega/contracts/plugins/catalog";
@@ -25,7 +25,10 @@ export function dockHealth(snapshot: DockSettingsSnapshot, ready: boolean): Plug
       { label: dockText("labels.automation"), value: dockText(`permission.${snapshot.automation}`) },
       { label: dockText("labels.recovery"), value: dockText(`recovery.${snapshot.recovery.lastResult}`) },
       { label: dockText("labels.sync"), value: dockText(`sync.${snapshot.sync.state}`) },
-      { label: dockText("labels.replacement"), value: dockText("replacementPending") },
+      { label: dockText("labels.replacement"), value: dockText(snapshot.capability.replacement ? "replacementAvailable"
+        : !snapshot.capability.supported ? "unsupported" : snapshot.capability.reason === "development" ? "replacementDevelopment"
+        : snapshot.capability.reason === "helper-missing" ? "replacementHelperMissing" : snapshot.capability.reason === "signature-unverified"
+        ? "replacementUnverified" : "replacementChecking") },
     ], checkedAt: ready ? Date.now() : null,
   };
 }

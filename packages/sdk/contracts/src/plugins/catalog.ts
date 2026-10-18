@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Zod, the plugin descriptor enums (descriptor.ts), localized text (text.ts), the settings view (settings.ts) and the
  *           disable-impact bridge (impact.ts).
- * [OUTPUT]: Provides pluginViewSchema / PluginView (one card of the plugins page), pluginDetailSchema / PluginDetail (a plugin's introduction and settings pages),
+ * [OUTPUT]: Provides pluginViewSchema / PluginView (one card with optional stage and system requirements), pluginDetailSchema / PluginDetail (a plugin's introduction and settings pages),
  *           PLUGIN_ERRORS and PluginsBridge: list, detail, turn on or off, settings read and submit, change subscription, disable impact.
  * [POS]: Appendix C.3. Availability is separate from the switch: `unsupported` cannot be turned on, `blocked` stays on and names what it
  *        waits for; a `setup` plugin is never turned on directly. The desktop plugin catalog builds both shapes.
@@ -25,6 +25,8 @@ export type PluginAvailability = z.infer<typeof availabilitySchema>;
 export const pluginViewSchema = z.object({
   id: pluginIdSchema,
   name: localizedTextSchema,
+  releaseStage: z.literal("alpha").optional(),
+  systemRequirement: localizedTextSchema.optional(),
   summary: localizedTextSchema.nullable(),
   icon: z.object({ builtin: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/) }).strict().nullable(),
   kind: z.enum(PLUGIN_KINDS),

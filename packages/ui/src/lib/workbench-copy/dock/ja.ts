@@ -5,8 +5,14 @@
  */
 export const dock = {
   "name": "Bottega Dock",
-  "summary": "macOS Dock と共存する App ショートカットと使用量ウィジェット。初期状態はオフ。",
-  "description": "Bottega Dock は macOS Dock の横に置かれ、App のショートカットと使用量ウィジェットを表示します。\n\n初期状態はオフです。設定で見た目と表示のタイミングを選べます。",
+  "summary": "アプリのショートカットと使用量ウィジェット。システム Dock を維持するか、確認後に置き換えます。",
+  "description": "Bottega Dock は、アプリ、システムのショートカット、使用量ウィジェットを画面の端に表示します。\n\nDock は Alpha 段階で、初期状態ではオフです。レイアウトとモードを選択できます。置き換えには、署名を検証済みのインストールと確認が必要です。Bottega の終了時や Dock をオフにしたときは、システム Dock を復元します。",
+  "systemRequirement": "macOS {{version}} · Apple シリコン",
+  "replacementAvailable": "確認後に有効化できます",
+  "replacementChecking": "インストールを確認中…",
+  "replacementDevelopment": "開発版は併用モードのみ",
+  "replacementUnverified": "インストールの署名を検証できません。署名済みの Bottega をインストールしてください。",
+  "replacementHelperMissing": "復元ヘルパーがありません。Bottega を再インストールしてください。",
   "running": "Dock は実行中",
   "off": "オフ",
   "loading": "Dock を確認中…",
@@ -14,7 +20,6 @@ export const dock = {
   "recoveryPending": "復元が完了していません。Dock の設定で復元を再試行してください。",
   "coexist": "システム Dock と共存",
   "replace": "システム Dock を置換",
-  "replacementPending": "0.2.0 では未提供。安全性の検証待ち",
   "autohide": "自動的に隠す",
   "pinned": "常に表示",
   "settings": {
@@ -74,9 +79,9 @@ export const dock = {
     "error": "同期失敗。レイアウトは保持"
   },
   "unsupportedReason": {
-    "platform": "macOS 15 以降が必要",
+    "platform": "macOS 27 が必要です",
     "architecture": "Apple シリコンが必要",
-    "osVersion": "macOS 15 以降が必要",
+    "osVersion": "macOS 27 が必要です",
     "helperMissing": "Dock ヘルパーがありません。Bottega を再インストールしてください。"
   },
   "effects": {

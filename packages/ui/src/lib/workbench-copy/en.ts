@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Canonical built-in Provider ids; The confirmed U01–U07 canvas copy and the Copy board glossary (4-ui.md §7–§8).
  * [OUTPUT]: Provides en, the reference workbench catalog, and the WorkbenchCopy shape every locale must match.
- * Names built-in recipes and Workflow plugins and explains missing workflow measurements.
+ * Includes shared plugin release-stage labels. Names built-in recipes and Workflow plugins and explains missing workflow measurements.
  * [POS]: Source language of workbench-copy; the only catalog that loads eagerly.
  */
 import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
@@ -87,6 +87,7 @@ export const en = {
     clearFilters: "Clear search and filters",
     emptyAll: "No plugins installed.",
     official: "Official",
+    stageAlpha: "Alpha",
     badgeBuiltin: "Built-in",
     badgePackage: "Extension · v{{version}}",
     badgeNative: "Agent native",

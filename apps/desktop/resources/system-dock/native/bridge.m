@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AppKit/NSWorkspace (running apps, LaunchServices resolution, icons, launch), ApplicationServices AX, CFPreferences via shared.m, and bridge-system.m for Trash/Finder/agent ops.
- * [OUTPUT]: Provides the `system-dock-bridge` executable: newline-delimited JSON requests on stdin, one bounded response per id plus coalesced "running" events on stdout, exactly as electron/main/system-dock/native/protocol.ts (hello, running-apps, process-info, activate-pid, installed-apps, resolve-app, icons, launch, finder-activate, ax-status, unminimize, dock-prefs-*, dock-reload, dock-persistent-apps).
+ * [OUTPUT]: Provides the `system-dock-bridge` executable: newline-delimited JSON requests on stdin, one bounded response per id plus coalesced "running" events on stdout, exactly as electron/main/system-dock/native/protocol.ts (hello, running-apps, process-info, activate-pid, installed-apps, resolve-app, icons, launch, finder-activate, ax-status, unminimize, dock-prefs-*, verified dock-reload, dock-persistent-apps).
  * [POS]: system-dock/native I/O core and app/preference ops; a long-lived child of Electron main that never blocks its read loop or main run loop and never talks to a renderer.
  */
 
@@ -292,14 +292,7 @@ static void writePref(NSDictionary *request, BDReply *reply) {
 }
 static void reloadDock(BDReply *reply) {
   if (![BDPrefsDomain isEqualToString:BD_DOCK_DOMAIN]) { [reply ok:@{ @"reloaded": @NO }]; return; }
-  dispatch_async(dispatch_get_main_queue(), ^{
-    BOOL found = NO;
-    // launchd relaunches Dock immediately; it rereads com.apple.dock on start.
-    for (NSRunningApplication *app in [NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.apple.dock"]) {
-      found = YES; [app forceTerminate];
-    }
-    [reply ok:@{ @"reloaded": flag(found) }];
-  });
+  dispatch_async(workQueue, ^{ [reply ok:@{ @"reloaded": flag(BDReloadDock()) }]; });
 }
 
 // ---- Persistent Dock tiles (import source only) ---------------------------------------------------

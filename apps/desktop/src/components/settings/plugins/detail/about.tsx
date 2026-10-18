@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on lucide icons, Settings layout primitives including the named icon action, workbench-copy, the plugins bridge (detail), the shared switch state,
- *           shared GUI history, the card's icon and the read-only sections.
+ *           shared GUI history, stage/requirement metadata, the card's icon and the read-only sections.
  * [OUTPUT]: Provides PluginControl (the switch, "Turn on…" / "Set up…", or a fixed badge — the same decision as a card) and
  *           PluginAboutPage — a plugin's introduction: hero (icon, name, publisher and health, summary, the control and, when it has
  *           settings, a Settings icon before the control), the one banner that matters, About, What it can do, Works with, In use, Versions
@@ -9,6 +9,7 @@
  *        settings live on the sidebar entry's page (settings-page.tsx). An Agent-native plugin is read only and says who manages it.
  */
 import type { ReactNode } from "react";
+import { PluginRequirement, PluginStage } from "./metadata";
 import { Lock, Settings, TriangleAlert } from "lucide-react";
 import { formatWorkbench, type WorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
 import { SettingsButton, SettingsIconButton, SettingsSwitch } from "@/components/settings/settings-layout";
@@ -89,8 +90,9 @@ export function PluginAboutPage({ pluginId, bridge, workbench, locale, plugins, 
       <header className="flex flex-wrap items-start gap-5">
         <PluginIcon plugin={detail} size="xl" />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <h1 className="text-balance font-heading font-semibold text-2xl tracking-tight">{pluginText(detail.name, workbench)}</h1>
+          <div className="flex flex-wrap items-center gap-2"><h1 className="text-balance font-heading font-semibold text-2xl tracking-tight">{pluginText(detail.name, workbench)}</h1><PluginStage plugin={detail} workbench={workbench} /></div>
           <p className="flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs">{pluginPublisher(detail, workbench)}{health}</p>
+          <PluginRequirement plugin={detail} workbench={workbench} />
           {detail.summary && <p className="max-w-prose text-pretty text-foreground/80 text-sm">{pluginText(detail.summary, workbench)}</p>}
         </div>
         <div className="flex items-center gap-2.5 pt-1">

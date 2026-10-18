@@ -1,6 +1,7 @@
 /**
  * [INPUT]: Canonical SDK built-in Provider identities; Depends on Zod, the contract grammar (contracts.ts), localized text (text.ts) and the settings fields (settings.ts).
- * [OUTPUT]: Provides PLUGIN_KINDS, PLUGIN_SOURCES, TURN_ON_SETUPS, TURN_OFF_REASONS, pluginDescriptorSchema / PluginDescriptor, nativePluginId,
+ * [OUTPUT]: Includes optional releaseStage and localized systemRequirement metadata.
+ * Provides PLUGIN_KINDS, PLUGIN_SOURCES, TURN_ON_SETUPS, TURN_OFF_REASONS, pluginDescriptorSchema / PluginDescriptor, nativePluginId,
  *           BUILTIN_PLUGINS (Base, Workflow and the four built-in Providers with their introductions, and the first batch of Claude and Codex settings) builtinPlugin and the reserved builtin identity policy.
  * [POS]: Appendix C.1: one descriptor for every plugin (built-in feature, built-in Provider, host package, Agent-native). Memory, Tunnel,
  *        Dock and Sketch join BUILTIN_PLUGINS from their own documents. Defaults equal today's behaviour, so an untouched setting sends nothing.
@@ -24,6 +25,8 @@ export const pluginDescriptorSchema = z.object({
   kind: z.enum(PLUGIN_KINDS),
   source: z.enum(PLUGIN_SOURCES),
   name: localizedTextSchema,
+  releaseStage: z.literal("alpha").optional(),
+  systemRequirement: localizedTextSchema.optional(),
   summary: localizedTextSchema.nullable(),
   /** The longer introduction on the plugin's page; paragraphs are separated by a blank line. */
   description: localizedTextSchema.nullable().optional(),

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React Router, SettingsPage, the Settings canvas and alert, workbench-copy, the main window's plugins bridge, settings
+ * [INPUT]: Depends on React Router, SettingsPage, the Settings canvas and alert, workbench-copy, the main window's plugins bridge, shared plugin stage metadata, settings
  *           navigation, and settings/plugins (list hook, grid, the plugin introduction and settings pages, shared switch, and lazy native package lifecycle panel).
  * [OUTPUT]: Provides PluginsSettingsView — All plugins (the complete grouped catalog), a plugin's introduction, or a plugin's settings page; turning
  *           off uses the shared impact confirmation. Memory's settings page directly reuses its existing settings UI; Dock's reuses its
@@ -22,6 +22,7 @@ import { pluginText } from "@/components/settings/plugins/copy";
 import { PluginGrid } from "@/components/settings/plugins/grid";
 import { PluginAboutPage, PluginControl } from "@/components/settings/plugins/detail/about";
 import { PluginSettingsPage } from "@/components/settings/plugins/detail/settings-page";
+import { PluginStage } from "@/components/settings/plugins/detail/metadata";
 import { usePluginSwitch } from "@/components/settings/plugins/turn-off";
 import { usePluginList } from "@/components/settings/plugins/use-plugins";
 import type { PluginDetail, PluginView, PluginsBridge } from "@ai-chat/cloud-protocol/contracts/plugins/catalog";
@@ -98,7 +99,7 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
   if (target && bridge && view === "settings") {
     return (
       <div className="h-full" data-plugin-detail={target.id} data-plugin-view="settings">
-      <SettingsPage title={name} actions={<>
+      <SettingsPage title={name} titleAdornment={plugin && <PluginStage plugin={plugin} workbench={workbench} />} actions={<>
         <SettingsButton variant="ghost" onClick={() => openAbout(target.id)} data-plugin-about-link="">
           {name && formatWorkbench(copy.aboutPlugin, { name })}<ArrowUpRight aria-hidden className="size-3.5" /></SettingsButton>
         {plugin && <PluginControl plugin={plugin} workbench={workbench} switching={switching} onSetup={setup} />}

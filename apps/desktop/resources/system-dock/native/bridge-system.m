@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on getattrlist(ATTR_DIR_ENTRYCOUNT), FSEvents, NSFileManager mounted volumes, CoreServices Apple Events (AEDeterminePermissionToAutomateTarget / AESendMessage to Finder), and NSXPCConnection to the recovery agent's Mach service.
- * [OUTPUT]: Implements BDHandleSystemOp for trash-state, watch-trash (+ "trash" events), automation-status, empty-trash, and agent-call; BDSystemOpBudget for their reply guards.
+ * [OUTPUT]: Implements BDHandleSystemOp for trash-state, watch-trash (+ "trash" events), automation-status, empty-trash, and agent-call with fail-closed same-team recovery-helper authentication; BDSystemOpBudget for their reply guards.
  * [POS]: system-dock/native side-effecting and TCC-gated ops of system-dock-bridge; every call runs on a background queue with its own bound, and nothing here retries.
  */
 
@@ -207,11 +207,11 @@ static NSDictionary *agentReply(NSString *json) {
 static NSXPCConnection *agentConnection(NSString *service) {
   NSXPCConnection *connection = agentConnections[service];
   if (connection) return connection;
+  NSString *requirement = BDPeerRequirement(BD_RECOVERY_IDENTIFIER);
+  if (!requirement) return nil;
   connection = [[NSXPCConnection alloc] initWithMachServiceName:service options:0];
   connection.remoteObjectInterface = [NSXPCInterface interfaceWithProtocol:@protocol(BDRecoveryService)];
-  NSString *requirement = BDTeamRequirement();
-  // Signed builds only talk to an agent from the same team; ad-hoc dev builds have no team to pin.
-  if (requirement) { if (@available(macOS 13.0, *)) [connection setCodeSigningRequirement:requirement]; }
+  [connection setCodeSigningRequirement:requirement];
   __weak NSXPCConnection *weak = connection;
   connection.invalidationHandler = ^{
     dispatch_async(agentQueue, ^{ if (agentConnections[service] == weak || !weak) [agentConnections removeObjectForKey:service]; });
@@ -237,7 +237,9 @@ static void agentCall(NSDictionary *request, BDReply *reply) {
       dispatch_async(agentQueue, ^{ if (!settled) { settled = YES; [reply ok:result]; } });
     };
     // Creating the connection does not start the agent; only a delivered reply proves a live, validated peer.
-    id<BDRecoveryService> proxy = [agentConnection(service) remoteObjectProxyWithErrorHandler:^(NSError *error) { finish(agentFailure(@"unreachable")); }];
+    NSXPCConnection *connection = agentConnection(service);
+    if (!connection) { finish(agentFailure(@"rejected")); return; }
+    id<BDRecoveryService> proxy = [connection remoteObjectProxyWithErrorHandler:^(NSError *error) { finish(agentFailure(@"unreachable")); }];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, timeoutMs * NSEC_PER_MSEC), agentQueue, ^{ finish(agentFailure(@"timeout")); });
     [proxy call:method payload:text reply:^(NSString *answer) { finish(agentReply(answer)); }];
   });

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain zh-cn copy.
- * [OUTPUT]: Provides systemDockLazyZhCN, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, coexistence availability and unresolved recovery status.
+ * [OUTPUT]: Provides systemDockLazyZhCN, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../zh-cn.ts.
  */
 
@@ -224,23 +224,25 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     shortcutChange: "更改…",
     shortcutRecording: "输入快捷键",
     shortcutRecordingHint: "按下新的快捷键。按 Delete 移除，按 Esc 取消。",
-    preamble: "Bottega Dock 是与系统程序坞并存的一条栏，放置你的 App、访达、下载、废纸篓和 AI 用量。",
+    preamble: "屏幕边缘的应用快捷入口和用量小组件。可保留系统 Dock，也可在确认后替代它。",
     loadFailed: "无法载入程序坞设置。",
     unsupportedTitle: "Bottega Dock 不可用",
     unsupportedPlatform: "Bottega Dock 仅适用于 macOS。",
-    unsupportedVersion: "Bottega Dock 需要 macOS 15 或更高版本。",
+    unsupportedVersion: "Dock Alpha 仅支持 macOS 27。其他 macOS 版本尚未通过验证。",
     unsupportedArchitecture: "Bottega Dock 需要搭载 Apple 芯片的 Mac。",
-    replacementPending: "暂未开放替代系统程序坞。你可以先使用与系统程序坞并存的 Bottega Dock。",
     unsupportedHelperMissing: "当前安装缺少 Bottega Dock 所需的辅助程序。请重新安装 Bottega 后使用 Dock。",
     registrationUnknown: "无法确认",
     registrationUnknownDescription: "无法确认恢复后台项目的注册状态。请先重试恢复，再开启 Dock。",
     unsupportedOther: "Bottega 的其他功能不受影响。",
-    replacementDevelopment: "当前版本支持 Bottega Dock 与系统程序坞并存，暂未开放替代系统程序坞。",
-    replacementHelperMissing: "当前安装缺少替代系统程序坞所需的恢复辅助程序。替代模式暂未开放，Bottega Dock 仍可与系统程序坞并存。",
+    replacementDevelopment: "开发版可与系统 Dock 共存。请安装已签名的 Bottega 以使用替代模式。",
+    replacementHelperMissing: "缺少恢复辅助程序或服务配置。请重新安装 Bottega 以使用替代模式。",
+    replacementChecking: "正在检查主程序签名、辅助程序和恢复服务…",
+    replacementUnverified: "无法验证此安装包。请安装已签名的 Bottega 以使用替代模式。",
+    continueEnabling: "继续启用",
     modeTitle: "Bottega Dock 要如何工作？",
     modeReplace: "替代系统程序坞",
     recommended: "推荐",
-    modeReplaceDescription: "Bottega Dock 接管屏幕底部，系统程序坞保持隐藏，需要时再出现。",
+    modeReplaceDescription: "Bottega Dock 使用你选择的屏幕边缘。系统 Dock 将保持隐藏，直到恢复。",
     modeCoexist: "保留系统程序坞",
     modeCoexistDescription: "将 Bottega Dock 作为快捷入口和小组件栏，与系统程序坞并存。系统程序坞不做任何更改。",
     continue: "继续",
@@ -275,7 +277,7 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     impactAutohide: "系统程序坞将设为自动隐藏，并延长显示延迟，以便 Bottega Dock 取而代之。",
     impactRecoveryItem: "会在后台项目中添加一个小型恢复项。只要替代功能保持开启，即使退出 Bottega，它也会保持注册，确保系统程序坞始终可以恢复。",
     impactNoApp: "恢复项永远不会打开完整的 Bottega App。",
-    impactRestore: "你随时可以恢复系统程序坞：右键点按 Bottega Dock、前往「设置」›「程序坞」，或在 Bottega 菜单栏菜单中选择「程序坞」。",
+    impactRestore: "你可以随时恢复系统 Dock：右键点击 Bottega Dock、打开 Dock 插件设置，或使用 Bottega 菜单栏中的 Dock 菜单。",
     impactShortcuts: "系统快捷键仍可作为后备：Option-Command-D 可切换程序坞自动隐藏，受支持的 Mac 上按 Fn-A 可显示程序坞。它们不是唯一的恢复方式。",
     impactLogin: "登录时打开 Bottega 是「通用」设置中的独立选项。",
     acknowledge: "我已了解这些更改",

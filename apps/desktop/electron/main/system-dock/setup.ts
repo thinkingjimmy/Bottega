@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on DockService, the shared layout/placement/local-state models, the read-only system Dock import adapter, and Electron shell for the Login Items pane.
- * [OUTPUT]: Provides DockSetup: the Settings → Dock flows — setup preview (mode-dependent preselection, existing layout untouched), revision-checked serialized confirmation that refuses stale previews, keeps failed launches retryable, and commits enabled only after the runtime starts, cancel, manual copy, strictly validated display intents and preferences, mode switch, disable, restore, mode-aware renderer/replacement resume, reset, conflict resolution, and the recovery settings deep link.
+ * [OUTPUT]: Provides DockSetup: signature-checked Settings → Dock flows — setup preview (mode-dependent preselection, existing layout untouched), revision-checked serialized confirmation that refuses stale previews, keeps failed launches retryable, and commits enabled only after the runtime starts, cancel, manual copy, strictly validated display intents and preferences, mode switch, disable, restore, capability-aware coexistence/replacement resume, reset, conflict resolution, and the recovery settings deep link.
  * [POS]: system-dock/Settings flow owner (3.1, INV-01/02/07); default and cancelled paths never write system preferences or register anything.
  */
 
@@ -30,10 +30,11 @@ export class DockSetup {
     if (!session || session.expiresAt < Date.now()) { this.sessions.delete(sessionId); throw new Error("DOCK_SETUP_SESSION_EXPIRED"); }
     return session;
   }
-  private assertSupported() { if (!this.service.capability.supported) throw new Error("DOCK_UNSUPPORTED"); }
+  private assertSupported() { this.service.assertOpen(); if (!this.service.capability.supported) throw new Error("DOCK_UNSUPPORTED"); }
   /** Replacement previews read the system Dock once and preselect; coexistence waits for an explicit copy (P-01, INV-01). */
   async beginSetup(mode: DockMode): Promise<DockSetupPreview> {
     this.assertSupported();
+    if (mode === "replace") await this.service.checkCapability();
     if (mode === "replace" && !this.service.capability.replacement) throw new Error("DOCK_REPLACEMENT_UNSUPPORTED");
     const record = this.service.ports.config.snapshot();
     const layoutExists = record.layout.initialized;
@@ -66,6 +67,7 @@ export class DockSetup {
     const session = this.session(input.sessionId);
     if (session.mode !== null && session.mode !== input.mode) throw new Error("DOCK_SETUP_MODE_CHANGED");
     const replace = input.mode === "replace";
+    if (replace) await this.service.checkCapability(true);
     if (replace && (!input.acknowledged || !this.service.capability.replacement)) throw new Error("DOCK_CONSENT_REQUIRED");
     const drafts = session.import ? confirmedDrafts(session.import, input.selected) : [];
     const config = this.service.ports.config;
@@ -79,8 +81,12 @@ export class DockSetup {
     const started = this.service.started;
     try {
       await this.service.ports.ensureBackground();
+      this.service.assertOpen();
       if (replace) this.service.replacement?.register();
+      else await this.service.replacement?.unregister();
+      this.service.assertOpen();
       if (!started) await this.service.start();
+      this.service.assertOpen();
       await this.service.ports.local.update((state) => ({ ...state, enabled: true, preferredMode: input.mode, replacementEnabled: replace,
         consentVersion: replace ? DOCK_CONSENT_VERSION : state.consentVersion }));
       if (replace) await this.service.replacement?.prepare();
@@ -118,9 +124,13 @@ export class DockSetup {
   private async setModeNow(mode: DockMode): Promise<DockSettingsSnapshot> {
     const state = this.service.ports.local.get();
     if (mode === "replace") {
+      this.assertSupported();
+      await this.service.checkCapability(true);
       if (!this.service.capability.replacement) throw new Error("DOCK_REPLACEMENT_UNSUPPORTED");
+      if (!state.enabled) throw new Error("DOCK_DISABLED");
       if (state.consentVersion !== DOCK_CONSENT_VERSION) throw new Error("DOCK_CONSENT_REQUIRED");
       await this.service.ports.local.update((current) => ({ ...current, preferredMode: "replace", replacementEnabled: true }));
+      this.service.assertOpen();
       this.service.replacement?.register();
       await this.service.replacement?.prepare();
     } else {
@@ -139,10 +149,14 @@ export class DockSetup {
   }
   restoreSystemDock(): Promise<DockSettingsSnapshot> { return this.serial(async () => { await this.service.replacement?.suspend("user-restored"); return this.service.settingsSnapshot(); }); }
   resume(): Promise<DockSettingsSnapshot> { return this.serial(async () => {
-    if (this.service.actualMode() === "coexist" || !this.service.started) await this.service.resumeBar();
+    this.assertSupported();
+    const replacementRequested = this.service.ports.local.get().replacementEnabled;
+    if (replacementRequested) await this.service.checkCapability(true);
+    if (!replacementRequested || !this.service.capability.replacement) await this.service.resumeBar();
     else {
-      if (!this.service.capability.replacement) throw new Error("DOCK_REPLACEMENT_UNSUPPORTED");
-      this.service.replacement?.readRegistration();
+      if (!this.service.started || !this.service.ports.local.get().enabled) throw new Error("DOCK_DISABLED");
+      if (this.service.replacement?.readRegistration() === "not-registered") this.service.replacement.register();
+      await this.service.resumeBar();
       await this.service.replacement?.resume();
     }
     return this.service.settingsSnapshot();

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, the i18n provider, SettingsPage and Settings primitives, the Dock settings store, and the settings/dock sections.
- * [OUTPUT]: Provides DockSettingsView, reusable DockSettingsContent for the plugin detail, and DockPluginSetupDialog; all use the original owner, sections and setup confirmation. Sync and recovery remain visible while off.
+ * [OUTPUT]: Provides DockSettingsView, reusable DockSettingsContent for the plugin detail, and DockPluginSetupDialog; all use the original owner, sections and setup confirmation. Focus return refreshes registration; sync and recovery remain visible while off.
  * [POS]: apps/desktop/src/views/settings/dock; Settings layer's legacy Dock page and the Dock plugin's settings content; main applies every command and reports the authoritative outcome.
  */
 
@@ -33,7 +33,11 @@ export function DockSettingsView() {
 
 function useDockSettings() {
   const state = useSyncExternalStore(dockSettingsStore.subscribe, dockSettingsStore.getSnapshot);
-  useEffect(() => { dockSettingsStore.load(); }, []);
+  useEffect(() => {
+    const refresh = () => dockSettingsStore.load();
+    refresh(); window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
   return state;
 }
 

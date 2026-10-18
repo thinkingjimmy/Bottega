@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain ja copy.
- * [OUTPUT]: Provides systemDockLazyJa, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, coexistence availability and unresolved recovery status.
+ * [OUTPUT]: Provides systemDockLazyJa, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../ja.ts.
  */
 
@@ -224,23 +224,25 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     shortcutChange: "変更…",
     shortcutRecording: "ショートカットを入力",
     shortcutRecordingHint: "新しいショートカットを押してください。Delete で削除、Esc でキャンセルします。",
-    preamble: "Bottega Dock は、システムの Dock と並べて使うバーです。App、Finder、ダウンロード、ゴミ箱、AI の使用状況を表示します。",
+    preamble: "画面の端にアプリのショートカットと使用量ウィジェットを表示します。システム Dock を維持するか、確認後に置き換えます。",
     loadFailed: "Dock の設定を読み込めませんでした。",
     unsupportedTitle: "Bottega Dock は使用できません",
     unsupportedPlatform: "Bottega Dock は macOS でのみ使用できます。",
-    unsupportedVersion: "Bottega Dock には macOS 15 以降が必要です。",
+    unsupportedVersion: "Dock Alpha は macOS 27 のみに対応しています。他の macOS バージョンは未検証です。",
     unsupportedArchitecture: "Bottega Dock には Apple シリコン搭載の Mac が必要です。",
-    replacementPending: "システムの Dock の置き換えはまだ利用できません。Bottega Dock を並べて使用できます。",
     unsupportedHelperMissing: "Bottega Dock に必要なヘルパーがこのインストールにありません。Dock を使うには Bottega を再インストールしてください。",
     registrationUnknown: "確認できません",
     registrationUnknownDescription: "復元用バックグラウンド項目の登録状態を確認できませんでした。Dock を有効にする前に復元を再試行してください。",
     unsupportedOther: "Bottega のそのほかの機能は通常どおり使用できます。",
-    replacementDevelopment: "このビルドでは Bottega Dock をシステムの Dock と並べて使用できます。置き換えはまだ利用できません。",
-    replacementHelperMissing: "このインストールには、システムの Dock を置き換えるための復元ヘルパーがありません。置き換えはまだ利用できませんが、Bottega Dock を並べて使用できます。",
+    replacementDevelopment: "開発版はシステム Dock と併用できます。置き換えるには署名済みの Bottega をインストールしてください。",
+    replacementHelperMissing: "復元ヘルパーまたはサービス設定がありません。置き換えるには Bottega を再インストールしてください。",
+    replacementChecking: "アプリの署名、ヘルパー、復元サービスを確認中…",
+    replacementUnverified: "このインストールを検証できません。置き換えるには署名済みの Bottega をインストールしてください。",
+    continueEnabling: "有効化を続ける",
     modeTitle: "Bottega Dock の使い方を選択",
     modeReplace: "システムの Dock を置き換える",
     recommended: "おすすめ",
-    modeReplaceDescription: "Bottega Dock が画面下部を担当し、システムの Dock は必要になるまで隠れたままになります。",
+    modeReplaceDescription: "Bottega Dock は選択した画面の端を使用します。システム Dock は復元するまで非表示になります。",
     modeCoexist: "システムの Dock を残す",
     modeCoexistDescription: "ショートカットとウィジェット用に、Bottega Dock をシステムの Dock と並べて使います。システムの Dock は変更されません。",
     continue: "続ける",
@@ -275,7 +277,7 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     impactAutohide: "Bottega Dock が代わりを務められるよう、システムの Dock は自動的に隠れる設定になり、表示までの待ち時間が長くなります。",
     impactRecoveryItem: "小さな復元項目がバックグラウンド項目に追加されます。置き換えがオンの間は、Bottega を終了しても登録されたままになり、いつでもシステムの Dock に戻せます。",
     impactNoApp: "復元項目が Bottega の App 本体を開くことはありません。",
-    impactRestore: "システムの Dock にはいつでも戻せます。Bottega Dock を右クリックするか、「設定」›「Dock」、または Bottega のメニューバーメニューの「Dock」から戻せます。",
+    impactRestore: "システム Dock はいつでも復元できます。Bottega Dock を右クリックするか、Dock プラグインの設定、または Bottega のメニューバーの Dock メニューを使用してください。",
     impactShortcuts: "システムのショートカットも予備として使えます。Option-Command-D で Dock を自動的に隠す設定を切り替え、対応する Mac では Fn-A で Dock を表示できます。戻す方法はこれだけではありません。",
     impactLogin: "ログイン時に Bottega を開くかどうかは、「一般」設定で別に選べます。",
     acknowledge: "変更内容を理解しました",

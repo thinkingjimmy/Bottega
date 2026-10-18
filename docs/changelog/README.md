@@ -4,6 +4,14 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-10-18 — Bottega Dock Alpha source candidate
+
+- **Alpha on macOS 27.** The entire Dock plugin requires macOS 27.x and Apple silicon. The plugin card, introduction and settings show Alpha and the system requirement separately. The main application's system requirements stay unchanged.
+- **Signed replacement checks.** Replacement becomes selectable after checks pass for the installed app, its native helper, recovery executable and bundled background-service configuration. Development and unsigned builds offer coexistence. Selecting a mode or layout makes no system change; replacement requires the final impact confirmation. Existing coexistence settings and layouts are retained.
+- **Approval and recovery.** Pending background approval has a System Settings action. Returning refreshes its status; Continue enabling resumes the requested setup. Active replacement requires a recovery handshake, a reachable Dock entry and confirmed preference writes. Quit, disable, coexistence and failure recovery retain the restoration path and retry action.
+
+This source candidate keeps version **0.2.6** and is identified by its source commit and installer hashes. Native acceptance of the signed candidate is pending. The published 0.2.6 download, tag, Release and Latest remain unchanged.
+
 ## 2026-10-18 — v0.2.6
 
 [Download 0.2.6](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.6), the official stable release for macOS on Apple silicon (ARM64) only.

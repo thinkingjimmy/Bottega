@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Canonical built-in Provider ids; Depends on ./en for the WorkbenchCopy shape.
  * [OUTPUT]: Provides fr, the French workbench catalog.
- * Names built-in recipes and Workflow plugins and explains missing workflow measurements.
+ * Includes shared plugin release-stage labels. Names built-in recipes and Workflow plugins and explains missing workflow measurements.
  * [POS]: Lazy workbench-copy locale; the interface says only Workflow and Exécution; lanes are couloirs, columns colonnes.
  */
 import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
@@ -89,6 +89,7 @@ export const fr: WorkbenchCopy = {
     clearFilters: "Effacer la recherche et les filtres",
     emptyAll: "Aucun plugin installé.",
     official: "Officiel",
+    stageAlpha: "Alpha",
     badgeBuiltin: "Intégré",
     badgePackage: "Extension · v{{version}}",
     badgeNative: "Natif d’Agent",

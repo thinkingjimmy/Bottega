@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Canonical built-in Provider ids; Depends on ./en for the WorkbenchCopy shape.
  * [OUTPUT]: Provides zhCN, the Simplified Chinese workbench catalog.
- * Names built-in recipes and Workflow plugins and explains missing workflow measurements.
+ * Includes shared plugin release-stage labels. Names built-in recipes and Workflow plugins and explains missing workflow measurements.
  * [POS]: Lazy workbench-copy locale; the interface says only 流程 and 运行.
  */
 import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
@@ -89,6 +89,7 @@ export const zhCN: WorkbenchCopy = {
     clearFilters: "清除搜索和筛选",
     emptyAll: "还没有安装插件。",
     official: "官方",
+    stageAlpha: "Alpha",
     badgeBuiltin: "内置",
     badgePackage: "扩展 · v{{version}}",
     badgeNative: "Agent 原生",
