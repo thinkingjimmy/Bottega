@@ -1,9 +1,10 @@
 /**
- * [INPUT]: React, shared UI primitives, five-language composer copy, capability-filtered permission modes, and the interactions vocabulary's fullAccessFailure (a failed confirmation shows one line per meaning, never the raw error).
+ * [INPUT]: React, shared UI primitives, five-language composer copy, a host-resolved permission presentation model, capability-filtered permission modes, and the interactions vocabulary's fullAccessFailure (a failed confirmation shows one line per meaning, never the raw error).
  * [OUTPUT]: Permission selection with native acknowledgment or deferred session-scoped confirmation; the chip flags a mode the current Agent does not allow.
  * [POS]: Shared desktop and Web permission control; hosts supply authority and may override external navigation, which otherwise uses the injected link port.
  */
 
+import type { ProviderPermissionModel } from "@bottega/contracts/model/provider-capabilities";
 import { useState, type ComponentType } from "react";
 import { Check, Hand, ShieldCheck, ShieldAlert, TriangleAlert } from "lucide-react";
 import { useComposerTranslation } from "./copy/translation";
@@ -45,7 +46,7 @@ export function ChatPermissionSelector({
   onChange,
   allowedModes,
   backendDisplayName = "Agent",
-  providerId,
+  permissionModel,
   unavailableTitle,
 }: {
   locale: string;
@@ -58,7 +59,7 @@ export function ChatPermissionSelector({
   onChange: (mode: AgentPermissionMode) => Promise<void>;
   allowedModes?: AgentPermissionMode[];
   backendDisplayName?: string;
-  providerId?: string;
+  permissionModel?: ProviderPermissionModel;
   /** Shown when the current mode is not among the allowed ones: the chip flags itself and the popover offers the way out. */
   unavailableTitle?: string;
 }) {
@@ -162,7 +163,7 @@ export function ChatPermissionSelector({
               </button>
             )}
           </div>
-          {providerId === "codex" && <p className="px-2 pb-2 text-xs text-muted-foreground">{t("permission.codexPolicy")}</p>}
+          {permissionModel === "bb-native-v1" && <p className="px-2 pb-2 text-xs text-muted-foreground">{t("permission.codexPolicy")}</p>}
           <div className="space-y-px">
             {visibleOptions.map((option) => {
               const Icon = option.icon;
@@ -185,7 +186,7 @@ export function ChatPermissionSelector({
                       {modeLabel(option.value)}
                     </span>
                     <span className={cn("block text-xs", option.danger ? "text-current" : "text-muted-foreground")}>
-                      {providerId === "codex" && option.value === "approve-for-me" ? t("permission.codexAuto") : t(`permission.mode.${option.value}.description`)}
+                      {permissionModel === "bb-native-v1" && option.value === "approve-for-me" ? t("permission.codexAuto") : t(`permission.mode.${option.value}.description`)}
                     </span>
                   </span>
                   <span className="size-4 shrink-0">

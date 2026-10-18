@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Uses a custody-backed AgentProcessHost, main-frozen NativeTurnConfig, native RPC and product callbacks.
+ * [INPUT]: Uses canonical built-in Provider identity, a custody-backed AgentProcessHost, main-frozen NativeTurnConfig, live main-owned MCP consent queries, native RPC and product callbacks.
  * [OUTPUT]: Exports CodexNativeTurn, implementing the product AgentTurn over native Thread/Turn methods.
  * Native Skill-budget warnings remain durable turn facts on success and failure.
  * [POS]: Native lifecycle owner; no ACP methods, launcher fallback or client-side automatic approval.
  */
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import type { AgentApprovalDecision, AgentUserInputAnswers, PromptHandoff } from "../../../../../../shared/ipc/agent/agent-ipc";
 import type { AgentProcessHost, AgentTurn, AdapterSteerOutcome, BackendTurnOptions, StartOutcome } from "../../../../backends/contracts/types";
 import type { ProviderTurnInput } from "../../../../backends/contracts/turn-input";
@@ -59,7 +60,7 @@ export class CodexNativeTurn implements AgentTurn {
       result(result: import("../../../../../../shared/ipc/agent/background-ipc").NativeBackgroundResult): Promise<void>;
       update(terminals: NativeTerminal[], output?: { itemId: string; delta: string }): void;
       ended(): void;
-    }) {
+    }, private readonly authorizeMcpConsent: (serverName: string, toolName: string) => Promise<boolean> = async () => false) {
     this.events = new NativeEvents(options, value => this.redact(value));
     this.rpc = new NativeConnection(host, {
       message: message => {
@@ -69,7 +70,7 @@ export class CodexNativeTurn implements AgentTurn {
       trace: (direction, summary) => options.trace?.recordWire(direction, summary),
     });
     this.interactions = new NativeInteractions(this.rpc, options,
-      () => !this.done && this.threadId && this.turnId ? { threadId: this.threadId, turnId: this.turnId } : null, value => this.redact(value), itemId => this.events.fileChange(itemId));
+      () => !this.done && this.threadId && this.turnId ? { threadId: this.threadId, turnId: this.turnId } : null, value => this.redact(value), itemId => this.events.fileChange(itemId), this.authorizeMcpConsent);
   }
   get pid() { return this.rpc.pid; }
   get steeringSupported() { return !this.done; }
@@ -93,12 +94,12 @@ export class CodexNativeTurn implements AgentTurn {
       const servers = { ...Object.fromEntries(Object.keys(inherited).map(name => [name, { enabled: false }])), ...selected };
       const threadParams = { ...this.config.thread, config: { ...this.config.thread.config, mcp_servers: servers } };
       const resume = this.options.payload.session;
-      if (resume && resume.backend !== "codex") throw new Error("Native thread belongs to a different Provider");
+      if (resume && resume.backend !== BUILTIN_PROVIDER_IDS.codex) throw new Error("Native thread belongs to a different Provider");
       let candidate = resume?.id;
       let recovered = false;
       if (!candidate && this.options.sessionRecovery?.candidate) {
         const hint = this.options.sessionRecovery.candidate;
-        if (hint.backend === "codex" && await nativeHistoryMatches(this.rpc, hint).catch(cause => {
+        if (hint.backend === BUILTIN_PROVIDER_IDS.codex && await nativeHistoryMatches(this.rpc, hint).catch(cause => {
           if (this.missing(cause, hint.sessionId)) return false;
           throw cause;
         })) { candidate = hint.sessionId; recovered = true; }
@@ -128,7 +129,7 @@ export class CodexNativeTurn implements AgentTurn {
       }
       const terminals = nativeRecord(await this.rpc.request("thread/backgroundTerminals/list", { threadId: thread.id, cursor: null, limit: 1 }, { timeoutMs: 5000 }));
       if (!Array.isArray(terminals.data) || terminals.data.length || terminals.nextCursor !== null) throw new Error("Native terminal ownership cannot be established before input");
-      await this.options.callbacks.onThread({ backend: "codex", id: thread.id }, this.config.continuation ? { backend: "codex", id: this.config.continuation.threadId } : undefined);
+      await this.options.callbacks.onThread({ backend: BUILTIN_PROVIDER_IDS.codex, id: thread.id }, this.config.continuation ? { backend: BUILTIN_PROVIDER_IDS.codex, id: this.config.continuation.threadId } : undefined);
       this.threadId = thread.id;
       if (response.serviceTier !== null && typeof response.serviceTier !== "string") throw new Error("Native CLI returned an invalid service tier");
       this.options.callbacks.onServiceTierUpdate?.(response.serviceTier);
@@ -194,7 +195,7 @@ export class CodexNativeTurn implements AgentTurn {
   respondApproval(id: string, decision: AgentApprovalDecision) { return this.interactions.respondApproval(id, decision); }
   pendingUserInput(id: string) { return this.interactions.pendingUserInput(id); }
   respondUserInput(id: string, answers: AgentUserInputAnswers) { this.interactions.respondUserInput(id, answers); }
-  interrupt() { if (this.threadId && this.turnId && !this.done) void this.rpc.request("turn/interrupt", { threadId: this.threadId, turnId: this.turnId }, { timeoutMs: 5000 }).catch(cause => this.fail(cause)); }
+  interrupt() { this.interactions.close(); if (this.threadId && this.turnId && !this.done) void this.rpc.request("turn/interrupt", { threadId: this.threadId, turnId: this.turnId }, { timeoutMs: 5000 }).catch(cause => this.fail(cause)); }
   markStopped() { this.done = true; clearInterval(this.backgroundTimer); this.interactions.close(); this.rpc.close(); for (const resolve of this.handoffWaiters) resolve(this.handoff); this.handoffWaiters.clear(); }
 
   async stopBackground() {
@@ -272,14 +273,14 @@ export class CodexNativeTurn implements AgentTurn {
       if (typeof id === "string") this.turnId = id;
     }
     if (!this.accepted) {
-      if (message.id !== undefined && this.submitted && this.turnId && p.turnId === this.turnId) { this.interactions.receive(message); return; }
+      if (message.id !== undefined && this.submitted && this.turnId && p.turnId === this.turnId) { await this.interactions.receive(message); return; }
       if (this.earlyEvents.length >= 1024) throw new Error("Native pre-acceptance event budget exceeded");
       this.earlyEvents.push(message); return;
     }
     if (p.threadId === this.threadId && p.turnId && p.turnId !== this.turnId) {
       if (message.id !== undefined) this.rpc.reject(message.id, "Native turn mismatch"); return;
     }
-    if (message.id !== undefined) { this.interactions.receive(message); return; }
+    if (message.id !== undefined) { await this.interactions.receive(message); return; }
     const child = p.threadId !== this.threadId ? String(p.threadId) : undefined;
     switch (message.method) {
       case "item/started": case "item/completed": this.events.update(p.item as ThreadItem, message.method === "item/completed", child); break;

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Uses HostApi, pinned protocol declarations, lazily loaded ACP/native drivers and ordered process/event ports.
+ * [INPUT]: Uses HostApi, pinned protocol declarations, lazily loaded ACP/native drivers and ordered process/event ports and live names-only MCP consent queries.
  * [OUTPUT]: Exports activate for protocol-specific readiness, native catalogs, turns, retained background Stop/results, headless parsing and quota.
  * [POS]: Provider utility-process dispatcher; main alone freezes launch policy, grants tool authority and owns custody.
  */
@@ -162,7 +162,7 @@ export function activate(api: HostApi) {
           result: result => outbox.request({ k: "native-background-result", result }).then(() => undefined),
           update: (terminals, output) => outbox.event({ k: "native-background-update", terminals, output }),
           ended: () => outbox.event({ k: "native-background-ended" }),
-        })
+        }, (serverName, toolName) => outbox.request({ k: "native-mcp-consent", serverName, toolName }).then(value => value === true, () => false))
         : new Acp!(options,
         { ...values!, command: "sealed-plan", args: [], env: {}, ...(acpServers ? { resolveMcpServers } : {}),
           /* Main's fence, carried unchanged: the bridge never builds a sandbox or a launch (D1, P2). */

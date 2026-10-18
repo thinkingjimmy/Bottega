@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Uses product turn/input contracts, main-sealed ACP or native plans, execution references and ordered bridge events.
- * [OUTPUT]: Exports BridgedTurn with frozen configuration, approval/control forwarding, delivery evidence and cancellation-safe Chat background transfer with exact-owner durable result commits.
+ * [INPUT]: Uses the work's actual Provider identity, product turn/input contracts, main-sealed ACP or native plans, execution references and ordered bridge events.
+ * [OUTPUT]: Exports BridgedTurn with frozen configuration, approval/control forwarding, live exact-owner MCP consent eligibility, delivery evidence and cancellation-safe Chat background transfer with exact-owner durable result commits.
  * [POS]: Main-side authorization and custody owner; protocol parsing remains in the pinned bridge driver.
  */
 import { randomUUID } from "node:crypto";
@@ -38,9 +38,16 @@ export class BridgedTurn implements AgentTurn {
   private readonly evidence: AcpProcessEvidence;
   private native: NativeSpawnConfig | null = null;
   private nativeConfigIssued = false;
+  private readonly mcpBinding: Readonly<{ leaseId: string; generation: number; requestId: string; chatId: string; incarnationId: string }> | null;
+  private readonly mcpServers: ReadonlySet<string>;
 
   constructor(private readonly options: BackendTurnOptions, private readonly config: AcpSpawnConfig | NativePlan, private readonly runtime: ProviderBridgeRuntime,
     private readonly prepareLaunch?: (launch: ReturnType<typeof turnLaunch>) => Promise<import("../../../backends/contracts/types").AgentProcessLaunch>) {
+    const lease = options.builtinMcp?.lease;
+    this.mcpBinding = lease ? Object.freeze({ leaseId: lease.leaseId, generation: lease.generation,
+      requestId: options.payload.requestId, chatId: options.payload.scope.conversationId,
+      incarnationId: options.chatIncarnationId ?? lease.incarnationId }) : null;
+    this.mcpServers = new Set((options.thirdPartyMcpPlan?.entries ?? []).map(entry => entry.backendAlias));
     this.evidence = new AcpProcessEvidence(config.env, { secrets: secretsOf(options) });
   }
 
@@ -114,8 +121,8 @@ export class BridgedTurn implements AgentTurn {
     switch (request.k) {
       case "thread": {
         const expected = this.native?.nativeConfig.continuation?.threadId;
-        if (request.previous && (!expected || request.previous.backend !== "codex" || request.previous.id !== expected ||
-          this.options.payload.session?.id !== expected || request.session.backend !== "codex" || request.session.id === expected)) throw new Error("Native fork binding does not match its frozen source");
+        if (request.previous && (!expected || request.previous.backend !== this.providerId || request.previous.id !== expected ||
+          this.options.payload.session?.backend !== this.providerId || this.options.payload.session.id !== expected || request.session.backend !== this.providerId || request.session.id === expected)) throw new Error("Native fork binding does not match its frozen source");
         if (expected && !request.previous) throw new Error("Native fork requires an atomic source-session replacement");
         return this.options.callbacks.onThread(request.session, request.previous);
       }
@@ -127,6 +134,20 @@ export class BridgedTurn implements AgentTurn {
       case "mcp-servers": {
         if (this.native) throw new Error("Native turns do not expose ACP MCP servers");
         return acpMcpServers(this.options, this.config as AcpSpawnConfig);
+      }
+      case "native-mcp-consent": {
+        if (!this.native || !this.nativeConfigIssued || !this.owner || !this.ref || this.closed || this.stopping
+          || typeof request.serverName !== "string" || typeof request.toolName !== "string" || !/^[A-Za-z0-9_./:-]{1,128}$/.test(request.toolName)) return false;
+        this.options.trustedAuthority?.current();
+        const builtin = this.options.builtinMcp, binding = this.mcpBinding;
+        if (builtin && builtin.server.name === request.serverName) {
+          const lease = builtin.lease;
+          return Boolean(binding && lease.leaseId === binding.leaseId && lease.generation === binding.generation
+            && lease.requestId === binding.requestId && lease.chatId === binding.chatId && lease.incarnationId === binding.incarnationId
+            && lease.initiatorBackend === this.providerId && lease.state !== "revoked" && !lease.signal.aborted
+            && lease.allowedTools.some(tool => tool === request.toolName));
+        }
+        return this.mcpServers.has(request.serverName);
       }
       case "native-config": {
         if (!this.native || this.nativeConfigIssued) throw new Error("Native configuration is unavailable or already consumed");

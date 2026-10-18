@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Uses the native bridge model query, CLI/config file identities and shared model catalog cache.
+ * [INPUT]: Uses canonical Provider identity, the native bridge model query, CLI/config file identities and shared model catalog cache.
  * [OUTPUT]: Exports codexModelCatalog/createCodexModelCatalog with native pagination, efforts and service tiers.
  * [POS]: Main-owned catalog boundary; protocol and process execution remain on the custody-backed native bridge.
  */
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { BackendModelInfo } from "../../../../../shared/ipc/agent/agent-ipc";
@@ -24,7 +25,7 @@ export function createCodexModelCatalog(dependencies: { read?: typeof readNative
     ...(dependencies.now ? { now: dependencies.now } : {}),
     ...(dependencies.ttlMs === undefined ? {} : { ttlMs: dependencies.ttlMs }),
     read: async (runtime, workspace, signal): Promise<BackendModelInfo[]> => {
-      const models = await (dependencies.read ?? readNativeModels)(runtime, nativeCodexLaunch(runtime, workspace), signal);
+      const models = await (dependencies.read ?? readNativeModels)(BUILTIN_PROVIDER_IDS.codex, runtime, nativeCodexLaunch(runtime, workspace), signal);
       const seen = new Set<string>();
       const result = models.filter(model => !model.hidden).map(model => {
         if (!MODEL_ID_PATTERN.test(model.model) || seen.has(model.model)) throw new Error("Native model identity is invalid");

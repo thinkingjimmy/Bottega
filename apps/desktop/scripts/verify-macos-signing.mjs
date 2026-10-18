@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Apple Team ID, codesign, Gatekeeper, stapler, an application path, and either an explicit DMG or the existing release directory.
- * [OUTPUT]: Verifies strict nested Developer ID signatures, hardened runtime, helper entitlements, the bundled Node's own signature, Gatekeeper, and the application notarization ticket. A requested DMG must exist; electron-builder 26.15.3 does not staple that container.
+ * [OUTPUT]: Verifies strict nested Developer ID signatures, hardened runtime, helper entitlements, the bundled Node's own signature, Gatekeeper, and the application notarization ticket. A requested DMG must exist; electron-builder 26.15.3 does not staple that container. Failures retain process status, signal, spawn errors and both output streams without adding command arguments or environment dumps.
  * [POS]: macOS release verification; distribution supplies exact fresh artifacts instead of newest-file inference.
  */
 
@@ -37,8 +37,17 @@ if (args.length !== 2 && (!dmg || !existsSync(dmg) || !statSync(dmg).isFile())) 
 
 const run = (command, args) => {
   const result = spawnSync(command, args, { encoding: "utf8" });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed: ${result.stderr}`);
+  if (result.error || result.status !== 0) {
+    const failure = {
+      status: result.status,
+      signal: result.signal,
+      error: result.error ? {
+        name: result.error.name, message: result.error.message, code: result.error.code ?? null,
+      } : null,
+      stdout: result.stdout ?? "",
+      stderr: result.stderr ?? "",
+    };
+    throw new Error(`${command} verification failed:\n${JSON.stringify(failure, null, 2)}`);
   }
   return `${result.stdout}${result.stderr}`;
 };

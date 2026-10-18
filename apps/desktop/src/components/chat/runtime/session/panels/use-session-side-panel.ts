@@ -1,5 +1,5 @@
 /**
- * [INPUT]: React, localized panel copy, session identity, Browser/Plan/Subagent projections and scoped workspace/file-link readers
+ * [INPUT]: React, explicit local-file failure translation keys, localized panel copy, session identity, Browser/Plan/Subagent projections and scoped workspace/file-link readers
  * [OUTPUT]: Stable panel commands and generation-fenced previews shared by composer references and message file links
  * [POS]: apps/desktop/src/components/chat/runtime/session/panels; The sole side-panel state owner in chat/runtime/session
  */
@@ -418,13 +418,13 @@ export function useSessionSidePanel({
       } catch (cause) {
         const message = errorMessage(cause);
         const code = failureCode(cause);
-        const key = /WORKSPACE_FILE_LINK_(?:OUTSIDE|CHANGED)/.test(code) ? "outside"
-          : code === "WORKSPACE_FILE_LINK_MISSING" ? "missing" : "readFailed";
+        const key = /WORKSPACE_FILE_LINK_(?:OUTSIDE|CHANGED)/.test(code) ? "chat.sidePanel.file.outside"
+          : code === "WORKSPACE_FILE_LINK_MISSING" ? "chat.sidePanel.file.missing" : "chat.sidePanel.file.readFailed";
         setState((current) =>
           current.kind === "workspace-preview" &&
           current.nodeId === nodeId &&
           generation === workspaceGeneration.current
-            ? { ...current, status: "error", error: localFile ? t(`chat.sidePanel.file.${key}`) : message }
+            ? { ...current, status: "error", error: localFile ? t(key) : message }
             : current
         );
       }

@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on TurnRegistry projection lane, runtime registry, MCP-plan-bound session persistence, immutable artifact and image projection, MCP/server-fact observation and subagent reducer
+ * [INPUT]: Depends on explicit Provider subagent-content ownership, TurnRegistry projection lane, runtime registry, MCP-plan-bound session persistence, immutable artifact and image projection, MCP/server-fact observation and subagent reducer
  * [OUTPUT]: Atomically replaces an authorized native fork source, with rollback on failed handoff; persists artifact-projected native child items before publication; projects typed turn outcomes, provider identity and Chat-local availability evidence; only complete success grants operation evidence, without rewriting global probe auth.
  * [POS]: apps/desktop/electron/main/agent/turns/turn; Factory wiring backend turn events into agent-bridge projections behind a single generation fence; agent-bridge itself only starts and routes turns
  */
 
+import { providerTraits } from "../../../../../shared/providers/traits";
 import { recordWorkflowCommandExit } from "../../../workflows/turn-policy";
 import { artifactRuntime } from "../../../artifacts/core/runtime";
 import type { SessionServiceTierEffective } from "../../../../../shared/ipc/agent/agent-ipc";
@@ -56,6 +57,7 @@ export function createTurnCallbacks(
   const { turns, threadScopes, publish, observe, finalizeEntry } = ports;
   const { entry, generation, backend, runtimeGeneration, options, context } =
     input;
+  const storesSubagentContent = providerTraits(entry.backend).subagentContentOwner === "callbacks";
   entry.artifacts ??= artifactRuntime()?.begin(entry, context);
   let boundSession = entry.payload?.session;
   const ifCurrent = (callback: () => void) => {
@@ -208,7 +210,7 @@ export function createTurnCallbacks(
       const agent = entry.subagents.get(agentThreadId);
       if (agent) {
         const projected = await entry.artifacts?.child(agentThreadId).item(item) ?? item;
-        if (entry.backend === "codex") entry.subagents.applyItem(agentThreadId, projected);
+        if (storesSubagentContent) entry.subagents.applyItem(agentThreadId, projected);
         publish(entry, { type: "subagent-item", agentThreadId, agent, item: projected });
       }
     }), "project-subagent-artifact"),
@@ -217,10 +219,10 @@ export function createTurnCallbacks(
       const events = await entry.artifacts?.child(agentThreadId).delta(itemId, text) ?? [{ type: "item-delta" as const, itemId, text }];
       for (const event of events) {
         if (event.type === "item") {
-          if (entry.backend === "codex") entry.subagents.applyItem(agentThreadId, event.item);
+          if (storesSubagentContent) entry.subagents.applyItem(agentThreadId, event.item);
           publish(entry, { type: "subagent-item", agentThreadId, agent, item: event.item });
         } else {
-          if (entry.backend === "codex") entry.subagents.applyDelta(agentThreadId, event.itemId, event.text);
+          if (storesSubagentContent) entry.subagents.applyDelta(agentThreadId, event.itemId, event.text);
           publish(entry, { type: "subagent-item-delta", agentThreadId, agent, itemId: event.itemId, text: event.text });
         }
       }

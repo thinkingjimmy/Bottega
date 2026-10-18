@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the Base wire byte limit and the Provider contract's bounded id
- * [OUTPUT]: Provides ProviderTraits (including isolatedConfig: a CLI run with Bottega's own configuration), BUILTIN_PROVIDER_TRAITS and providerTraits (fail-closed defaults for a provider the host has no traits for)
+ * [OUTPUT]: Provides ProviderTraits (including subagent content ownership and isolatedConfig), BUILTIN_PROVIDER_TRAITS and providerTraits (fail-closed defaults for a provider the host has no traits for)
  * [POS]: The host-private half of each catalog entry (TASK-11 (a) S2, provider-catalog.md §2.2): product policy and host measurements that a Provider package never declares; the public facts about a CLI stay in its descriptor (builtin.ts)
  */
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
@@ -28,13 +28,15 @@ export type ProviderTraits = Readonly<{
       it (its providers among them) are not read; its Settings row says so. The row's copy names OpenCode's configuration paths,
       so a second Provider with this trait needs its own copy (or paths from its descriptor) first. */
   isolatedConfig: boolean;
+  /** The registry normally stores child content before publication; native callbacks store their projected content instead. */
+  subagentContentOwner: "registry" | "callbacks";
 }>;
 
 const common: ProviderTraits = { builtinWireByteLimit: BASE_WIRE_BYTE_LIMIT, builtinToolsMinimumVersion: null, manualMcpMinimumVersion: null,
-  maxEffortPerChat: false, dedicatedCredentialRoot: false, pluginProjection: false, authCheckLease: false, authScope: "global", isolatedConfig: false };
+  maxEffortPerChat: false, dedicatedCredentialRoot: false, pluginProjection: false, authCheckLease: false, authScope: "global", isolatedConfig: false, subagentContentOwner: "registry" };
 
 export const BUILTIN_PROVIDER_TRAITS: Readonly<Record<string, ProviderTraits>> = Object.freeze({
-  codex: { ...common, builtinToolsMinimumVersion: [0, 144, 4], dedicatedCredentialRoot: true, authCheckLease: true },
+  codex: { ...common, builtinToolsMinimumVersion: [0, 144, 4], dedicatedCredentialRoot: true, authCheckLease: true, subagentContentOwner: "callbacks" },
   /* 2.1.220: the first version measured with all six rings of the built-in tools (verified-capabilities 2026-08-01). */
   claude: { ...common, builtinToolsMinimumVersion: [2, 1, 220], maxEffortPerChat: true, pluginProjection: true, authCheckLease: true },
   /* Kimi truncates tool results near 100 KB (measured), so it keeps 20 KB of headroom. 0.37.0 introduced a conversion that throws on

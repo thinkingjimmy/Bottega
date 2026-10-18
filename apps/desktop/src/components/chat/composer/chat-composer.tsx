@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Depends on React/router, runtime controller, Agent submission custody, cloud account predicates, idle chunk prefetch, queue capacity, Chat i18n, workspace hooks, Gallery/Sketch custody, modal keyboard ownership, the per-Chat submission gate, unavailable draft images, the Agent connection warm-up client, startup marks, PromptInputProvider and RichInput.
+ * [INPUT]: Depends on the canonical permission presentation lookup, React/router, runtime controller, Agent submission custody, cloud account predicates, idle chunk prefetch, queue capacity, Chat i18n, workspace hooks, Gallery/Sketch custody, modal keyboard ownership, the per-Chat submission gate, unavailable draft images, the Agent connection warm-up client, startup marks, PromptInputProvider and RichInput.
  * [OUTPUT]: Native rich submission, model and permission edits for later submissions during an active turn, Agent-menu availability recovery without a duplicate status/manage/recheck strip, preserved drafts and image warnings, queued Plan/authentication retry, prepare-failure recovery, Sketch and account-owned remote draft execution.
  * [POS]: Chat command surface; candidate projection is read-only while drafts, attachments, and Gallery custody remain in the per-Chat store
  */
+import { builtinProviderPermissionModel } from "@bottega/contracts/model/provider-capabilities";
 import { ChatAddMenu } from "./input/add-menu";
 
 import { useProviderTurnedOff } from "@/components/settings/plugins/turned-off";
@@ -607,7 +608,7 @@ function ChatComposerContent({
               />
             )}
             {execution.controls?.permission ?? (builtinOptions && <ChatPermissionSelector
-              providerId={builtinOptions.backend}
+              permissionModel={builtinProviderPermissionModel(builtinOptions.backend)}
               chatId={controller.chatId}
               value={builtinOptions.permissionMode}
               backendDisplayName={

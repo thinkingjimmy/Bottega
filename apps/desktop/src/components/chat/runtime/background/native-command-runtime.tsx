@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Uses durable original command parts, Chat/incarnation-scoped background IPC and the existing activity-row runtime context.
+ * [INPUT]: Uses durable original command parts, Chat/incarnation-scoped background IPC, complete permission-mode translation keys and the existing activity-row runtime context.
  * [OUTPUT]: Exports NativeCommandRuntimeProvider, attaching live output and Stop to original command details without adding layout.
  * [POS]: Native execution projection for existing transcript and subagent command rows; main keeps all authority.
  */
@@ -12,6 +12,11 @@ import { useAppTranslation } from "@/components/providers/preferences/i18n-provi
 import type { NativeBackgroundCommand } from "../../../../../shared/ipc/agent/background-ipc";
 
 const EMPTY = { commands: [] as NativeBackgroundCommand[], recent: new Map<string, NativeBackgroundCommand>() };
+const PERMISSION_MODE_KEYS = {
+  "ask-for-approval": "chat.nativeBackground.modes.ask-for-approval",
+  "approve-for-me": "chat.nativeBackground.modes.approve-for-me",
+  "full-access": "chat.nativeBackground.modes.full-access",
+} as const satisfies Record<NativeBackgroundCommand["permissionMode"], string>;
 
 export function NativeCommandRuntimeProvider({ chatId, incarnationId, children }: { chatId?: string | null; incarnationId: string | null; children: ReactNode }) {
   const scope = JSON.stringify([chatId, incarnationId]);
@@ -66,7 +71,7 @@ export function NativeCommandRuntimeProvider({ chatId, incarnationId, children }
           <SquareIcon className="size-3" />{busy === command.id || command.status === "stopping" ? t("chat.nativeBackground.stopping") : t("chat.nativeBackground.stop")}
         </Button>,
         description: command && <>
-          <p className="px-3 pb-2 text-muted-foreground text-xs">{t("chat.nativeBackground.started", { mode: t(`chat.nativeBackground.modes.${command.permissionMode}`) })}</p>
+          <p className="px-3 pb-2 text-muted-foreground text-xs">{t("chat.nativeBackground.started", { mode: t(PERMISSION_MODE_KEYS[command.permissionMode]) })}</p>
           {(failed === command.id || command.status === "failed") && <p role="status" className="px-3 pb-2 text-destructive text-xs">{t("chat.nativeBackground.failed")}</p>}
         </>,
       };

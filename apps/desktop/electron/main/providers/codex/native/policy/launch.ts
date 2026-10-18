@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Uses Codex runtime discovery, main-owned turn authorization, MCP lease/configuration and verified Git roots.
+ * [INPUT]: Uses canonical built-in Provider identity, Codex runtime discovery, main-owned turn authorization, MCP lease/configuration and verified Git roots.
  * [OUTPUT]: Exports nativeCodexTurnPlan and NativeSpawnConfig.
  * [POS]: Main-only native startup authority; bridge receives a sealed process and requests frozen config once.
  */
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import type { CodexTurnOptions } from "../../../../../../shared/ipc/agent/codex-ipc";
 import { realpath } from "node:fs/promises";
 import type { AgentProcessLaunch, BackendTurnOptions } from "../../../../backends/contracts/types";
@@ -20,7 +21,7 @@ export async function nativeCodexTurnPlan(options: BackendTurnOptions): Promise<
     throw new Error("Codex bb-native-v1 chat does not enforce this role's read-only, network-off or Skill disk-isolation requirement");
   }
   const turn = options.payload.turnOptions as CodexTurnOptions;
-  if (turn.backend !== "codex") throw new Error("Native Codex launch received another Provider");
+  if (turn.backend !== BUILTIN_PROVIDER_IDS.codex) throw new Error("Native Codex launch received another Provider");
   const roots = [...await linkedWorktreeWriteRoots(options.workspace), ...(options.artifactDirectory ? [await realpath(options.artifactDirectory)] : [])];
   const policy = nativePolicy(turn.permissionMode, roots);
   const servers: Record<string, unknown> = Object.fromEntries((options.thirdPartyMcpPlan?.entries ?? []).map(server => [server.backendAlias,

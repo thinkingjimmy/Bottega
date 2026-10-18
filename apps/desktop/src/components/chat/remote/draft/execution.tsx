@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Native composer controller, account-scoped remote ports, the viewed-computer scope and the Projects projection.
+ * [INPUT]: Uses the canonical permission presentation lookup, native composer controller, account-scoped remote ports, the viewed-computer scope and the Projects projection.
  * [OUTPUT]: One composer with draft-owned reference provenance, target-checked submission, retry-safe create-and-send adapters and the owning computer's name for controls only that computer can answer.
  * [POS]: Draft execution boundary; a new chat is created on the computer the sidebar is showing, or on the one that published the Project it is started under, and local submissions keep original coordinator custody.
  */
+import { builtinProviderPermissionModel } from "@bottega/contracts/model/provider-capabilities";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { backendDefaults, builtinAgent } from "../../../../../shared/chat-agent/options";
 import { firstProviderId } from "@/lib/provider-catalog/store";
@@ -121,7 +122,7 @@ export function useDraftExecution(original: ChatSessionController["composer"]) {
     agent: <RemoteAgentSelector locale={i18n.language} target={target} value={backend} copy={copy} disabled={busy || Boolean(draft.creation)} onSelect={value => { setAgent(value); store.update({ options: null }); }} />,
     model: capability?.models ? <ComposerModelSelector locale={i18n.language} backend={backend} models={capability.models} disabled={busy || Boolean(draft.creation)} value={draft.options?.backend === backend ? draft.options : {}}
       onChange={value => store.update({ options: { backend, ...value } })} /> : null,
-    permission: <ChatPermissionSelector providerId={backend} locale={i18n.language} deferConfirmation value={turnOptions.permissionMode} allowedModes={capability?.capabilities?.permissionModes}
+    permission: <ChatPermissionSelector permissionModel={builtinProviderPermissionModel(backend)} locale={i18n.language} deferConfirmation value={turnOptions.permissionMode} allowedModes={capability?.capabilities?.permissionModes}
       disabled={busy || Boolean(draft.creation)} onChange={async permissionMode => { store.update({ permissionMode }); }} />,
   } : null, dialogs: remote ? consent.dialog : null };
 }

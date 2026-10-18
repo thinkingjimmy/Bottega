@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the utility host's HostApi, the relayed process host, the bridge-safe quota session streams (readers/protocol.ts) and the Provider's own quota exchange from its pinned module (bridgeQuotaExchange).
+ * [INPUT]: Depends on the utility host's HostApi, the relayed process host, the bridge-safe quota session streams (readers/protocol.ts) and the Provider's own quota exchange from its pinned module (bridgeQuotaExchange), and typed native RPC errors.
  * [OUTPUT]: Provides quotaBridge(api): `open` (launch main's sealed quota plan, then initialize: Claude's control session is guarded and stays open), `read` (one exchange, answered as a result or a finite reason) and `close` (ends the session's input; main ends the process through host custody).
  * Initializing channels await custody delivery, reject cancelled control waits and cannot register again after close.
  * [POS]: The Provider half of a bridged quota read (TASK-11 D9), loaded by the bridge entry on its first quota operation so the entry's static closure stays flat. Main keeps admission, the lease, warm-channel parking, the identity and the launch; the process is main's, in host custody.
@@ -12,10 +12,12 @@ import { bridgeProcessHost } from "./process-host";
 import { normalizeCodex, quotaLabel } from "../../usage-limits/normalization";
 import { object, QuotaReadError } from "../../usage-limits/readers/wire";
 import { bridgeProtocol, bridgeQuotaExchange } from "./turn-values";
+import { NativeRpcError } from "../codex/native/transport/errors";
 
 type Channel = { read(signal: AbortSignal): Promise<QuotaReadResult>; end(): void };
 const refused = (cause: unknown): BridgeQuotaAnswer => {
-  const error = quotaError(cause);
+  const error = cause instanceof NativeRpcError && cause.code === -32601
+    ? new QuotaReadError("unsupported") : quotaError(cause);
   return { ok: false, reason: error.reason, ...(error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }) };
 };
 

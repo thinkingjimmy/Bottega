@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the backend registry, TurnRegistry, synchronous Steer policy, payload validation, Project Tools receipts and the MCP plan binding guard, Chat commit, Gallery, Memory, MCP leases, artifact capture sessions, frozen sessions, retry guards and credential reservations
- * [OUTPUT]: Provides canonical execution, main-only session prompt evidence, scoped availability, frozen post-turn result persistence, Project policy narrowing, MCP/session guards, typed finalization (only availability gates may say "install or update"; a Stop during the process-slot wait cancels), StartNotDispatchedError for every start that failed before an Agent process existed, generation-scoped Stop, interaction/retry IPC with authorized saved-history session replacement carrying the original user identity, and shutdown (which returns only after every settling turn has finished its ledger writes); a turn starts on turnBackend (a built-in's host code or an available package Provider's DescriptorBackend; nothing runs it: runtime-unavailable), and a package turn gets no plan check, third-party MCP plan or App session config.
+ * [OUTPUT]: Provides canonical execution, main-only session prompt evidence, scoped availability, frozen Provider-bound post-turn result persistence, Project policy narrowing, MCP/session guards, typed finalization (only availability gates may say "install or update"; a Stop during the process-slot wait cancels), StartNotDispatchedError for every start that failed before an Agent process existed, generation-scoped Stop, interaction/retry IPC with authorized saved-history session replacement carrying the original user identity, and shutdown (which returns only after every settling turn has finished its ledger writes); a turn starts on turnBackend (a built-in's host code or an available package Provider's DescriptorBackend; nothing runs it: runtime-unavailable), and a package turn gets no plan check, third-party MCP plan or App session config.
  * Workflow turns isolate native Skills and omit ambient backend plugin projections while preserving Provider settings.
  * Workflow turns disable native Provider memory; quit judges remaining safety locks after runtime and turn owners settle. Explicit application exit may report background cleanup separately once all turn persistence succeeds.
  * Explicit Speed changes reset session fallback for the next turn while preserving an unsettled turn's observed tier and reason.
@@ -266,12 +266,13 @@ async function spawnAgent(
     const artifactContext = artifactDirectory
       ? `When the user asks to see a chart, page or other visualization, write it as a standalone HTML or SVG file under ${artifactDirectory} and reply with one standalone line visualize{"path":"absolute file path","title":"Short title"}; the HTML may use relative local resources and must not be inlined in the reply. Deliverable documents (pdf, docx, xlsx, pptx) that are not part of the project source also belong in that directory. Project files stay in the project.`
       : "";
+    const backgroundProviderId = backend.id;
     const turn = backend.createTurn({
       chatIncarnationId: entry.incarnationId,
       persistNativeBackgroundResults: async results => {
         await entry.finalizeInFlight;
         if (entry.persist !== "stored" || !entry.incarnationId || !options.persistNativeBackgroundResults) throw new Error("Background result persistence is unavailable");
-        await options.persistNativeBackgroundResults({ chatId: entry.conversationId, incarnationId: entry.incarnationId, requestId: entry.requestId, messageId: entry.messageId, results });
+        await options.persistNativeBackgroundResults({ providerId: backgroundProviderId, chatId: entry.conversationId, incarnationId: entry.incarnationId, requestId: entry.requestId, messageId: entry.messageId, results });
       },
       disableProviderMemory: context.builtinToolPolicy?.workflowStep === true,
       sessionRecovery: context.sessionRecovery,

@@ -10,7 +10,7 @@ export const chatSurfacesFr: typeof chatSurfacesEn = {
   nativeBackground: {
     "stop": "Arrêter",
     "stopping": "Arrêt en cours…",
-    "started": "Lancé avec « {{mode}} ». Continue après la réponse.",
+    "started": "Lancé avec « {{mode}} ». Continue après la réponse.",
     "failed": "Impossible de confirmer l’arrêt de cette commande. Réessayez.",
     "modes": {
       "ask-for-approval": "Demander une autorisation",

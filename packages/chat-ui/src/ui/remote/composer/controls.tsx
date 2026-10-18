@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Complete draft state, target capabilities, shared localized plugin initialization messages, the existing remote upload port and the remote feedback toast.
+ * [INPUT]: Uses the canonical permission presentation lookup, complete draft state, target capabilities, shared localized plugin initialization messages, the existing remote upload port and the remote feedback toast.
  * [OUTPUT]: Shared Files, Sketch, Plan and permission controls plus drop/paste admission; every unsupported input flags its own control (file, Plan chip, permission chip), images show processing/rejected/reselect states, and a rejected add becomes a toast.; with `textOnly` (U06-c) no Files or Sketch and a dropped or pasted file refused with the rule
  * [POS]: Remote input presentation; send and account lifecycle remain with the parent.
  */
+import { builtinProviderPermissionModel } from "@bottega/contracts/model/provider-capabilities";
 import { useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 import type { RemoteComposerCapabilities, RemotePermissionMode } from "@ai-chat/cloud-protocol/remote/input/model";
 import type { RemoteCommandPort } from "../../../platform/remote/contracts";
@@ -67,7 +68,7 @@ export function useRemoteComposerControls(input: { store: RemoteDraftStore; draf
           disabled:!sketch.available||!entry.enabled||!entry.generationId||draft.files.length>=8||!capabilities?.imageInput,
           reason:pluginInitializationMessage(entry,composerText)??(!entry.enabled?composerText('sketch.readOnly'):draft.files.length>=8?composerText('sketch.attachmentLimit'):undefined),run:anchor=>sketch.open(entry,anchor)})) : []}
         plan={{ active: draft.planMode, disabled: !capabilities?.planMode, run: () => store.update({ planMode: !draft.planMode }) }} preload={sketch.preload} />
-      <ChatPermissionSelector providerId={input.backend} locale={locale} value={permissionMode} disabled={disabled || !capabilities} allowedModes={capabilities?.permissionModes} backendDisplayName={agent}
+      <ChatPermissionSelector permissionModel={builtinProviderPermissionModel(input.backend)} locale={locale} value={permissionMode} disabled={disabled || !capabilities} allowedModes={capabilities?.permissionModes} backendDisplayName={agent}
         unavailableTitle={permissionUnavailable} deferConfirmation onChange={async permissionMode => store.update({ permissionMode, consent: null })} />
       {draft.planMode && <ChatPlanChip locale={locale} unavailableTitle={planUnavailable} onClose={() => { if (!disabled) store.update({ planMode: false }); }} />}</>,
     files: <RemoteDraftFiles draft={draft} locale={locale} disabled={disabled} unsupported={unsupportedFile} remove={id => store.remove(id)} previewId={previewId} onPreview={setPreviewId}

@@ -1,26 +1,28 @@
 /**
- * [INPUT]: Uses generated native approval/question payloads, live RPC and product callbacks.
- * [OUTPUT]: Exports NativeInteractions for one-shot approvals and questions bound to one native connection.
+ * [INPUT]: Uses canonical built-in Provider identity, generated native approval/question payloads, live main-owned MCP consent eligibility, live RPC and product callbacks.
+ * [OUTPUT]: Exports NativeInteractions for one-shot approvals, MCP tool consent and questions bound to one native connection.
  * [POS]: Native turn interaction owner; closing a turn invalidates every outstanding decision.
  */
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import type { AgentApprovalDecision, AgentUserInputAnswers, AgentUserInputQuestion } from "../../../../../../shared/ipc/agent/agent-ipc";
 import type { BackendTurnOptions } from "../../../../backends/contracts/types";
 import type { CommandExecutionRequestApprovalParams, FileChangeRequestApprovalParams, ToolRequestUserInputParams, PermissionsRequestApprovalParams } from "../schema";
 import type { NativeConnection, NativeMessage } from "../transport/connection";
 import { nativeRecord } from "../transport/record";
 
-type Approval = { id: number | string; accept: unknown; decline: unknown };
+type Approval = { id: number | string; accept: unknown; decline: unknown; ready?: boolean; deciding?: boolean; authorize?: () => Promise<boolean> };
 type Question = { id: number | string; questions: AgentUserInputQuestion[]; elicitation: boolean };
 export class NativeInteractions {
+  private closed = false;
   private readonly approvals = new Map<string, Approval>();
   private readonly questions = new Map<string, Question>();
   constructor(private readonly rpc: NativeConnection, private readonly options: BackendTurnOptions,
-    private readonly scope: () => { threadId: string; turnId: string } | null, private readonly redact: (text: string) => string, private readonly fileChange: (itemId: string) => string | undefined) {}
+    private readonly scope: () => { threadId: string; turnId: string } | null, private readonly redact: (text: string) => string, private readonly fileChange: (itemId: string) => string | undefined, private readonly authorizeConsent: (serverName: string, toolName: string) => Promise<boolean>) {}
 
-  receive(message: NativeMessage) {
+  async receive(message: NativeMessage) {
     if (message.id === undefined) return;
     const scope = this.scope(), params = nativeRecord(message.params);
-    if (!scope || params.threadId !== scope.threadId || (params.turnId != null && params.turnId !== scope.turnId)) {
+    if (this.closed || !scope || params.threadId !== scope.threadId || (params.turnId != null && params.turnId !== scope.turnId)) {
       this.rpc.reject(message.id, "Native request is outside the active thread/turn"); return;
     }
     const key = `${this.options.payload.requestId}:native:${message.id}`;
@@ -50,7 +52,7 @@ export class NativeInteractions {
         const questions = p.questions.map(q => ({ id: q.id, question: this.redact(q.question), header: this.redact(q.header),
           isOther: q.isOther, isSecret: q.isSecret, ...(q.options ? { options: q.options.map(o => ({ label: this.redact(o.label), description: this.redact(o.description) })) } : {}) }));
         this.questions.set(key, { id: message.id, questions, elicitation: false });
-        this.options.callbacks.onUserInput?.({ userInputId: key, itemId: p.itemId, session: { backend: "codex", id: scope.threadId }, turnId: scope.turnId, questions }); break;
+        this.options.callbacks.onUserInput?.({ userInputId: key, itemId: p.itemId, session: { backend: BUILTIN_PROVIDER_IDS.codex, id: scope.threadId }, turnId: scope.turnId, questions }); break;
       }
       case "mcpServer/elicitation/request": {
         if (params.mode !== "form" && params.mode !== "openai/form" && params.mode !== "openaiForm") {
@@ -61,11 +63,37 @@ export class NativeInteractions {
         if (Object.keys(properties).length > 16 || Object.values(properties).some(p => nativeRecord(p).type !== "string")) {
           this.rpc.respond(message.id, { action: "cancel", content: null, _meta: null }); return;
         }
+        const meta = nativeRecord(params._meta);
+        if (meta.codex_approval_kind === "mcp_tool_call") {
+          const server = typeof params.serverName === "string" ? params.serverName : "";
+          const prompt = typeof params.message === "string" ? params.message : "";
+          const prefix = `Allow the ${server} MCP server to run tool "`;
+          // This pinned protocol has no structured tool-name field. Match its complete confirmation envelope.
+          const tool = prompt.startsWith(prefix) && prompt.endsWith('"?') ? prompt.slice(prefix.length, -2) : "";
+          if (params.turnId !== scope.turnId || required.length || schema.type !== "object" || !schema.properties || typeof schema.properties !== "object" || Array.isArray(schema.properties) || Object.keys(properties).length
+            || !/^[A-Za-z0-9_./:-]{1,128}$/.test(tool) || !meta.tool_params || typeof meta.tool_params !== "object" || Array.isArray(meta.tool_params)) {
+            this.rpc.respond(message.id, { action: "cancel", content: null, _meta: null }); return;
+          }
+          const active = () => { const current = this.scope(); return !this.closed && current?.threadId === scope.threadId && current?.turnId === scope.turnId; };
+          const pending: Approval = { id: message.id, accept: { action: "accept", content: {}, _meta: null },
+            decline: { action: "cancel", content: null, _meta: null }, ready: false,
+            authorize: async () => active() && await this.authorizeConsent(server, tool).catch(() => false) && active() };
+          this.approvals.set(key, pending);
+          const allowed = await pending.authorize!();
+          if (this.approvals.get(key) !== pending) return;
+          if (!allowed) { this.approvals.delete(key); this.rpc.respond(message.id, pending.decline); return; }
+          pending.ready = true;
+          this.options.callbacks.onApproval({ approvalId: key, kind: "permissions",
+            command: this.redact(`${server}.${tool}`), reason: this.redact(JSON.stringify(meta.tool_params)), canAcceptForSession: false }); break;
+        }
+        if (!Object.keys(properties).length) {
+          this.rpc.respond(message.id, { action: "cancel", content: null, _meta: null }); return;
+        }
         const questions = Object.entries(properties).map(([id, value]) => { const p = nativeRecord(value); return { id,
           header: String(p.title ?? id), question: this.redact(String(p.description ?? params.message ?? id)), required: required.includes(id), isOther: true,
           ...(Array.isArray(p.enum) ? { options: p.enum.filter(v => typeof v === "string").map(label => ({ label: String(label), description: "" })) } : {}) }; });
         this.questions.set(key, { id: message.id, questions, elicitation: true });
-        this.options.callbacks.onUserInput?.({ userInputId: key, itemId: key, session: { backend: "codex", id: scope.threadId }, turnId: scope.turnId, questions }); break;
+        this.options.callbacks.onUserInput?.({ userInputId: key, itemId: key, session: { backend: BUILTIN_PROVIDER_IDS.codex, id: scope.threadId }, turnId: scope.turnId, questions }); break;
       }
       default: this.rpc.reject(message.id, `Unsupported native request: ${message.method}`);
     }
@@ -73,9 +101,12 @@ export class NativeInteractions {
 
   async respondApproval(key: string, decision: AgentApprovalDecision) {
     const pending = this.approvals.get(key);
-    if (!pending || (decision !== "accept" && decision !== "decline")) throw new Error("Native approval expired or decision scope is unsupported");
+    if (!pending || pending.ready === false || pending.deciding || (decision !== "accept" && decision !== "decline")) throw new Error("Native approval expired or decision scope is unsupported");
+    pending.deciding = true;
+    const allowed = decision === "accept" && (!pending.authorize || await pending.authorize());
+    if (this.closed || this.approvals.get(key) !== pending) throw new Error("Native approval expired");
     this.approvals.delete(key);
-    this.rpc.respond(pending.id, decision === "accept" ? pending.accept : pending.decline);
+    this.rpc.respond(pending.id, allowed ? pending.accept : pending.decline);
     this.options.callbacks.onApprovalClosed(key);
   }
   pendingUserInput(key: string) { const pending = this.questions.get(key); return pending ? { questions: pending.questions } : undefined; }
@@ -94,6 +125,7 @@ export class NativeInteractions {
     this.options.callbacks.onUserInputClosed?.(key);
   }
   close() {
+    this.closed = true;
     for (const [key, p] of this.approvals) { this.rpc.respond(p.id, p.decline); this.options.callbacks.onApprovalClosed(key); }
     for (const [key, p] of this.questions) { this.rpc.respond(p.id, p.elicitation ? { action: "cancel", content: null, _meta: null } : { answers: {} }); this.options.callbacks.onUserInputClosed?.(key); }
     this.approvals.clear(); this.questions.clear();

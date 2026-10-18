@@ -1,6 +1,6 @@
 /**
  * [INPUT]: GitHub Actions runner environment, base64 Developer ID PKCS#12, App Store Connect .p8 contents, and macOS security/notarytool.
- * [OUTPUT]: Fail-closed signing admission, a temporary keychain, notarization credential paths, and strict signature verification of the stapled application and the application extracted from the ZIP.
+ * [OUTPUT]: Fail-closed signing admission, a temporary keychain, notarization credential paths, and strict signature verification of the stapled application and the application extracted from the ZIP, with complete subprocess failure fields and no added argument or environment dumps.
  * [POS]: Public workflow signing boundary; build-only never calls it, and Bottega-Dev holds no signing secrets.
  */
 import assert from "node:assert/strict";
@@ -232,7 +232,18 @@ function verifyApplication(appPath, teamId, dmgPath) {
   if (dmgPath) args.push("--dmg", dmgPath);
   const verified = spawnSync(process.execPath, args, {
     encoding: "utf8", env: { ...process.env, APPLE_TEAM_ID: teamId }, maxBuffer: 16 * 1024 * 1024 });
-  if (verified.status !== 0) throw new Error(`Developer ID verification failed: ${verified.stderr || verified.stdout || "unknown"}`);
+  if (verified.error || verified.status !== 0) {
+    const failure = {
+      status: verified.status,
+      signal: verified.signal,
+      error: verified.error ? {
+        name: verified.error.name, message: verified.error.message, code: verified.error.code ?? null,
+      } : null,
+      stdout: verified.stdout ?? "",
+      stderr: verified.stderr ?? "",
+    };
+    throw new Error(`Developer ID verification failed:\n${JSON.stringify(failure, null, 2)}`);
+  }
 }
 
 function extractZipApplication(zipPath) {

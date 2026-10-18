@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None (a type-only reference to the descriptor)
- * [OUTPUT]: Provides the canonical built-in identity tuple, BUILTIN_PROVIDER_IDS, AgentBackendId and isBuiltinAgentId; PROVIDER_CAPABILITIES, PROVIDER_PURPOSES, APPLIES_AT (with their types) and providersDeclaring, re-exported unchanged by provider.ts
+ * [OUTPUT]: Provides the canonical built-in identity tuple, BUILTIN_PROVIDER_IDS, AgentBackendId and isBuiltinAgentId; ProviderPermissionModel and builtinProviderPermissionModel (presentation metadata only); PROVIDER_CAPABILITIES, PROVIDER_PURPOSES, APPLIES_AT (with their types) and providersDeclaring, re-exported unchanged by provider.ts
  * [POS]: The zod-free leaf of the Provider contract: code that only needs the capability names and the declaring filter (the provider bridge's tool schemas) imports this without evaluating the descriptor schemas
  */
 import type { ProviderDescriptor } from "./provider";
@@ -14,6 +14,15 @@ export const BUILTIN_PROVIDER_IDS = Object.freeze(Object.fromEntries(
 export function isBuiltinAgentId(value: unknown): value is AgentBackendId {
   return typeof value === "string" && Object.hasOwn(BUILTIN_PROVIDER_IDS, value);
 }
+
+/** Presentation metadata only; the execution owner still enforces the selected permission mode. */
+export type ProviderPermissionModel = "bb-native-v1";
+const builtinPermissionModels: Readonly<Partial<Record<AgentBackendId, ProviderPermissionModel>>> = Object.freeze({
+  [BUILTIN_PROVIDER_IDS.codex]: "bb-native-v1",
+});
+/** An unknown or unqualified Provider gets no native permission disclosure. */
+export const builtinProviderPermissionModel = (providerId: string): ProviderPermissionModel | undefined =>
+  isBuiltinAgentId(providerId) ? builtinPermissionModels[providerId] : undefined;
 
 export const PROVIDER_CAPABILITIES = ["resume", "steer", "cancel", "plan-mode", "structured-report", "permission-request",
   "tool-filter", "read-only", "network-off", "mcp-stdio", "mcp-http", "mcp-sse", "image-input", "model-catalog", "quota",

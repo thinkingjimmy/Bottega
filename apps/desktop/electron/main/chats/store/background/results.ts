@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Uses ChatStoreState, exact retained-execution results and existing SQLite aggregate receipts.
+ * [INPUT]: Uses ChatStoreState, a frozen main-owned Provider identity, exact retained-execution results and existing SQLite aggregate receipts.
  * [OUTPUT]: Exports BackgroundResultCommit and persistBackgroundResults for original command result updates.
  * [POS]: Narrow post-turn persistence boundary; not exposed through renderer mutation IPC.
  */
@@ -14,7 +14,7 @@ import { persistRecordToStorage } from "../persistence";
 import type { ChatMessageMutation } from "../mutation-outcome";
 
 export type BackgroundResultCommit = {
-  chatId: string; incarnationId: string; requestId: string; messageId: string; results: NativeBackgroundResult[];
+  providerId: string; chatId: string; incarnationId: string; requestId: string; messageId: string; results: NativeBackgroundResult[];
 };
 function resultDetail(previous: string | undefined, result: NativeBackgroundResult) {
   const footer = result.outcome === "unknown" ? "Execution result unknown." : result.outcome === "stopped" ? "Stopped by user." : `Exit code: ${result.exitCode}`;
@@ -31,7 +31,7 @@ export function persistBackgroundResults(state: ChatStoreState, input: Backgroun
     if (current.incarnationId !== input.incarnationId || current.readOnlyReason === "external-readonly") throw new Error("Background result Chat identity changed");
     const index = current.messages.findIndex(row => row.id === input.messageId);
     const message = current.messages[index];
-    if (!message || message.role !== "assistant" || message.backend !== "codex" || message.turnId !== input.requestId) throw new Error("Background result has no original assistant message");
+    if (!input.providerId || !message || message.role !== "assistant" || message.backend !== input.providerId || message.turnId !== input.requestId) throw new Error("Background result has no original assistant message");
     const results = new Map(input.results.map(result => [result.itemId, result]));
     if (!results.size || results.size !== input.results.length || [...results.keys()].some(id => !id.startsWith(`${input.requestId}:`))) throw new Error("Background result request identity changed");
     const parts = message.parts?.map(part => {
