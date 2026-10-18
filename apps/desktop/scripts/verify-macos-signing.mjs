@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Apple Team ID, codesign, Gatekeeper, stapler, an application path, and either an explicit DMG or the existing release directory.
- * [OUTPUT]: Verifies strict nested Developer ID signatures, hardened runtime, helper entitlements, the bundled Node's own signature, Gatekeeper, and the application notarization ticket. A requested DMG must exist; electron-builder 26.15.3 does not staple that container. Failures retain process status, signal, spawn errors and both output streams without adding command arguments or environment dumps.
+ * [OUTPUT]: Verifies strict nested Developer ID signatures, hardened runtime, helper entitlements, the bundled Node's own signature, Gatekeeper, and the application notarization ticket. A requested DMG must exist; electron-builder 26.15.3 does not staple that container. Failures retain process status, signal, spawn errors and both output streams without adding command arguments or environment dumps. Only the evidenced ticket-delivery connection loss permits three validate attempts with fixed 5/15-second waits; every attempt remains visible.
  * [POS]: macOS release verification; distribution supplies exact fresh artifacts instead of newest-file inference.
  */
 
@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
+import { setTimeout as delay } from "node:timers/promises";
 import { readPackagedProduct } from "./distribution/product-artifact.mjs";
 
 const desktop = join(import.meta.dirname, "..");
@@ -35,22 +36,42 @@ const dmg = args.length === 2 ? undefined : explicitApp ? args[3] : newest(
 if (!app || !existsSync(app)) throw new Error("signed app is missing");
 if (args.length !== 2 && (!dmg || !existsSync(dmg) || !statSync(dmg).isFile())) throw new Error("signed DMG is missing");
 
+const processFields = (result) => ({
+  status: result.status,
+  signal: result.signal,
+  error: result.error ? {
+    name: result.error.name, message: result.error.message, code: result.error.code ?? null,
+  } : null,
+  stdout: result.stdout ?? "",
+  stderr: result.stderr ?? "",
+});
+
 const run = (command, args) => {
   const result = spawnSync(command, args, { encoding: "utf8" });
   if (result.error || result.status !== 0) {
-    const failure = {
-      status: result.status,
-      signal: result.signal,
-      error: result.error ? {
-        name: result.error.name, message: result.error.message, code: result.error.code ?? null,
-      } : null,
-      stdout: result.stdout ?? "",
-      stderr: result.stderr ?? "",
-    };
-    throw new Error(`${command} verification failed:\n${JSON.stringify(failure, null, 2)}`);
+    throw new Error(`${command} verification failed:\n${JSON.stringify(processFields(result), null, 2)}`);
   }
   return `${result.stdout}${result.stderr}`;
 };
+
+async function validateNotarizationTicket(appPath) {
+  const waits = [5_000, 15_000];
+  const args = ["stapler", "validate", appPath];
+  for (let attempt = 1; attempt <= waits.length + 1; attempt += 1) {
+    const result = spawnSync("xcrun", args, { encoding: "utf8" });
+    const fields = processFields(result);
+    const output = `${fields.stdout}\n${fields.stderr}`;
+    // Status 68 also includes missing tickets; only this observed transport failure can retry.
+    const connectionLost = /\bError Domain=NSURLErrorDomain Code=-1005(?=\s|$)/.test(output);
+    const ticketLookup = /https:\/\/api\.apple-cloudkit\.com\/database\/1\/com\.apple\.gk\.ticket-delivery\/production\/public\/records\/lookup(?=$|[\s"',;)}\]])/.test(output);
+    const retry = attempt <= waits.length && result.status === 68 && !result.error && !result.signal && connectionLost && ticketLookup;
+    const delayMs = retry ? waits[attempt - 1] : 0;
+    process.stdout.write(`[stapler-validate] ${JSON.stringify({ attempt, maxAttempts: waits.length + 1, ...fields, retry, delayMs })}\n`);
+    if (result.status === 0 && !result.error && !result.signal) return;
+    if (!retry) throw new Error(`xcrun verification failed:\n${JSON.stringify(fields, null, 2)}`);
+    await delay(delayMs);
+  }
+}
 
 run("codesign", ["--verify", "--deep", "--strict", "--verbose=4", app]);
 const signature = run("codesign", ["-dv", "--verbose=4", app]);
@@ -129,5 +150,5 @@ if (!existsSync(launchAgents) || !readdirSync(launchAgents).some((name) => name.
 run("spctl", ["-a", "-vv", "--type", "execute", app]);
 // electron-builder 26.15.3 calls notarize() from sign(), which staples this .app, before DMG and ZIP targets run.
 // DmgTarget never notarizes the disk image, and dmg.sign is unset, so the container has no ticket.
-run("xcrun", ["stapler", "validate", app]);
+await validateNotarizationTicket(app);
 process.stdout.write(`strict signing and notarization verification passed: ${app}\n`);
