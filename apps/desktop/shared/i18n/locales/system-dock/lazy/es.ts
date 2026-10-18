@@ -305,7 +305,7 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
     registrationLabel: "Elemento de recuperación",
     registrationEnabled: "Registrado. Sigue registrado después de salir de Bottega mientras la sustitución esté activada.",
     registrationApproval: "Necesita tu aprobación en Ajustes del Sistema › General › Ítems de inicio y extensiones.",
-    registrationMissing: "No encontrado. Reinstala Bottega para restaurarlo.",
+    registrationMissing: "macOS no encuentra el registro de este servicio de recuperación. Es posible que aún no se haya creado.",
     registrationNone: "Aún no está registrado.",
     needsApproval: "Requiere aprobación",
     notFound: "No encontrado",

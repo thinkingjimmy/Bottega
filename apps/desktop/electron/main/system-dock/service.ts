@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron screen/power/shortcut/menu/shell, the Dock stores, native bridge adapters, entries, Usage adapter, replacement controller, read-only signed-installation verification, window surfaces/geometry/panel lifecycle, projections, and caller ports (Bottega Apps, main-window destinations, tray refresh, background retention).
- * [OUTPUT]: Provides DockService: the single main-owned Dock runtime — enable/start/stop, actual mode, three-edge display directory/placement and revision-fenced hover, authoritative presentation, bounded transparent-frame transitions, the revealed bar's native glass, lazy panel orchestration, bar/panel/settings snapshots with coalesced publication, consumer demand per ready visible surface, serialized startup cleanup, generation-fenced startup, renderer recovery, intent admission and resolution, disabled recovery responsibility, truthful recovery/permission health, keyboard entry, temporary hide, and the replacement admission facts.
+ * [OUTPUT]: Provides DockService: the single main-owned Dock runtime — enable/start/stop, actual mode, three-edge display directory/placement and revision-fenced hover, authoritative presentation, bounded transparent-frame transitions, the revealed bar's native glass, lazy panel orchestration, bar/panel/settings snapshots with coalesced publication, consumer demand per ready visible surface, serialized startup cleanup, generation-fenced startup, renderer recovery, native-failure replacement suspension, intent admission and resolution, disabled recovery responsibility, truthful recovery/permission health, keyboard entry, temporary hide, and the replacement admission facts.
  * [POS]: system-dock orchestrator; intents live in intents.ts and Settings flows in setup.ts, both acting through this service. It is the only writer of DockConfigStore's working layout and DockLocalStore.
  */
 
@@ -135,7 +135,10 @@ export class DockService {
   constructor(readonly ports: DockServicePorts) {
     this.displayDirectory = new DisplayDirectory(() => this.publish(), this.clock);
     const supported = ports.platform.capability.supported;
-    this.native = supported || ports.platform.nativeRecoveryAvailable ? new DockNativeBridge(ports.platform.paths.bridge, (code) => console.warn("[system-dock] native helper stopped", code)) : null;
+    this.native = supported || ports.platform.nativeRecoveryAvailable ? new DockNativeBridge(ports.platform.paths.bridge, (code) => {
+      console.warn("[system-dock] native helper stopped", code);
+      this.replacement?.nativeFailed();
+    }) : null;
     this.apps = this.native ? new NativeApps(this.native, ports.ownBundleId) : null;
     this.trash = this.native ? new TrashEntry(this.native, () => this.schedule()) : null;
     this.downloads = new DownloadsEntry({ openPath: (path) => import("electron").then(({ shell }) => shell.openPath(path)) }, () => this.schedule());

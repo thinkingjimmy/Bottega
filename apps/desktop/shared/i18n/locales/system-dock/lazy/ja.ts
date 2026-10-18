@@ -305,7 +305,7 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     registrationLabel: "復元項目",
     registrationEnabled: "登録済みです。置き換えがオンの間は、Bottega を終了しても登録されたままです。",
     registrationApproval: "「システム設定」›「一般」›「ログイン項目と機能拡張」で許可が必要です。",
-    registrationMissing: "見つかりません。Bottega を再インストールして復元してください。",
+    registrationMissing: "macOS でこの復元サービスの登録が見つかりません。まだ登録されていない可能性があります。",
     registrationNone: "まだ登録されていません。",
     needsApproval: "許可が必要",
     notFound: "見つかりません",

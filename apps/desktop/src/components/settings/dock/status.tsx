@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, the desktop i18n provider, Settings primitives, the shared Select and confirmation dialog, the Dock settings store, and the Settings → Dock snapshot.
- * [OUTPUT]: Provides `DockUnsupported` (why this Mac cannot run the Dock), `DockMaster` (the one on/off switch with the phase badge, pause reason and recovery results, the mode select, Restore/Resume; turning on asks for setup, turning off asks for confirmation) and `DockRecovery` (the recovery result, retry while off, and background registration with the Login Items path and explicit continuation after approval).
+ * [OUTPUT]: Provides `DockUnsupported` (why this Mac cannot run the Dock), `DockMaster` (the one on/off switch with the phase badge, pause reason and recovery results, the mode select, Restore/Resume; turning on asks for setup, turning off asks for confirmation) and `DockRecovery` (the recovery result, retry while off, and raw background registration with explicit continuation for an absent registration or approved item).
  * [POS]: settings/dock status and recovery surface (3.1, INV-02~05); it only states what main reports — a replace-mode Dock that is not active is never shown as working.
  */
 
@@ -82,7 +82,7 @@ export function DockMaster({ snapshot, pending, onTurnOn, onSwitchToReplace, sho
   const why = replace && phase !== "active" && registration === "requires-approval" ? t("systemDock.settings.registrationApproval")
     : replace && phase !== "active" && registration === "not-found" ? t("systemDock.settings.registrationMissing")
     : paused && snapshot.suspendReason ? t(REASON_KEYS[snapshot.suspendReason]) : null;
-  const resumeDisabled = busy || snapshot.recovery.pending || replace && (!snapshot.capability.replacement || ["requires-approval", "not-found"].includes(registration));
+  const resumeDisabled = busy || snapshot.recovery.pending || replace && (!snapshot.capability.replacement || registration === "requires-approval");
   const resumeLabel = t(snapshot.suspendReason === "registration-disabled" ? "systemDock.settings.continueEnabling" : "systemDock.settings.resume");
   const recovery = snapshot.recovery.lastResult;
   const notes = [why, snapshot.recovery.pending ? t("systemDock.settings.recoveryPending") : null, recovery !== "none" ? t(RECOVERY_KEYS[recovery]) : null]
@@ -135,8 +135,9 @@ export function DockRecovery({ snapshot, pending = null }: { snapshot: DockSetti
   const { t } = useAppTranslation();
   const registration = snapshot.registration;
   const recovery = snapshot.recovery;
-  const hasRegistration = registration !== "unsupported" && registration !== "not-registered";
-  if ((snapshot.actualMode ?? snapshot.state.preferredMode) !== "replace" && !hasRegistration && !recovery.pending && recovery.lastResult === "none") return null;
+  const hasRegistration = registration !== "unsupported" && registration !== "not-registered" && registration !== "not-found";
+  const replacing = snapshot.state.enabled && (snapshot.actualMode ?? snapshot.state.preferredMode) === "replace";
+  if (!replacing && !hasRegistration && !recovery.pending && recovery.lastResult === "none") return null;
   return <SettingsSection title={t("systemDock.settings.recoveryTitle")} description={t("systemDock.settings.recoveryDescription")}>
     <SettingsList>
       {(recovery.pending || recovery.lastResult !== "none") && <SettingsRow label={t("systemDock.settings.restore")}

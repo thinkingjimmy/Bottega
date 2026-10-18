@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on launchd (RunAtLoad + MachServices from the bundled LaunchAgent plist), NSXPCListener, ~/.bottega/system-dock recovery.json / last-result.json (journal.ts formats), CFPreferences via shared.m, and NSRunningApplication for the Dock reload.
- * [OUTPUT]: Provides the `bottega-dock-recovery` executable: login/on-demand conditional restore of autohide/autohide-delay for a dead, hung, or exited owner, verified original values and Dock reload before durable result and journal cleanup, the prepare/renew/release/status XPC handshake, and bounded idle exit.
+ * [OUTPUT]: Provides the `bottega-dock-recovery` executable: login/on-demand conditional restore of autohide/autohide-delay for a dead, hung, or exited owner, one bounded monotonic grace check for an expired restoration, verified original values and Dock reload before durable result and journal cleanup, the prepare/renew/release/status XPC handshake, and bounded idle exit.
  * [POS]: system-dock/native last line of defence (PRD 5.5, INV-02..05); independent of Electron, never launches Bottega, never touches anything but the journal's two keys and its own result file.
  */
 
@@ -21,7 +21,7 @@ static uint64_t startedNs, idleSinceNs;
 static int64_t highestEpoch, leaseExpiresAt;
 static NSDictionary *owner;
 static NSString *lastNonce;
-static dispatch_source_t ownerWatch, leaseTimer, idleTimer;
+static dispatch_source_t ownerWatch, leaseTimer, restoreTimer, idleTimer;
 
 static void note(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
 static void note(NSString *format, ...) {
@@ -131,9 +131,13 @@ static BOOL writeLastResult(NSString *operationId, NSString *result) {
   if (!ok) note(@"could not write last-result.json (errno %d)", errno);
   return ok;
 }
+static void clearRestoreTimer(void) {
+  if (restoreTimer) { dispatch_source_cancel(restoreTimer); restoreTimer = nil; }
+}
 static void clearOwnership(void) {
   if (ownerWatch) { dispatch_source_cancel(ownerWatch); ownerWatch = nil; }
   if (leaseTimer) { dispatch_source_cancel(leaseTimer); leaseTimer = nil; }
+  clearRestoreTimer();
   owner = nil; leaseExpiresAt = 0;
 }
 /** Puts back only what still holds our written value; everything else stays with whoever changed it. */
@@ -177,24 +181,45 @@ static NSString *restore(NSDictionary *journal, NSString *reason) {
   if (!owner || [owner[@"operationId"] isEqual:operationId] || !alive([owner[@"pid"] longLongValue], [owner[@"startedAt"] longLongValue])) clearOwnership();
   return result;
 }
-/** Restores when the journal's owner is gone, or when the expired lease belongs to the journal's operation. */
-static void checkJournal(NSString *reason, NSDictionary *expiredLease) {
+static void evaluateIdle(void);
+static BOOL matchesExpiredLease(NSDictionary *journal, NSDictionary *lease) {
+  NSDictionary *who = journal[@"owner"];
+  return [journal[@"operationId"] isEqual:lease[@"operationId"]] && [journal[@"ownershipEpoch"] isEqual:lease[@"epoch"]] &&
+    [who[@"pid"] isEqual:lease[@"pid"]] && [who[@"startedAt"] isEqual:lease[@"startedAt"]] && [who[@"installation"] isEqual:lease[@"installation"]];
+}
+/** An expired lease can grant one bounded restore grace period, never renewable ownership. */
+static void checkJournal(NSString *reason, NSDictionary *expiredLease, BOOL afterGrace) {
   NSDictionary *journal = nil;
   JournalKind kind = readJournal(&journal);
   if (kind == JournalCorrupt) { note(@"%@: journal unreadable or unknown version; left untouched", reason); return; }
-  if (kind == JournalNone) return;
-  /* "restoring" means the owner is restoring right now, so an expired lease does not race it. A restore that has sat in
-     that phase for longer than a whole lease is abandoned (a hung owner), and the agent takes over. */
-  BOOL restoringNow = [journal[@"phase"] isEqualToString:@"restoring"] && wallMs() - [journal[@"updatedAt"] longLongValue] < kLeaseMs;
-  BOOL leaseMatches = expiredLease && [journal[@"operationId"] isEqualToString:expiredLease[@"operationId"]] &&
-    [journal[@"ownershipEpoch"] isEqual:expiredLease[@"epoch"]] && !restoringNow;
-  if (!journalOwnerAlive(journal) || leaseMatches) restore(journal, reason);
+  if (kind == JournalNone) { clearRestoreTimer(); return; }
+  if (expiredLease && !matchesExpiredLease(journal, expiredLease)) return;
+  if (!journalOwnerAlive(journal)) { restore(journal, reason); return; }
+  if (!expiredLease) return;
+  int64_t restoreAge = wallMs() - [journal[@"updatedAt"] longLongValue];
+  if (!afterGrace && [journal[@"phase"] isEqualToString:@"restoring"] && restoreAge < kLeaseMs) {
+    if (restoreTimer) return;
+    // Wall time only chooses the first grace delay; later timestamp changes cannot move its monotonic deadline.
+    int64_t remainingMs = kLeaseMs - MAX((int64_t)0, restoreAge);
+    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
+    dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, remainingMs * NSEC_PER_MSEC), DISPATCH_TIME_FOREVER, 100 * NSEC_PER_MSEC);
+    dispatch_source_set_event_handler(timer, ^{
+      if (restoreTimer != timer) return;
+      clearRestoreTimer();
+      checkJournal(@"restore-grace-expired", expiredLease, YES);
+      evaluateIdle();
+    });
+    restoreTimer = timer;
+    dispatch_resume(timer);
+    return;
+  }
+  restore(journal, reason);
 }
 
 // ---- Idle exit (N-04) ------------------------------------------------------------------------------------
 
 static BOOL hasPendingWork(void) {
-  if (leaseTimer) return YES;
+  if (leaseTimer || restoreTimer) return YES;
   NSDictionary *journal = nil;
   // Only a journal someone alive still owns keeps us up; a dead owner's journal was just handled above.
   return readJournal(&journal) == JournalOk && journalOwnerAlive(journal);
@@ -222,26 +247,27 @@ static void watchOwner(pid_t pid, int64_t startedAt) {
   dispatch_source_set_event_handler(source, ^{
     dispatch_source_cancel(source);
     if (ownerWatch == source) ownerWatch = nil;
-    checkJournal(@"owner-exited", nil);
+    checkJournal(@"owner-exited", nil, NO);
     if (owner && [owner[@"pid"] intValue] == pid) clearOwnership();
     evaluateIdle();
   });
   ownerWatch = source;
   dispatch_resume(source);
   // The owner may have exited before the source armed; the start-time check closes that gap.
-  if (!alive(pid, startedAt)) dispatch_async(queue, ^{ if (ownerWatch == source) { dispatch_source_cancel(source); ownerWatch = nil; checkJournal(@"owner-exited", nil); evaluateIdle(); } });
+  if (!alive(pid, startedAt)) dispatch_async(queue, ^{ if (ownerWatch == source) { dispatch_source_cancel(source); ownerWatch = nil; checkJournal(@"owner-exited", nil, NO); evaluateIdle(); } });
 }
 static void armLease(void) {
+  clearRestoreTimer();
   if (leaseTimer) dispatch_source_cancel(leaseTimer);
   leaseExpiresAt = wallMs() + kLeaseMs;
-  NSDictionary *lease = @{ @"operationId": owner[@"operationId"], @"epoch": owner[@"epoch"] };
+  NSDictionary *lease = [owner copy];
   dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
   // Monotonic: system sleep does not age the lease, so a sleeping-but-healthy main is not treated as hung.
   dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, kLeaseMs * NSEC_PER_MSEC), DISPATCH_TIME_FOREVER, 100 * NSEC_PER_MSEC);
   dispatch_source_set_event_handler(timer, ^{
     if (leaseTimer != timer) return;
     dispatch_source_cancel(timer); leaseTimer = nil; leaseExpiresAt = 0;
-    checkJournal(@"lease-expired", lease);
+    checkJournal(@"lease-expired", lease, NO);
     evaluateIdle();
   });
   leaseTimer = timer;
@@ -298,6 +324,7 @@ static NSString *handle(NSString *method, NSString *json, pid_t peer) {
   }
   if ([method isEqualToString:@"release"]) {
     if (leaseTimer) { dispatch_source_cancel(leaseTimer); leaseTimer = nil; }
+    clearRestoreTimer();
     leaseExpiresAt = 0;
     evaluateIdle();
     return replyJSON(YES, @"ok");

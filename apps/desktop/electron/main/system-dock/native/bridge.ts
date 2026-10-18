@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node:child_process, the shared sanitized child environment and the versioned system-dock bridge protocol schemas.
- * [OUTPUT]: Provides DockNativeBridge: a single-flight lazily started helper child with id-correlated bounded requests, validated results, pushed events, crash fencing, deferred idle release, and cleanup; plus the NativePort interface consumers depend on.
+ * [OUTPUT]: Provides DockNativeBridge: a single-flight lazily started helper child with id-correlated bounded requests, validated results, current-child events and failure notification, retired-child fencing, deferred intentional idle release, and cleanup; plus the NativePort interface consumers depend on.
  * [POS]: system-dock/native transport; every AppKit/CFPreferences/Apple Event/AX call leaves the Electron main thread through this pipe (INV-13).
  */
 
@@ -52,6 +52,7 @@ export class DockNativeBridge implements NativePort {
     child.on("exit", () => this.fail(child, "EXIT"));
     child.stdin.on("error", () => this.fail(child, "WRITE"));
     child.stdout.on("data", (chunk: string) => {
+      if (this.child !== child) return;
       buffer += chunk;
       if (buffer.length > BRIDGE_LIMITS.lineBytes) { this.fail(child, "OVERSIZED"); return; }
       let end: number;
@@ -63,6 +64,7 @@ export class DockNativeBridge implements NativePort {
     return child;
   }
   private receive(child: ChildProcessWithoutNullStreams, line: string) {
+    if (this.child !== child) return;
     let message: unknown;
     try { message = JSON.parse(line); } catch { this.fail(child, "MALFORMED"); return; }
     if (message && typeof message === "object" && "event" in message) {

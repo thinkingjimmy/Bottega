@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on DockService, the shared layout/placement/local-state models, the read-only system Dock import adapter, and Electron shell for the Login Items pane.
- * [OUTPUT]: Provides DockSetup: signature-checked Settings → Dock flows — setup preview (mode-dependent preselection, existing layout untouched), revision-checked serialized confirmation that refuses stale previews, keeps failed launches retryable, and commits enabled only after the runtime starts, cancel, manual copy, strictly validated display intents and preferences, mode switch, disable, restore, capability-aware coexistence/replacement resume, reset, conflict resolution, and the recovery settings deep link.
+ * [OUTPUT]: Provides DockSetup: signature-checked Settings → Dock flows — setup preview (mode-dependent preselection, existing layout untouched), revision-checked serialized confirmation that refuses stale previews, keeps failed launches retryable, and commits enabled only after the runtime starts, cancel, manual copy, strictly validated display intents and preferences, mode switch, disable, restore, capability-aware resume with consent-checked explicit registration retry, reset, conflict resolution, and the recovery settings deep link.
  * [POS]: system-dock/Settings flow owner (3.1, INV-01/02/07); default and cancelled paths never write system preferences or register anything.
  */
 
@@ -154,8 +154,13 @@ export class DockSetup {
     if (replacementRequested) await this.service.checkCapability(true);
     if (!replacementRequested || !this.service.capability.replacement) await this.service.resumeBar();
     else {
-      if (!this.service.started || !this.service.ports.local.get().enabled) throw new Error("DOCK_DISABLED");
-      if (this.service.replacement?.readRegistration() === "not-registered") this.service.replacement.register();
+      this.service.assertOpen();
+      const state = this.service.ports.local.get();
+      if (!this.service.started || !state.enabled) throw new Error("DOCK_DISABLED");
+      if (!state.replacementEnabled || state.consentVersion !== DOCK_CONSENT_VERSION) throw new Error("DOCK_CONSENT_REQUIRED");
+      if (this.service.settingsSnapshot().recovery.pending) throw new Error("DOCK_RECOVERY_PENDING");
+      const registration = this.service.replacement?.readRegistration();
+      if (registration === "not-registered" || registration === "not-found") this.service.replacement?.register();
       await this.service.resumeBar();
       await this.service.replacement?.resume();
     }

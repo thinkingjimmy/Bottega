@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the native bridge port (preferences, Dock reload, agent relay), the user-level recovery files, the recovery registration port, and caller-supplied admission facts.
  * [OUTPUT]: Provides retryable admission pauses, verified preference restoration and Dock reload retries with retained journals.
- * Provides ReplacementController: the single-flight takeover state machine (inactive → preparing → active → restoring → inactive/suspended) with journal-first two-key writes under a verified lock, read-back, conditional restore verified by read-back (a failed restore keeps journal, lock and registration and blocks any new takeover), truthful disable refusal and retry, external-change surrender, agent handshake and lease renewal, previous-owner recovery with reconciled agent receipts, and registration lifetime and pending removal separated from takeover lifetime.
+ * Provides ReplacementController: the single-flight takeover state machine (inactive → preparing → active → restoring → inactive/suspended) with journal-first two-key writes under a verified lock, read-back, conditional restore verified by read-back (a failed restore keeps journal, lock and registration and blocks any new takeover), truthful disable refusal and retry, external-change surrender, transport-failure fencing until explicit resume, agent handshake and lease renewal, previous-owner recovery with reconciled agent receipts, and registration lifetime and pending removal separated from takeover lifetime.
  * [POS]: system-dock/replacement owner of every system Dock side effect (INV-02..05); windows never write preferences and the recovery agent never runs business actions.
  */
 
@@ -51,6 +51,7 @@ export class ReplacementController {
   private recoveryPending = false;
   private registrationPending = false;
   private closed = false;
+  private nativeFailure = false;
   constructor(private readonly ports: ReplacementPorts) {}
   status(): ReplacementStatus { return { phase: this.phase, reason: this.reason, registration: this.registrationFact, pending: this.recoveryPending || this.registrationPending, lastResult: this.lastResult }; }
   /** Serializes every transition; a later request observes the settled result of the previous one. */
@@ -89,6 +90,7 @@ export class ReplacementController {
       this.registrationPending = !settled;
       this.ports.changed(this.status());
       if (!settled) throw new Error("DOCK_UNREGISTER_FAILED");
+      this.nativeFailure = false;
     });
   }
   /** Startup: a journal left by a dead owner is restored before anything else may take over (INV-03/05). */
@@ -138,7 +140,7 @@ export class ReplacementController {
   prepare(): Promise<void> {
     return this.serial(async () => {
       // A pause only ends through resume(): the user decides when to hand the system Dock back (INV-04).
-      if (this.closed || this.recoveryPending || this.registrationPending || this.phase === "active" || this.phase === "suspended") return;
+      if (this.closed || this.nativeFailure || this.recoveryPending || this.registrationPending || this.phase === "active" || this.phase === "suspended") return;
       // A takeover whose restore failed is still owned: retry it, and never take over on top of it (INV-03).
       if (this.takeover) { await this.restoreNow("inactive", null); if (this.takeover) return; }
       const admission = this.ports.admission();
@@ -179,6 +181,7 @@ export class ReplacementController {
     this.takeover = takeover;
     // The independent recovery process must observe this owner before any preference changes (INV-03).
     const reply = await this.agent("prepare", takeover);
+    this.assertNativeHealthy();
     if (!reply.ok || !reply.observedOwner) { this.reason = reply.code === "owned-elsewhere" ? "owned-elsewhere" : "agent-unhealthy"; throw new Error(`AGENT_${reply.code}`); }
     this.startLease();
     const current = await native.request({ op: "dock-prefs-read" });
@@ -212,6 +215,7 @@ export class ReplacementController {
     journal.phase = "active"; journal.updatedAt = this.now(); await files.writeJournal(journal);
     await this.assertLease(takeover);
     const verified = await native.request({ op: "dock-prefs-read" });
+    this.assertNativeHealthy();
     if (fields.some((field) => !sameValue(verified[field.key], field.writtenValue))) { this.reason = "external-change"; throw new Error("TAKEOVER_READBACK_MISMATCH"); }
     if (this.readRegistration() !== "enabled") { this.reason = "registration-disabled"; throw new Error("REGISTRATION_LOST"); }
     const admission = this.ports.admission();
@@ -220,6 +224,7 @@ export class ReplacementController {
   }
   private async assertLease(takeover: Takeover) {
     const reply = await this.agent("renew", takeover);
+    this.assertNativeHealthy();
     if (!reply.ok || !reply.observedOwner || this.closed || this.takeover !== takeover) {
       this.reason = "agent-unhealthy"; throw new Error("AGENT_LEASE_LOST");
     }
@@ -228,6 +233,7 @@ export class ReplacementController {
   }
   /** Every call carries a fresh nonce: the agent rejects replays, so a lease can never be renewed by an old message. */
   private agent(method: "prepare" | "renew" | "release" | "status", input: { operationId: string; epoch: number; owner: RecoveryOwner }) {
+    if (method !== "release") this.assertNativeHealthy();
     if (!this.ports.machService) return Promise.resolve({ ok: false, agentPid: null, code: "unreachable" as const, observedOwner: false, leaseExpiresAt: null });
     const payload: AgentPayload = { operationId: input.operationId, ownershipEpoch: input.epoch, ownerPid: input.owner.pid, ownerStartedAt: input.owner.startedAt,
       installation: input.owner.installation, nonce: randomUUID(), journalPath: this.ports.files.journalPath };
@@ -235,7 +241,9 @@ export class ReplacementController {
   }
   /** Another instance can only have taken the lock through a lost reclaim race; it then owns the system Dock, not us. */
   private async assertLock() {
+    this.assertNativeHealthy();
     if (!await this.ports.files.holds()) { this.reason = "owned-elsewhere"; throw new Error("LOCK_LOST"); }
+    this.assertNativeHealthy();
   }
   private startLease() {
     const timers = this.ports.timers ?? { setInterval, clearInterval };
@@ -276,6 +284,15 @@ export class ReplacementController {
     if (!takeover || this.phase !== "active") return;
     if (takeover.journal.fields.some((field) => field.written && !sameValue(current[field.key], field.writtenValue))) this.suspendQuietly("external-change");
   }
+  /** A new transport may restore the old operation, but cannot continue its takeover. */
+  nativeFailed() {
+    if (this.closed || this.nativeFailure || !["preparing", "active"].includes(this.phase)) return;
+    this.nativeFailure = true; this.reason = "agent-unhealthy"; this.stopLease();
+    this.suspendQuietly("agent-unhealthy");
+  }
+  private assertNativeHealthy() {
+    if (this.nativeFailure) { this.reason = "agent-unhealthy"; throw new Error("NATIVE_BRIDGE_FAILED"); }
+  }
   /** Ordinary quit, update, temporary hide: end this takeover but keep intent and registration (INV-02). */
   release(): Promise<void> {
     // A pause outlives quit/hide: only resume() or an explicit disable clears it.
@@ -293,7 +310,7 @@ export class ReplacementController {
   suspendQuietly(reason: SuspendReason) { void this.suspend(reason).catch((cause) => console.warn("[system-dock] pause failed", cause)); }
   /** Resuming after a pause is always an explicit local user action (INV-04). */
   resume(): Promise<void> {
-    return this.serial(async () => { if (this.phase === "suspended") this.set("inactive"); }).then(() => this.prepare());
+    return this.serial(async () => { if (this.phase === "suspended") { this.nativeFailure = false; this.set("inactive"); } }).then(() => this.prepare());
   }
   private async restoreNow(next: "inactive" | "suspended", reason: SuspendReason | null) {
     const takeover = this.takeover;

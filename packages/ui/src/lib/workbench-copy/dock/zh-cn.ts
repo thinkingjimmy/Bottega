@@ -50,7 +50,7 @@ export const dock = {
     "notRegistered": "未注册",
     "enabled": "已注册",
     "requiresApproval": "等待批准",
-    "notFound": "恢复服务缺失",
+    "notFound": "未找到注册记录",
     "unsupported": "此构建不提供",
     "unknown": "无法确认注册状态"
   },

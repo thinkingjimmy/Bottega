@@ -305,7 +305,7 @@ export const systemDockLazyFr: typeof systemDockLazyEn = {
     registrationLabel: "Élément de récupération",
     registrationEnabled: "Enregistré. Il reste enregistré après avoir quitté Bottega tant que le remplacement est activé.",
     registrationApproval: "Nécessite votre autorisation dans Réglages Système › Général › Éléments de connexion et extensions.",
-    registrationMissing: "Introuvable. Réinstallez Bottega pour le rétablir.",
+    registrationMissing: "macOS ne trouve pas l’enregistrement de ce service de rétablissement. Il n’a peut-être pas encore été créé.",
     registrationNone: "Pas encore enregistré.",
     needsApproval: "Autorisation requise",
     notFound: "Introuvable",

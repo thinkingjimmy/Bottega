@@ -303,7 +303,7 @@ export const systemDockLazyEn = {
     registrationLabel: "Recovery item",
     registrationEnabled: "Registered. It stays registered after you quit Bottega while replacement is on.",
     registrationApproval: "Needs your approval in System Settings › General › Login Items & Extensions.",
-    registrationMissing: "Not found. Reinstall Bottega to restore it.",
+    registrationMissing: "macOS cannot find this recovery registration. It may not have been created yet.",
     registrationNone: "Not registered yet.",
     needsApproval: "Needs approval",
     notFound: "Not found",

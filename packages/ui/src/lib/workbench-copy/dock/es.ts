@@ -50,7 +50,7 @@ export const dock = {
     "notRegistered": "Sin registrar",
     "enabled": "Registrado",
     "requiresApproval": "Pendiente de aprobación",
-    "notFound": "Falta el servicio de restauración",
+    "notFound": "Registro no encontrado",
     "unsupported": "No disponible en esta compilación",
     "unknown": "No se pudo verificar el registro"
   },

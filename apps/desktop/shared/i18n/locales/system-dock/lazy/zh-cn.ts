@@ -305,7 +305,7 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     registrationLabel: "恢复项",
     registrationEnabled: "已注册。替代功能开启期间，退出 Bottega 后它仍保持注册。",
     registrationApproval: "需要你在「系统设置」›「通用」›「登录项与扩展」中批准。",
-    registrationMissing: "找不到。请重新安装 Bottega 以恢复。",
+    registrationMissing: "macOS 找不到此恢复服务的注册记录。该记录可能尚未创建。",
     registrationNone: "尚未注册。",
     needsApproval: "需要批准",
     notFound: "找不到",
