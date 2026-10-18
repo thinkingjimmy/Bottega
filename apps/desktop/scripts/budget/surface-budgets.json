@@ -115,40 +115,44 @@
     {
       "date": "2026-10-06",
       "reason": "0.2.1 production review: provider discovery, explicit history import and Memory consent updates. Main raw bytes increased by 3874 (0.088 percent) over the recorded measurement and exceeded the old ceiling by 1973. Preserve the standard 2 percent policy after dependency and module-boundary gates passed."
+    },
+    {
+      "date": "2026-10-18",
+      "reason": "0.2.7 production review: native Provider and durable background ownership, attachment validation/local preview and Dock recovery increased main by 28,795 public bytes (0.643 percent) versus the retained 0.2.6 build; history increased by 1,683 (0.310 percent), including 1,080 import/export/helper bytes from shared chunk repartitioning. No new eager external package or duplicate Zod core was found; the native connection remains lazy. The fresh private production sample at 5ad812ced2fb884a6abdf833c1e2fad89d72eaa7 measures main 4,510,664 and history 544,164 raw bytes. Resample every surface with the unchanged 2 percent policy, including tighter Provider bridge ceilings. No boundary gate or two-byte allowance changes. Evidence: DEV/cloud/release/0.2.7/budget/README.md."
     }
   ],
   "surfaces": {
     "renderer/index/js": {
-      "raw": 1678303,
-      "gzip": 539473,
-      "brotli": 448143,
+      "raw": 1704815,
+      "gzip": 548841,
+      "brotli": 455954,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 1645395,
-        "gzip": 528895,
-        "brotli": 439355
+        "raw": 1671387,
+        "gzip": 538079,
+        "brotli": 447013
       }
     },
     "renderer/index/css": {
-      "raw": 228807,
-      "gzip": 34080,
-      "brotli": 26920,
+      "raw": 231610,
+      "gzip": 34543,
+      "brotli": 27244,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 224320,
-        "gzip": 33411,
-        "brotli": 26392
+        "raw": 227068,
+        "gzip": 33865,
+        "brotli": 26709
       }
     },
     "renderer/task-panel/js": {
-      "raw": 470154,
-      "gzip": 153640,
-      "brotli": 131490,
+      "raw": 472187,
+      "gzip": 154400,
+      "brotli": 132039,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 460935,
-        "gzip": 150627,
-        "brotli": 128911
+        "raw": 462928,
+        "gzip": 151372,
+        "brotli": 129450
       }
     },
     "renderer/task-panel/css": {
@@ -163,14 +167,14 @@
       }
     },
     "renderer/system-dock-bar/js": {
-      "raw": 490645,
-      "gzip": 161933,
-      "brotli": 138950,
+      "raw": 492678,
+      "gzip": 162690,
+      "brotli": 139482,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 481024,
-        "gzip": 158757,
-        "brotli": 136225
+        "raw": 483017,
+        "gzip": 159500,
+        "brotli": 136747
       }
     },
     "renderer/system-dock-bar/css": {
@@ -185,14 +189,14 @@
       }
     },
     "renderer/system-dock-panel/js": {
-      "raw": 519852,
-      "gzip": 169892,
-      "brotli": 146113,
+      "raw": 521885,
+      "gzip": 170657,
+      "brotli": 146630,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 509658,
-        "gzip": 166560,
-        "brotli": 143248
+        "raw": 511651,
+        "gzip": 167310,
+        "brotli": 143754
       }
     },
     "renderer/system-dock-panel/css": {
@@ -207,12 +211,12 @@
       }
     },
     "preload/index": {
-      "raw": 64259,
+      "raw": 64231,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 62999,
-        "gzip": 15096,
-        "brotli": 12793
+        "raw": 62971,
+        "gzip": 15163,
+        "brotli": 12868
       }
     },
     "preload/task-panel": {
@@ -234,30 +238,30 @@
       }
     },
     "main/index": {
-      "raw": 4496552,
+      "raw": 4600878,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 4408384,
-        "gzip": 1282257,
-        "brotli": 1000512
+        "raw": 4510664,
+        "gzip": 1318830,
+        "brotli": 1030982
       }
     },
     "main/sync-crypto-worker-entry": {
-      "raw": 156639,
+      "raw": 158029,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 153567,
-        "gzip": 47049,
-        "brotli": 41651
+        "raw": 154930,
+        "gzip": 47829,
+        "brotli": 42309
       }
     },
     "main/builtin-tools-server": {
-      "raw": 459024,
+      "raw": 465738,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 450023,
-        "gzip": 129343,
-        "brotli": 110783
+        "raw": 456605,
+        "gzip": 131368,
+        "brotli": 112485
       }
     },
     "main/codec-host-entry": {
@@ -288,21 +292,21 @@
       }
     },
     "main/provider-bridge-entry": {
-      "raw": 343684,
+      "raw": 39965,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 336945,
-        "gzip": 107626,
-        "brotli": 94975
+        "raw": 39181,
+        "gzip": 15193,
+        "brotli": 13735
       }
     },
     "main/app-gui-compiler-entry": {
-      "raw": 257648,
+      "raw": 259153,
       "twoByteChunks": 1,
       "measured": {
-        "raw": 252596,
-        "gzip": 77330,
-        "brotli": 65909
+        "raw": 254071,
+        "gzip": 77830,
+        "brotli": 66352
       }
     },
     "main/app-gui-query-worker-entry": {
@@ -315,57 +319,57 @@
       }
     },
     "main/chat-database-worker-entry": {
-      "raw": 870227,
+      "raw": 882848,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 853163,
-        "gzip": 227324,
-        "brotli": 195587
+        "raw": 865537,
+        "gzip": 232649,
+        "brotli": 200017
       }
     },
     "main/history-import-worker-entry": {
-      "raw": 543987,
+      "raw": 555048,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 533320,
-        "gzip": 152692,
-        "brotli": 131950
+        "raw": 544164,
+        "gzip": 157505,
+        "brotli": 135863
       }
     },
     "main/providers/codex/bridge": {
-      "raw": 9474,
+      "raw": 130,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 9288,
-        "gzip": 4030,
-        "brotli": 3586
+        "raw": 127,
+        "gzip": 133,
+        "brotli": 103
       }
     },
     "main/providers/claude/bridge": {
-      "raw": 11139,
+      "raw": 10571,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 10920,
-        "gzip": 4578,
-        "brotli": 4070
+        "raw": 10363,
+        "gzip": 4418,
+        "brotli": 3921
       }
     },
     "main/providers/kimi/bridge": {
-      "raw": 4796,
+      "raw": 4225,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 4701,
-        "gzip": 2029,
-        "brotli": 1790
+        "raw": 4142,
+        "gzip": 1867,
+        "brotli": 1652
       }
     },
     "main/providers/opencode/bridge": {
-      "raw": 5132,
+      "raw": 4562,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 5031,
-        "gzip": 2093,
-        "brotli": 1857
+        "raw": 4472,
+        "gzip": 1930,
+        "brotli": 1700
       }
     }
   }
