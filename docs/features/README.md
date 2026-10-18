@@ -10,7 +10,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Switch the next Agent in an idle chat while preserving its transcript, per-reply authors, and bounded history handoff. Each provider keeps its own authentication and quota model.
 - See runtime and authentication availability in the composer, with scoped installation, sign-in, and retry actions.
 - Read available Codex, Claude Code, Kimi, and OpenCode Go quota windows, remaining amounts, and reset times in Settings and the Agent selector, including rolling, weekly, and monthly periods.
-- Choose an eligible Agent and model for background title generation. A configuration that cannot meet the task's restrictions states why it is unavailable.
+- Choose a title-capable Agent and model in Settings › General › Title generation. This version's Codex connection does not support the required restricted, tool-free title execution. If Codex is selected, titles use the first message, the selected Agent and model stay saved, and the existing Settings row explains the fallback. You can select a supported Agent yourself; Bottega never switches Providers automatically.
 - Use Plan mode, live steering, queued messages, and visible tool activity without hiding backend differences.
 - Create Sections and Subagents for parallel work, inspect their progress, pass bounded context between them, and promote useful results into durable Sections.
 - Search and adopt supported local CLI histories without silently rewriting their original records.

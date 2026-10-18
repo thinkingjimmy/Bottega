@@ -65,6 +65,8 @@ Authenticate with the CLI provider before starting Bottega. Bottega never asks f
 
 Codex requires CLI **0.163.0-alpha.10.2 exactly** and uses native command approval. Ask for approval and Approve for me allow network access, temporary-directory writes and ordinary reads outside the workspace. Bottega's previous credential-path denials and internal read-only fences no longer apply to Codex commands. Plan keeps the selected execution permissions. Read the [full permission changes](../features/README.md#codex-command-permissions) before starting a task.
 
+Your saved title Agent and model stay unchanged. This version's Codex connection does not support the restricted, tool-free execution required for generated titles. If Codex is selected for titles, Bottega uses the first message. To generate titles, choose a supported Agent in Settings › General › Title generation. Bottega never switches Providers automatically.
+
 This release keeps **protocol 19**, existing content, sync passwords and account keys. No data reset is required. Dock remains Alpha on macOS 27.x with Apple silicon; replacement, system recovery and display/fullscreen combinations are still being validated. See the [0.2.7 changelog](../changelog/README.md#2026-10-18--v027) and [installation steps](#download-and-install).
 
 The older upgrade notes below describe their original versions. Use the current Codex permission model for 0.2.7.
