@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, I18n/Setup providers, AgentFailureNotice, PresenceSettings, ArchiveConfettiRow, FolderRow, DangerZone, shared SettingsPreferenceSelect, settings controls/store, SettingsPage, and UI primitives.
- * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle/TitleAgentLabel with theme/language, system typography, presence, Bottega folder, title generation settings and the Danger zone.
+ * [INPUT]: Depends on React, I18n/Setup providers, AgentFailureNotice, PresenceSettings, ArchiveConfettiRow, FolderRow, DangerZone, shared SettingsPreferenceSelect, settings controls/store, Provider purpose catalog, SettingsPage, and UI primitives.
+ * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle/TitleAgentLabel with theme/language, system typography, presence, Bottega folder, title generation settings with retained unsupported selections and inline first-message fallback explanation, and the Danger zone.
  * [POS]: apps/desktop/src/views/settings/general; Settings layer's default view; holds no settings snapshot of its own — subscribes to settingsStore and pulls the per-backend model catalog on demand
  */
 
@@ -77,8 +77,7 @@ export const LANGUAGE_OPTIONS: Array<{
 /* 稳定空目录引用：目录未就绪时避免逐 render 新建数组击穿 useMemo */
 const NO_MODELS: BackendModelInfo[] = [];
 
-/* 四个后端恒在列且恒可选：标题失败会回落到用户自己的第一句话，所以
- * 「装没装、登没登」是一条提示，不是一道把选项藏起来的门。 */
+/* Keep the selected identity visible even when its title purpose is unavailable. */
 export function TitleAgentLabel({
   value,
   name = backendLabel(value),
@@ -125,9 +124,11 @@ function ChatRows({
   const titleAgent = settings.titleAgent;
   const catalog = useProviderCatalog();
   const agentOptions = useMemo(
-    () => titleAgentOptions(backends, catalog, now),
-    [backends, catalog, now],
+    () => titleAgentOptions(backends, catalog, now, titleAgent),
+    [backends, catalog, now, titleAgent],
   );
+  const titleUnsupported = catalog.entries.find(entry => entry.id === titleAgent)?.purposes.title === "unsupported";
+  const titleAgentName = agentOptions.find(option => option.id === titleAgent)?.name ?? backendLabel(titleAgent);
   useEffect(() => {
     settingsStore.ensureModels(titleAgent);
   }, [titleAgent]);
@@ -217,7 +218,9 @@ function ChatRows({
       <SettingsRow
         label={t("settings.general.titleGeneration")}
         htmlFor="title-agent"
-        description={t("settings.general.titleGenerationDescription")}
+        description={titleUnsupported
+          ? t("settings.general.titleUnavailableDescription", { agent: titleAgentName })
+          : t("settings.general.titleGenerationDescription")}
         control={
           <div className="flex items-center gap-2">
             <Select

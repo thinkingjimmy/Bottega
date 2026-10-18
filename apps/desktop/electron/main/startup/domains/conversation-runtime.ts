@@ -1,12 +1,14 @@
 /**
- * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Chat/Project/App/Memory/Gallery/Browser services, the History Import handle, canonical Project Tools resolver, scoped Extension inventory, Skills selection authority, canonical Provider defaults, manual staging, RelayLedger, and backend bridge
- * [OUTPUT]: Composes runtime-only chat admission, scoped retries, queue pausing and single-backend title generation/recovery with demand-driven authentication refresh — headless job or one-shot Agent turn — qualified against the same configured model and workspace; a package Provider's turn resolves no Project tools and names the Provider from the catalog when it fails. Refuses closed App submissions and keeps their queued messages undispatched.
+ * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Chat/Project/App/Memory/Gallery/Browser services, the History Import handle, canonical Project Tools resolver, scoped Extension inventory, Skills selection authority, canonical Provider purposes/defaults, first-message title fallback, manual staging, RelayLedger, and backend bridge
+ * [OUTPUT]: Composes runtime-only chat admission, scoped retries, queue pausing and single-backend title generation/recovery with direct first-message completion for explicitly unsupported purposes and demand-driven authentication refresh — headless job or one-shot Agent turn — qualified against the same configured model and workspace; a package Provider's turn resolves no Project tools and names the Provider from the catalog when it fails. Refuses closed App submissions and keeps their queued messages undispatched.
  * Workflow preparation narrows Skills and MCP candidates before their receipts enter custody.
  * [POS]: The conversation-domain startup composition module; the external-history half lives in history-import-runtime.ts and assembles dependencies without holding global lifecycle state
  */
 import { builtinProviderCatalog, DEFAULT_PROVIDER_ID, knownBackend } from "../../../../shared/providers/catalog";
 
 import { requireProvider } from "../../backends";
+import { composedProviderCatalog } from "../../providers/host/catalog";
+import { fallbackTitle } from "../../chats/chat-commit";
 import { join } from "node:path";
 import { workflowSkillSelection, workflowToolSelection } from "../../agent-configs/selection";
 import { workflowTurnPolicyFor } from "../../workflows/turn-policy";
@@ -190,6 +192,8 @@ export function createChatsService({
        fails outright and the Chat keeps the user's own first message. */
     generateTitle: async (firstMessage, context) => {
       const preferences = settings.get();
+      const selected = (composedProviderCatalog()?.catalog() ?? builtinProviderCatalog).get(preferences.titleAgent);
+      if (selected.known && selected.entry.descriptor.purposes.title === "unsupported") return fallbackTitle(firstMessage);
       const descriptor = requireProvider(preferences.titleAgent);
       const model = preferences.titleModelByBackend[descriptor.id] ?? null;
       // Runtime discovery alone cannot renew expired authentication; a deferred title may have no other caller to wake it.

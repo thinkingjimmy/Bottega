@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node child_process/crypto, DescendantRegistry and birth-witness custody APIs
- * [OUTPUT]: Provides HostProcessPort for identity-bound spawn/write/kill, descendant recording and shared custody settlement; unconfirmed or rejected settlements remain retryable. cleanHost drains launches and cleans only the matching host life. Exports hostChildEnvironment.
+ * [OUTPUT]: Provides HostProcessPort for identity-bound spawn/write/kill, exactly-once observed exit relay after durable launch, descendant recording and shared custody settlement; unconfirmed or rejected settlements remain retryable. cleanHost drains launches and cleans only the matching host life. Exports hostChildEnvironment.
  * [POS]: The only way a utility host gets a child process: main starts it detached (its own group), records PGID + birth durably before acknowledging, and relays stdio as messages; the bridge never holds a process handle
  */
 import type { AgentTurnCustodyDependency } from "../../../../shared/apps/model/app-lifecycle";
@@ -52,12 +52,24 @@ export class HostProcessPort {
         data: spec.relayOutput ? Buffer.from(data).toString("base64") : String(data) }));
     }
     child.stdin.on("error", () => {});
-    child.once("exit", (code, signal) => {
+    let exitForwarded = false;
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+      if (exitForwarded) return;
+      exitForwarded = true;
+      child.removeListener("exit", onExit);
       this.processes.delete(processId);
-      sink({ t: "process-exit", processId, code, signal });
-      /* The leader is gone; anything left in its group belongs to it and is cleaned with it. */
-      void this.release(processId, Boolean(spec.custody)).catch(cause => console.warn("[host] descendant cleanup failed", cause));
-    });
+      try { sink({ t: "process-exit", processId, code, signal }); }
+      finally {
+        /* The leader is gone; anything left in its group belongs to it and is cleaned with it. */
+        void this.release(processId, Boolean(spec.custody)).catch(cause => console.warn("[host] descendant cleanup failed", cause));
+      }
+    };
+    child.once("exit", onExit);
+    const { exitCode, signalCode } = child;
+    if (typeof exitCode === "number" || typeof signalCode === "string") {
+      /* Durable launch can outlast the child; let composition acknowledge process-spawned before replaying its exit. */
+      setImmediate(() => onExit(exitCode, signalCode));
+    }
     return { processId, pid, identity };
   }
 

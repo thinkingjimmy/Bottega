@@ -4,6 +4,7 @@
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
  * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
  * Artifact workspace labels are supplied by the shared workspace catalogs; retired App Design controls register no copy.
+ * General Settings explains unsupported title generation and first-message fallback while retaining the chosen Agent.
  * [POS]: Spanish desktop locale; compile-time structure must match English exactly
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/es";
@@ -195,6 +196,7 @@ eraseAllConfirm: "Borrar y reiniciar",
 chatDescription: "Los títulos de los chats nuevos se generan en segundo plano.",
 titleGeneration: "Generación del título",
 titleGenerationDescription: "Los modelos de título se guardan por separado para cada backend.",
+titleUnavailableDescription: "{{agent}} no puede generar títulos en esta versión. Los títulos usan el primer mensaje.",
 titleAgent: "Agent del título",
 titleModel: "Modelo del título",
 reading: "Cargando…",

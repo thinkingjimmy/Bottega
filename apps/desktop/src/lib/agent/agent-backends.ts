@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Agent identity, shared BackendInfo, pure availability projections and the Provider catalog snapshot.
- * [OUTPUT]: Provides backend identity, isBuiltinBackendInfo (the built-in setup facts; a package Provider's have no setup, update, guide or maintenance), the catalog-driven list order (orderedProviders), provider names, states and defaults, the runnable picker order (the stored order narrowed to runnable Agents), shared admission helpers and the title-Agent option list over the catalog with its notices; first checks wait while same-environment background checks preserve eligibility.
+ * [OUTPUT]: Provides backend identity, isBuiltinBackendInfo (the built-in setup facts; a package Provider's have no setup, update, guide or maintenance), the catalog-driven list order (orderedProviders), provider names, states and defaults, the runnable picker order (the stored order narrowed to runnable Agents), shared admission helpers and the title-Agent option list over the catalog with its notices and an unavailable retained current choice; first checks wait while same-environment background checks preserve eligibility.
  * [POS]: apps/desktop/src/lib/agent; The renderer's single source of backend presentation truth; Composer, Sidebar, Header, and Settings never hard-code backend icons or readiness rules
  */
 import { projectAvailability, submissionDecision } from "../../../shared/agent-availability/projection";
@@ -167,16 +167,18 @@ export type TitleAgentOption = {
   selectable: boolean;
 };
 
-/** Every catalog entry that can title a Chat, always, in catalog order — each with its own notice. */
+/** Title-capable entries plus the retained current unsupported choice, in catalog order with scoped notices. */
 export const titleAgentOptions = (
   backends: BackendInfo[] | undefined,
   snapshot: ProviderCatalogSnapshot,
-  now = Date.now()
+  now = Date.now(),
+  selectedId?: string
 ): TitleAgentOption[] =>
-  snapshot.entries.filter((entry) => entry.purposes.title !== "unsupported").map((entry) => {
+  snapshot.entries.filter((entry) => entry.purposes.title !== "unsupported" || entry.id === selectedId).map((entry) => {
     const backend = backends?.find((info) => info.id === entry.id);
-    const notice = providerState(entry, backend, now) === "unavailable" ? "unavailable" : titleAgentNotice(backend, now);
-    const option = { id: entry.id, name: providerName(entry), selectable: entry.available };
+    const unsupported = entry.purposes.title === "unsupported";
+    const notice = unsupported || providerState(entry, backend, now) === "unavailable" ? "unavailable" : titleAgentNotice(backend, now);
+    const option = { id: entry.id, name: providerName(entry), selectable: entry.available && !unsupported };
     return notice ? { ...option, notice } : option;
   });
 

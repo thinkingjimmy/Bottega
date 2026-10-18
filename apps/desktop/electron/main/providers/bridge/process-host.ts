@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node events/stream and the utility host's HostApi/HostProcess
- * [OUTPUT]: Provides bridgeProcessHost (an AgentProcessHost whose launch spawns the sealed plan through main) and killProcessHost (the connection's group cleanup routed back through main)
+ * [OUTPUT]: Provides bridgeProcessHost with distinct delivery failure and actual exit states, and killProcessHost with delivery-aware cleanup routed through main
  * [POS]: Runs inside the Provider bridge: AcpConnection needs a synchronously returned child with stdio streams; this child is a stand-in whose streams are the process port's messages, while main alone starts, fences, journals and kills the real process
  */
 import { EventEmitter } from "node:events";
@@ -20,13 +20,15 @@ class RelayedChild extends EventEmitter {
   private readonly queued: string[] = [];
   private ended = false;
   private exited = false;
+  private deliveryFailure: Error | null = null;
+  private killRequested = false;
 
   constructor(private readonly binaryOutput = false) {
     super();
     this.stdin = new Writable({
       write: (chunk: Buffer | string, _encoding, done) => {
         const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
-        if (this.exited) { done(new Error("Native process input is closed")); return; }
+        if (this.exited || this.deliveryFailure) { done(this.deliveryFailure ?? new Error("Native process input is closed")); return; }
         if (this.process) this.process.write(text); else this.queued.push(text);
         done();
       },
@@ -38,8 +40,11 @@ class RelayedChild extends EventEmitter {
     this.process = process;
     this.pid = process.pid;
     process.onOutput((stream, data) => (stream === "stdout" ? this.stdout : this.stderr).write(this.binaryOutput ? Buffer.from(data, "base64") : data));
-    for (const text of this.queued.splice(0)) process.write(text);
-    if (this.ended) process.end();
+    if (this.killRequested) { this.queued.length = 0; process.kill(); }
+    else {
+      for (const text of this.queued.splice(0)) process.write(text);
+      if (this.ended) process.end();
+    }
     this.emit("spawn");
     void process.exited.then(({ code, signal }) => {
       this.exited = true; this.exitCode = code; this.signalCode = signal;
@@ -50,12 +55,23 @@ class RelayedChild extends EventEmitter {
   }
 
   fail(cause: Error) {
-    this.emit("error", cause);
-    this.stdout.end(); this.stderr.end();
-    this.emit("close", null, null);
+    if (this.process || this.deliveryFailure) return;
+    // No delivered handle is not proof that main's custody group has exited.
+    this.deliveryFailure = cause;
+    this.queued.length = 0;
+    try { this.emit("error", cause); }
+    finally {
+      this.stdout.end(); this.stderr.end();
+      this.emit("close", null, null);
+    }
   }
 
-  kill() { if (this.exited) return false; this.process?.kill(); return true; }
+  kill() {
+    if (this.exited || this.deliveryFailure) return false;
+    this.killRequested = true;
+    this.process?.kill();
+    return true;
+  }
 }
 
 /**
@@ -75,7 +91,7 @@ export function bridgeProcessHost(api: HostApi, ref: string, binaryOutput = fals
       current = child;
       void api.spawn(ref, "sealed-plan", [], { plan: true }).then(
         (process) => { child.attach(process); resolve(); },
-        (cause: Error) => { child.fail(cause); reject(cause); },
+        (cause: Error) => { reject(cause); child.fail(cause); },
       );
       return child as unknown as ChildProcessWithoutNullStreams;
     },
@@ -86,9 +102,13 @@ export function bridgeProcessHost(api: HostApi, ref: string, binaryOutput = fals
 export function killProcessHost(host: ReturnType<typeof bridgeProcessHost>) {
   return async () => {
     const child = host.child();
-    if (child?.exitCode === null && child.signalCode === null) {
+    if (!child) return { ok: true } as const;
+    // Failed delivery must remain a failure, not an impossible wait or a successful cleanup claim.
+    await host.delivered;
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = new Promise<void>((done) => child.once("exit", () => done()));
       child.kill();
-      await new Promise<void>((done) => child.once("exit", () => done()));
+      await exited;
     }
     return { ok: true } as const;
   };
