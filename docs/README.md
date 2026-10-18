@@ -2,7 +2,7 @@
 
 [简体中文](./README.zh-CN.md) · [Repository home](../README.md)
 
-Current release: [0.2.6 official stable](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.6) for macOS on Apple silicon (ARM64) only, with [Bottega Web](https://app.getbottega.app). The shipped 0.2.5 personal build needs one manual installation of 0.2.6. Read the [installation and update notes](./getting-started/README.md#upgrading-to-026) before upgrading.
+Current release: [0.2.7 official stable](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7) for macOS on Apple silicon (ARM64) only. Codex requires CLI 0.163.0-alpha.10.2 exactly and uses [native command permissions](./features/README.md#codex-command-permissions). The 0.2.5 personal build needs a manual update. Read the [installation and update notes](./getting-started/README.md#upgrading-to-027) before upgrading. [Bottega Web](https://app.getbottega.app) remains available.
 
 Documentation is organized by responsibility so the repository root remains focused on source and build configuration.
 

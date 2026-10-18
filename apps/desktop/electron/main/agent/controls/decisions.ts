@@ -4,12 +4,12 @@
  * [POS]: Shared control adapter behind existing bridge handlers; no backend control logic is duplicated.
  */
 import { randomUUID } from "node:crypto";
-import type { AgentTurn } from "../../backends/types";
+import type { AgentTurn } from "../../backends/contracts/types";
 import type { TurnEntry } from "../turns/turn/turn-registry-model";
 import type { RelayLedger } from "../../sections/coordinator/relay-ledger";
 import type { RemoteContext } from "../../sections/coordinator/remote/model";
 import { canonicalHash } from "../../sections/coordinator/coordinator-values";
-export type TrustedControl = { remote: RemoteContext; generation?: number; authority?: import("../../backends/types").TrustedTurnAuthority; current(): void | Promise<void> };
+export type TrustedControl = { remote: RemoteContext; generation?: number; authority?: import("../../backends/contracts/types").TrustedTurnAuthority; current(): void | Promise<void> };
 import type { InteractionSource } from "@ai-chat/cloud-protocol/turns/live";
 import type { ControlResult } from "../../../../shared/ipc/agent/agent-ipc";
 export type { ControlResult } from "../../../../shared/ipc/agent/agent-ipc";

@@ -20,7 +20,7 @@ import type { SyncScope } from "../../../../../shared/local-storage/contracts";
 import type { ManualTurnReceipt } from "../../../../../shared/ipc/content/sections-ipc";
 import type { AccountTransport } from "../../runtime/transport/transport";
 import type { RelayLedger } from "../../../sections/coordinator/relay-ledger";
-import type { TrustedTurnAuthority } from "../../../backends/types";
+import type { TrustedTurnAuthority } from "../../../backends/contracts/types";
 import type { RemoteContext } from "../../../sections/coordinator/remote/model";
 export type RemoteConnection = { scope: SyncScope; connectionEpoch: string; manifestId: string; enabled: boolean; lifetimeGeneration?: number };
 type Ports = { config: CloudBuildConfig; deviceId: string; ledger: RelayLedger; transport: Pick<AccountTransport, "query" | "mutate">;

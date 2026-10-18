@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, localized side-panel Plan titles, PanelSessionContext, panel memory, Browser/Plan/Subagent projections, Workspace readRef, and file preview resources
- * [OUTPUT]: Provides identity-stable localized side-panel state, draft-to-product context rebinding, eligibility, openShell/Plan commands, generation-fenced asynchronous previews, and a detached mode (no panel memory, no auto-open) for background queue runners
+ * [INPUT]: React, localized panel copy, session identity, Browser/Plan/Subagent projections and scoped workspace/file-link readers
+ * [OUTPUT]: Stable panel commands and generation-fenced previews shared by composer references and message file links
  * [POS]: apps/desktop/src/components/chat/runtime/session/panels; The sole side-panel state owner in chat/runtime/session
  */
 
@@ -25,11 +25,13 @@ import {
   type DraftPlanProjection,
   type TurnDraft,
 } from "../../../../../../shared/chats/model/chat-turn-reducer";
-import { errorMessage } from "@ai-chat/ui/lib/errors";
+import { errorMessage, failureCode } from "@ai-chat/ui/lib/errors";
 import {
   readWorkspaceFile,
   resignWorkspaceFile,
+  resolveWorkspaceFileLink,
 } from "@/lib/clients/workspace-files-client";
+import type { WorkspaceFileReadResult } from "../../../../../../shared/ipc/workspace/workspace-files-ipc";
 import type { ProjectedSubagent } from "@/lib/chat/session/chat-turn-attach";
 import {
   MARKDOWN_PATTERN,
@@ -322,6 +324,7 @@ export function useSessionSidePanel({
   const reconcileRichValue = useCallback((value: RichValue) => {
     setState((current) =>
       (current.kind === "file" || current.kind === "workspace-preview") &&
+      !(current.kind === "workspace-preview" && current.localFile) &&
       !value.some((node) => node.id === current.nodeId)
         ? { kind: "none" }
         : current
@@ -367,35 +370,37 @@ export function useSessionSidePanel({
     [fileFor, setState]
   );
 
-  const openWorkspaceFile = useCallback(
-    async (node: Extract<RichNode, { type: "workspace-file" }>) => {
-      if (node.entryKind === "dir") return;
+  const openWorkspacePreview = useCallback(
+    async (nodeId: string, filename: string, load: () => Promise<{
+      result: WorkspaceFileReadResult;
+      path?: string;
+      workspaceIdentity?: string;
+    }>, href?: string) => {
       const generation = ++workspaceGeneration.current;
+      const localFile = href ? { href, scope: workspaceScope } : undefined;
       setState({
         kind: "workspace-preview",
-        nodeId: node.id,
-        filename: node.path,
+        nodeId,
+        filename,
         status: "loading",
+        ...(localFile ? { localFile } : {}),
       });
       try {
-        const readRef = await resignWorkspaceFile({
-          scope: workspaceScope,
-          path: node.path,
-          entryKind: "file",
-        });
-        const result = await readWorkspaceFile({ scope: workspaceScope, readRef });
+        const { result, path, workspaceIdentity } = await load();
         setState((current) => {
           if (
             current.kind !== "workspace-preview" ||
-            current.nodeId !== node.id ||
+            current.nodeId !== nodeId ||
             generation !== workspaceGeneration.current
           ) return current;
+          const next = { ...current, filename: path ?? current.filename,
+            ...(localFile ? { localFile: { ...localFile, workspaceIdentity } } : {}) };
           if (result.kind === "text") {
-            return { ...current, status: "text", content: result.content };
+            return { ...next, status: "text", content: result.content };
           }
           if (result.kind === "metadata") {
             return {
-              ...current,
+              ...next,
               status: "metadata",
               size: result.size,
               mtimeMs: result.mtimeMs,
@@ -403,7 +408,7 @@ export function useSessionSidePanel({
             };
           }
           return {
-            ...current,
+            ...next,
             status: "metadata",
             size: result.size,
             mtimeMs: result.mtimeMs,
@@ -411,17 +416,37 @@ export function useSessionSidePanel({
           };
         });
       } catch (cause) {
+        const message = errorMessage(cause);
+        const code = failureCode(cause);
+        const key = /WORKSPACE_FILE_LINK_(?:OUTSIDE|CHANGED)/.test(code) ? "outside"
+          : code === "WORKSPACE_FILE_LINK_MISSING" ? "missing" : "readFailed";
         setState((current) =>
           current.kind === "workspace-preview" &&
-          current.nodeId === node.id &&
+          current.nodeId === nodeId &&
           generation === workspaceGeneration.current
-            ? { ...current, status: "error", error: errorMessage(cause) }
+            ? { ...current, status: "error", error: localFile ? t(`chat.sidePanel.file.${key}`) : message }
             : current
         );
       }
     },
-    [setState, workspaceScope]
+    [setState, workspaceScope, t]
   );
+
+  const openWorkspaceFile = useCallback(async (node: Extract<RichNode, { type: "workspace-file" }>) => {
+    if (node.entryKind === "dir") return;
+    await openWorkspacePreview(node.id, node.path, async () => {
+      const readRef = await resignWorkspaceFile({ scope: workspaceScope, path: node.path, entryKind: "file" });
+      return { result: await readWorkspaceFile({ scope: workspaceScope, readRef }) };
+    });
+  }, [openWorkspacePreview, workspaceScope]);
+
+  const openLocalFile = useCallback(async (href: string) => {
+    await openWorkspacePreview(`link:${href}`, href, async () => {
+      const target = await resolveWorkspaceFileLink({ scope: workspaceScope, href });
+      return { result: await readWorkspaceFile({ scope: workspaceScope, readRef: target.readRef }),
+        path: target.path, workspaceIdentity: target.workspaceIdentity };
+    }, href);
+  }, [openWorkspacePreview, workspaceScope]);
 
   return useMemo(() => ({
     state,
@@ -431,6 +456,7 @@ export function useSessionSidePanel({
     openDraftPlan,
     openFile,
     openWorkspaceFile,
+    openLocalFile,
     openImage,
     openArtifact,
     openPlan,
@@ -447,6 +473,7 @@ export function useSessionSidePanel({
     openSubagent,
     openTabs,
     openWorkspaceFile,
+    openLocalFile,
     reconcileRichValue,
     state,
   ]);

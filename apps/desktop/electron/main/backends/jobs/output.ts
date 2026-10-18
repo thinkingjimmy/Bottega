@@ -4,7 +4,7 @@
  * [POS]: The one reading of a headless job's output, shared by the in-process executor (jobs/executor.ts) and the Provider bridge's `headless.run`, so both paths yield the same `{text, json}` from the same bytes (TASK-11 D8, P16); pure and bridge-safe (no Electron, no runtime port, no secrets: stderr redaction stays with main, which holds the environment)
  */
 import { AcpByteTail } from "../acp/startup/evidence";
-import type { HeadlessParserState } from "../types";
+import type { HeadlessParserState } from "../contracts/types";
 
 type AgentTurnItem = HeadlessParserState["events"][number];
 

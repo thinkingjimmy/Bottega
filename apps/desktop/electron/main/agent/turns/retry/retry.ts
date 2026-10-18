@@ -13,7 +13,7 @@ import type { AgentSendPayload } from "../../../../../shared/ipc/agent/agent-ipc
 import type {
   AgentTurn,
   ResolvedAgentInput,
-} from "../../../backends/types";
+} from "../../../backends/contracts/types";
 import type { TurnRegistry } from "../turn/turn-registry";
 import type { TurnEntry } from "../turn/turn-registry-model";
 

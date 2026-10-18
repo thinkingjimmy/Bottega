@@ -12,12 +12,9 @@ import { claudeAdapterEntry } from "../claude/adapter-entry";
 import { adapterLaunch } from "../../runtime";
 import { claudeAdapterEnvironment } from "../claude/environment";
 import { claudeSessionMissing, validateClaudeSessionId } from "../claude/turn-config";
-import { codexSessionMissing } from "../codex/turn-config";
 import { CLAUDE_READ_ONLY_TOOLS } from "../claude/background/headless";
-import { codexAcpEntry, codexAcpEnvironment, validateCodexSessionId } from "../codex/adapter-entry";
-import type { ResolvedRuntime } from "../../backends/types";
+import type { ResolvedRuntime } from "../../backends/contracts/types";
 import { claudeNetworkVerdict, claudeToolVerdicts, probeClaudeNetworkOff, probeClaudeToolSet } from "./claude-tools";
-import { probeSeatbeltReadOnly } from "./codex-read-only";
 import { MeasurementRuntimeChanged, measurementIdentity } from "./identity";
 import { openRequestSink } from "./sink";
 import type { MeasurementStore } from "./store";
@@ -75,7 +72,7 @@ export class ProviderMeasurements {
       /* Adopting never starts runtime discovery: at startup, and in a fenced environment, that is work nobody asked for. */
       const runtime = mode === "adopt" ? this.ports.knownRuntime(providerId) : await this.ports.runtime(providerId);
       if (!runtime) { this.identities.delete(providerId); this.emit(); return; }
-      const adapter = providerId === BUILTIN_PROVIDER_IDS.claude ? claudeAdapterEntry() : providerId === BUILTIN_PROVIDER_IDS.codex ? codexAcpEntry() : undefined;
+      const adapter = providerId === BUILTIN_PROVIDER_IDS.claude ? claudeAdapterEntry() : undefined;
       const identity = await measurementIdentity(runtime, adapter);
       const stored = this.store.forProvider(providerId);
       const same = (record: MeasuredCapability) => JSON.stringify(record.identity) === JSON.stringify(identity);
@@ -122,11 +119,8 @@ export class ProviderMeasurements {
         this.ports.report?.(providerId, { teardown });
         return { cancel: teardown.state };
       }
-      const readOnly = probeSeatbeltReadOnly(BUILTIN_PROVIDER_IDS.codex);
-      const teardown = await probeTeardown({ backend: BUILTIN_PROVIDER_IDS.codex, cwd: workspace,
-        ...adapterLaunch("codex-acp", codexAcpEnvironment(runtime)), validateSessionId: validateCodexSessionId, sessionMissing: codexSessionMissing, timeoutMs: 20_000, totalTimeoutMs: 40_000, signal });
-      this.ports.report?.(providerId, { readOnly, teardown });
-      return { "read-only": readOnly.state, cancel: teardown.state };
+      // bb-native-v1 chat is not a strict-role isolation contract. Old Seatbelt evidence cannot admit these roles.
+      return { "read-only": "unsupported", "network-off": "unsupported", "tool-filter": "unsupported", cancel: "unverified" };
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }

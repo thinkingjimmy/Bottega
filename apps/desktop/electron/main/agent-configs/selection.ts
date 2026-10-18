@@ -13,7 +13,7 @@ import type { ManagedSkillsLibraryStore } from "../skills-management/library-sto
 import type { ManualMcpServersStore } from "../tools/mcp/store";
 import type { WorkflowTurnPolicy } from "../workflows/turn-policy";
 import type { ProjectToolsPreparationSnapshot } from "../sections/coordinator/admission/prepared-project-tools";
-import type { SkillsExtension } from "../backends/types";
+import type { SkillsExtension } from "../backends/contracts/types";
 
 /** Native discovery must not add Skills beyond the frozen library receipt. Staged copies remain readable. */
 export function workflowNativeSkillRoots(provider: string, workspace: string, sources?: SkillsExtension) {

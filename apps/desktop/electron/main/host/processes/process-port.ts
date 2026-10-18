@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node child_process/crypto and the DescendantRegistry
- * [OUTPUT]: Provides HostProcessPort (spawn — plain descendant or custody mode through the guardian — write/kill/cleanHost for processes a utility host needs; cleanHost also waits for and settles children still launching, B-02, and touches only the host life it ends, B2-03; spawn reports a custody child's launch identity and settleCustody answers its one shared settlement, B2-01, logging an unconfirmed outcome once with its journal reason) and hostChildEnvironment
+ * [INPUT]: Depends on Node child_process/crypto, DescendantRegistry and birth-witness custody APIs
+ * [OUTPUT]: Provides HostProcessPort for identity-bound spawn/write/kill, descendant recording and shared custody settlement; unconfirmed or rejected settlements remain retryable. cleanHost drains launches and cleans only the matching host life. Exports hostChildEnvironment.
  * [POS]: The only way a utility host gets a child process: main starts it detached (its own group), records PGID + birth durably before acknowledging, and relays stdio as messages; the bridge never holds a process handle
  */
 import type { AgentTurnCustodyDependency } from "../../../../shared/apps/model/app-lifecycle";
@@ -37,7 +37,7 @@ export class HostProcessPort {
    * descendant in the PGID + birth journal. Either way the host only ever sees stdio messages.
    */
   async spawn(hostId: string, spec: { command: string; args: string[]; cwd?: string; env?: Record<string, string>; custody?: boolean; exactEnv?: boolean; requestId?: string | null;
-    dependencies?: readonly AgentTurnCustodyDependency[] },
+    dependencies?: readonly AgentTurnCustodyDependency[]; relayOutput?: "base64" },
     sink: (message: HostToBridge) => void): Promise<{ processId: string; pid: number; identity: { pid: number; birthIdentity: string } | null }> {
     const processId = `proc_${randomBytes(12).toString("base64url")}`;
     const life = this.generations.get(hostId) ?? 0;
@@ -47,8 +47,9 @@ export class HostProcessPort {
     try { ({ child, pid, identity } = await launch); } finally { this.launching.delete(processId); }
     this.processes.set(processId, { hostId, life, child, custody: Boolean(spec.custody) });
     for (const stream of ["stdout", "stderr"] as const) {
-      child[stream].setEncoding("utf8");
-      child[stream].on("data", (data: string) => sink({ t: "process-event", processId, stream, data }));
+      if (!spec.relayOutput) child[stream].setEncoding("utf8");
+      child[stream].on("data", (data: string | Buffer) => sink({ t: "process-event", processId, stream,
+        data: spec.relayOutput ? Buffer.from(data).toString("base64") : String(data) }));
     }
     child.stdin.on("error", () => {});
     child.once("exit", (code, signal) => {
@@ -103,8 +104,12 @@ export class HostProcessPort {
       settling = this.custody.settle(processId).then(entry => {
         if (!entry || !["released", "aborted"].includes(entry.phase)) {
           console.warn("[host] custody cleanup unconfirmed", { processId, phase: entry?.phase ?? "missing", reason: entry?.reason ?? "unknown" });
+          this.settlements.delete(processId);
         }
         return entry;
+      }).catch(cause => {
+        if (this.settlements.get(processId) === settling) this.settlements.delete(processId);
+        throw cause;
       });
       this.settlements.set(processId, settling);
       if (this.settlements.size > 256) this.settlements.delete(this.settlements.keys().next().value!);
@@ -113,6 +118,8 @@ export class HostProcessPort {
   }
 
   /** The turn's view of its custody child (B2-01): `released` only when custody proved the group gone. */
+  recordCustodyDescendants(processId: string) { return this.custody.recordDescendants(processId); }
+
   async settleCustody(processId: string): Promise<"released" | "unconfirmed"> {
     const entry = await this.settle(processId).catch(() => null);
     return entry?.phase === "released" ? "released" : "unconfirmed";

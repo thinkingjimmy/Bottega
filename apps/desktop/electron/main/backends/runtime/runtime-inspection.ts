@@ -7,7 +7,7 @@ import { cachedRuntimeVersion } from "./runtime-version-cache";
 import { isProcessStartupFailure, runtimeVersionAsync } from "./runtime-probe";
 import { candidateDiagnostic, executableIdentity, runtimeIdentityKey, sameIdentity, waitForSignal,
   type RegistryDependencies, type RuntimeIdentity, type InspectedCandidate, type CandidateRuntime } from "./availability/runtime";
-import type { AgentRuntime, ProviderBackend, ResolvedRuntime } from "../types";
+import type { AgentRuntime, ProviderBackend, ResolvedRuntime } from "../contracts/types";
 
 export async function optionalRuntimeIdentity(dependencies: RegistryDependencies, executable: string, signal?: AbortSignal) {
   try {

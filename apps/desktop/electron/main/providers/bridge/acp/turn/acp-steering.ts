@@ -5,7 +5,7 @@
  */
 
 import { asError } from "../../../../ipc/errors";
-import type { AdapterSteerOutcome } from "../../../../backends/types";
+import type { AdapterSteerOutcome } from "../../../../backends/contracts/types";
 
 const STEER_TIMEOUT_MS = 10_000;
 

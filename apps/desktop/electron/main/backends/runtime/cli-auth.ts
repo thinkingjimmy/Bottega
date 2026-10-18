@@ -12,7 +12,7 @@ import {
   type AcpDiagnosticRedactionOptions,
 } from "../acp/trace";
 import { isProcessStartupFailure } from "./runtime-probe";
-import type { AuthCheckResult, ResolvedRuntime } from "../types";
+import type { AuthCheckResult, ResolvedRuntime } from "../contracts/types";
 
 const execFileAsync = promisify(execFile);
 /* Sized for the slowest binary, not the fastest: `codex login status` answers

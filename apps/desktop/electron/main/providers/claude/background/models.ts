@@ -10,7 +10,7 @@ import { inspectAcpSession } from "../../../backends/acp/probe";
 import { OPAQUE_CONFIG_VALUE_PATTERN } from "../../../backends/runtime/capability-validation";
 import { adapterDigestKey, createModelCatalog, executableFileKey, type ModelCatalogProbeRunner } from "../../../backends/models/model-catalog";
 import { claudeAdapterEntry } from "../adapter-entry";
-import type { ResolvedRuntime } from "../../../backends/types";
+import type { ResolvedRuntime } from "../../../backends/contracts/types";
 import { adapterLaunch } from "../../../runtime";
 import { createHash } from "node:crypto";
 import { statSync } from "node:fs";

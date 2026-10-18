@@ -25,11 +25,11 @@ import type {
   BackendTurnOptions,
   ResolvedRuntime,
   RuntimeConfirmation,
-} from "../../backends/types";
+} from "../../backends/contracts/types";
 import { checkClaudeAuth, claudeRoute } from "./auth";
 import { claudeAcpLaunch } from "./environment";
 import { CLAUDE_INTERACTIVE_LOCKDOWN, CLAUDE_SERVICE_TIER, claudeTurnValues, validateClaudeSessionId } from "./turn-config";
-import { BridgedAcpTurn } from "../host/turns/bridged-turn";
+import { BridgedTurn } from "../host/turns/bridged-turn";
 import { requireProviderBridge } from "../host/runtime";
 import {
   claudeHeadlessSpec,
@@ -260,7 +260,7 @@ export const claudeBackend: BackendDescriptor = {
   createTurn: (options) => {
     validate(options.payload.turnOptions);
     const config = claudeSpawnConfig(options);
-    return new BridgedAcpTurn(options, config, requireProviderBridge());
+    return new BridgedTurn(options, config, requireProviderBridge());
   },
   skills: {
     sources: (workspace) => [

@@ -8,7 +8,7 @@ import type {
   UsageLimitInfo,
   UsageLimitWindow,
 } from "../../../../shared/ipc/agent/agent-ipc";
-import type { BackendFailure, FailureHints } from "../types";
+import type { BackendFailure, FailureHints } from "../contracts/types";
 /* The zod-free leaf: a Provider's bridge module builds its failures with this file and must carry no schema library (TASK-11 d2). */
 import {
   agentRuntimeFailure,
@@ -51,7 +51,7 @@ function executableUnavailable(message: string, details: string | undefined) {
 }
 
 /** A plain JSON object view of an untrusted payload; arrays and primitives are not records. */
-/** The adapter's wrapped detail on a -32603 request error: where Codex and Claude report an absent session exactly. */
+/** The adapter's wrapped detail on a -32603 request error: where Claude reports an absent session exactly. */
 export function acpRequestDetails(cause: unknown) {
   const error = record(cause);
   return cause instanceof Error && error?.code === -32_603 ? launchDetails(error.data) : undefined;
@@ -73,19 +73,7 @@ function authData(value: unknown) {
   );
 }
 
-// ─── 额度耗尽：三家的判据形状完全不同，各按其结构化真值认，不做统一正则 ───
-//
-// Codex（codex-acp 1.1.7）：turn error 的 data 带 codexErrorInfo="usageLimitExceeded"。
-//   结构化的 RateLimitSnapshot（resets_at/window_minutes）被 codex-acp 扣在 sessionState
-//   只喂 /status，不经 ACP 透出——所以窗口只能是 unknown，卡片据此隐去周期与倒计时。
-// Claude（claude-agent-acp 0.62.0）：rate_limit_event 经 usage_update 的
-//   _meta["_claude/rateLimit"] 透出，status="rejected" 即已达上限，
-//   rateLimitType/resetsAt 是结构化真值。
-// Kimi（0.29.2）：只有 provider 层 429 / provider.rate_limit（RPM 短时限流，
-//   retryable），没有订阅制窗口概念，故窗口恒为 provider，不谈额度周期。
-
-const CODEX_USAGE_LIMIT = "usageLimitExceeded";
-
+// ACP quota evidence comes from Claude snapshots or provider HTTP rate limits.
 const CLAUDE_WINDOWS: Record<string, UsageLimitWindow> = {
   five_hour: "five-hour",
   seven_day: "weekly",
@@ -107,21 +95,6 @@ const CONNECTION_CODES = new Set([
 ]);
 const SERVICE_HTTP_CODES = new Set([500, 501, 502, 503, 504]);
 const REQUEST_HTTP_CODES = new Set([400, 403, 404, 405, 409, 413, 422]);
-
-const CODEX_FAILURE_CODES: Record<string, AgentRuntimeFailureCode> = {
-  contextWindowExceeded: "context-exhausted",
-  sessionBudgetExceeded: "context-exhausted",
-  serverOverloaded: "service-unavailable",
-  internalServerError: "service-unavailable",
-  badRequest: "request-rejected",
-  sandboxError: "request-rejected",
-  cyberPolicy: "request-rejected",
-  unauthorized: "auth-required",
-};
-
-function codexUsageLimit(data: unknown) {
-  return record(data)?.codexErrorInfo === CODEX_USAGE_LIMIT;
-}
 
 /** Claude 的 resetsAt 是秒级 epoch；统一抬成毫秒，且拒绝非有限值 */
 function claudeResetsAt(value: unknown) {
@@ -234,27 +207,16 @@ export function classifyAcpFailure(
       : cause instanceof Error
         ? cause.message
         : String(cause);
-  const codexCode = record(data)?.codexErrorInfo;
   const isAuth =
     (code !== undefined &&
       AUTH_CODES.has(code) &&
-      (authData(data) || LOCKED_AUTH_MESSAGES.has(message.trim()))) ||
-    codexCode === "unauthorized";
+      (authData(data) || LOCKED_AUTH_MESSAGES.has(message.trim())));
   if (isAuth) return backendFailure("auth-required", message);
-  // 限流判据按证据强弱排序：Claude 的结构化快照 > Codex 的错误码 > provider 429
+  // A structured Claude snapshot takes precedence over provider HTTP status.
   const claudeLimit = claudeUsageLimit(hints?.rateLimit);
   if (claudeLimit) return backendFailure("quota-exhausted", message, claudeLimit);
-  if (codexUsageLimit(data)) {
-    return backendFailure("quota-exhausted", message, { window: "unknown" });
-  }
   if (providerUsageLimit(code, data)) {
     return backendFailure("rate-limited", message, { window: "provider" });
-  }
-  if (codexCode === "usageLimitExceeded") {
-    return backendFailure("quota-exhausted", message);
-  }
-  if (typeof codexCode === "string" && CODEX_FAILURE_CODES[codexCode]) {
-    return backendFailure(CODEX_FAILURE_CODES[codexCode], message);
   }
   const details = launchDetails(data);
   if (executableUnavailable(message, details)) {

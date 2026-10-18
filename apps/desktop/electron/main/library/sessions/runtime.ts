@@ -4,7 +4,7 @@
  * [POS]: Bridge between folder recovery and ACP; no restored session binds before proof succeeds.
  */
 import type { ChatsService } from "../../chats/service/chats-service";
-import type { BackendTurnOptions } from "../../backends/types";
+import type { BackendTurnOptions } from "../../backends/contracts/types";
 import type { HandoffCoverage } from "../../../../shared/chat-agent/contracts";
 import { sessionBoundary, sessionCwdDigest } from "./boundary";
 export async function prepareSessionRecovery(chats: ChatsService, input: { chatId: string; incarnationId: string; userMessageId: string;

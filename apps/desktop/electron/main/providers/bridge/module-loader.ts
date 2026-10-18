@@ -7,12 +7,13 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 import type { AcpSpawnConfig } from "../../backends/acp/launch";
-import type { HeadlessParserState } from "../../backends/types";
+import type { HeadlessParserState } from "../../backends/contracts/types";
 import type { PromptReplay } from "./acp/turn/prompt-replay";
 import type { QuotaExchange } from "../../usage-limits/readers/exchange";
 
 export type BridgeModule = {
-  turnValues: Omit<AcpSpawnConfig, "command" | "args" | "env">;
+  protocol?: "acp" | "codex-app-server";
+  turnValues?: Omit<AcpSpawnConfig, "command" | "args" | "env">;
   headlessParser?: (line: string, state: HeadlessParserState, wantsJson: boolean) => void;
   promptReplay?: PromptReplay;
   /** How this Provider's quota is read on its bridge (TASK-13 B2); a module without one cannot read quota. */
@@ -41,7 +42,9 @@ export function loadPinnedProviderModule(pin: { path?: string; sha256?: string }
   evaluate(module.exports, allowed, module);
   const loaded = module.exports as Partial<BridgeModule>;
   const optionalFunction = (value: unknown) => value === undefined || typeof value === "function";
-  if (!loaded.turnValues || typeof loaded.turnValues !== "object" || !optionalFunction(loaded.headlessParser) || !optionalFunction(loaded.promptReplay)
+  if ((loaded.protocol !== undefined && loaded.protocol !== "acp" && loaded.protocol !== "codex-app-server") ||
+    (loaded.protocol !== "codex-app-server" && (!loaded.turnValues || typeof loaded.turnValues !== "object")) ||
+    (loaded.protocol === "codex-app-server" && loaded.turnValues !== undefined) || !optionalFunction(loaded.headlessParser) || !optionalFunction(loaded.promptReplay)
     || !optionalFunction(loaded.quotaExchange)) {
     throw new ProviderModuleRefused("shape-invalid", `${path} does not export a Provider bridge module`);
   }

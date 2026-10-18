@@ -10,7 +10,7 @@ import { HOST_PACKAGE_MANIFEST, hostPackageManifestSchema } from "@bottega/contr
 import type { ProviderDescriptor, ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
 import { builtinProviderCatalog, createProviderCatalog, type ProviderCatalog } from "../../../../../shared/providers/catalog";
 import type { ProviderCatalogSnapshot } from "../../../../../shared/providers/catalog-ipc";
-import type { BackendDescriptor } from "../../../backends/types";
+import type { BackendDescriptor } from "../../../backends/contracts/types";
 import { admitProviderPackage } from "../../../extensions/host/provider-package";
 import { canonicalDirectory, containedExisting } from "../../../extensions/manifest-adapter";
 import type { DescriptorBackendFactory, ProviderBackend, ProviderCatalogPort, ProviderPackageRef } from "../catalog";

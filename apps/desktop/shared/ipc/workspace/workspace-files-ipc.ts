@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on AgentWorkspaceScope from agent-ipc; never accepts a cwd or absolute path submitted by the renderer
- * [OUTPUT]: Provides capability-free workspace file/directory search, an opaque readRef resign/restricted-read IPC contract, and query/path/index/read byte-budget constants
- * [POS]: apps/desktop/shared/ipc/workspace; Shared read-only capability boundary for the workspace; the renderer can only read a relative path briefly, in select/preview mode, via an opaque readRef
+ * [INPUT]: Depends on AgentWorkspaceScope from agent-ipc; message file hrefs are resolved and checked against main's effective workspace
+ * [OUTPUT]: Provides workspace search, opaque bounded reads and scoped message-file resolution/native actions
+ * [POS]: Workspace file boundary; main retains workspace roots and grants, while renderers submit scoped references and enumerated actions
  */
 
 import type { AgentWorkspaceScope } from "../agent/agent-ipc";
@@ -50,6 +50,8 @@ export const WORKSPACE_FILES_CHANNEL = {
   search: "workspace-files:search",
   resign: "workspace-files:resign",
   read: "workspace-files:read",
+  resolveLink: "workspace-files:resolve-link",
+  linkAction: "workspace-files:link-action",
 } as const;
 
 export const WORKSPACE_FILE_RESULT_LIMIT = 50;
@@ -70,6 +72,13 @@ export type WorkspaceFileResignInput = {
 export type WorkspaceFileReadInput = {
   scope: AgentWorkspaceScope;
   readRef: string;
+};
+
+export type WorkspaceFileLinkInput = { scope: AgentWorkspaceScope; href: string };
+export type WorkspaceFileLinkResult = { path: string; readRef: string; workspaceIdentity: string };
+export type WorkspaceFileLinkActionInput = WorkspaceFileLinkInput & {
+  workspaceIdentity: string;
+  action: "open" | "reveal";
 };
 
 type WorkspaceReadMetadata = {
@@ -100,6 +109,8 @@ export type WorkspaceFilesBridgeApi = {
   ) => Promise<WorkspaceFilesSearchResult>;
   resign?: (input: WorkspaceFileResignInput) => Promise<{ readRef: string }>;
   read?: (input: WorkspaceFileReadInput) => Promise<WorkspaceFileReadResult>;
+  resolveLink?: (input: WorkspaceFileLinkInput) => Promise<WorkspaceFileLinkResult>;
+  linkAction?: (input: WorkspaceFileLinkActionInput) => Promise<void>;
 };
 
 /** 未知/旧 wire 值不得获得目录语义。 */

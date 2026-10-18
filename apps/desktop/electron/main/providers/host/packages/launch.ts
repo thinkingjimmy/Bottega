@@ -4,12 +4,12 @@
  * [POS]: The launch half of providers/host/packages' DescriptorBackend: turns, readiness and the model probe all start from this one plan, so none can drift from what the descriptor declared.
  */
 import { requireHostPackageRuntime } from "../../../extensions/host/runtime";
-import type { AgentProcessLaunch } from "../../../backends/types";
+import type { AgentProcessLaunch } from "../../../backends/contracts/types";
 import type { ProviderPackageRef } from "../catalog";
 import { realpathSync } from "node:fs";
 import type { ProviderDescriptor } from "@ai-chat/cloud-protocol/contracts/provider";
 import { sanitizedProcessEnvironment } from "../../../backends/runtime/runtime-probe";
-import type { ResolvedRuntime } from "../../../backends/types";
+import type { ResolvedRuntime } from "../../../backends/contracts/types";
 import { agentRuntimeFailure, diagnosticFailureDetails, ProductFailureError } from "../../../../../shared/product/product-failure";
 import { assertProviderAdmitted, ProviderAdmissionRefused } from "../admission";
 import { declaredLaunchRefusal } from "../../../extensions/trust/provider-admission";

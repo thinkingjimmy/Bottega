@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the Provider id (a built-in or an available package Provider), ChildProcess, process-group and the task start fence (woken when the last safety lock of a backend is released)
- * [OUTPUT]: Provides atomic quota exclusion (with its blockers named for the main log, startup recovery among them, and a deferred read woken whenever starts become possible again) that neither a queued background refresh nor a credential-safe probe can starve, credential reservations, chat-priority cancellation, parked quota channels that block nothing but are closed before a turn is admitted, quota-preserving background admission and per-backend admission with a 4-slot semaphore (2 reserved for interactive), bounded FIFO background queueing, safety-lock hold/release, birth-recorded auxiliary-process tracking whose shutdown never signals a reused PID, and coordinated shutdown A Provider turned off in Plugins & Apps is refused at admission (`plugin-disabled`).
+ * [OUTPUT]: Provides custody-owner cleanup guards and atomic quota exclusion (with its blockers named for the main log, startup recovery among them, and a deferred read woken whenever starts become possible again) that neither a queued background refresh nor a credential-safe probe can starve, credential reservations, chat-priority cancellation, parked quota channels that block nothing but are closed before a turn is admitted, quota-preserving background admission and per-backend admission with a 4-slot semaphore (2 reserved for interactive), bounded FIFO background queueing, safety-lock hold/release, birth-recorded auxiliary-process tracking whose shutdown never signals a reused PID, and coordinated shutdown A Provider turned off in Plugins & Apps is refused at admission (`plugin-disabled`).
  * `agentShutdownProcesses` reports birth-qualified outstanding process identities for quit feedback; shutdown waits for quota/channel settlement before judging cleanup locks.
  * [POS]: The sole owner of Agent child-process admission in Electron main; callers acquire a lease before spawning and report a CleanupResult after teardown
  */
@@ -318,6 +318,15 @@ export function reportAgentCleanupFailure(
 /* Messages that waited on a lock (the dispatcher refuses to start into one) are woken when the last lock goes. */
 function releaseSafetyLock(state: BackendDomain, owner: symbol) {
   if (state.safetyLocks.delete(owner) && state.safetyLocks.size === 0) taskStartFence.wake();
+}
+
+/** A long-lived custody owner releases only its own failure lock after verified settlement. */
+export function createAgentCleanupGuard(backend: ProviderId) {
+  const owner = Symbol(`${backend}-custody-cleanup`);
+  return {
+    fail: (cause: unknown) => reportAgentCleanupFailure(backend, cause, owner),
+    released: () => { const state = domain(backend); releaseSafetyLock(state, owner); drain(backend, state); },
+  };
 }
 
 export function clearAgentSafetyLockWhenIdle(backend: ProviderId) {

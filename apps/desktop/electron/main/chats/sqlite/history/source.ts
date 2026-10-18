@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on SQLite saved rows, bounded chunk/blob I/O, and cryptographic source identities
- * [OUTPUT]: Reads bounded canonical body and saved-part slices while preserving view, identity, and part-manifest truncation
+ * [OUTPUT]: Reads bounded canonical bodies, saved attachment manifests and part slices while preserving view and source identity
  * [POS]: Worker-only history source; file I/O finishes before the worker accepts another command
  */
 
@@ -89,6 +89,7 @@ export class HistorySource {
     let notSaved = false;
     let parts: HistoryRecord["parts"];
     let partsTruncated = false;
+    let attachments: HistoryRecord["attachments"];
     if (source.segment === "native") {
       if (source.bytes > 64 * 1024) return null;
       const row = this.db.prepare(`SELECT payload_json FROM chat_messages WHERE chat_id=? AND message_id=? AND seq=?`)
@@ -98,6 +99,7 @@ export class HistorySource {
       digest = createHash("sha256").update(payload).digest("hex");
       const message = JSON.parse(payload);
       backend = message.backend;
+      if (message.role === "user" && message.attachments?.length) attachments = message.attachments;
       const savedParts = (message.parts ?? []) as Array<{ id?: string; itemId?: string; kind?: string }>;
       const selectedPart = partId ? savedParts.find((part, index) => (part.itemId ?? part.id ?? `part-${index}`) === partId) : undefined;
       if (partId && !selectedPart) return null;
@@ -154,6 +156,7 @@ export class HistorySource {
       role: source.role, ...(source.role === "assistant" ? { backend } : {}), text,
       range: { fromByte, toByte: fromByte + Buffer.byteLength(text), totalBytes },
       projectionTruncated: fromByte + Buffer.byteLength(text) < totalBytes, notSaved,
+      ...(attachments?.length ? { attachments } : {}),
       ...(partsTruncated ? { partsTruncated: true } : {}), ...(parts?.length ? { parts } : {}) };
   }
   private readBlob(row: Row, fromByte: number, limit: number) {

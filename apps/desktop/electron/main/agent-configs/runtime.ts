@@ -22,7 +22,7 @@ export const agentConfigsRuntime = () => installed;
    Measured evidence (network-off, and read-only where no host sandbox applies) comes from the host probes. The config dialog's
    guarantees and workflow role admission both read this one list. */
 export function hostEnforcement(): HostEnforcement {
-  return { readOnlySandbox: process.platform === "darwin" ? ["codex", "kimi", "opencode", "claude"] : [] };
+  return { readOnlySandbox: process.platform === "darwin" ? ["kimi", "opencode", "claude"] : [] };
 }
 /** The capabilities the host itself enforces around a Provider on this computer. */
 export const hostEnforcedFor = (providerId: string) => hostEnforcement().readOnlySandbox.includes(providerId) ? ["read-only" as const] : [];

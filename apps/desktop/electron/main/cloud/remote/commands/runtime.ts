@@ -28,7 +28,7 @@ import type { ServerClock } from "@ai-chat/cloud-protocol/continuity/clock";
 import type { CloudFunctionArgs, CloudFunctionResult } from "@ai-chat/cloud-protocol";
 import { remoteModelsSchema, type RemoteAgentCapability, type RemoteModel } from "@ai-chat/cloud-protocol/remote/model";
 import type { BackendModelInfo } from "../../../../../shared/ipc/agent/agent-ipc";
-import type { AgentTurn } from "../../../backends/types";
+import type { AgentTurn } from "../../../backends/contracts/types";
 import type { BackendRuntimeSnapshot } from "../../../backends/runtime/availability/runtime";
 import type { AgentBackendId } from "../../../../../shared/ipc/agent/agent-ipc";
 import { builtinProviderCatalog, knownBackend } from "../../../../../shared/providers/catalog";

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node crypto, ProductFailure, chat lifecycle/projection collaborators, device identity, the typed SQLite worker client, and the shared ChatStoreState cell with read, history, fork, transition, and persistence collaborators; the provider catalog's default provider
- * [OUTPUT]: Provides receipt-gated Chat APIs with frozen execution admission, durable title-job recovery, readonly-safe Project detachment and App transcript retention, opened through the two-phase open()/adopt() startup split that initialize() composes.
+ * [OUTPUT]: Provides receipt-gated Chat APIs with frozen execution admission, durable title-job recovery, scoped background result updates, readonly-safe Project detachment and App transcript retention, opened through the two-phase open()/adopt() startup split that initialize() composes.
  * [POS]: Main-process Chat domain queue and metadata owner; durable writes, fork construction, pure transitions, read projections, and import/continuation sagas live in focused composed siblings
  */
 import { type ChatStoreDependencies, type ChatSqliteRuntimeFacts, sessionKey, requestHash } from "./store-contracts";
@@ -10,6 +10,7 @@ import type { ChatAgentId } from "../../../shared/chat-agent/options";
 import { patchChatOptions, prepareSwitchCommand, switchChatAgent } from "./store/agent-switch/store";
 import { readSwitchReservation, reserveAgentSwitchSequences, reserveTurnSequences } from "./store/agent-switch/reservation";
 import type { ChatOptionsPatch } from "../../../shared/chat-agent/contracts";
+import { persistBackgroundResults, type BackgroundResultCommit } from "./store/background/results";
 import { randomUUID } from "node:crypto";
 import type { SessionRef } from "../../../shared/ipc/agent/agent-ipc";
 import {
@@ -361,6 +362,8 @@ export class ChatStore {
     );
     return facts.nextSeq;
   }
+
+  applyNativeBackgroundResults(input: BackgroundResultCommit) { return persistBackgroundResults(this.state, input, () => this.sync.notifyAppended("chat", input.chatId)); }
 
   appendTurnResult(chatId: string, input: TurnCommitInput) {
     return this.state.queue.enqueue(async () => {

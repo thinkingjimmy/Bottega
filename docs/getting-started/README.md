@@ -40,10 +40,10 @@ Setup has one path and never mentions an account: choose your Bottega folder, th
 
 ## Why Bottega
 
-- **Use the agents you already trust.** Bottega talks to official local CLIs through ACP. It does not copy, migrate, or manage their credentials.
+- **Use the agents you already trust.** Bottega connects to official local CLIs, using Codex's native App Server for Codex. It does not copy, migrate, or manage their credentials.
 - **Turn conversations into workspaces.** A chat can own structured Base data, reusable Apps, files, browser tabs, and long-lived context instead of ending as an isolated transcript.
 - **Coordinate more than one agent.** Plans, steering, Sections, Subagents, and result promotion make parallel work visible and reusable.
-- **Keep authority explicit.** Files, Apps, tools, Memory, and cross-chat access are granted through bounded capabilities rather than an ambient all-access context.
+- **Keep tool authority explicit.** Bottega checks App, tool, Memory and cross-chat access. Agent commands use the selected Provider's execution permissions; read the [Codex permission model](../features/README.md#codex-command-permissions).
 
 See the [features guide](../features/README.md) for the product model and its four core capability areas.
 
@@ -51,13 +51,23 @@ See the [features guide](../features/README.md) for the product model and its fo
 
 - A Mac with Apple silicon
 - At least one supported CLI:
-  - Codex CLI 0.145.0 or newer
+  - Codex CLI **0.163.0-alpha.10.2 exactly**; other versions are not supported by this release.
   - Claude Code 2.1.216 or newer
   - Kimi Code 0.29.1 or newer
   - OpenCode 1.18.13 or newer
 - To build from source: Node.js 24 and pnpm 11.9 or newer
 
 Authenticate with the CLI provider before starting Bottega. Bottega never asks for or imports that credential.
+
+## Upgrading to 0.2.7
+
+0.2.7 uses the official stable channel for macOS on Apple silicon (ARM64). Version 0.2.6 can check that channel for updates. The 0.2.5 personal build has its updater disabled and requires a manual installation of 0.2.7. Before replacing the app, quit Bottega completely and back up your Bottega folder and application data.
+
+Codex requires CLI **0.163.0-alpha.10.2 exactly** and uses native command approval. Ask for approval and Approve for me allow network access, temporary-directory writes and ordinary reads outside the workspace. Bottega's previous credential-path denials and internal read-only fences no longer apply to Codex commands. Plan keeps the selected execution permissions. Read the [full permission changes](../features/README.md#codex-command-permissions) before starting a task.
+
+This release keeps **protocol 19**, existing content, sync passwords and account keys. No data reset is required. Dock remains Alpha on macOS 27.x with Apple silicon; replacement, system recovery and display/fullscreen combinations are still being validated. See the [0.2.7 changelog](../changelog/README.md#2026-10-18--v027) and [installation steps](#download-and-install).
+
+The older upgrade notes below describe their original versions. Use the current Codex permission model for 0.2.7.
 
 ## Upgrading to 0.2.6
 
@@ -89,18 +99,27 @@ Cloud Sync now uses protocol 15. Update all computers that use cloud features to
 
 ## Download and install
 
-[Download 0.2.6](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.6), the official stable release for **macOS on Apple silicon (ARM64) only**. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
+[Download 0.2.7](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7), the official stable release for **macOS on Apple silicon (ARM64) only**. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.6) | Official stable release. |
+| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7) | Official stable release. |
 
-The official installers have **Developer ID signatures and Apple notarization**. 0.2.6 enables the official stable automatic-update channel. The shipped 0.2.5 personal build requires one manual installation of 0.2.6; subsequent automatic-upgrade tests need a stable version higher than 0.2.6.
+Use the official **Developer ID signed and Apple notarized** installers. The 0.2.6 and 0.2.7 releases use the stable automatic-update channel; the 0.2.5 personal build requires a manual update.
 
 1. Quit Bottega completely and back up both your Bottega folder and application data.
-2. Download the DMG or ZIP and `release-manifest.json` from the same release. Run `shasum -a 256` followed by the installer's path. Compare the output with the matching installer's `sha256` in the manifest.
+2. Download the DMG or ZIP and `Bottega-0.2.7-release-evidence.tar.gz` from the same release. Read `release-manifest.json` at the archive's root. Run `shasum -a 256` followed by the installer's path, then compare the output with that installer's `sha256` in the manifest.
 3. Open the DMG and drag Bottega into `Applications`, or extract the ZIP and copy the app there.
 4. Open Bottega from `Applications` and confirm the normal macOS first-launch prompt. If macOS reports a signature or notarization problem, keep the error details and report the bug before opening that package.
+
+To read the manifest and check the DMG without extracting the full archive:
+
+```bash
+tar -xOf Bottega-0.2.7-release-evidence.tar.gz release-manifest.json
+shasum -a 256 Bottega-0.2.7-arm64.dmg
+```
+
+For the ZIP, use `Bottega-0.2.7-arm64-mac.zip` in the checksum command. The archive also contains the release signatures and acceptance evidence.
 
 ## Cloud Sync and Cloud Web
 
@@ -255,9 +274,9 @@ pnpm build       # Build the Electron application
 pnpm dist        # Build a local macOS DMG
 ```
 
-`fetch-node.mjs` downloads and verifies the pinned Node runtime once into your user cache; `pnpm dev` then uses it offline. `pnpm dist` creates a local installer on a Mac with Apple silicon. Signed distribution requires your own Apple signing configuration; a local build is not the verified prerelease download.
+`fetch-node.mjs` downloads and verifies the pinned Node runtime once into your user cache; `pnpm dev` then uses it offline. `pnpm dist` creates a local installer on a Mac with Apple silicon. Signed distribution requires your own Apple signing configuration; a local build is not the official release download.
 
-On first launch, choose your Bottega folder and let Bottega detect the supported CLIs; **Install later** skips the Agent step. Skills and long-term memory are optional steps in the same wizard and can be changed later in Settings. Once the folder and at least one backend are ready, create a task and select its Agent before sending the first message. Signing in is not part of setup.
+On first launch, choose your Bottega folder and let Bottega detect the supported CLIs; **Install later** skips the Agent step. Configure Skills and long-term memory later in Settings. Once the folder and at least one backend are ready, create a task and select its Agent before sending the first message. Signing in is not part of setup.
 
 ## Repository scope
 

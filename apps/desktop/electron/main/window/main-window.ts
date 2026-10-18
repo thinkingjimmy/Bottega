@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, history/quota services, Apps, Update, MCP, and window security, and the build-gated cloud account lifecycle, and the workflow turn policy (a read-only workspace only the executor can ask for).
- * [OUTPUT]: Creates the main window with a bounded listener budget for its fixed domain registrars, derives canonical turn authority, records actual session prompt hashes, admits saved-history fresh-session recovery before the original user boundary and registers Project/Extension/App IPC plus any injected trusted-renderer registrars; a package Provider's turn gets no built-in tool policy, projection, App tools, Skills access or restored session.
+ * [OUTPUT]: Creates the main window with a bounded listener budget for its fixed domain registrars, derives canonical turn authority, wires scoped background result persistence, records actual session prompt hashes, admits saved-history fresh-session recovery before the original user boundary and registers Project/Extension/App IPC plus any injected trusted-renderer registrars; a package Provider's turn gets no built-in tool policy, projection, App tools, Skills access or restored session.
  * Main-owned workflow Skill receipts and MCP policies are validated against the canonical Project; Provider settings survive Skill isolation.
  * Window closure releases only its observed Artifact workspace leases; it does not recreate a closed workspace owner.
  * [POS]: Interactive main-window authority boundary (it also freezes each turn's Provider plugin settings with the backend session config); renderer identities are routing hints and main re-derives every Project lifecycle fact
@@ -662,6 +662,7 @@ export function createMainWindow({
       memory.prepareContribution(admission, projection),
     assertPlanAvailable: (requested, workspace, backend) =>
       skills.assertPlanAvailable(requested, workspace, backend),
+    persistNativeBackgroundResults: input => chats.applyNativeBackgroundResults(input),
     appendTurnResult: (conversationId, input) =>
       chats.appendTurnResult(conversationId, input),
     loadSubagents: async (conversationId) =>

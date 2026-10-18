@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ChatAttachmentMeta from chats-ipc and dataUrlByteSize/count/byte limits from agent-ipc; consumes per-Section drafts plus image capability and byte-budget options
- * [OUTPUT]: Provides planSectionSnapshots, producing the frozen SectionSnapshotPlan[] with fixed-width attachment status lines (plain / pending / a terminal included-or-omitted reason), and assertCopyFidelity for verifying a copied data URL matches its declared metadata
+ * [OUTPUT]: Plans bounded image/file snapshots with fixed-width attachment status lines and verifies copied data-URL metadata
  * [POS]: apps/desktop/shared/content/section; Single source of truth for which Section attachments survive the shared byte/count budget; main only consumes the plan this module produces and never re-decides inclusion itself
  */
 
@@ -152,7 +152,7 @@ export function planSectionSnapshots(
       const reason: SectionAttachmentReason =
         at < 0
           ? "transcript-truncated"
-          : !options.imageInput
+          : !options.imageInput && meta.mediaType.startsWith("image/")
             ? "image-input-off"
             : included.length >= perSectionCount
               ? "count-limit"

@@ -15,7 +15,7 @@ import type {
   TrustedManualTurnSubmission as ManualTurnSubmission,
 } from "../../../../../../shared/ipc/content/sections-ipc";
 import { workspacePreconditionSchema } from "../../../../../../shared/content/submission/submission";
-import type { ResolvedAgentInput } from "../../../../backends/types";
+import type { ResolvedAgentInput } from "../../../../backends/contracts/types";
 import { backendRuntimeRegistry } from "../../../../backends";
 import { hydrateProjectToolsReceipt } from "../prepared-project-tools";
 import { assertPreparedSkillReferences } from "../prepared-skill-reference-custody";

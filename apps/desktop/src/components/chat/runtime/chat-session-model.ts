@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared RichInput wire projection, shared Agent/Chat/Project/Submission contracts, and PromptInput
- * [OUTPUT]: Defines hydration/edit/send/steer/Stop access, the composer's named lock reason, revision gates, Subagent-aware image intents and shared Chat/App contracts; transcript segments own immutable-prefix eligibility.
+ * [OUTPUT]: Defines Chat gates, panel contracts including message-owned workspace previews, and Subagent-aware image intents; transcript segments own immutable-prefix eligibility.
  * [POS]: The canonical type and pure-policy layer for chat/runtime
  */
 
@@ -143,6 +143,7 @@ export type SidePanelState =
       kind: "workspace-preview";
       nodeId: string;
       filename: string;
+      localFile?: { href: string; scope: AgentWorkspaceScope; workspaceIdentity?: string };
       status: "loading" | "text" | "metadata" | "error";
       content?: string;
       size?: number;

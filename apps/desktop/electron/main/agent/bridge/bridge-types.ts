@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Agent/Chat/MCP/platform DTOs, canonical Project context, hydrated Project Tools and durable Skill receipts, backend session config, App authorization, and built-in MCP leases
- * [OUTPUT]: Defines bridge dependencies including trusted turn admission, dispatch authorization and Skill-isolated session configuration.
+ * [OUTPUT]: Defines bridge dependencies including trusted turn admission, exact-owner background result commits, dispatch authorization and Skill-isolated session configuration.
  * [POS]: apps/desktop/electron/main/agent/bridge; Narrow Agent bridge contract; Electron composition and executors exchange frozen authority without importing one another
  */
 
@@ -31,7 +31,7 @@ import type {
   BackendTurnOptions,
   ResolvedAgentInput,
   ThirdPartyMcpProtocolObservation,
-} from "../../backends/types";
+} from "../../backends/contracts/types";
 import type { AgentProcessLease } from "../../agent-process-supervisor";
 import type { IssuedBuiltinMcp } from "../../tools/lease";
 import type { TurnEntry } from "../turns/turn/turn-registry-model";
@@ -212,7 +212,7 @@ export type AgentBridgeOptions = {
     backend: ProviderId
   ) => Promise<void> | void;
   conversationIncarnation?: (conversationId: string) => string | undefined;
-  assertTurnAdmission?: (payload: AgentSendPayload, authority?: import("../../backends/types").TrustedTurnAuthority) => Promise<void> | void;
+  assertTurnAdmission?: (payload: AgentSendPayload, authority?: import("../../backends/contracts/types").TrustedTurnAuthority) => Promise<void> | void;
   prepareFreshRetry?: (payload: AgentSendPayload, userMessageId?: string) => Promise<AgentSendPayload["handoff"]>;
   reserveAssistantSequence?: (conversationId: string) => Promise<number>;
   /** 主 turn 的后端中立 item 观察口；发布前同步执行的 void 派生，subagent part 不走此回调。 */
@@ -274,6 +274,7 @@ export type AgentBridgeOptions = {
     workspace: string,
     backend: AgentBackendId
   ) => Promise<void> | void;
+  persistNativeBackgroundResults?: (input: import("../../chats/store/background/results").BackgroundResultCommit) => Promise<void>;
   appendTurnResult?: (
     conversationId: string,
     input: TurnCommitInput

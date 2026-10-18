@@ -40,12 +40,12 @@ export const providerDescriptorSchema = z.object({
       it may receive (names only; values come from the host's launch plan). */
   runtime: z.object({
     discovery: z.object({ commands: z.array(z.string().min(1).max(64)).min(1).max(8), versionArgs: z.array(z.string().min(1).max(32)).max(4),
-      minimumVersion: z.string().regex(/^\d+\.\d+\.\d+$/) }).strict(),
+      minimumVersion: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/) }).strict(),
     /* `args`: what starts the CLI speaking ACP on stdio (e.g. `["acp"]`), passed as argv after the discovered executable, never
        through a shell. An argument cannot contain a path separator, so it cannot name a path elsewhere; a bare name is relative to the
        working directory the host sets. No control characters (U+0000–U+001F, U+007F–U+009F) and no leading `@` (a response file some CLIs read). Absent
        and empty mean the same: no arguments (built-ins use the host's launch). */
-    launch: z.object({ kind: z.enum(["acp-stdio-native", "acp-stdio-adapter"]), layer: z.enum(["native", "bundled-node"]),
+    launch: z.object({ kind: z.enum(["acp-stdio-native", "acp-stdio-adapter", "codex-app-server"]), layer: z.enum(["native", "bundled-node"]),
       args: z.array(commandArg).max(8).optional() }).strict(),
     env: z.object({ allow: z.array(envName).max(64), processStart: z.array(envName).max(64) }).strict(),
   }).strict(),
@@ -159,8 +159,8 @@ export type WorkflowRole = keyof typeof WORKFLOW_ROLES;
  * plan and review are refused for it), `not-measured` when the capability is possible but not proven enforced on
  * this exact CLI, package and probe.
  * Measured (CLI canary, 2026-09-25): Claude 2.1.282 proves read-only and tool-filter through a tool allowlist (plan
- * mode makes the model decline rather than be refused); Codex 0.155.1 proves read-only through its sandbox and cancel,
- * so it can plan, review and develop, but not tool-filter, so result-format stays `not-measured` for it.
+ * mode makes the model decline rather than be refused). Codex bb-native-v1 does not admit strict read-only,
+ * network-off or no-tool roles; its ordinary Plan behavior retains the selected Chat permissions.
  */
 export function admitWorkflowRole(input: { role: WorkflowRole; descriptor: ProviderDescriptor; measured: readonly MeasuredCapability[];
   identity: MeasurementIdentity; userRequires?: readonly ProviderCapability[]; hostEnforced?: readonly ProviderCapability[] }) {

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on UI Skeleton, localized transcript controls, shared ConversationFold, ChatAttachmentMeta, live previews, and attachment read/open intents
- * [OUTPUT]: Provides localized UserMessageFold with hover feedback, directional expansion chevrons, and a 44px touch target, plus ChatUserAttachments with lazy downscaled stored previews, and side-panel image actions
+ * [OUTPUT]: Provides UserMessageFold and ChatUserAttachments with lazy image previews, file-name chips and side-panel image actions
  * [POS]: apps/desktop/src/components/chat/transcript/content; User-message body and attachment display unit consumed by the ChatTranscript user branch
  */
 
@@ -158,7 +158,9 @@ export function ChatUserAttachments({
             );
           })
         : attachments!.map((meta) => (
-            <StoredThumb chatId={chatId} key={meta.id} meta={meta} onOpen={onOpen} />
+            meta.mediaType.startsWith("image/")
+              ? <StoredThumb chatId={chatId} key={meta.id} meta={meta} onOpen={onOpen} />
+              : <Thumb key={meta.id} filename={meta.filename} url="" />
           ))}
     </div>
   );

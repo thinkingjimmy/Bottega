@@ -1,12 +1,23 @@
 /**
  * [INPUT]: Depends on the chatSurfacesEn structural type
- * [OUTPUT]: Provides the Japanese Chat surfaces catalog with the exact English structure
+ * [OUTPUT]: Japanese Chat surfaces, including local-file preview actions and failures
  * [POS]: Japanese Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
 import { chatSurfacesEn } from "./en";
 
 export const chatSurfacesJa: typeof chatSurfacesEn = {
+  nativeBackground: {
+    "stop": "停止",
+    "stopping": "停止中…",
+    "started": "「{{mode}}」で起動。返信後も実行を続けます。",
+    "failed": "コマンドの停止を確認できませんでした。もう一度お試しください。",
+    "modes": {
+      "ask-for-approval": "承認を求める",
+      "approve-for-me": "自動承認",
+      "full-access": "フルアクセス"
+    }
+  },
   sidePanel: {
     shell: {
       loadingBase: "Base を読み込み中",
@@ -15,6 +26,19 @@ export const chatSurfacesJa: typeof chatSurfacesEn = {
       bytes: "{{count}} バイト",
       resize: "サイドパネルの幅を変更",
       resizeHint: "ドラッグまたは矢印キーでサイドパネルの幅を変更",
+    },
+    file: {
+      open: "システムアプリで開く",
+      reveal: "Finder で表示",
+      copyPath: "パスをコピー",
+      copied: "パスをコピーしました",
+      retry: "再試行",
+      missing: "このパスにファイルがありません。移動または削除された可能性があります。",
+      outside: "ファイルが現在のワークスペース外にあるか、ワークスペースが変更されました。",
+      readFailed: "ファイルをプレビューできませんでした。再試行してください。",
+      actionFailed: "ファイル操作に失敗しました。プレビューを開き直して再試行してください。",
+      tooLarge: "ファイルがプレビュー上限の 1 MiB を超えています。システムアプリで開けます。",
+      binary: "このファイルは UTF-8 テキストではありません。システムアプリで開けます。",
     },
     appGrant: {
       badgeAria: "{{name}} の権限 —— データ：{{data}}、代わりに操作：{{delegation}}",

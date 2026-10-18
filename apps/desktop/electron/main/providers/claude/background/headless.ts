@@ -15,10 +15,10 @@ import type {
   HeadlessExecutionSpec,
   HeadlessJob,
   ResolvedRuntime,
-} from "../../../backends/types";
+} from "../../../backends/contracts/types";
 import { claudeAdapterEnvironment } from "../environment";
 import { claudeHeadlessParseLine } from "../turn-config";
-import type { BackendTurnOptions } from "../../../backends/types";
+import type { BackendTurnOptions } from "../../../backends/contracts/types";
 
 const MAX_BUDGET_USD = "5";
 const MAX_TURNS = "64";

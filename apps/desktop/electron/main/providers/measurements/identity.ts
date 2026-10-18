@@ -9,11 +9,11 @@ import { dirname, join } from "node:path";
 import { createReadStream, existsSync } from "node:fs";
 import type { MeasurementIdentity } from "@ai-chat/cloud-protocol/contracts/provider";
 import { executableIdentity, runtimeIdentityKey, sameIdentity } from "../../backends/runtime/availability/runtime";
-import type { ResolvedRuntime } from "../../backends/types";
+import type { ResolvedRuntime } from "../../backends/contracts/types";
 
 /* Bump when any probe's method or verdict rule changes, so earlier records stop counting. */
-/* 4: the version, digest and probe must describe the same executable. */
-export const HOST_PROBE_VERSION = "host-probe/4";
+/* 5: native Codex invalidates all adapter and outer-Seatbelt evidence. */
+export const HOST_PROBE_VERSION = "host-probe/5:bb-native-v1";
 export class MeasurementRuntimeChanged extends Error {
   constructor() { super("measurement-runtime-changed"); }
 }

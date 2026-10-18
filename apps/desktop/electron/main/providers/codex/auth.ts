@@ -6,7 +6,7 @@
 
 import { constants } from "node:fs";
 import { open, readFile } from "node:fs/promises";
-import type { ResolvedRuntime } from "../../backends/types";
+import type { ResolvedRuntime } from "../../backends/contracts/types";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { codexEnvironment } from "./environment";

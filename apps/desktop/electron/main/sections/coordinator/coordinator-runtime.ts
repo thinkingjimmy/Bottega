@@ -10,7 +10,7 @@ import type {
   TrustedManualTurnSubmission as ManualTurnSubmission,
 } from "../../../../shared/ipc/content/sections-ipc";
 import type { TurnOrigin } from "../../agent/bridge/bridge-types";
-import type { ResolvedAgentInput, TrustedTurnAuthority } from "../../backends/types";
+import type { ResolvedAgentInput, TrustedTurnAuthority } from "../../backends/contracts/types";
 import type { ChatsService } from "../../chats/service/chats-service";
 import type { SettingsStore } from "../../settings/settings-store";
 import {
@@ -115,7 +115,7 @@ export type CoordinatorDependencies = {
   steerTurn?(
     requestId: string,
     input: ResolvedAgentInput["input"]
-  ): Promise<import("../../backends/types").AdapterSteerOutcome>;
+  ): Promise<import("../../backends/contracts/types").AdapterSteerOutcome>;
 };
 
 export function manualIntentProjectId(

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on TurnRegistry projection lane, runtime registry, MCP-plan-bound session persistence, immutable artifact and image projection, MCP/server-fact observation and subagent reducer
- * [OUTPUT]: Projects typed turn outcomes, provider identity and Chat-local availability evidence; only complete success grants operation evidence, without rewriting global probe auth.
+ * [OUTPUT]: Atomically replaces an authorized native fork source, with rollback on failed handoff; persists artifact-projected native child items before publication; projects typed turn outcomes, provider identity and Chat-local availability evidence; only complete success grants operation evidence, without rewriting global probe auth.
  * [POS]: apps/desktop/electron/main/agent/turns/turn; Factory wiring backend turn events into agent-bridge projections behind a single generation fence; agent-bridge itself only starts and routes turns
  */
 
@@ -9,12 +9,12 @@ import { artifactRuntime } from "../../../artifacts/core/runtime";
 import type { SessionServiceTierEffective } from "../../../../../shared/ipc/agent/agent-ipc";
 import { applySubagent } from "../../../../../shared/chats/model/chat-turn-reducer";
 import { backendRuntimeRegistry } from "../../../backends";
-import type { AgentTurnCallbacks, ProviderBackend } from "../../../backends/types";
+import type { AgentTurnCallbacks, ProviderBackend } from "../../../backends/contracts/types";
 import { projectAgentImage } from "../../../gallery/agent-image-projection";
 import type { ThreadScopeRegistry } from "../thread/thread-scope";
 import type { TurnRegistry } from "./turn-registry";
 import type { SourceTerminal } from "./turn-registry-model";
-import type { AgentTurn } from "../../../backends/types";
+import type { AgentTurn } from "../../../backends/contracts/types";
 import {
   agentRuntimeFailure,
   diagnosticFailureDetails,
@@ -40,7 +40,7 @@ type TurnCallbackPorts = {
 };
 
 type TurnCallbackInput = {
-  trustedAuthority?: import("../../../backends/types").TrustedTurnAuthority;
+  trustedAuthority?: import("../../../backends/contracts/types").TrustedTurnAuthority;
   entry: BridgeEntry;
   generation: number;
   backend: ProviderBackend;
@@ -84,8 +84,19 @@ export function createTurnCallbacks(
       publish(entry, { type: "service-tier-effective", effective });
     }
   };
+  const recordServiceTier = (value: string, unsupported = false) => {
+    if (!boundSession) return;
+    const effective: SessionServiceTierEffective = { value,
+      reason: unsupported ? "modelUnsupported" : value === "default" ? "backendOff" : "backendOn", at: Date.now() };
+    threadScopes.setServiceTierEffective(boundSession, entry.conversationId, effective);
+    publish(entry, { type: "service-tier-effective", effective });
+  };
   return {
-    onThread: async (session) => {
+    onServiceTierUpdate: value => ifCurrent(() => {
+      if (value !== null && (typeof value !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(value))) return;
+      recordServiceTier(value ?? "default");
+    }),
+    onThread: async (session, previous) => {
       if (entry.generation !== generation) return;
       if (!backend.validateSessionId(session.id)) {
         throw new Error(`${backend.displayName} 返回了无效的 sessionId`);
@@ -105,11 +116,17 @@ export function createTurnCallbacks(
       threadScopes.bind(bound, entry.conversationId);
       boundSession = bound;
       await entry.artifacts?.bindSession(bound.id);
-      await options.onSessionBound?.(
-        entry.conversationId,
-        bound,
-        entry.context
-      );
+      if (previous) {
+        if (!options.replaceSession || entry.payload?.session?.backend !== previous.backend || entry.payload.session.id !== previous.id) throw new Error("Fork source session is stale");
+        await options.replaceSession(entry.conversationId, previous, bound);
+        try { await options.onSessionBound?.(entry.conversationId, bound, entry.context); }
+        catch (cause) {
+          await options.replaceSession(entry.conversationId, bound, previous);
+          threadScopes.releaseSession(bound, entry.conversationId);
+          throw cause;
+        }
+        threadScopes.releaseSession(previous, entry.conversationId);
+      } else await options.onSessionBound?.(entry.conversationId, bound, entry.context);
       publish(entry, { type: "session", session: bound });
       publishServiceTierEffective(bound);
     },
@@ -160,23 +177,7 @@ export function createTurnCallbacks(
             )?.[0]
           : "default";
         if (!productValue) return;
-        /* 只发机器判据：产品文案在 renderer 的五语言目录里，main 拼一句英文
-           就等于把这条状态钉死在英文上（同 BackendInfo.reason 的接缝）。 */
-        const effective: SessionServiceTierEffective = {
-          value: productValue,
-          reason: !option
-            ? "modelUnsupported"
-            : productValue === "default"
-              ? "backendOff"
-              : "backendOn",
-          at: Date.now(),
-        };
-        threadScopes.setServiceTierEffective(
-          session,
-          entry.conversationId,
-          effective
-        );
-        publish(entry, { type: "service-tier-effective", effective });
+        recordServiceTier(productValue, !option);
       }),
     onApproval: (approval) =>
       ifCurrent(() =>
@@ -205,15 +206,23 @@ export function createTurnCallbacks(
       }),
     onSubagentItem: (agentThreadId, item) => observe(turns.enqueueProjection(entry, generation, async () => {
       const agent = entry.subagents.get(agentThreadId);
-      if (agent) publish(entry, { type: "subagent-item", agentThreadId, agent,
-        item: await entry.artifacts?.child(agentThreadId).item(item) ?? item });
+      if (agent) {
+        const projected = await entry.artifacts?.child(agentThreadId).item(item) ?? item;
+        if (entry.backend === "codex") entry.subagents.applyItem(agentThreadId, projected);
+        publish(entry, { type: "subagent-item", agentThreadId, agent, item: projected });
+      }
     }), "project-subagent-artifact"),
     onSubagentItemDelta: (agentThreadId, itemId, text) => observe(turns.enqueueProjection(entry, generation, async () => {
       const agent = entry.subagents.get(agentThreadId); if (!agent) return;
       const events = await entry.artifacts?.child(agentThreadId).delta(itemId, text) ?? [{ type: "item-delta" as const, itemId, text }];
       for (const event of events) {
-        if (event.type === "item") publish(entry, { type: "subagent-item", agentThreadId, agent, item: event.item });
-        else publish(entry, { type: "subagent-item-delta", agentThreadId, agent, itemId: event.itemId, text: event.text });
+        if (event.type === "item") {
+          if (entry.backend === "codex") entry.subagents.applyItem(agentThreadId, event.item);
+          publish(entry, { type: "subagent-item", agentThreadId, agent, item: event.item });
+        } else {
+          if (entry.backend === "codex") entry.subagents.applyDelta(agentThreadId, event.itemId, event.text);
+          publish(entry, { type: "subagent-item-delta", agentThreadId, agent, itemId: event.itemId, text: event.text });
+        }
       }
     }), "project-subagent-artifact-delta"),
     onThirdPartyMcpProtocol: (observation) =>

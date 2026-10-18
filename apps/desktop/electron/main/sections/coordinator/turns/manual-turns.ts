@@ -22,7 +22,7 @@ import type {
   ChatRecord,
   UserChatMessage,
 } from "../../../../../shared/ipc/content/chats-ipc";
-import type { ResolvedAgentInput } from "../../../backends/types";
+import type { ResolvedAgentInput } from "../../../backends/contracts/types";
 import type {
   TrustedManualTurnPersistence as ManualTurnPersistence,
   TrustedManualTurnSubmission as ManualTurnSubmission,

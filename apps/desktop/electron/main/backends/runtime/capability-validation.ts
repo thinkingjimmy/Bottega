@@ -9,7 +9,7 @@ import type {
   ProviderBackend,
   ResolvedAgentInput,
   ResolvedRuntime,
-} from "../types";
+} from "../contracts/types";
 
 /** 模型 id 是产品用于目录身份匹配的键，因此保留稳定的 ASCII 词法。 */
 export const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/;

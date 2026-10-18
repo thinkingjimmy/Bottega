@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Chat/Project/App/Memory/Gallery/Browser services, the History Import handle, canonical Project Tools resolver, scoped Extension inventory, Skills selection authority, canonical Provider defaults, manual staging, RelayLedger, and backend bridge
- * [OUTPUT]: Composes runtime-only admission, scoped retries, queue pausing and single-backend title generation/recovery — headless job or one-shot Agent turn — qualified against the same configured model and workspace; a package Provider's turn resolves no Project tools and names the Provider from the catalog when it fails. Refuses closed App submissions and keeps their queued messages undispatched.
+ * [OUTPUT]: Composes runtime-only chat admission, scoped retries, queue pausing and single-backend title generation/recovery with demand-driven authentication refresh — headless job or one-shot Agent turn — qualified against the same configured model and workspace; a package Provider's turn resolves no Project tools and names the Provider from the catalog when it fails. Refuses closed App submissions and keeps their queued messages undispatched.
  * Workflow preparation narrows Skills and MCP candidates before their receipts enter custody.
  * [POS]: The conversation-domain startup composition module; the external-history half lives in history-import-runtime.ts and assembles dependencies without holding global lifecycle state
  */
@@ -192,7 +192,8 @@ export function createChatsService({
       const preferences = settings.get();
       const descriptor = requireProvider(preferences.titleAgent);
       const model = preferences.titleModelByBackend[descriptor.id] ?? null;
-      const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
+      // Runtime discovery alone cannot renew expired authentication; a deferred title may have no other caller to wake it.
+      const snapshot = await backendRuntimeRegistry.refreshIfNeeded(descriptor.id);
       if (snapshot.runtimeStatus !== "installed") {
         throw new Error(`${descriptor.displayName} 未安装，无法生成标题`);
       }

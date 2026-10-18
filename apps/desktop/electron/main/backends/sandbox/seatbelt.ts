@@ -11,7 +11,7 @@ import { basename, dirname, isAbsolute, resolve } from "node:path";
 import type {
   HeadlessExecutionSpec,
   HeadlessJob,
-} from "../types";
+} from "../contracts/types";
 import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
 import type { AgentPermissionMode } from "../../../../shared/ipc/agent/agent-ipc";
 import {
@@ -253,21 +253,7 @@ export function wrapWithSeatbelt(
   };
 }
 
-/**
- * 「被 spawn 的运行时」需要的只读面：launcher（codex-acp adapter 走
- * Electron run-as-node）与内置 MCP server（同样是 Electron run-as-node +
- * out/ 构建入口）是同一件事，共用同一个推导，不写两份平行逻辑。
- *
- * 三条实测规则（2026-08-07 sandbox-exec 逐项验证）：
- * 1. `.app` 内的二进制必须放行整个 bundle——只放 `MacOS/` 目录，dyld 读不到
- *    `Contents/Frameworks`，死状是 `Library not loaded`，不是 EPERM；
- * 2. 绝对路径入口脚本放行其目录及 node_modules 祖先——adapter 的依赖链在
- *    pnpm store 里向上解析，只放 `dist/` 一层 require 立刻断；
- * 3. 读数据按 canonical 真身解析；但 adapter 在围栏内按 CODEX_PATH 再次
- *    spawn symlink 时，内核会先读原始入口的 metadata。只放 canonical 根会
- *    在这里得到 EPERM，故额外放行**精确入口 literal**，不放开整个 alias 目录。
- * socket 连回不在此列：`(allow network*)` 已覆盖 AF_UNIX connect。
- */
+/** Read roots for a sandboxed launcher and its MCP servers include bundle frameworks, entry scripts and dependency ancestors. */
 export function spawnRuntimeReadAccess(spec: { command: string; args: string[] }) {
   const requestedExecutable = requestedAbsolutePath(
     spec.command,
@@ -303,13 +289,7 @@ function addNodeModulesAncestors(roots: string[], start: string) {
   }
 }
 
-/**
- * Tells an adapter the host already fences its process: Seatbelt cannot nest, so a CLI whose own command sandbox is Seatbelt
- * (Codex, through the codex-acp patch in patches/agents) must leave it off inside our fence. Set only on a launch this module
- * wrapped, naming the fence's workspace mode (`seatbelt`: workspace-write, `seatbelt-read-only`, and `seatbelt-read-only-full-access`
- * for a full-access plan turn, which asks nothing because the fence itself refuses every write); an unwrapped launch never
- * carries it, whatever the inherited environment said.
- */
+/** Marks host-fenced ACP/package launches; native Codex does not use this fence or marker. */
 export const HOST_SANDBOX_MARKER = "BOTTEGA_HOST_SANDBOX";
 export function withHostSandboxMarker(env: NodeJS.ProcessEnv, fence: "workspace-write" | "read-only" | null, fullAccess = false): NodeJS.ProcessEnv {
   const { [HOST_SANDBOX_MARKER]: _inherited, ...rest } = env;
@@ -335,11 +315,7 @@ export function wrapInteractiveWithSeatbelt(input: {
     command: string;
     args: readonly string[];
   }[];
-  /**
-   * Agent CLI 真身。launcher 经 adapter 间接 spawn CLI 时（Codex：Electron
-   * run-as-node 起 codex-acp，再由它 spawn CODEX_PATH），CLI 二进制不是围栏
-   * 直接子进程，dirname(command) 那条既有通道摸不到它——必须显式声明。
-   */
+  /** The real CLI behind an adapter needs its own read grant. */
   agentRuntime?: string;
   /** readiness 不需要联网；普通 turn 缺省保持联网。 */
   network?: boolean;

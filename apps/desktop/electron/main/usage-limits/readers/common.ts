@@ -7,7 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
-import type { ResolvedRuntime } from "../../backends/types";
+import type { ResolvedRuntime } from "../../backends/contracts/types";
 import { object, QuotaReadError, type QuotaReadResult } from "./wire";
 /* The pure half lives in wire.ts (a bridge module may require nothing); main's readers import it from here as before. */
 export { object, QuotaReadError, quotaError, whenAborted, type QuotaReadResult, type QuotaVerdictOrigin } from "./wire";

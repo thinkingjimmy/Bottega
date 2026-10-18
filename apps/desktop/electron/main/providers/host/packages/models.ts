@@ -10,7 +10,7 @@ import type { ProviderDescriptor } from "@ai-chat/cloud-protocol/contracts/provi
 import type { BackendModelInfo } from "../../../../../shared/ipc/agent/agent-ipc";
 import { inspectAcpSession } from "../../../backends/acp/probe";
 import { createModelCatalog, executableFileKey, type ModelCatalogProbeRunner } from "../../../backends/models/model-catalog";
-import type { ResolvedRuntime } from "../../../backends/types";
+import type { ResolvedRuntime } from "../../../backends/contracts/types";
 import type { ProviderPackageRef } from "../catalog";
 import { assertDeclaredLaunch, assertPackageAdmitted, descriptorAcpLaunch, preparePackageLaunch } from "./launch";
 

@@ -10,7 +10,7 @@ import { z } from "zod";
 import { providerDescriptorSchema, providerIdSchema } from "@ai-chat/cloud-protocol/contracts/provider";
 import { PROVIDER_CATALOG_CHANNEL, PROVIDER_UNAVAILABLE_REASONS, type ProviderCatalogSnapshot } from "../../../../shared/providers/catalog-ipc";
 import { rendererIpc } from "../../registration/ipc-registrar";
-import type { BackendDescriptor } from "../../backends/types";
+import type { BackendDescriptor } from "../../backends/contracts/types";
 
 /* The four built-ins plus installed Provider packages; the bound keeps a snapshot finite whatever is installed. */
 const PROVIDER_CATALOG_LIMIT = 32;
@@ -32,8 +32,8 @@ export const providerCatalogSnapshotSchema = z.object({
     .refine(entries => new Set(entries.map(entry => entry.id)).size === entries.length, "one entry per Provider"),
 }).strict() satisfies z.ZodType<ProviderCatalogSnapshot>;
 
-export type { ProviderBackend } from "../../backends/types";
-import type { ProviderBackend } from "../../backends/types";
+export type { ProviderBackend } from "../../backends/contracts/types";
+import type { ProviderBackend } from "../../backends/contracts/types";
 
 /** An admitted, active Provider package as main knows it; its bridge module is loaded only by the bridge, from verified bytes. */
 export type ProviderPackageRef = Readonly<{ installIdentity: string; root: string; packageDigest: string;

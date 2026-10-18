@@ -6,16 +6,28 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 
 ## Multi-agent
 
-- Connect Codex, Claude Code, Kimi Code, and OpenCode through one backend-neutral ACP transport.
+- Connect Codex through its native App Server; Claude Code, Kimi Code and OpenCode use their existing local CLI connections. Codex requires CLI 0.163.0-alpha.10.2 exactly. The conversation layout stays the same.
 - Switch the next Agent in an idle chat while preserving its transcript, per-reply authors, and bounded history handoff. Each provider keeps its own authentication and quota model.
 - See runtime and authentication availability in the composer, with scoped installation, sign-in, and retry actions.
 - Read available Codex, Claude Code, Kimi, and OpenCode Go quota windows, remaining amounts, and reset times in Settings and the Agent selector, including rolling, weekly, and monthly periods.
-- Name one explicit Agent and model for background title generation; all four Agents can be chosen, and unavailable ones state why instead of disappearing.
+- Choose an eligible Agent and model for background title generation. A configuration that cannot meet the task's restrictions states why it is unavailable.
 - Use Plan mode, live steering, queued messages, and visible tool activity without hiding backend differences.
 - Create Sections and Subagents for parallel work, inspect their progress, pass bounded context between them, and promote useful results into durable Sections.
 - Search and adopt supported local CLI histories without silently rewriting their original records.
 - Import Project history explicitly from Settings. Only installed Agents are included; reopening a Project does not scan again.
 - Continue an imported conversation with the ordinary composer, whatever the profile it is opened in and whether or not its Project has a folder. One divider marks where the imported history ends.
+
+### Codex command permissions
+
+Codex uses its own sandbox and approval system. **Ask for approval** sends requests for additional command permissions to you. **Approve for me** sends them to Codex's automatic reviewer, which can approve or refuse them. A refusal does not switch the chat to Full access.
+
+Both modes allow network access and ordinary reads outside the workspace. Writes are allowed in the workspace, declared extra directories and temporary directories; approved operations can receive additional access. **Full access** removes the workspace sandbox and does not ask for boundary approval. Operating-system and managed restrictions can still apply.
+
+Bottega no longer adds its previous credential-path denials, protected internal paths or read-only subtrees to Codex commands. This includes the GitHub CLI configuration folder. Those files can be read, and approved operations or Full access can modify them. Tool grants and disabled Skills do not create a separate filesystem fence for commands.
+
+Plan uses the selected permission mode; it does not make the filesystem read-only. Tasks that require strict read-only access, no network, no tools or Skill file isolation are unavailable through this Codex integration. Bottega explains the unsupported requirement before execution instead of silently relaxing it or switching a task fixed to Codex to another Provider.
+
+Command output, background status and Stop stay in the original command details. Bottega continues to check tool access, Chat ownership and process lifecycle.
 
 ## Sketch
 
@@ -46,15 +58,15 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - The Base gains a locked **Stage** column (Plan, Develop, Review, Done) and an **Acceptance criteria** column, plus a **Board · by Stage** view when there is room. Your existing columns are not changed.
 - Start a run from a row's ▶ **Run workflow**. Accept the plan or end the run; then accept the result, accept it with an exception and a reason, send it back for rework — keeping the plan or planning again — or end it.
 - Pause, continue, cancel, or force-stop a run, retry a step, or check the result of a step whose outcome is unknown, and open the Chat behind any step. A run waiting on you reminds you when it starts waiting and again at 23 hours, and pauses at 24 hours.
-- Planning and review always run in a read-only workspace. Codex, Claude Code, Kimi Code, and OpenCode can take workflow steps when their installed CLI passes the capability check. Unavailable configurations stay in the list with the reason, and a CLI version change triggers a fresh check.
+- Planning and review require a Provider that can enforce their read-only and tool restrictions. Codex does not qualify for these strict roles in this release. Each step checks the selected Provider's capabilities; unsupported configurations stay unavailable with the reason, and a CLI version change triggers a fresh check.
 - A change to a configuration or to the workflow applies only to runs that start afterwards.
 
 ## Agent configurations
 
-- Keep reusable configurations in Settings › Agent configs. Start from Blank, Planner, Developer, or Reviewer, then choose the Provider and model, write the instructions and purpose, and set permissions (Ask for approval, Approve for me, or Full access), the workspace (Can change files or Read-only), and network access.
+- Keep reusable configurations in Settings › Agent configs. Start from Blank, Planner, Developer, or Reviewer, then choose the Provider and model, write the instructions and purpose, and request permissions (Ask for approval, Approve for me, or Full access), workspace access (Can change files or Read-only), and network access. A setting can be used only when the selected Provider can enforce it; unsupported combinations state why.
 - Offer a configuration in all Projects or only in some.
 - Choose models and reasoning levels from the same dropdowns as the composer. Loading failures offer Retry while keeping the list and unsaved edits.
-- Select Skills and MCP tools and see the actual scope a run receives. Planning and review keep their read-only restrictions and do not receive external MCP tools.
+- Select Skills and MCP tools and see the actual scope a run receives. Planning and review start only with a Provider that can enforce their read-only restrictions and exclusion of external MCP tools. Skills selection alone does not restrict Codex commands from reading files.
 - Decide whether a workflow may read long-term Memory; workflow runs do not capture new Memory.
 - Synchronize configurations with your account; a saved change applies to runs that start afterwards.
 
@@ -108,7 +120,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 
 **Alpha · macOS 27 · Apple silicon**
 
-The current source contains the [Dock Alpha candidate](../changelog/README.md#2026-10-18--bottega-dock-alpha-source-candidate), which keeps version 0.2.6. Final native and system acceptance of the same unchanged signed installer is pending. Published 0.2.6 downloads remain unchanged.
+Dock remains **Alpha** in 0.2.7. Replacement, recovery across logout or restart, and display/fullscreen combinations are still being validated. The plugin requires macOS 27.x and Apple silicon; the main application's requirements stay unchanged.
 
 - On macOS 27.x with Apple silicon, keep the Apps you build in Bottega, your other Apps, Finder, Downloads, the Trash, and an AI-limits ring per Agent in one Dock. This requirement applies to the entire Dock plugin; the main application's requirements stay unchanged.
 - Enable it from Settings › Plugins › Dock. Choose coexistence, or replacement after the installed app, native helper, recovery executable and bundled background-service configuration pass verification. Development and unsigned builds offer coexistence.
@@ -158,15 +170,15 @@ The current source contains the [Dock Alpha candidate](../changelog/README.md#20
 - Rebuild conversations from the folder when the local Chat database cannot be opened, while the previous database is preserved.
 - Move the folder from Settings › General, including to another disk, with every saved path following it; or erase all of Bottega's data on this computer while cloud data stays in your account.
 - Keep a Bottega folder with the computer that published it: the same computer takes it back after a reinstall, a cleared data folder, or a new profile with nothing to confirm, and another computer is refused by name. A folder that has never synchronized opens anywhere.
-- Back up the Bottega folder and complete application data before changing versions. 0.2.4 retains existing cloud content and uses protocol 16; see the [upgrade guide](../getting-started/README.md#upgrading-to-024), including historical migration notes if you are upgrading from an older release.
+- Back up the Bottega folder and complete application data before changing versions. 0.2.7 retains existing content and uses protocol 19; see the [upgrade guide](../getting-started/README.md#upgrading-to-027), including historical migration notes for older releases.
 
 ## Bundled runtime and Agent boundaries
 
 - Run Bottega's own tools — the built-in MCP server, the App interface compiler, the Agent adapters, and Apps' Node scripts — on a Node 24 runtime shipped inside the app, never on a Node from your PATH. App commands that use npm, pnpm, or yarn, and MCP servers you start with npx, still use your own Node.
-- Keep the GitHub CLI's configuration folder out of every Agent turn; each Agent CLI keeps its own sign-in.
-- Never raise an Agent's permissions when a plan is reviewed, and let browser tools read only the Chat's own tabs and the tab you selected.
+- Each Agent CLI keeps its own sign-in. Codex command permissions can allow access to local credential files, including the GitHub CLI configuration folder; see [Codex command permissions](#codex-command-permissions).
+- Reviewing a plan does not change the selected execution mode. Codex can still request additional command permissions under that mode. Browser tools read only the Chat's own tabs and the tab you selected.
 - Refuse unsafe locations for the Bottega folder, such as your home folder or the root of a volume.
 
 ## Product foundations
 
-These areas share the same design rules: local CLI credential sovereignty, capability-bounded file access, durable main-process ownership, explicit archive and deletion flows, and honest degradation when a backend cannot support a feature.
+These areas share the same design rules: local CLI authentication, capability checks for product tools, Provider-specific command permissions, durable main-process ownership, and explicit archive and deletion flows. Unsupported requirements are reported before execution.

@@ -3,8 +3,8 @@
  * [OUTPUT]: createSteeringOperations preserves epoch-fenced registration and staged-input refusal.
  * [POS]: Agent bridge steering adapters; the bridge retains the single TurnRegistry.
  */
-import { resolvedInputBlocks } from "../../backends/acp/input-blocks";
-import type { AgentTurn, ResolvedAgentInput } from "../../backends/types";
+import { providerInput } from "../../backends/contracts/materialize";
+import type { AgentTurn, ResolvedAgentInput } from "../../backends/contracts/types";
 import { steerCarriesStagedSnapshot, steerTurnCanConsume } from "../controls/steering";
 import type { BridgeEntry } from "./bridge-types";
 import type { TurnRegistry } from "../turns/turn/turn-registry";
@@ -38,7 +38,7 @@ export function createSteeringOperations(turns: TurnRegistry<AgentTurn>) {
     if (!steerTurnCanConsume(entry.backend, input, (entry as BridgeEntry).context?.activeCapabilities)) {
       return { outcome: "unconsumed", reason: "unsupported" } as const;
     }
-    return entry.turn.steer(resolvedInputBlocks(input));
+    return entry.turn.steer(providerInput(input));
   }
   return { registerAgentSteerOperation, steerAgentTurn };
 }

@@ -6,7 +6,7 @@
 import type { AgentBackendId } from "../../../shared/ipc/agent/agent-ipc";
 import { LIMITS_TIMING, type QuotaReason } from "../../../shared/usage-limits/types";
 import { registerAgentQuotaChannel } from "../agent-process-supervisor";
-import type { ResolvedRuntime } from "../backends/types";
+import type { ResolvedRuntime } from "../backends/contracts/types";
 import { quotaHookFor } from "../backends";
 import { QuotaReadError, type QuotaChannel, type QuotaChannelOpener, type QuotaReadResult, type QuotaReader } from "./readers/common";
 

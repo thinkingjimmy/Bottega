@@ -22,7 +22,7 @@ import {
   probeRuntimeCandidatesAsync,
   runtimeVersionAtLeast,
 } from "../../backends/runtime/runtime-probe";
-import type { BackendDescriptor, BackendTurnOptions } from "../../backends/types";
+import type { BackendDescriptor, BackendTurnOptions } from "../../backends/contracts/types";
 import { SESSION_CAPABILITY_POLICY } from "../../backends/acp/startup/client-capabilities";
 import { cachedKimiModels, invalidateKimiModels, listKimiModels } from "./background/models";
 import {
@@ -31,7 +31,7 @@ import {
   resolveKimiCodeHome,
 } from "./home";
 import { kimiTurnValues, validateKimiSessionId } from "./turn-config";
-import { BridgedAcpTurn } from "../host/turns/bridged-turn";
+import { BridgedTurn } from "../host/turns/bridged-turn";
 import { requireProviderBridge } from "../host/runtime";
 import { createKimiAuthCheck, kimiReadinessSpec } from "./auth";
 import { fencedReadinessLaunch, prepareAcpReadinessLaunch, readinessWorkingDirectory } from "../../backends/acp/startup/readiness";
@@ -194,7 +194,7 @@ export const kimiBackend: BackendDescriptor = {
     validate(options.payload.turnOptions);
     const config = kimiSpawnConfig(options);
     /* Switched on, main seals the launch and answers the session's MCP servers (tokens included) when the bridge creates it (D2). */
-    return new BridgedAcpTurn(options, config, requireProviderBridge());
+    return new BridgedTurn(options, config, requireProviderBridge());
   },
   skills: { sources: kimiSkillSources },
   setup: {

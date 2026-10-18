@@ -4,7 +4,7 @@
  * [POS]: Ledger collaborator; all records commit through the original single writer.
  */
 import { remoteCreationIdentity } from "@ai-chat/cloud-protocol/remote/encrypted";
-import type { TrustedTurnAuthority } from "../../../backends/types";
+import type { TrustedTurnAuthority } from "../../../backends/contracts/types";
 import { queuedProjection, editQueued, withdrawUnpersisted } from "./queue";
 import { claimQueuedInput, releaseQueuedInput, setSourceQueuePaused } from "./queue-custody";
 import type { TrustedManualTurnSubmission } from "../../../../../shared/ipc/content/sections-ipc";

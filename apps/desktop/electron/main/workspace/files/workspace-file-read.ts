@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the logical scope of the workspace-resolver, the fresh member entity metadata of the catalog, and the read-only file capability of Node lstat/realpath/open/fstat/with boundaries read
- * [OUTPUT]: Provides WorkspaceFileReadAuthority: TTL-bound opaque readRef grants tied to canonical path plus dev/ino identity, with reuse, release, and size-bounded read helpers
+ * [OUTPUT]: Provides WorkspaceFileReadAuthority: TTL-bound opaque reads and main-only native actions checked against workspace, path and dev/ino identity
  * [POS]: apps/desktop/electron/main/workspace/files; Electron main's authorization boundary for workspace file reads; each grant re-verifies the target is still the same non-symlink entity via lstat before it is reused, released, or read, scoped to both its workspace and readRef
  */
 
@@ -160,6 +160,13 @@ export class WorkspaceFileReadAuthority {
     this.refsByKey.clear();
   }
 
+  async withPath(input: WorkspaceFileReadInput, action: (path: string) => Promise<void>) {
+    const { grant, canonicalPath } = await this.resolveGrant(input);
+    this.assertFile(grant, await lstat(canonicalPath));
+    await this.assertScope(input, grant);
+    await action(canonicalPath);
+  }
+
   private async issueStable(input: {
     effective: Extract<EffectiveWorkspace, { kind: "ready" }>;
     workspace: string;
@@ -232,16 +239,7 @@ export class WorkspaceFileReadAuthority {
   private async readStable(
     input: WorkspaceFileReadInput
   ): Promise<WorkspaceFileReadResult> {
-    this.prune();
-    const grant = this.grants.get(input.readRef);
-    if (!grant || grant.expiresAt <= this.now()) {
-      failure("WORKSPACE_READ_REF_EXPIRED", "Workspace readRef 已失效");
-    }
-    await this.assertScope(input, grant);
-    const canonicalPath = await realpath(grant.canonicalPath);
-    if (canonicalPath !== grant.canonicalPath || !contained(grant.workspace, canonicalPath)) {
-      failure("WORKSPACE_READ_PATH_CHANGED", "Workspace 路径已变化或越界");
-    }
+    const { grant, canonicalPath } = await this.resolveGrant(input);
     const handle = await open(canonicalPath, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       const before = await handle.stat();
@@ -319,6 +317,18 @@ export class WorkspaceFileReadAuthority {
   ) {
     await this.assertScope(input, grant);
     return result;
+  }
+
+  private async resolveGrant(input: WorkspaceFileReadInput) {
+    this.prune();
+    const grant = this.grants.get(input.readRef);
+    if (!grant || grant.expiresAt <= this.now()) failure("WORKSPACE_READ_REF_EXPIRED", "Workspace read reference expired");
+    await this.assertScope(input, grant);
+    const canonicalPath = await realpath(grant.canonicalPath);
+    if (canonicalPath !== grant.canonicalPath || !contained(grant.workspace, canonicalPath)) {
+      failure("WORKSPACE_READ_PATH_CHANGED", "Workspace path changed or left its root");
+    }
+    return { grant, canonicalPath };
   }
 
   private async assertScope(input: WorkspaceFileReadInput, grant: ReadGrant) {

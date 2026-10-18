@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { buildSeatbeltProfile, spawnRuntimeReadAccess, withHostSandboxMarker } from "../../backends/sandbox/seatbelt";
 import { canonicalPath, SANDBOX_EXEC, sbplString } from "../../backends/sandbox/sbpl";
-import type { AgentProcessLaunch } from "../../backends/types";
+import type { AgentProcessLaunch } from "../../backends/contracts/types";
 
 export type PackageFence = {
   identity: string;

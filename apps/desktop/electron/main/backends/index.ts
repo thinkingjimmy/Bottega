@@ -12,7 +12,7 @@ import { claudeBackend } from "../providers/claude";
 import { codexBackend } from "../providers/codex";
 import { kimiBackend } from "../providers/kimi";
 import { opencodeBackend } from "../providers/opencode";
-import type { BackendDescriptor, ProviderBackend, ProviderReadinessPlan, ResolvedRuntime } from "./types";
+import type { BackendDescriptor, ProviderBackend, ProviderReadinessPlan, ResolvedRuntime } from "./contracts/types";
 import { composedProviderCatalog } from "../providers/host/catalog";
 import { agentRuntimeFailure, diagnosticFailureDetails, ProductFailureError } from "../../../shared/product/product-failure";
 import { builtinProviderCatalog } from "../../../shared/providers/catalog";

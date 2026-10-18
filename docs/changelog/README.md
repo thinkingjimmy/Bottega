@@ -4,6 +4,19 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-10-18 — v0.2.7
+
+[Download 0.2.7](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7) for macOS on Apple silicon (ARM64), using the official stable update channel.
+
+- **Native Codex connection.** Codex uses its native App Server and requires CLI **0.163.0-alpha.10.2 exactly**. The conversation layout stays the same: reasoning summaries and command names remain in their activity views, with background output, status and Stop in the original command details.
+- **Native command approval.** Ask for approval uses your decision; Approve for me uses Codex's automatic reviewer. Electron launches can request the needed permissions through this path. Approval can be refused, and a refusal does not switch the chat to Full access.
+- **Explicit permission changes.** Workspace modes allow network access, temporary-directory writes and ordinary reads outside the workspace. Bottega's previous credential-path denials and internal read-only fences no longer apply to Codex commands. Full access is broader, and Plan does not enforce filesystem read-only access. Unsupported strict roles are refused before execution. Read the [permission guide](../features/README.md#codex-command-permissions).
+- **Chat continuity.** After an Agent switch, chats can recover saved images and files from earlier messages. Local TXT, Markdown and JSON links open in the side preview. Automatic title generation rechecks sign-in when cached authentication status expires.
+- **Fewer download attachments.** Release and acceptance evidence is grouped in `Bottega-0.2.7-release-evidence.tar.gz`. The DMG, ZIP, update feed, blockmaps and signed compatibility files remain separate downloads. The archive contains `release-manifest.json` for installer checksum checks.
+- **Dock stays Alpha.** The whole plugin requires macOS 27.x and Apple silicon. Replacement, recovery across logout or restart, and display/fullscreen combinations are still being validated; the main application's requirements stay unchanged.
+
+This release keeps **protocol 19**, existing content, sync passwords and account keys. No data reset is required. Version 0.2.6 uses the stable update channel; 0.2.5 personal requires a manual update. See the [upgrade guide](../getting-started/README.md#upgrading-to-027).
+
 ## 2026-10-18 — Bottega Dock Alpha source candidate
 
 - **Alpha on macOS 27.** The entire Dock plugin requires macOS 27.x and Apple silicon. The plugin card, introduction and settings show Alpha and the system requirement separately. The main application's system requirements stay unchanged.

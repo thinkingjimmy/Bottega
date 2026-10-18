@@ -5,7 +5,7 @@
  */
 import type { BackendCapabilities } from "../../../../shared/ipc/agent/agent-ipc";
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
-import type { ResolvedAgentInput } from "../../backends/types";
+import type { ResolvedAgentInput } from "../../backends/contracts/types";
 import { resolveProvider } from "../../backends";
 import { assertResolvedInputCapabilities } from "../../backends/runtime/capability-validation";
 

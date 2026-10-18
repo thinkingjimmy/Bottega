@@ -4,7 +4,7 @@
  * [POS]: Package Provider authentication and local login metadata; failed probes never infer a signed-in or signed-out state.
  */
 import type { ProviderDescriptor } from "@bottega/contracts/model/provider";
-import type { AuthExtension, SetupExtension } from "../../../../backends/types";
+import type { AuthExtension, SetupExtension } from "../../../../backends/contracts/types";
 import { readinessWorkingDirectory } from "../../../../backends/acp/startup/readiness";
 import { runSupervisedCommand } from "../../../../backends/jobs/supervised-command";
 import type { ProviderPackageRef } from "../../catalog";

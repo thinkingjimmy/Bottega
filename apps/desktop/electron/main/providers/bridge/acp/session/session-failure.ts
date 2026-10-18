@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on provider-neutral JetBrains AIR sessionFailure metadata, backend turn callbacks, a transport redactor, a turn-fact sink, shared ProductFailure constructors, and the acp/failure record guard
- * [OUTPUT]: Provides strict parsing, semantic projection (a refusal naming a newer Codex version becomes runtime-unavailable so the card asks for a CLI update instead of a retry; a rejected Claude API key stays auth-required with an api-key requirement), coarse terminal facts, monotonic revision tracking, callback-ready notice/terminal projection, and routing of the Codex skills-context-budget notice into the turn fact instead of a transcript item
+ * [OUTPUT]: Provides strict parsing, semantic projection (a rejected Claude API key stays auth-required with an api-key requirement), coarse terminal facts, monotonic revision tracking, callback-ready notice/terminal projection, and routing of compatible skills-context-budget notices into the turn fact instead of a transcript item
  * [POS]: ACP session extension boundary; adapters may describe incidents, but only this file decides which product failure users see
  */
 
 import type { FailureKind, UsageLimitInfo } from "../../../../../../shared/ipc/agent/agent-ipc";
-import type { BackendTurnOptions } from "../../../../backends/types";
+import type { BackendTurnOptions } from "../../../../backends/contracts/types";
 import { record } from "../../../../backends/acp/failure";
 import {
   agentRuntimeFailure,
@@ -35,16 +35,6 @@ export type AcpSessionFailure = Readonly<{
   failure: ProductFailure;
 }>;
 
-/* ── 「换个新版 CLI」是唯一出路的拒绝 ──────────────────────────────
-   Codex 把「本机 CLI 太旧，跑不了这个模型」报成一条普通的 service/request
-   拒绝：等待与重试永远不会成功，装新版才会。上游整句是线上唯一的信号，
-   所以这里破例按有界子串认——原句仍原样留在 diagnostic 里。 */
-const CLI_UPDATE_REQUIRED_MARKER = "newer version of codex";
-
-function requiresCliUpdate(diagnostic: string) {
-  return diagnostic.toLowerCase().includes(CLI_UPDATE_REQUIRED_MARKER);
-}
-
 /* ── A rejected API key is not a login to redo (TASK-13 E) ─────────────
    claude-agent-acp fails a login-less turn with authRequired and carries the CLI's own synthetic text as the title; that text
    opening with "Invalid API key" (the same fixed wording `claude auth status` prints) means the key or gateway token was
@@ -54,12 +44,11 @@ const API_KEY_REJECTED = /^invalid api key\b/i;
 function semanticCode(
   category: string,
   actions: readonly SessionFailureAction[],
-  diagnostic: string
+  _diagnostic: string
 ): AgentRuntimeFailureCode {
   if (category === "access" || actions.includes("login")) return "auth-required";
   if (category === "connection") return "connection-lost";
   if (category === "request" || category === "service") {
-    if (requiresCliUpdate(diagnostic)) return "runtime-unavailable";
     return category === "request" ? "request-rejected" : "service-unavailable";
   }
   if (category !== "limit") return "unknown";
@@ -112,12 +101,7 @@ export function parseAcpSessionFailure(meta: unknown): AcpSessionFailure | undef
   };
 }
 
-/* ── Codex skills 目录预算告警 ─────────────────────────────────────
-   协商 typed sessionFailure 后，Codex 的 `warning` 通知经 codex-acp 以
-   category:"unknown" / severity:"warning" 的 notice 到达，title 即原句。
-   这一条说的是 Codex 自己的技能目录超预算、描述被截短，不是本轮故障：
-   它只置位 turn 事实（→ skill-descriptions-truncated 软 notice），
-   不进 agent-failure 条目。通知标题不是正文，子串匹配吞不掉 prose。 */
+/* Compatible ACP Skill-budget notices set a durable turn fact rather than a failure item. */
 const SKILLS_CONTEXT_BUDGET_MARKER = "skills context budget";
 
 export function isSkillsContextBudgetNotice(failure: AcpSessionFailure) {

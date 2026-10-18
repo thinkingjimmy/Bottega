@@ -1,14 +1,15 @@
 /**
  * [INPUT]: Depends on ACP ContentBlock, Node spawn, process/turn contracts, the spawn config's session-absence matcher and resolved input blocks
- * [OUTPUT]: Provides processHostOf (default process host), isResumeMissing and promptBlocks
+ * [OUTPUT]: Provides processHostOf (default process host), isResumeMissing, acpInput and promptBlocks
  * [POS]: Startup configuration and pure projection layer for providers/bridge/acp/turn; AcpTurn retains only the protocol state machine and single-turn lifecycle
  */
 
 import type { ContentBlock } from "@agentclientprotocol/sdk";
 import { spawn } from "node:child_process";
-import type { AgentProcessHost, AgentProcessLauncher, BackendTurnOptions } from "../../../../backends/types";
+import type { AgentProcessHost, AgentProcessLauncher, BackendTurnOptions } from "../../../../backends/contracts/types";
 
-import { resolvedInputBlocks } from "../../../../backends/acp/input-blocks";
+import type { ProviderTurnInput } from "../../../../backends/contracts/turn-input";
+import { providerInput } from "../../../../backends/contracts/materialize";
 import type { AcpSpawnConfig } from "../../../../backends/acp/launch";
 
 /** 无 custody 时的缺省宿主，也是测试注入假 child 的唯一入口。 */
@@ -28,6 +29,12 @@ export function isResumeMissing(cause: unknown, config: Pick<AcpSpawnConfig, "se
   return config.sessionMissing?.(sessionId, cause) ?? false;
 }
 
+export function acpInput(input: readonly ProviderTurnInput[]): ContentBlock[] {
+  return input.map(item => item.type === "resource_link"
+    ? { type: item.type, uri: item.uri, name: item.name, ...(item.description ? { description: item.description } : {}) }
+    : item);
+}
+
 export async function promptBlocks(options: BackendTurnOptions, restoredSessionResumed = false): Promise<ContentBlock[]> {
   const blocks: ContentBlock[] = [];
   if (options.productContext) {
@@ -44,6 +51,6 @@ export async function promptBlocks(options: BackendTurnOptions, restoredSessionR
       });
     }
   }
-  blocks.push(...resolvedInputBlocks(restoredSessionResumed ? options.input.input.filter(item => item.type !== "text" || item.text !== options.payload.handoff?.text) : options.input.input));
+  blocks.push(...acpInput(providerInput(restoredSessionResumed ? options.input.input.filter(item => item.type !== "text" || item.text !== options.payload.handoff?.text) : options.input.input)));
   return blocks;
 }

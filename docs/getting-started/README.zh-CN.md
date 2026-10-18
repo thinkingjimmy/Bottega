@@ -40,10 +40,10 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 ## Bottega 的差异化价值
 
-- **继续使用你已经信任的 Agent。** Bottega 通过 ACP 连接官方本地 CLI，不复制、不迁移、也不代管凭据。
+- **继续使用你已经信任的 Agent。** Bottega 连接官方本地 CLI，其中 Codex 使用原生 App Server。Bottega 不复制、不迁移，也不代管这些凭据。
 - **让对话成为工作空间。** Chat 可以拥有结构化 Base 数据、可复用 App、文件、浏览器标签页与长期上下文，而不是止步于一份孤立转录。
 - **协调多个 Agent。** Plan、Steer、Section、Subagent 与结果提升，让并行工作可见、可接力、可复用。
-- **权限始终显式。** 文件、App、工具、Memory 与跨 Chat 访问都通过有边界的 capability 授权，而不是默认获得环境中的全部权限。
+- **工具权限始终明确。** Bottega 检查 App、工具、Memory 与跨 Chat 访问。Agent 命令使用所选 Provider 的执行权限；请阅读 [Codex 权限说明](../features/README.zh-CN.md#codex-命令权限)。
 
 产品模型与四个核心能力域见[功能文档](../features/README.zh-CN.md)。
 
@@ -51,13 +51,23 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 - 一台 Apple 芯片的 Mac
 - 至少安装一个受支持的 CLI：
-  - Codex CLI 0.145.0 或更高版本
+  - Codex CLI **仅限 0.163.0-alpha.10.2**；本次版本不支持其他 CLI 版本。
   - Claude Code 2.1.216 或更高版本
   - Kimi Code 0.29.1 或更高版本
   - OpenCode 1.18.13 或更高版本
 - 从源码构建：Node.js 24，pnpm 11.9 或更高版本
 
 启动 Bottega 前，请先在对应官方 CLI 中完成登录。Bottega 不会要求或导入这些凭据。
+
+## 升级到 0.2.7
+
+0.2.7 使用 macOS Apple 芯片（ARM64）的正式稳定通道。0.2.6 可通过该通道检查更新。0.2.5 个人版的更新器已关闭，需要手动安装 0.2.7。替换应用前，请完全退出 Bottega，并备份 Bottega 文件夹与应用数据。
+
+Codex CLI **仅支持 0.163.0-alpha.10.2**，命令使用原生审批。逐项询问和代我批准都允许联网、临时目录写入和工作区外普通读取。Bottega 原有的凭据路径拒读和内部只读围栏不再作用于 Codex 命令。Plan 沿用所选执行权限。开始任务前，请阅读[完整权限变化](../features/README.zh-CN.md#codex-命令权限)。
+
+本次继续使用**协议 19**，保留已有内容、同步密码与账号密钥，无需清空数据。Dock 在 macOS 27.x / Apple 芯片上保持 Alpha；替代模式、系统恢复以及显示器与全屏组合仍在验证。见 [0.2.7 更新日志](../changelog/README.zh-CN.md#2026-10-18--v027)和[安装步骤](#下载与安装)。
+
+下方旧版升级说明描述的是各自版本；0.2.7 请以当前 Codex 权限说明为准。
 
 ## 升级到 0.2.6
 
@@ -89,18 +99,27 @@ Cloud Sync 现使用协议 15。使用云功能的所有电脑都需升级到 0.
 
 ## 下载与安装
 
-[下载 0.2.6](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.6)，正式稳定版**仅适用于 macOS Apple 芯片（ARM64）**。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
+[下载 0.2.7](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7)，正式稳定版**仅适用于 macOS Apple 芯片（ARM64）**。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
 
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
-| macOS（Apple 芯片 / ARM64） | [DMG 或 ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.6) | 正式稳定版。 |
+| macOS（Apple 芯片 / ARM64） | [DMG 或 ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7) | 正式稳定版。 |
 
-正式安装包具有 **Developer ID 签名与 Apple 公证**。0.2.6 启用正式稳定版自动更新通道。已发布的 0.2.5 个人版需手动安装 0.2.6 一次；此后的自动升级测试需要高于 0.2.6 的稳定版本。
+请使用具有 **Developer ID 签名与 Apple 公证**的正式安装包。0.2.6 和 0.2.7 使用稳定版自动更新通道；0.2.5 个人版需要手动更新。
 
 1. 完全退出 Bottega，备份 Bottega 文件夹与应用数据目录。
-2. 从同一版本页面下载 DMG 或 ZIP 及 `release-manifest.json`。运行 `shasum -a 256`，后接安装包路径，将输出与清单中对应安装包的 `sha256` 比较。
+2. 从同一版本页面下载 DMG 或 ZIP，以及 `Bottega-0.2.7-release-evidence.tar.gz`。读取归档根目录的 `release-manifest.json`。运行 `shasum -a 256`，后接安装包路径，将输出与清单中对应安装包的 `sha256` 比较。
 3. 打开 DMG，将 Bottega 拖入「应用程序」；使用 ZIP 时，解压后将应用复制到该目录。
 4. 从「应用程序」打开 Bottega，确认正常的 macOS 首次启动提示。如果 macOS 报告签名或公证问题，请保留错误信息并反馈 bug，暂勿打开该安装包。
+
+无需解压整个归档，即可读取清单并检查 DMG：
+
+```bash
+tar -xOf Bottega-0.2.7-release-evidence.tar.gz release-manifest.json
+shasum -a 256 Bottega-0.2.7-arm64.dmg
+```
+
+使用 ZIP 时，将校验命令中的文件名改为 `Bottega-0.2.7-arm64-mac.zip`。归档同时包含发布签名与验收证据。
 
 ## Cloud Sync 与 Cloud Web
 
@@ -255,9 +274,9 @@ pnpm build       # Build the Electron application
 pnpm dist        # Build a local installer
 ```
 
-`fetch-node.mjs` 会一次性下载并校验锁定版本的 Node 运行时，存入用户缓存；之后 `pnpm dev` 离线使用它。`pnpm dist` 会在 Apple 芯片的 Mac 上生成本地安装包。签名发行需要自行配置 Apple 签名身份；本地构建并不等同于本次已验证的预发布下载包。
+`fetch-node.mjs` 会一次性下载并校验锁定版本的 Node 运行时，存入用户缓存；之后 `pnpm dev` 离线使用它。`pnpm dist` 会在 Apple 芯片的 Mac 上生成本地安装包。签名发行需要自行配置 Apple 签名身份；本地构建并不等同于正式发布下载包。
 
-首次启动时，选择 Bottega 文件夹并等待 Bottega 检测本机 CLI；**稍后再装**可以跳过 Agent 这一步。Skills 与长期记忆是同一向导中的可选步骤，之后也可以在设置中调整。文件夹与至少一个后端就绪后，即可创建任务，并在发送首条消息前选择 Agent。登录不在首次设置里。
+首次启动时，选择 Bottega 文件夹并等待 Bottega 检测本机 CLI；**稍后再装**可以跳过 Agent 这一步。Skills 与长期记忆可在之后进入设置配置。文件夹与至少一个后端就绪后，即可创建任务，并在发送首条消息前选择 Agent。登录不在首次设置里。
 
 ## 仓库边界
 

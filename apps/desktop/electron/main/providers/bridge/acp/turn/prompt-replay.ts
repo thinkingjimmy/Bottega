@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on ACP prompt blocks and locked Claude/Codex adapter conversion contracts.
- * [OUTPUT]: Provides claudePromptReplay and codexPromptReplay (the text each adapter persists and replays for native session proofs; the bridge's turn-values table puts them on a turn's config) and promptReplayTexts (a config's replay, else text blocks only).
+ * [INPUT]: Depends on ACP prompt blocks and the locked Claude adapter conversion contract.
+ * [OUTPUT]: Provides claudePromptReplay (the text the Claude adapter persists and replays for native session proofs; the bridge's turn-values table puts them on a turn's config) and promptReplayTexts (a config's replay, else text blocks only).
  * [POS]: ACP prompt evidence leaf; structured input remains unchanged on the wire. Bridge only: main never loads it.
  */
 import type { ContentBlock } from "@agentclientprotocol/sdk";
@@ -26,25 +26,6 @@ export const claudePromptReplay: PromptReplay = blocks => {
     }
   }
   return [...texts, ...context];
-};
-
-// codex-acp 1.6.2 buildPromptItems.
-export const codexPromptReplay: PromptReplay = blocks => {
-  const link = (uri: string, name?: string) =>
-    name ? mention(uri, name) : uri.startsWith("file://") ? mention(uri, uri.split("/").pop() || "") : uri;
-  const texts: string[] = [];
-  for (const block of blocks) {
-    if (block.type === "text") texts.push(block.text);
-    else if (block.type === "resource_link") texts.push(link(block.uri, block.name));
-    else if (block.type === "resource") {
-      const resource = block.resource;
-      if ("text" in resource) texts.push(`${link(resource.uri)}\n${contextOf(resource.uri, resource.text)}`);
-      else if (!resource.mimeType?.startsWith("image/")) {
-        texts.push(`${link(resource.uri)}\n<context ref="${resource.uri}" mimeType="${resource.mimeType ?? "application/octet-stream"}" encoding="base64">\n${resource.blob}\n</context>`);
-      }
-    }
-  }
-  return texts;
 };
 
 /** The adapter's persisted text for these blocks; a Provider without a replay persists its text blocks only. */

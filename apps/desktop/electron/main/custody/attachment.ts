@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node:child_process spawn, custody control-channel/protocol/identity-probe, and process-group cleanup, all keyed by shared ProcessIdentity
- * [OUTPUT]: Provides CustodyAttachment, the per-attempt guardian spawn/handshake/activation/release state machine, and converge, the sole release-outcome arbiter based on real process evidence TASK-35: the guardian's command is options.guardian() (the bundled Node); an unusable runtime fails the launch before any spawn, and the guardian env carries no run-as-Node variable. converge never releases on an unverified birth read: it quarantines without signalling.
+ * [OUTPUT]: Provides CustodyAttachment, the per-attempt guardian spawn/handshake/activation/release state machine, and converge, the sole release-outcome arbiter based on real process evidence TASK-35: the guardian's command is options.guardian() (the bundled Node); an unusable runtime fails the launch before any spawn, and the guardian env carries no run-as-Node variable. converge verifies the full recorded group even after guardian exit and never releases on an unverified birth read: it quarantines without signalling.
  * [POS]: Custody's journal-agnostic runtime leaf; Agent turn and the App server each keep their own ledger but share this single "when to deliver, when to release" state machine
  */
 
@@ -12,9 +12,9 @@ import {
 } from "node:child_process";
 import type { ProcessIdentity } from "../../../shared/apps/model/app-lifecycle";
 import { asError } from "../ipc/errors";
-import { cleanProcessGroup, type CleanupResult } from "../agent/process/process-group";
+import { cleanProcessGroup, cleanOwnedProcessGroup, groupExists, type CleanupResult } from "../agent/process/process-group";
 import { GuardianControlChannel, type GuardianLink } from "./control-channel";
-import { observeProcessBirth, type BirthObservation, type ProcessBirth } from "./identity";
+import { observeProcessBirth, observeProcessGroup, type BirthObservation, type ProcessBirth } from "./identity";
 import { CUSTODY_ENV } from "./protocol";
 
 /** 两本账共用的封闭相位集；`quarantined` 是未收敛而非终态。 */
@@ -35,6 +35,7 @@ type CustodyRecord = Readonly<{
   phase: CustodyPhase;
   revision: number;
   processIdentity?: ProcessIdentity;
+  descendantIdentities?: Array<Pick<ProcessIdentity, "pid" | "processGroupId" | "birthIdentity">>;
 }>;
 
 type CustodyAbortReason =
@@ -51,6 +52,7 @@ type CustodyQuarantineReason =
  * 它只按自己手上那一版推进，撞上晚到命令时由账本抛错。
  */
 type CustodyJournalPort<E extends CustodyRecord> = {
+  recordDescendants?(custodyId: string, revision: number, members: Array<Pick<ProcessIdentity, "pid" | "processGroupId" | "birthIdentity">>): Promise<E>;
   markOwned(custodyId: string, revision: number, identity: ProcessIdentity): Promise<E>;
   authorizeActivation(custodyId: string, revision: number): Promise<E>;
   markActivated(custodyId: string, revision: number): Promise<E>;
@@ -90,6 +92,7 @@ export type CustodyRuntimeOptions = {
   /** What one read proves about a PID: only `absent` counts as ended; `unverified` releases nothing and signals nothing. */
   observeBirth?: (pid: number) => BirthObservation;
   stopGroup?: (pid: number) => Promise<CleanupResult>;
+  groupExists?: (pid: number) => boolean;
   /** guardian 从 spawn 到 activated ack 的总预算 */
   handshakeTimeoutMs?: number;
 };
@@ -216,6 +219,14 @@ export class CustodyAttachment<E extends CustodyRecord> {
     );
   }
 
+  async recordDescendants() {
+    const identity = this.current.processIdentity;
+    if (!identity || !this.journal.recordDescendants) throw new Error("Custody descendant recording is unavailable");
+    const before = observeProcessBirth(identity.pid), members = observeProcessGroup(identity.processGroupId), after = observeProcessBirth(identity.pid);
+    if (before.state !== "present" || after.state !== "present" || !sameProcess(before, identity) || !sameProcess(after, identity) || !members || !members.some(row => row.pid === identity.pid && sameProcess(row, identity))) throw new Error("Custody descendant identity is unconfirmed");
+    this.current = await this.journal.recordDescendants(this.current.custodyId, this.current.revision, members.filter(row => row.pid !== identity.pid));
+  }
+
   /** 用真实 process 证据收口：已退出 → released，说不清 → quarantined。 */
   async settle() {
     clearTimeout(this.timer);
@@ -316,10 +327,10 @@ export class CustodyAttachment<E extends CustodyRecord> {
 }
 
 /**
- * 唯一的收口判据，settle 与 reconcile 共用。三种结论互斥且都基于真实证据：
- * - 探不到该 PID → 进程确已消失 → released
- * - 探到但 birth/pgid 与账本不符 → PID 被复用 → **绝不发信号** → quarantine
- * - 探到且相符 → 还活着 → kill 进程组 → 再探；仍在 → quarantine
+ * Release requires a confirmed absent group or birth-verified continuous custody.
+ * An absent guardian and a live numeric PGID alone cannot prove ownership across restarts.
+ * A recorded live descendant must still match its birth and group before any leaderless cleanup.
+ * Missing, stale or unverified witness facts quarantine the entry without signalling.
  */
 export async function converge<E extends CustodyRecord>(
   journal: CustodyJournalPort<E>,
@@ -338,7 +349,24 @@ export async function converge<E extends CustodyRecord>(
   if (before.state === "unverified") {
     return journal.quarantine(entry.custodyId, entry.revision, "process-identity-unconfirmed");
   }
-  if (before.state === "absent") return journal.release(entry.custodyId, entry.revision);
+  const stop = options.stopGroup ?? cleanProcessGroup;
+  const exists = options.groupExists ?? groupExists;
+  if (before.state === "absent") {
+    if (!exists(identity.processGroupId)) return journal.release(entry.custodyId, entry.revision);
+    const witnessed = () => (entry.descendantIdentities ?? []).some(member => {
+      const current = observe(member.pid);
+      return member.pid !== identity.pid && member.processGroupId === identity.processGroupId && current.state === "present" && sameProcess(current, member);
+    });
+    if (!witnessed()) return journal.quarantine(entry.custodyId, entry.revision, "process-identity-unconfirmed");
+    const guardedProbe = (pid: number): BirthObservation => {
+      const current = observe(pid);
+      return current.state === "absent" && !witnessed() ? { state: "unverified" } : current;
+    };
+    const result = await cleanOwnedProcessGroup({ pid: identity.processGroupId, birthIdentity: identity.birthIdentity }, guardedProbe, stop, exists);
+    return result.ok && (result.verdict === "gone" || result.verdict === "reused" || !exists(identity.processGroupId))
+      ? journal.release(entry.custodyId, entry.revision)
+      : journal.quarantine(entry.custodyId, entry.revision, result.verdict === "unverified" ? "process-identity-unconfirmed" : "process-survived-kill");
+  }
   if (!sameProcess(before, identity)) {
     return journal.quarantine(
       entry.custodyId,
@@ -346,14 +374,13 @@ export async function converge<E extends CustodyRecord>(
       "process-identity-unconfirmed"
     );
   }
-  const stop = options.stopGroup ?? cleanProcessGroup;
   const result = await stop(identity.processGroupId);
   const after = observe(identity.pid);
   /* 身份变了也算释放：那个 PID 已经不是我们的进程了，与彻底消失等价。说不清则不算。 */
   if (after.state === "unverified") {
     return journal.quarantine(entry.custodyId, entry.revision, "process-identity-unconfirmed");
   }
-  if (after.state === "absent" || !sameProcess(after, identity)) {
+  if (after.state === "present" && !sameProcess(after, identity) || after.state === "absent" && result.ok && !exists(identity.processGroupId)) {
     return journal.release(entry.custodyId, entry.revision);
   }
   if (!result.ok) console.warn("[custody] 进程组清理失败", result.error.message);
@@ -364,7 +391,7 @@ export async function converge<E extends CustodyRecord>(
   );
 }
 
-function sameProcess(birth: ProcessBirth, identity: ProcessIdentity) {
+function sameProcess(birth: ProcessBirth, identity: Pick<ProcessIdentity, "processGroupId" | "birthIdentity">) {
   return (
     birth.processGroupId === identity.processGroupId &&
     birth.birthIdentity === identity.birthIdentity

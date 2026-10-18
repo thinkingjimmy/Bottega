@@ -28,17 +28,17 @@ const chatCore: Declared = { resume: "declared", cancel: "declared", "plan-mode"
   "mcp-stdio": "declared", "mcp-sse": "declared", "image-input": "declared", "model-catalog": "declared", "history-import": "declared" };
 const headless = { chat: "native", title: "native", "install-analysis": "native", repair: "native", serve: "native", subagent: "native" } as const;
 /* W9's format extractor must run with no tools at all: only Claude's `--tools ""` proves that (04 §5). */
-const codexHeadless = { ...headless, "format-extract": "unsupported" } as const;
+const codexHeadless = { chat: "native", title: "unsupported", "format-extract": "unsupported", "install-analysis": "unsupported", repair: "unsupported", serve: "unsupported", subagent: "unsupported" } as const;
 const claudeHeadless = { ...headless, "format-extract": "native" } as const;
 
 const descriptors: Record<BuiltinId, ProviderDescriptor> = {
   codex: { ...common, providerId: "codex", packageId: "bottega.provider.codex", displayName: "Codex",
-    runtime: { discovery: { commands: ["codex"], versionArgs: ["--version"], minimumVersion: "0.145.0" },
-      launch: { kind: "acp-stdio-adapter", layer: "bundled-node" }, env: { allow: ["CODEX_HOME"], processStart: ["CODEX_HOME"] } },
+    runtime: { discovery: { commands: ["codex"], versionArgs: ["--version"], minimumVersion: "0.163.0-alpha.10.2" },
+      launch: { kind: "codex-app-server", layer: "native" }, env: { allow: ["CODEX_HOME"], processStart: ["CODEX_HOME"] } },
     auth: { check: "status-command", login: { local: "terminal", remote: "unsupported" }, credentialSafeProbe: false },
     sensitiveRoots: { paths: ["~/.codex"], envOverrides: ["CODEX_HOME"], keychainServices: [], retainAfterUninstall: true },
     /* Codex's remote MCP client speaks streamable HTTP only. */
-    capabilities: capabilities({ ...chatCore, "mcp-sse": "unsupported", steer: "declared", "read-only": "declared", quota: "declared",
+    capabilities: capabilities({ ...chatCore, "mcp-sse": "unsupported", steer: "declared", "read-only": "unsupported", quota: "declared",
       "section-assign": "declared", "subagent-assign": "declared", "project-convert": "declared" }),
     purposes: codexHeadless },
   claude: { ...common, providerId: "claude", packageId: "bottega.provider.claude", displayName: "Claude",

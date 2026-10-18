@@ -284,6 +284,7 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
         "app-context-base-unavailable": "Base is not available in App conversations.",
       },
     },
+    nativeBackground: chatSurfacesEn.nativeBackground,
     transcript: chatSurfacesEn.transcript,
     usageLimit: chatSurfacesEn.usageLimit,
     composer: {

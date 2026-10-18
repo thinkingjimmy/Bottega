@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends only on shared turn/IPC types (type-only imports)
- * [OUTPUT]: Provides the Provider bridge message vocabulary: providerHostId, PROVIDER_TURN_OPERATIONS, BridgeTurnStart (what main hands the bridge to start a turn, including the session `_meta` main computed), BridgeTurnEvent (ordered turn → main notifications, one per AcpTurn callback) BridgeTurnRequest (the awaited turn → main calls, including `mcp-servers`: an acp-transport session's servers with their tokens, answered at its creation), the headless start/outcome and BridgeQuotaAnswer (a quota operation's result or finite reason)
- * [POS]: Imported by both halves — main's BridgedAcpTurn/ProviderBridgeRuntime and the bridge entry — so the boundary is one typed list; everything here is plain JSON by construction
+ * [OUTPUT]: Provides the Provider bridge message vocabulary: providerHostId, PROVIDER_TURN_OPERATIONS, BridgeTurnStart (what main hands the bridge to start a turn, including the session `_meta` main computed), BridgeTurnEvent (ordered turn → main notifications, one per Provider turn callback) BridgeTurnRequest (the awaited turn → main calls, including exact-owner retained results and `mcp-servers`: an acp-transport session's servers with their tokens, answered at its creation), the headless start/outcome and BridgeQuotaAnswer (a quota operation's result or finite reason)
+ * [POS]: Imported by both halves — main's BridgedTurn/ProviderBridgeRuntime and the bridge entry — so the boundary is one typed list; everything here is plain JSON by construction
  */
 import type { AgentSendPayload, SessionRef } from "../../../../shared/ipc/agent/agent-ipc";
 import type { PersistedSubagent } from "../../../../shared/ipc/content/chats-ipc";
@@ -13,7 +13,7 @@ export const providerHostId = (providerId: string) => `provider-${providerId}`;
 export const PROVIDER_TURN_OPERATIONS = Object.freeze({ events: "provider.turn.events", request: "provider.turn.request" });
 
 /** Callbacks that are plain notifications: the bridge sends them in order, main applies them in order. */
-export const NOTIFY_CALLBACKS = ["onConfigOptionUpdate", "onItemDelta", "onItem", "onItemRemoved", "onSubagentUpdate", "onSubagentItem",
+export const NOTIFY_CALLBACKS = ["onServiceTierUpdate", "onConfigOptionUpdate", "onItemDelta", "onItem", "onItemRemoved", "onSubagentUpdate", "onSubagentItem",
   "onSubagentItemDelta", "onApproval", "onApprovalClosed", "onUserInput", "onUserInputClosed", "onThirdPartyMcpProtocol", "onPolicyViolation",
   "onTerminal", "onProcessError"] as const;
 export type NotifyCallback = (typeof NOTIFY_CALLBACKS)[number];
@@ -25,6 +25,8 @@ export type NotifyCallback = (typeof NOTIFY_CALLBACKS)[number];
  */
 export type BridgeTurnStart = Readonly<{
   turnKey: string;
+  protocol: "acp" | "codex-app-server";
+  chatIncarnationId?: string;
   payload: AgentSendPayload;
   input: unknown[];
   runtime: { executable: string; path: string; version: string };
@@ -50,11 +52,16 @@ export type BridgeTurnEvent =
   | { k: "trace-wire"; direction: string; line: string }
   | { k: "trace-mapped"; event: unknown }
   | { k: "process"; pid: number | null; steering: boolean }
+  | { k: "native-background-update"; terminals: import("../codex/native/background/registry").NativeTerminal[]; output?: { itemId: string; delta: string } }
+  | { k: "native-background-ended" }
   /* A headless run's live item (TASK-11 D8), in the order the shared output reader produced it. */
   | { k: "headless-event"; event: unknown };
 
 export type BridgeTurnRequest =
-  | { k: "thread"; session: SessionRef }
+  | { k: "native-background-result"; result: import("../../../../shared/ipc/agent/background-ipc").NativeBackgroundResult }
+  | { k: "native-config" }
+  | { k: "native-background"; threadId: string; lastTurnId: string; terminals: import("../codex/native/background/registry").NativeTerminal[] }
+  | { k: "thread"; session: SessionRef; previous?: SessionRef }
   | { k: "session-prompt"; sessionId: string; texts: unknown }
   | { k: "authority" }
   | { k: "builtin-ready" }

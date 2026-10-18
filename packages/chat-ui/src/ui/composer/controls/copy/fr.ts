@@ -136,6 +136,8 @@ export const copy = {
     },
   },
   "permission": {
+    "codexPolicy": "Codex peut accéder au réseau et lire les fichiers ordinaires hors du dossier de travail. Les écritures hors des racines exigent une approbation native. Plan conserve les permissions choisies. Bottega ne protège pas les chemins en plus.",
+    "codexAuto": "Codex examine les accès supplémentaires et peut les refuser. Il ne les approuve pas tous.",
     "trigger": "Permission d’action actuelle : {{mode}}",
     "heading": "Comment approuver les actions de {{backend}} ?",
     "learnMore": "En savoir plus",
@@ -156,7 +158,7 @@ export const copy = {
     },
     "fullAccess": {
       "title": "Activer l’accès complet ?",
-      "description": "L’Agent pourra exécuter des commandes, utiliser Internet, créer et modifier des fichiers hors de ce chat sans votre permission. Les données de contrôle d’AI Chat restent protégées, mais pas vos autres fichiers. Cela comprend notamment :",
+      "description": "L’Agent pourra exécuter des commandes, utiliser Internet, créer et modifier des fichiers hors de ce chat sans votre permission. Cela comprend notamment :",
       "files": {
         "title": "Fichiers et dossiers",
         "description": "Lire, créer, modifier, téléverser ou supprimer des fichiers partout sur cet ordinateur"

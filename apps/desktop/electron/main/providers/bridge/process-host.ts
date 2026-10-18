@@ -7,7 +7,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import type { HostApi, HostProcess } from "../../host/entry";
-import type { AgentProcessHost } from "../../backends/types";
+import type { AgentProcessHost } from "../../backends/contracts/types";
 
 class RelayedChild extends EventEmitter {
   readonly stdout = new PassThrough();
@@ -19,28 +19,30 @@ class RelayedChild extends EventEmitter {
   private process: HostProcess | null = null;
   private readonly queued: string[] = [];
   private ended = false;
+  private exited = false;
 
-  constructor() {
+  constructor(private readonly binaryOutput = false) {
     super();
     this.stdin = new Writable({
       write: (chunk: Buffer | string, _encoding, done) => {
         const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+        if (this.exited) { done(new Error("Native process input is closed")); return; }
         if (this.process) this.process.write(text); else this.queued.push(text);
         done();
       },
-      final: (done) => { this.ended = true; this.process?.end(); done(); },
+      final: (done) => { this.ended = true; if (!this.exited) this.process?.end(); done(); },
     });
   }
 
   attach(process: HostProcess) {
     this.process = process;
     this.pid = process.pid;
-    process.onOutput((stream, data) => (stream === "stdout" ? this.stdout : this.stderr).write(data));
+    process.onOutput((stream, data) => (stream === "stdout" ? this.stdout : this.stderr).write(this.binaryOutput ? Buffer.from(data, "base64") : data));
     for (const text of this.queued.splice(0)) process.write(text);
     if (this.ended) process.end();
     this.emit("spawn");
     void process.exited.then(({ code, signal }) => {
-      this.exitCode = code; this.signalCode = signal;
+      this.exited = true; this.exitCode = code; this.signalCode = signal;
       this.stdout.end(); this.stderr.end();
       this.emit("exit", code, signal);
       this.emit("close", code, signal);
@@ -53,14 +55,14 @@ class RelayedChild extends EventEmitter {
     this.emit("close", null, null);
   }
 
-  kill() { this.process?.kill(); return true; }
+  kill() { if (this.exited) return false; this.process?.kill(); return true; }
 }
 
 /**
  * `launch` ignores what the turn computed: the bridge was built with no fence and no environment, and main spawns the
  * launch it sealed on the execution ref, in custody, with exactly its environment.
  */
-export function bridgeProcessHost(api: HostApi, ref: string): AgentProcessHost & { child(): RelayedChild | null } {
+export function bridgeProcessHost(api: HostApi, ref: string, binaryOutput = false): AgentProcessHost & { child(): RelayedChild | null } {
   let resolve!: () => void, reject!: (cause: Error) => void;
   const delivered = new Promise<void>((ok, fail) => { resolve = ok; reject = fail; });
   delivered.catch(() => undefined);
@@ -69,7 +71,7 @@ export function bridgeProcessHost(api: HostApi, ref: string): AgentProcessHost &
     delivered,
     child: () => current,
     launch: () => {
-      const child = new RelayedChild();
+      const child = new RelayedChild(binaryOutput);
       current = child;
       void api.spawn(ref, "sealed-plan", [], { plan: true }).then(
         (process) => { child.attach(process); resolve(); },

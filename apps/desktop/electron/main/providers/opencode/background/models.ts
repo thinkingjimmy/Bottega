@@ -10,7 +10,7 @@ import { join } from "node:path";
 import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 import type { BackendModelInfo } from "../../../../../shared/ipc/agent/agent-ipc";
 import { inspectAcpSession } from "../../../backends/acp/probe";
-import type { ResolvedRuntime } from "../../../backends/types";
+import type { ResolvedRuntime } from "../../../backends/contracts/types";
 import { OPAQUE_CONFIG_VALUE_PATTERN } from "../../../backends/runtime/capability-validation";
 import { createModelCatalog, executableFileKey, type ModelCatalogProbeRunner } from "../../../backends/models/model-catalog";
 import { runSupervisedCommand } from "../../../backends/jobs/supervised-command";

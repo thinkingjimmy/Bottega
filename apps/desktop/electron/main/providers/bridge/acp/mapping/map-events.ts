@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on private artifact metadata and ACP schema session update/permission/stop reason and shared Agent DTO
  * [OUTPUT]: Provides ACP→Agent item mapping, native Plan update/removal mapping (finalization is imported from plan-events by AcpTurn directly), and permission/question mapping, with plan exits capped at the Chat's permission level, bypass never offered and the safest exit first (subagent attribution lives in map-subagent-meta.ts)
- * [POS]: Pure translation layer of ACP transport, shared by all four AcpTurn backends; holds no session state of its own
+ * [POS]: Pure translation layer of ACP transport, shared by ACP Provider backends; holds no session state of its own
  */
 
 import { artifactMetadata } from "../../../../artifacts/discovery/acp-metadata";
@@ -253,10 +253,7 @@ export function mapToolKind(kind: unknown): AgentTurnItemKind {
   return "other";
 }
 
-// ─── 生图：ACP 无对应 kind，标题是唯一可辨信号 ───
-// codex-acp 1.1.7 对生图恒发 kind:"other" + 固定标题 "Image generation"
-// （起始 in_progress，落地补 content/rawOutput）；ACP 词表没有"生成图片"这一格，
-// 判据只能落在标题上。后续 tool_call_update 不带 kind/title，靠既有继承延续身份。
+// ACP has no image-generation kind; compatible adapters identify it by this stable title.
 const IMAGE_GENERATION_TITLE = "Image generation";
 
 function toolItemKind(kind: unknown, title: unknown): AgentTurnItemKind {

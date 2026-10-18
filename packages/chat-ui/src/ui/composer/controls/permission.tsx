@@ -45,6 +45,7 @@ export function ChatPermissionSelector({
   onChange,
   allowedModes,
   backendDisplayName = "Agent",
+  providerId,
   unavailableTitle,
 }: {
   locale: string;
@@ -57,6 +58,7 @@ export function ChatPermissionSelector({
   onChange: (mode: AgentPermissionMode) => Promise<void>;
   allowedModes?: AgentPermissionMode[];
   backendDisplayName?: string;
+  providerId?: string;
   /** Shown when the current mode is not among the allowed ones: the chip flags itself and the popover offers the way out. */
   unavailableTitle?: string;
 }) {
@@ -160,6 +162,7 @@ export function ChatPermissionSelector({
               </button>
             )}
           </div>
+          {providerId === "codex" && <p className="px-2 pb-2 text-xs text-muted-foreground">{t("permission.codexPolicy")}</p>}
           <div className="space-y-px">
             {visibleOptions.map((option) => {
               const Icon = option.icon;
@@ -182,7 +185,7 @@ export function ChatPermissionSelector({
                       {modeLabel(option.value)}
                     </span>
                     <span className={cn("block text-xs", option.danger ? "text-current" : "text-muted-foreground")}>
-                      {t(`permission.mode.${option.value}.description`)}
+                      {providerId === "codex" && option.value === "approve-for-me" ? t("permission.codexAuto") : t(`permission.mode.${option.value}.description`)}
                     </span>
                   </span>
                   <span className="size-4 shrink-0">

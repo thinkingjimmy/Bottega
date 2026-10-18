@@ -9,7 +9,7 @@ import { lstatSync, mkdtempSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { sanitizedProcessEnvironment } from "../../backends/runtime/runtime-probe";
-import type { AcpLauncher, AgentRuntime } from "../../backends/types";
+import type { AcpLauncher, AgentRuntime } from "../../backends/contracts/types";
 import type { BuiltinMcpServerSpec } from "../../tools/lease";
 import {
   assertUniqueMcpBackendAliases,

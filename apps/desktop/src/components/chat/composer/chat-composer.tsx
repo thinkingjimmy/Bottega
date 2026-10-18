@@ -607,6 +607,7 @@ function ChatComposerContent({
               />
             )}
             {execution.controls?.permission ?? (builtinOptions && <ChatPermissionSelector
+              providerId={builtinOptions.backend}
               chatId={controller.chatId}
               value={builtinOptions.permissionMode}
               backendDisplayName={

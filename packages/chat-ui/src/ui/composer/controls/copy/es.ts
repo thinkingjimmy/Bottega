@@ -136,6 +136,8 @@ export const copy = {
     },
   },
   "permission": {
+    "codexPolicy": "Codex puede acceder a la red y leer archivos normales fuera del área de trabajo. Escribir fuera de las raíces requiere aprobación nativa. Plan conserva los permisos elegidos. Bottega no añade protección de rutas.",
+    "codexAuto": "Codex revisa el acceso adicional y puede rechazarlo. No aprueba todas las solicitudes.",
     "trigger": "Permiso de acción actual: {{mode}}",
     "heading": "¿Cómo se deben aprobar las acciones de {{backend}}?",
     "learnMore": "Más información",
@@ -156,7 +158,7 @@ export const copy = {
     },
     "fullAccess": {
       "title": "¿Activar el acceso total?",
-      "description": "El Agent podrá ejecutar comandos, usar internet y crear o editar archivos fuera de este chat sin tu permiso. Los datos de control de AI Chat siguen protegidos, pero tus demás archivos no. Esto incluye, entre otros:",
+      "description": "El Agent podrá ejecutar comandos, usar internet y crear o editar archivos fuera de este chat sin tu permiso. Esto incluye, entre otros:",
       "files": {
         "title": "Archivos y carpetas",
         "description": "Leer, crear, modificar, subir o eliminar archivos en cualquier lugar de este equipo"

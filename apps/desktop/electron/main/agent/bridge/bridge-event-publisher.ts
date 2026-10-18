@@ -6,7 +6,7 @@
 
 import type { BrowserWindow } from "electron";
 import { AGENT_CHANNEL, type AgentEventBody } from "../../../../shared/ipc/agent/agent-ipc";
-import type { AgentTurn } from "../../backends/types";
+import type { AgentTurn } from "../../backends/contracts/types";
 import { redactImageDetails } from "../../gallery/agent-image-projection";
 import type { TokenizedSubscriptionBroker } from "../../ipc/subscription-broker";
 import type { TurnRegistry } from "../turns/turn/turn-registry";

@@ -7,13 +7,14 @@
 import { SessionReplayProof } from "../../../library/sessions/boundary";
 import {
   AGENT_METHODS,
-  type ClientContext, type ContentBlock, type CreateElicitationRequest,
+  type ClientContext, type CreateElicitationRequest,
   type CreateElicitationResponse, type RequestPermissionResponse,
   type SessionNotification,
 } from "@agentclientprotocol/sdk";
 import type { AgentApprovalDecision, AgentUserInputAnswers } from "../../../../../shared/ipc/agent/agent-ipc";
 import { asError } from "../../../ipc/errors";
-import type { AdapterSteerOutcome, AgentProcessHost, AgentTurn, BackendTurnOptions, StartOutcome } from "../../../backends/types";
+import type { AdapterSteerOutcome, AgentProcessHost, AgentTurn, BackendTurnOptions, StartOutcome } from "../../../backends/contracts/types";
+import type { ProviderTurnInput } from "../../../backends/contracts/turn-input";
 import { ACP_MAX_DELTA_BYTES } from "./turn/framing-guard";
 import { elicitationOutcome, mapAcpElicitation, type AcpElicitationMapping } from "./turn/elicitation";
 import { AcpConnection } from "./connection/acp-connection";
@@ -32,7 +33,7 @@ import { finalizeNativePlan, finalizeNativePlans } from "./mapping/plan-events";
 import { requestAcpSteering, SteeringOperationGate } from "./turn/acp-steering";
 import { PromptHandoffTracker } from "./turn/prompt-handoff";
 import { assertUniqueMcpBackendAliases } from "../../../../../shared/ipc/settings/mcp-servers-ipc";
-import { processHostOf, promptBlocks } from "./turn/setup";
+import { processHostOf, promptBlocks, acpInput } from "./turn/setup";
 import { turnLaunch, type AcpSpawnConfig } from "../../../backends/acp/launch";
 import { establishAcpSession } from "./turn/session-establishment";
 import { promptReplayTexts } from "./turn/prompt-replay";
@@ -293,7 +294,7 @@ export class AcpTurn implements AgentTurn {
     });
   }
 
-  async steer(prompt: ContentBlock[]): Promise<AdapterSteerOutcome> {
+  async steer(prompt: ProviderTurnInput[]): Promise<AdapterSteerOutcome> {
     if (!this.context || !this.sessionId) {
       throw new Error("ACP steering 缺少活动 session");
     }
@@ -311,7 +312,7 @@ export class AcpTurn implements AgentTurn {
         () =>
           this.context!.request("_session/steering", {
             sessionId: this.sessionId!,
-            prompt,
+            prompt: acpInput(prompt),
             _meta: { steering: { idleBehavior: "promptRequired" } },
           }),
         () => this.interrupt()

@@ -67,7 +67,7 @@ export function useRemoteComposerControls(input: { store: RemoteDraftStore; draf
           disabled:!sketch.available||!entry.enabled||!entry.generationId||draft.files.length>=8||!capabilities?.imageInput,
           reason:pluginInitializationMessage(entry,composerText)??(!entry.enabled?composerText('sketch.readOnly'):draft.files.length>=8?composerText('sketch.attachmentLimit'):undefined),run:anchor=>sketch.open(entry,anchor)})) : []}
         plan={{ active: draft.planMode, disabled: !capabilities?.planMode, run: () => store.update({ planMode: !draft.planMode }) }} preload={sketch.preload} />
-      <ChatPermissionSelector locale={locale} value={permissionMode} disabled={disabled || !capabilities} allowedModes={capabilities?.permissionModes} backendDisplayName={agent}
+      <ChatPermissionSelector providerId={input.backend} locale={locale} value={permissionMode} disabled={disabled || !capabilities} allowedModes={capabilities?.permissionModes} backendDisplayName={agent}
         unavailableTitle={permissionUnavailable} deferConfirmation onChange={async permissionMode => store.update({ permissionMode, consent: null })} />
       {draft.planMode && <ChatPlanChip locale={locale} unavailableTitle={planUnavailable} onClose={() => { if (!disabled) store.update({ planMode: false }); }} />}</>,
     files: <RemoteDraftFiles draft={draft} locale={locale} disabled={disabled} unsupported={unsupportedFile} remove={id => store.remove(id)} previewId={previewId} onPreview={setPreviewId}

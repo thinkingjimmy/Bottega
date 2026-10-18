@@ -1,9 +1,11 @@
 /**
- * [INPUT]: Depends on Node crypto/fs/path, zod, the Provider admission gate (asked before every bridge start; a refusal is the Provider's named runtime-unavailable failure, d4-0) and the admitted bundled Provider packages (each bridge is started with its one Provider's module path and pinned digest, TASK-11 d2/d3; a refused package is that Provider's named runtime-unavailable failure), the utility host runtime, the operation runtime (refs + registry), the provider-turn principal, the bridge protocol (BridgedWork: a turn or a headless run) and BridgedAcpTurn
+ * [INPUT]: Depends on Node crypto/fs/path, zod, the Provider admission gate (asked before every bridge start; a refusal is the Provider's named runtime-unavailable failure, d4-0) and the admitted bundled Provider packages (each bridge is started with its one Provider's module path and pinned digest, TASK-11 d2/d3; a refused package is that Provider's named runtime-unavailable failure), the utility host runtime, the operation runtime (refs + registry), the provider-turn principal, the bridge protocol (BridgedWork: a turn or a headless run) and BridgedTurn
  * [OUTPUT]: Provides ProviderBridgeRuntime (ensure waits for the host's single start and shares one readiness proof per runtime identity, B-03, which a quota read or headless job skips with `prove: false` since neither speaks ACP; a bridge nobody uses stops after PROVIDER_BRIDGE_IDLE_STOP_MS, configurable through configureIdleStop) stop(providerId, cause) (d4a close-out: an unavailable Provider's bridge closes now, failing only its turns), and installedProviderBridge (the composed runtime or null) (ensure a Provider's bridge host and its readiness, turn principals, sealed execution refs, the two `provider.turn.*` operations, bridge-lost handling) plus installProviderBridge / requireProviderBridge
  * [POS]: The main-side owner of Provider bridges. One bridge host per Provider; readiness (initialize + session/list on a custody-mode process, from a per-Provider plan whose preparation is released after) runs once per bridge life and runtime identity before the first turn; a bridge's exit fails only its own Provider's turns
  */
 import type { AgentTurnCustodyDependency } from "../../../../shared/apps/model/app-lifecycle";
+import { executableFileKey } from "../../backends/models/model-catalog";
+import { nativeBackgrounds } from "../codex/native/background/registry";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -19,7 +21,7 @@ import { agentRuntimeFailure, diagnosticFailureDetails, ProductFailureError } fr
 import { BundledProviderRefused } from "../../extensions/host/bundled-providers";
 import { assertProviderAdmitted, assertProviderNotRevoked, ProviderAdmissionRefused } from "./admission";
 import { providerTurnPrincipal, type VerifiedPrincipal } from "../../operations/principals";
-import type { AgentProcessLaunch, TurnProcessOwner } from "../../backends/types";
+import type { AgentProcessLaunch, TurnProcessOwner } from "../../backends/contracts/types";
 import { providerHostId, PROVIDER_TURN_OPERATIONS, type BridgeTurnEvent, type BridgeTurnRequest } from "./protocol";
 import type { BridgedWork } from "./protocol";
 
@@ -108,6 +110,7 @@ export class ProviderBridgeRuntime {
    * idle. The host's exit fails only this Provider's turns; a later ensure asks the admission gate again before anything starts.
    */
   async stop(providerId: string, cause: string) {
+    await nativeBackgrounds.stopProvider(providerId);
     const hostId = providerHostId(providerId);
     this.disarm(hostId);
     await this.stopping.get(hostId);
@@ -165,7 +168,7 @@ export class ProviderBridgeRuntime {
     }
     /* B-03: every caller waits for the same start (single-flight in the host), never only the first. */
     if (host.state !== "running") await host.start();
-    const identity = `${runtime.executable}@${runtime.version}`;
+    const identity = `${executableFileKey(runtime.executable)}@${runtime.version}`;
     if (options.prove !== false && this.ready.get(hostId)?.runtime !== identity) {
       /* Concurrent first turns share one readiness proof per runtime identity. */
       let flight = this.readying.get(hostId);

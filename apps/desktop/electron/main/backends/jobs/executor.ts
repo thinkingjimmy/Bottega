@@ -30,7 +30,7 @@ import type {
   HeadlessJob,
   HeadlessRun,
   ResolvedRuntime,
-} from "../types";
+} from "../contracts/types";
 import { matchesTarget } from "../../../../shared/agent-availability/projection";
 import type { BackendRuntimeRegistry, BackendRuntimeSnapshot } from "../runtime/runtime-registry";
 import {
@@ -86,6 +86,7 @@ export class HeadlessExecutor {
     const credentialUse = reserveAgentCredentialUse(descriptor.id);
     const ready = Promise.resolve()
       .then(async () => {
+        if (!descriptor.headless?.purposes.includes(job.purpose)) throw new Error(`${descriptor.displayName} does not support ${job.purpose} with its required isolation contract`);
         await credentialUse.ready;
         const receipt = await this.runtimeForRun(descriptor, options.snapshot, signal, job);
         lease = await (

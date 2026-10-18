@@ -136,6 +136,8 @@ export const copy = {
     },
   },
   "permission": {
+    "codexPolicy": "Codex permits network access and ordinary reads outside the workspace. Writes outside its roots require native approval. Plan uses the selected permissions. Bottega does not add path protection.",
+    "codexAuto": "Codex reviews extra access and can refuse it. It does not approve every request.",
     "trigger": "Current action permission: {{mode}}",
     "heading": "How should {{backend}} actions be approved?",
     "learnMore": "Learn more",
@@ -156,7 +158,7 @@ export const copy = {
     },
     "fullAccess": {
       "title": "Turn on Full Access?",
-      "description": "The Agent will be able to run commands, use the internet, and create and edit files outside this chat without your permission. AI Chat's control data remains protected, but your other files do not. This includes but is not limited to:",
+      "description": "The Agent will be able to run commands, use the internet, and create and edit files outside this chat without your permission. This includes but is not limited to:",
       "files": {
         "title": "Files and folders",
         "description": "Read, create, modify, upload, or delete files anywhere on this computer"

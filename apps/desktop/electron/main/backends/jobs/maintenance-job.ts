@@ -4,7 +4,7 @@
  * [POS]: The backends' single App maintenance job policy: workspace read/write fence, never approve, ephemeral
  */
 
-import type { HeadlessJob, MaintenanceJobInput } from "../types";
+import type { HeadlessJob, MaintenanceJobInput } from "../contracts/types";
 
 /** App 维护 job 的统一档位：workspace 读写围栏、永不审批、不留用户态副作用。 */
 export function workspaceMaintenanceJob(input: MaintenanceJobInput): HeadlessJob {

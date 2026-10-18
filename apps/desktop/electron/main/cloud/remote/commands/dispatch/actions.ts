@@ -9,7 +9,7 @@ import { projectRichInput, richInputDisplayText } from "../../../../../../shared
 import { isRemoteTurnPayload } from "@ai-chat/cloud-protocol/remote/model";
 import type { ServerClock } from "@ai-chat/cloud-protocol/continuity/clock";
 import type { RemoteCommand, RemoteCommandReport, RemoteAdmission, RemoteOutput } from "@ai-chat/cloud-protocol/remote/model";
-import type { AgentTurn, } from "../../../../backends/types";
+import type { AgentTurn, } from "../../../../backends/contracts/types";
 import type { AgentBridgeIpcHandlers } from "../../../../agent/bridge/bridge-ipc";
 import type { RemoteContext, ControlReceipt } from "../../../../sections/coordinator/remote/model";
 import type { RelayLedger } from "../../../../sections/coordinator/relay-ledger";

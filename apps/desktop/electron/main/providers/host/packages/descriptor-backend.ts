@@ -11,8 +11,8 @@ import { commonCommandPaths, probeRuntimeCandidatesAsync, runtimeVersionAtLeast,
 import type { AcpSpawnConfig } from "../../../backends/acp/launch";
 import { descriptorVersionProbe } from "./auxiliary/version";
 import { descriptorAuth, descriptorSetup } from "./auxiliary/auth";
-import type { BackendTurnOptions } from "../../../backends/types";
-import { BridgedAcpTurn } from "../turns/bridged-turn";
+import type { BackendTurnOptions } from "../../../backends/contracts/types";
+import { BridgedTurn } from "../turns/bridged-turn";
 import { requireProviderBridge } from "../runtime";
 import type { DescriptorBackendFactory, ProviderBackend } from "../catalog";
 import { assertDeclaredLaunch, assertPackageAdmitted, descriptorAcpLaunch, preparePackageLaunch } from "./launch";
@@ -68,7 +68,7 @@ export const createDescriptorBackend: DescriptorBackendFactory = (descriptor, pk
     /* The bridge runs the package's pinned module; main seals the declared launch. d4c's gate refuses a third-party module this period. */
     createTurn: options => {
       validateTurnOptions(id, options.payload.turnOptions);
-      return new BridgedAcpTurn(options, spawnConfig(options), requireProviderBridge(), launch => preparePackageLaunch(descriptor, pkg, launch, {
+      return new BridgedTurn(options, spawnConfig(options), requireProviderBridge(), launch => preparePackageLaunch(descriptor, pkg, launch, {
         workspace: options.workspace, readOnly: options.filesystemAccess?.mode === "read-only" || Boolean(options.payload.planMode),
         readRoots: options.filesystemAccess?.readOnlyRoots, writeRoots: options.artifactDirectory ? [options.artifactDirectory] : [],
         deniedReadRoots: options.skillIsolation?.deniedRoots, controlRoot: options.filesystemAccess?.controlRoot,

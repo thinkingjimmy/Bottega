@@ -5,7 +5,7 @@
  */
 import { classifyAcpFailure } from "../../backends/acp/failure";
 import type { AcpSpawnConfig } from "../../backends/acp/launch";
-import type { HeadlessParserState } from "../../backends/types";
+import type { HeadlessParserState } from "../../backends/contracts/types";
 import { loadPinnedProviderModule, type BridgeModule } from "./module-loader";
 import type { QuotaExchange } from "../../usage-limits/readers/exchange";
 
@@ -26,9 +26,15 @@ export function configureProviderModules(next: ModuleSource) { source = next; }
 
 export async function bridgeTurnValues(backend: string): Promise<BridgeTurnValues> {
   const module = source(backend);
-  if (!module) throw new Error(`the Provider bridge cannot run ${backend} turns yet`);
+  if (!module?.turnValues || module.protocol === "codex-app-server") throw new Error(`the Provider bridge cannot run ${backend} ACP turns`);
   return { ...module.turnValues, classifyFailure: module.turnValues.classifyFailure ?? classifyAcpFailure,
     ...(module.promptReplay ? { promptReplay: module.promptReplay } : {}) };
+}
+
+export function bridgeProtocol(backend: string): "acp" | "codex-app-server" {
+  const module = source(backend);
+  if (!module) throw new Error(`No pinned protocol driver for ${backend}`);
+  return module.protocol ?? "acp";
 }
 
 type HeadlessParse = (line: string, state: HeadlessParserState, wantsJson: boolean) => void;

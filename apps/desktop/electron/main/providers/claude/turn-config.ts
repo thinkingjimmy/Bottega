@@ -5,7 +5,7 @@
  */
 import { acpRequestDetails, classifyAcpFailure } from "../../backends/acp/failure";
 import type { AcpSpawnConfig } from "../../backends/acp/launch";
-import type { HeadlessParserState } from "../../backends/types";
+import type { HeadlessParserState } from "../../backends/contracts/types";
 
 const SESSION_PATTERN = /^[A-Za-z0-9._:/-]{1,128}$/;
 

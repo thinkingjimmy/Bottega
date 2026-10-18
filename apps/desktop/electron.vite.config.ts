@@ -88,7 +88,6 @@ const RUNTIME_ENTRY_SOURCES: Record<NodeEntry, string> = {
     "codec-host": "electron/main/bases/media-host/codec-host-entry.ts",
     "app-gui-compiler": "electron/main/workers/app-gui-compiler-entry.ts",
     "process-watchdog": "electron/main/runtime/programs/watchdog-entry.ts",
-    "seatbelt-measurement": "electron/main/runtime/programs/seatbelt-measurement-entry.ts",
     "repair-supervisor": "electron/main/runtime/programs/repair-supervisor-entry.ts",
 };
 /* A private (non-production) main input marked here is taken out of the Rollup graph and built like a runtime entry: one file a plain
@@ -97,7 +96,6 @@ const selfContainedInputs = new Set<string>();
 function selfContained(path: string) { selfContainedInputs.add(path); return path; }
 const ADAPTER_PACKAGE_ENTRIES: Record<(typeof NODE_PACKAGES)[number], string> = {
     "claude-agent-acp": "node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js",
-    "codex-acp": "node_modules/@agentclientprotocol/codex-acp/dist/index.js",
 };
 /* Evaluates a self-contained CommonJS build inside this config (the layout of the built-in Provider packages): the workspace's TypeScript
    packages cannot be imported by the config directly, and the generator needs only Node built-ins. */

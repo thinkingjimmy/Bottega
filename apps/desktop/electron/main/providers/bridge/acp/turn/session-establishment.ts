@@ -9,7 +9,7 @@ import {
   AGENT_METHODS,
   type ClientContext,
 } from "@agentclientprotocol/sdk";
-import type { BackendTurnOptions } from "../../../../backends/types";
+import type { BackendTurnOptions } from "../../../../backends/contracts/types";
 import {
   applyTurnConfiguration,
   sessionConfigState,

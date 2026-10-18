@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on App enablement projections, React, renderer locale/catalog runtime and data providers, canonical chat/turn snapshots, PanelSessionContext, session subcontrollers, Agent attach, workspace/skills/files, and Gallery projections
- * [OUTPUT]: Composes stable Chat controllers with Retry / Plan decision / auth retry routed behind queued messages (queueHolds, a queued Retry says where it went; F-46 ③), the Project-switch removal notice (F-46 ④), the composer's lock reason and prepare failure (attach or draft read, with retry), dismissible resume recovery, unresolved-turn send/queue locks, transcript retry, and fixed Agent settings navigation A `background` mode serves hidden queue runners (F-34c): detached side panel, host-gated draining. It restores the Chat's durable draft (F-12) once its incarnation is known.
+ * [OUTPUT]: Composes stable Chat controllers, including scoped local-file preview commands, queued Retry/Plan/auth actions, durable draft recovery and host-gated background runners.
  * [POS]: The thin composition root of chat/runtime; durable authority remains in main while renderer owns view generation. Routing stays outside: post-send navigation is the chat route's draft-residence observation, not a session concern
  */
 import { useSessionIdentity } from "./session/identity";
@@ -264,6 +264,7 @@ export function useChatSession({
     openDraftPlan: openDraftPlanPanel,
     openFile: openFilePanel,
     openWorkspaceFile: openWorkspaceFilePanel,
+    openLocalFile: openLocalFilePanel,
     openImage,
     openPlan: openPlanPanel,
     openSubagent,
@@ -684,6 +685,7 @@ export function useChatSession({
     });
   const sidePanelController = useStableController({
       openArtifact: sidePanel.openArtifact,
+      openLocalFile: openLocalFilePanel,
       state: sidePanelState,
       context: panelContext,
       subagents,
@@ -772,7 +774,7 @@ export function useChatSession({
       selectedBackend,
       backendState,
       imageInputAvailable:
-        selectedBackend?.capabilities.imageInput ?? false,
+        Boolean(selectedBackend?.capabilities.imageInput) && (settings.models.find(model => model.slug === ("model" in settings.turnOptions ? settings.turnOptions.model : undefined))?.inputModalities?.includes("image") ?? true),
       openSetup: setup.openAgentSettings,
       retryAuthentication: retryAuthenticationRouted,
       ...recovery,

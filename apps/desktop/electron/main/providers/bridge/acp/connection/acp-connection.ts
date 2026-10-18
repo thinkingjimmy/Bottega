@@ -13,7 +13,7 @@ import { Readable, Writable } from "node:stream";
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
 import { asError } from "../../../../ipc/errors";
 import { cleanProcessGroup, wait, type CleanupResult } from "../../../../agent/process/process-group";
-import type { AgentProcessHost, AgentProcessLaunch } from "../../../../backends/types";
+import type { AgentProcessHost, AgentProcessLaunch } from "../../../../backends/contracts/types";
 import { assertAcpProtocolVersion } from "../../../../backends/acp/probe";
 import { AcpStartupTracker, type AcpStartupBudget } from "../../../../backends/acp/startup/budget";
 import { AcpProcessEvidence, deferred } from "../../../../backends/acp/startup/evidence";

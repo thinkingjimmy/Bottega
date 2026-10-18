@@ -5,7 +5,7 @@
  */
 
 import type { BackendModelInfo } from "../../../../../shared/ipc/agent/agent-ipc";
-import type { ResolvedRuntime } from "../../../backends/types";
+import type { ResolvedRuntime } from "../../../backends/contracts/types";
 import {
   MODEL_ID_PATTERN,
   OPAQUE_CONFIG_VALUE_PATTERN,

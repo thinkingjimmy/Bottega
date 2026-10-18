@@ -13,7 +13,7 @@ import type {
   AgentTurnItem,
 } from "../../../../shared/ipc/agent/agent-ipc";
 import type { PersistedSubagent } from "../../../../shared/ipc/content/chats-ipc";
-import type { AgentTurn } from "../../backends/types";
+import type { AgentTurn } from "../../backends/contracts/types";
 import type { BuiltinMcpLease } from "../../tools/lease";
 import type { TurnRegistry } from "../turns/turn/turn-registry";
 import type { SubagentOutcomeStatus, TurnChildTask } from "../turns/turn/turn-registry-model";

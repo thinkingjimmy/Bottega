@@ -33,7 +33,6 @@ export const NODE_ENTRY_FILES = Object.freeze({
   "app-gui-compiler": "app-gui-compiler-entry.js",
   /* TASK-35 slice 2c: programs that used to be `-e` strings (C10, C11). */
   "process-watchdog": "process-watchdog-entry.js",
-  "seatbelt-measurement": "seatbelt-measurement-entry.js",
   /* Slice 5: the App repair supervisor (C8). */
   "repair-supervisor": "repair-supervisor-entry.js",
 } as const);
@@ -41,7 +40,7 @@ export type NodeEntry = keyof typeof NODE_ENTRY_FILES;
 
 export const NODE_ENTRIES = Object.keys(NODE_ENTRY_FILES) as NodeEntry[];
 /** Third-party adapters run from unpacked node_modules. */
-export const NODE_PACKAGES = ["claude-agent-acp", "codex-acp"] as const;
+export const NODE_PACKAGES = ["claude-agent-acp"] as const;
 export type NodePackage = (typeof NODE_PACKAGES)[number];
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
@@ -72,8 +71,7 @@ export type RuntimeUnavailableReason = "missing" | "digest-mismatch" | "platform
 export class RuntimeUnavailable extends Error {
   constructor(readonly reason: RuntimeUnavailableReason, message: string) { super(message); this.name = "RuntimeUnavailable"; }
 }
-/** `codex-cli-missing` (E4): codex-acp without a real Codex CLI in CODEX_PATH would run its own bundled Codex under Node. */
-export type LaunchRefusal = "entry-missing" | "entry-digest-mismatch" | "package-unknown" | "inspect-flag" | "require-flag" | "eval-flag" | "codex-cli-missing";
+export type LaunchRefusal = "entry-missing" | "entry-digest-mismatch" | "package-unknown" | "inspect-flag" | "require-flag" | "eval-flag";
 export class LaunchRefused extends Error {
   constructor(readonly code: LaunchRefusal, message: string) { super(message); this.name = "LaunchRefused"; }
 }

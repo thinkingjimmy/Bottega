@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on shared ProductFailure and the renderer translation function
+ * [INPUT]: Depends on shared ProductFailure, shared Agent failure copy and the renderer translation function
  * [OUTPUT]: Provides skillFailureText for runtime and management domains and admissionReasonText for structured admission rejections (a coded refusal such as coordinator-closing speaks its catalog line; an expired file grant is named via fileGrantErrorMessage), without exposing internal details
  * [POS]: apps/desktop/src/lib/skills; Single ProductFailure-to-copy projection for chat, Plan controls, chips, and Skills settings
  */
 
+import { agentFailureCopy } from "../agent/agent-failure";
 import { getI18n } from "react-i18next";
 import type { ProductFailure } from "../../../shared/product/product-failure";
 import type { AdmissionRefusalCode } from "../../../shared/ipc/content/sections-ipc";
@@ -16,7 +17,9 @@ export function skillFailureText(
   t: (key: string, options?: Record<string, unknown>) => string,
   failure: ProductFailure
 ) {
-  return t(`chat.skillFailure.${failure.code}`);
+  return failure.domain === "agent-runtime"
+    ? agentFailureCopy(t, failure, { backend: "Agent" }).title
+    : t(`chat.skillFailure.${failure.code}`);
 }
 
 /** Admission 拒因的人话投影：结构化失败走五语目录（plain module 经全局

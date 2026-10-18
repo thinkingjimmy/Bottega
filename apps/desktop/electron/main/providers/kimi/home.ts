@@ -15,7 +15,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { sanitizedProcessEnvironment } from "../../backends/runtime/runtime-probe";
-import type { AcpLauncher, AgentRuntime } from "../../backends/types";
+import type { AcpLauncher, AgentRuntime } from "../../backends/contracts/types";
 import { BUILTIN_CLIENT_TIMEOUT_MS } from "../../../../shared/builtin-tools";
 
 

@@ -5,7 +5,7 @@
  */
 
 import { asError } from "../../../../ipc/errors";
-import type { BackendTurnOptions } from "../../../../backends/types";
+import type { BackendTurnOptions } from "../../../../backends/contracts/types";
 import type { AcpSpawnConfig } from "../../../../backends/acp/launch";
 
 /**

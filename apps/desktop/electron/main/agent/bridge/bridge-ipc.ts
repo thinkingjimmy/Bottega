@@ -5,6 +5,7 @@
  */
 
 import type { BrowserWindow } from "electron";
+import { nativeBackgrounds } from "../../providers/codex/native/background/registry";
 import {
   AGENT_CHANNEL,
   isAgentApprovalDecision,
@@ -24,7 +25,7 @@ import {
 } from "../validation";
 import { rendererIpc } from "../../registration/ipc-registrar";
 import { taskStartFence } from "../../presence/lifecycle/start-fence";
-import type { AgentTurn } from "../../backends/types";
+import type { AgentTurn } from "../../backends/contracts/types";
 import { redactImageDetails } from "../../gallery/agent-image-projection";
 import type { TokenizedSubscriptionBroker } from "../../ipc/subscription-broker";
 import type { TurnRegistry } from "../turns/turn/turn-registry";
@@ -203,8 +204,19 @@ export function registerAgentBridgeIpc(
     if (!conversationId) throw new Error("steer outbox 不存在");
     assertConversation(context, conversationId);
   };
+  const backgroundSubscribers = new Map<number, { window: TrustedRendererContext["window"]; chatId: string }>();
   rendererIpc(rendererUrl, "拒绝非主窗口的 Agent 请求")
     .roles("main", "app-window")
+    .handleWithContext(AGENT_CHANNEL.nativeBackgroundList, (context, value) => {
+      const chatId = assertConversation(context, assertConversationId(value));
+      backgroundSubscribers.set(context.window.id, { window: context.window, chatId });
+      return nativeBackgrounds.list(chatId);
+    })
+    .handleWithContext(AGENT_CHANNEL.nativeBackgroundStop, (context, value, incarnation, id) => {
+      const chatId = assertConversation(context, assertConversationId(value));
+      if (typeof incarnation !== "string" || incarnation.length > 128 || typeof id !== "string" || !/^[a-f0-9-]{36}$/.test(id)) throw new Error("Invalid native background command identity");
+      return nativeBackgrounds.stopCommand(chatId, incarnation, id);
+    })
     .handleWithContext(
       AGENT_CHANNEL.turnAttach,
       (context, rawConversationId, rawAttachmentId) => {
@@ -342,7 +354,13 @@ export function registerAgentBridgeIpc(
       }
     });
 
-  window.once("closed", () => handlers.removeSubscriber(window));
+  const removeBackgroundListener = nativeBackgrounds.onChanged(chatId => {
+    for (const [id, subscriber] of backgroundSubscribers) {
+      if (subscriber.window.isDestroyed()) { backgroundSubscribers.delete(id); continue; }
+      if (subscriber.chatId === chatId) subscriber.window.webContents.send(AGENT_CHANNEL.nativeBackgroundChanged, chatId);
+    }
+  });
+  window.once("closed", () => { removeBackgroundListener(); handlers.removeSubscriber(window); });
 }
 let mainHandlers: AgentBridgeIpcHandlers | null = null;
 export function currentAgentControlHandlers() {

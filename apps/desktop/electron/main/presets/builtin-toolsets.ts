@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on domain services, Browser/Design runtimes, effective workspace authority, frozen Skills custody and disabled Agent plugin identities.
- * [OUTPUT]: Provides createBuiltinToolsets with subagent orchestration, incarnation-bound canvas checks, exact-issued use_skill and current-Chat plugin authoring.
+ * [OUTPUT]: Provides createBuiltinToolsets with current-Chat historical attachments, incarnation-bound canvas checks, Skills and plugin authoring.
  * [POS]: apps/desktop/electron/main/presets; Main built-in tool composition root; index injects initialized owners while toolsets expose only narrow ports
  */
 
@@ -85,7 +85,15 @@ export function createBuiltinToolsets(deps: BuiltinToolsetDependencies) {
     });
   return [
     createPreviewToolset(),
-    createChatHistoryToolset(deps.chatStore),
+    createChatHistoryToolset(deps.chatStore, {
+      readAttachment: (chatId, attachmentId) => deps.chatsService.readSectionAttachment(chatId, attachmentId),
+      workspace: (chatId, incarnationId) => {
+        if (deps.chatStore.getIncarnationId(chatId) !== incarnationId) throw new Error("CHAT_HISTORY_UNAVAILABLE");
+        const result = deps.resolveEffectiveWorkspace({ kind: "conversation", conversationId: chatId });
+        if (result.kind !== "ready") throw new Error("CHAT_WORKSPACE_UNAVAILABLE");
+        return result.workspace;
+      },
+    }),
     sections,
     createBaseToolset(
       deps.basesService,

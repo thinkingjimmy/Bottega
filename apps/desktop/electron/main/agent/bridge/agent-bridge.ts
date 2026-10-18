@@ -1,12 +1,13 @@
 /**
  * [INPUT]: Depends on the backend registry, TurnRegistry, synchronous Steer policy, payload validation, Project Tools receipts and the MCP plan binding guard, Chat commit, Gallery, Memory, MCP leases, artifact capture sessions, frozen sessions, retry guards and credential reservations
- * [OUTPUT]: Provides canonical execution, main-only session prompt evidence, scoped availability, Project policy narrowing, MCP/session guards, typed finalization (only availability gates may say "install or update"; a Stop during the process-slot wait cancels), StartNotDispatchedError for every start that failed before an Agent process existed, generation-scoped Stop, interaction/retry IPC with authorized saved-history session replacement carrying the original user identity, and shutdown (which returns only after every settling turn has finished its ledger writes); a turn starts on turnBackend (a built-in's host code or an available package Provider's DescriptorBackend; nothing runs it: runtime-unavailable), and a package turn gets no plan check, third-party MCP plan or App session config.
+ * [OUTPUT]: Provides canonical execution, main-only session prompt evidence, scoped availability, frozen post-turn result persistence, Project policy narrowing, MCP/session guards, typed finalization (only availability gates may say "install or update"; a Stop during the process-slot wait cancels), StartNotDispatchedError for every start that failed before an Agent process existed, generation-scoped Stop, interaction/retry IPC with authorized saved-history session replacement carrying the original user identity, and shutdown (which returns only after every settling turn has finished its ledger writes); a turn starts on turnBackend (a built-in's host code or an available package Provider's DescriptorBackend; nothing runs it: runtime-unavailable), and a package turn gets no plan check, third-party MCP plan or App session config.
  * Workflow turns isolate native Skills and omit ambient backend plugin projections while preserving Provider settings.
  * Workflow turns disable native Provider memory; quit judges remaining safety locks after runtime and turn owners settle. Explicit application exit may report background cleanup separately once all turn persistence succeeds.
  * Explicit Speed changes reset session fallback for the next turn while preserving an unsettled turn's observed tier and reason.
  * [POS]: apps/desktop/electron/main/agent/bridge; Main-process multi-backend turn executor; the conversation coordinator supplies already-admitted manual intent
  */
 
+import { nativeBackgrounds } from "../../providers/codex/native/background/registry";
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
 import { artifactRuntime } from "../../artifacts/core/runtime";
 import { type BrowserWindow } from "electron";
@@ -32,7 +33,7 @@ import {
 } from "../../agent-process-supervisor";
 import { backendRuntimeRegistry, turnBackend } from "../../backends";
 import { builtinAgent } from "../../../../shared/chat-agent/options";
-import type { AgentTurn, ResolvedRuntime, ResolvedAgentInput, TrustedTurnAuthority } from "../../backends/types";
+import type { AgentTurn, ResolvedRuntime, ResolvedAgentInput, TrustedTurnAuthority } from "../../backends/contracts/types";
 import {
   assertBackendCapabilities,
   assertModelCapabilities,
@@ -266,6 +267,12 @@ async function spawnAgent(
       ? `When the user asks to see a chart, page or other visualization, write it as a standalone HTML or SVG file under ${artifactDirectory} and reply with one standalone line visualize{"path":"absolute file path","title":"Short title"}; the HTML may use relative local resources and must not be inlined in the reply. Deliverable documents (pdf, docx, xlsx, pptx) that are not part of the project source also belong in that directory. Project files stay in the project.`
       : "";
     const turn = backend.createTurn({
+      chatIncarnationId: entry.incarnationId,
+      persistNativeBackgroundResults: async results => {
+        await entry.finalizeInFlight;
+        if (entry.persist !== "stored" || !entry.incarnationId || !options.persistNativeBackgroundResults) throw new Error("Background result persistence is unavailable");
+        await options.persistNativeBackgroundResults({ chatId: entry.conversationId, incarnationId: entry.incarnationId, requestId: entry.requestId, messageId: entry.messageId, results });
+      },
       disableProviderMemory: context.builtinToolPolicy?.workflowStep === true,
       sessionRecovery: context.sessionRecovery,
       onSessionPrompt: context.onSessionPrompt,
@@ -710,8 +717,9 @@ export async function shutdownAllAgents(options: { onBackgroundCleanupFailure?(c
   ]);
   /* The owners close right after this returns: a turn still settling must finish its ledger writes first. */
   await turns.drainSettlements();
+  const backgrounds = await Promise.allSettled([nativeBackgrounds.stopAll()]);
   // Owners can release safety locks while draining; judge them only after those owners settle.
-  const failures = results.flatMap((result) =>
+  const failures = [...results, ...backgrounds].flatMap((result) =>
     result.status === "rejected" ? [result.reason] : []
   );
   try { await shutdownAuxiliaryAgentProcesses(); }

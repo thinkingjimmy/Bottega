@@ -4,7 +4,7 @@
  * [POS]: Package discovery leaf; executable identity caching remains owned by the runtime registry.
  */
 import type { ProviderDescriptor } from "@bottega/contracts/model/provider";
-import type { AgentRuntime } from "../../../../backends/types";
+import type { AgentRuntime } from "../../../../backends/contracts/types";
 import { normalizeCliVersion, sanitizedProcessEnvironment } from "../../../../backends/runtime/runtime-probe";
 import { readinessWorkingDirectory } from "../../../../backends/acp/startup/readiness";
 import { runSupervisedCommand } from "../../../../backends/jobs/supervised-command";

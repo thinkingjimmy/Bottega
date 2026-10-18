@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on immutable Agent authors and the Chat live-view fence
- * [OUTPUT]: Defines bounded handoff and history-reader contracts with independent body and part-manifest truncation
+ * [OUTPUT]: Defines bounded handoff and history-reader contracts with saved attachment manifests and independent body/part truncation
  * [POS]: Shared data only; refs locate evidence and never confer authority
  */
 
 import type { AgentBackendId } from "../ipc/agent/agent-ipc";
+import type { ChatAttachmentMeta } from "../ipc/content/chats-ipc";
 import type { HandoffCoverage, HistoryViewFence } from "./contracts";
 export type { HistoryViewFence } from "./contracts";
 export type HistoryRef = Readonly<{
@@ -25,6 +26,7 @@ export type HistoryRecord = Readonly<{
   projectionTruncated: boolean;
   projection?: "product-envelopes-removed";
   notSaved: boolean;
+  attachments?: readonly ChatAttachmentMeta[];
   partsTruncated?: boolean;
   parts?: ReadonlyArray<{ partId: string; value: unknown }>;
 }>;

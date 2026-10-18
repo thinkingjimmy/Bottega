@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { runtimePort } from "../../runtime";
 import { providerHostId } from "../../providers/host/protocol";
 import type { ProviderDescriptor } from "@bottega/contracts/model/provider";
-import type { AgentProcessLaunch } from "../../backends/types";
+import type { AgentProcessLaunch } from "../../backends/contracts/types";
 import { fencePackageLaunch } from "../../host/package/launch";
 import { resolve } from "node:path";
 import { homedir } from "node:os";

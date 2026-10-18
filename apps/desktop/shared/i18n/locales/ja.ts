@@ -280,6 +280,7 @@ currentModelUnavailable: "{{model}}（現在利用不可）"
         "app-context-base-unavailable": "App の会話では Base を利用できません。",
       },
     },
+    nativeBackground: chatSurfacesJa.nativeBackground,
     transcript: chatSurfacesJa.transcript,
     usageLimit: chatSurfacesJa.usageLimit,
     composer: {

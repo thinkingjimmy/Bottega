@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on final turn kind/allowedTools, App contributor source, EffectiveSkillSnapshot prompt rows, and shared Base/Chart snippets
- * [OUTPUT]: Provides SkillSummary, FinalTurnProjection, and exact capable/fallback Skills prompt templates with metadata sanitization (300-character description cap) and an independent 20480-byte budget
+ * [OUTPUT]: Provides FinalTurnProjection, same-Chat attachment recovery guidance and budgeted Skills templates with sanitized metadata
  * [POS]: apps/desktop/electron/main/agent/admission; Final trusted product-context composer; author-controlled Skill metadata is rendered only as sanitized data inside the application envelope
  */
 
@@ -90,7 +90,7 @@ export function composeProductContext(
     JSON.stringify({ historyCoverage: projection.handoff.coverage,
       handoffInjected: projection.freshSession === true && Boolean(projection.handoff.text),
       historyLookup: projection.allowedTools.includes("read_chat_history") ? "read_chat_history" : "unavailable",
-      note: "Only saved evidence before this turn is readable. Images and live tool state are not inherited." }),
+      note: "Saved evidence before this turn is readable. Historical image/file attachments can be recovered through read_chat_history mode=attachment when historyLookup is available. Read the returned original path if content is not inline. Live tool state is not inherited." }),
   ].join("\n") : "";
   const remainingSkillsBytes = Math.max(0, SKILLS_CONTEXT_BUDGET_BYTES - fixedBytes - Buffer.byteLength(history) - Buffer.byteLength(projection.appInstructions));
   const sections = [

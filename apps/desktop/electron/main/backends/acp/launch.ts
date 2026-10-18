@@ -7,7 +7,7 @@
 
 import { builtinAgent } from "../../../../shared/chat-agent/options";
 import type { ContentBlock, McpServer } from "@agentclientprotocol/sdk";
-import type { BackendFailure, BackendTurnOptions, FailureHints } from "../types";
+import type { BackendFailure, BackendTurnOptions, FailureHints } from "../contracts/types";
 import type { AcpStartupBudget } from "./startup/budget";
 import type { AcpTurnConfigValues } from "../../providers/bridge/acp/session/config";
 import { withHostSandboxMarker, wrapInteractiveWithSeatbelt } from "../sandbox/seatbelt";

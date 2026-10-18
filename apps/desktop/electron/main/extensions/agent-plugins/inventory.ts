@@ -6,7 +6,7 @@
 import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
 import type { AgentPluginBackendView, AgentPluginInventoryEntry, ExtensionInventorySnapshot } from "../../../../shared/ipc/settings/extensions-ipc";
 import { providerCatalog } from "../../providers/host/catalog";
-import type { BackendTurnOptions } from "../../backends/types";
+import type { BackendTurnOptions } from "../../backends/contracts/types";
 import { claudePlugins, type ClaudePluginOptions } from "./claude";
 import { kimiPlugins, type KimiPluginOptions } from "./kimi";
 import { byPluginId } from "./support";

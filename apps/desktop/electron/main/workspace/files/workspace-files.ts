@@ -1,7 +1,8 @@
 /**
- * [INPUT]: Depends on Workspace-resolver, workspace-file-index/read, shared Workspace IPC/fuzzy, pure functions with Node realpath/lstat
- * [OUTPUT]: Root file entries have an empty directory label; Provides search/scan and a hard-top, 8 MiB single index and 32 MiB global path caching budget, 256 chat recent LRU, generation-token, fail, fresh-proof opaque readRef
+ * [INPUT]: Depends on Workspace-resolver, workspace-file-index/read/links, shared Workspace IPC/fuzzy, pure functions with Node realpath/lstat
+ * [OUTPUT]: WorkspaceFileCatalog with bounded indexed search, root-free entries, scoped reads and explicit local-file resolution/native actions
  * [POS]: apps/desktop/electron/main/workspace/files; The ability-free Workspace candidate directory of Electron main and the dual-limit LRU owner; Members prove to have commissioned index, content reading boundaries, read authority
+ * Explicit message-file resolution and native actions share this catalog's scoped read authority.
  */
 
 import { lstat, realpath } from "node:fs/promises";
@@ -39,6 +40,7 @@ import {
   WorkspaceFileReadAuthority,
   WorkspaceFileReadError,
 } from "./workspace-file-read";
+import { WorkspaceFileLinks } from "./workspace-file-links";
 import {
   assertWorkspaceScope,
   type EffectiveWorkspace,
@@ -293,6 +295,7 @@ export class WorkspaceFileCatalog {
   }
 
   register(rendererUrl: string) {
+    const links = new WorkspaceFileLinks(this.resolveEffectiveWorkspace, this.reads);
     rendererIpc(rendererUrl, "拒绝非主窗口的 Workspace 文件请求")
       .handle(WORKSPACE_FILES_CHANNEL.search, (value) =>
         this.search(assertWorkspaceFilesSearchInput(value))
@@ -302,7 +305,9 @@ export class WorkspaceFileCatalog {
       )
       .handle(WORKSPACE_FILES_CHANNEL.read, (value) =>
         this.read(assertReadInput(value))
-      );
+      )
+      .handle(WORKSPACE_FILES_CHANNEL.resolveLink, value => links.resolve(value))
+      .handle(WORKSPACE_FILES_CHANNEL.linkAction, value => links.action(value));
   }
 
   async search(

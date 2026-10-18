@@ -10,7 +10,7 @@ import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
 import { RUNTIME_TTL_MS } from "../../../../shared/agent-availability/types";
-import type { AgentRuntime } from "../types";
+import type { AgentRuntime } from "../contracts/types";
 import { environmentValue, findExecutables, platformPathEnvironment } from "../../custody/executable-path";
 import { compositionOverrides } from "../../startup/boot/composition-hooks";
 import { providerTraits } from "../../../../shared/providers/traits";

@@ -8,7 +8,7 @@ import {
   type AgentToolInventory,
 } from "../../../apps/runtime/agent-tools";
 import { workspaceMaintenanceJob } from "../../../backends/jobs/maintenance-job";
-import type { MaintenanceAdapter } from "../../../backends/types";
+import type { MaintenanceAdapter } from "../../../backends/contracts/types";
 
 export function createClaudeMaintenance(): MaintenanceAdapter {
   return {

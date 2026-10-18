@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, Node path/crypto, DurableJson, the custody kernel (CustodyAttachment/converge) and its guardian control channel
- * [OUTPUT]: Provides HostProcessCustody: launch a host-requested process through the existing guardian with a durable journal (answering its recorded pid + birth, and the Agent turn's request id it runs for), settle it, find what it still holds for a request (heldBy), and reconcile whatever a crashed main left behind (quarantined entries included), journaling each process's dependencies (App references, extension plans): admission refuses an inactive one, and startup lets a request's go once every process that ran for it is settled and something of it is still pinned, while a quarantined one keeps the request pinned The guardian runs on the bundled Node (bundledGuardian, TASK-35).
+ * [OUTPUT]: Provides HostProcessCustody with durable guardian launch, serialized descendant recording/settlement per owner, retryable unconfirmed owners, heldBy request evidence and startup reconciliation. Dependencies remain pinned until verified release; guardians use bundled Node.
  * [POS]: The process port's custody mode (host-runtime.md §4): a Provider turn process that a bridge asks for keeps the same guardian, the same intent → owned → activated journal and the same `converge` release rule as Agent turns and App servers; this file is only the third journal driver, the kernel is unchanged
  */
 import { randomUUID } from "node:crypto";
@@ -19,7 +19,7 @@ type Phase = (typeof PHASES)[number];
 const identitySchema = z.object({ pid: z.number().int().positive(), processGroupId: z.number().int().positive(), birthIdentity: z.string().min(1),
   executableIdentity: z.string() }).strict();
 const entrySchema = z.object({ custodyId: z.string().min(1), controlNonce: z.string().uuid(), phase: z.enum(PHASES), revision: z.number().int().min(0),
-  processIdentity: identitySchema.optional(), hostId: z.string().min(1).max(128), processId: z.string().min(1).max(64),
+  processIdentity: identitySchema.optional(), descendantIdentities: z.array(identitySchema.omit({ executableIdentity: true })).max(256).optional(), hostId: z.string().min(1).max(128), processId: z.string().min(1).max(64),
   command: z.string().max(4096), reason: z.string().max(64).nullable(), createdAt: z.number().int().min(0),
   /* The Agent turn this process runs for (its request id), so a quarantined one stays findable after the turn left the registry; null
      for a process started without a turn (readiness). */
@@ -57,6 +57,11 @@ class HostCustodyJournal {
       return structuredClone(entry);
     });
   }
+  recordDescendants = (id: string, revision: number, members: HostCustodyEntry["descendantIdentities"]) => {
+    const entry = this.list().find(row => row.custodyId === id);
+    if (!entry) throw new Error("Custody entry missing");
+    return this.step(id, revision, ["activated", "activation-authorized"], entry.phase, { descendantIdentities: members });
+  };
   markOwned = (id: string, revision: number, identity: ProcessIdentity) => this.step(id, revision, ["intent"], "owned", { processIdentity: identity });
   authorizeActivation = (id: string, revision: number) => this.step(id, revision, ["owned"], "activation-authorized");
   markActivated = (id: string, revision: number) => this.step(id, revision, ["activation-authorized"], "activated");
@@ -82,6 +87,7 @@ export class HostProcessCustody {
   private readonly channel: GuardianControlChannel;
   private readonly options: CustodyRuntimeOptions;
   private readonly live = new Map<string, CustodyAttachment<HostCustodyEntry>>();
+  private readonly ownerOperations = new Map<string, Promise<unknown>>();
 
   private dependencyPorts: HostCustodyDependencyPorts | null = null;
 
@@ -154,12 +160,31 @@ export class HostProcessCustody {
   }
 
   /** Durable intent first, then the kernel's converge: gone → released, reused PID → quarantined and never signalled. */
-  async settle(processId: string): Promise<HostCustodyEntry | null> {
-    const attachment = this.live.get(processId);
-    if (!attachment) return null;
-    this.live.delete(processId);
-    await attachment.beginRelease();
-    return attachment.settle();
+  recordDescendants(processId: string) {
+    return this.serializeOwner(processId, async () => {
+      const attachment = this.live.get(processId);
+      if (!attachment) throw new Error("Custody owner is no longer live");
+      await attachment.recordDescendants();
+    });
+  }
+
+  settle(processId: string): Promise<HostCustodyEntry | null> {
+    return this.serializeOwner(processId, async () => {
+      const attachment = this.live.get(processId);
+      if (!attachment) return null;
+      await attachment.beginRelease();
+      const entry = await attachment.settle();
+      if (SETTLED.includes(entry.phase) && this.live.get(processId) === attachment) this.live.delete(processId);
+      return entry;
+    });
+  }
+
+  private serializeOwner<T>(processId: string, operation: () => Promise<T>): Promise<T> {
+    const pending = (this.ownerOperations.get(processId) ?? Promise.resolve()).catch(() => undefined).then(operation);
+    this.ownerOperations.set(processId, pending);
+    const clear = () => { if (this.ownerOperations.get(processId) === pending) this.ownerOperations.delete(processId); };
+    void pending.then(clear, clear);
+    return pending;
   }
 
   /**

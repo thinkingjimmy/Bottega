@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React layout measurement, ChatSessionController, window role, canonical transcript and its hydration skeleton, lib/idle-prefetch, composer, optional side panel, Gallery, and main-window Memory state
- * [OUTPUT]: Native/imported Chat layout, scoped Artifact panel resizing, paged deep links and lazy transcript/hydration states without legacy Design auto-open.
+ * [OUTPUT]: Native/imported Chat layout, scoped local message-file links, non-visual command execution context, Artifact panel resizing and paged transcript states.
  * [POS]: The single horizontal chat layout for draft and canonical native/imported sessions
  */
 
@@ -21,7 +21,9 @@ import type {
 import { usePanelLayout } from "@ai-chat/chat-ui/side-panel/layout";
 import { ChatPageSessionView, type ChatPageRenderer } from "@ai-chat/chat-ui/chat-page";
 import { ArtifactHostProvider } from "@ai-chat/chat-ui/artifacts";
+import { MessageFileLinkProvider } from "@ai-chat/ui/components/ai-elements/message/local-file-links";
 import { useDesktopArtifactHost } from "./artifact/host";
+import { NativeCommandRuntimeProvider } from "./runtime/background/native-command-runtime";
 import { ChatComposer } from "./composer/chat-composer";
 import { ChatEmptyState } from "./chat-empty-state";
 import { ChatTranscriptSkeleton } from "./transcript/transcript-skeleton";
@@ -259,18 +261,18 @@ export function ChatViewFrame({
     ]
   );
   return (
-    <ArtifactHostProvider value={artifactHost}><ChatPageSessionView renderPage={renderPage} header={header} notices={notices} className={header ? "[--page-shell-header-height:2.5rem]" : undefined} containOverflow={Boolean(header)} containerRef={layoutRootRef} panel={enableSidePanel && visibleSidePanelState && (
+    <NativeCommandRuntimeProvider chatId={conversationId} incarnationId={controller.transcript.incarnationId ?? null}><ArtifactHostProvider value={artifactHost}><ChatPageSessionView renderPage={renderPage} header={header} notices={notices} className={header ? "[--page-shell-header-height:2.5rem]" : undefined} containOverflow={Boolean(header)} containerRef={layoutRootRef} panel={enableSidePanel && visibleSidePanelState && (
         <Suspense fallback={null}>
           <SidePanel crossHeader={!header} open={Boolean(sidePanelState)} state={visibleSidePanelState} width={panelGeometry.width} minWidth={panelGeometry.minWidth} maxWidth={panelGeometry.maxWidth}
-            onWidthChange={commitPanelWidth} onClose={controller.sidePanel.close} subagents={controller.sidePanel.subagents} galleryProjection={galleryProjection} />
+            onWidthChange={commitPanelWidth} onClose={controller.sidePanel.close} subagents={controller.sidePanel.subagents} galleryProjection={galleryProjection} onOpenLocalFile={controller.sidePanel.openLocalFile} />
         </Suspense>
       )} conversation={{ empty: showEmptyState, mounted: mountTranscript,
         emptyView: <ChatEmptyState composer={controller.composer} description={emptyDescription} title={emptyTitle} />,
         fallback: existingChat ? <ChatTranscriptSkeleton /> : <TranscriptPlaceholder />,
-        transcript: <ChatTranscript key={`${conversationId}:${controller.transcript.incarnationId ?? "pending"}`}
+        transcript: <MessageFileLinkProvider onOpen={enableSidePanel ? controller.sidePanel.openLocalFile : undefined}><ChatTranscript key={`${conversationId}:${controller.transcript.incarnationId ?? "pending"}`}
           controller={controller.transcript} existingChat={existingChat} enableSidePanel={enableSidePanel} expandedPlanId={expandedPlanId}
           importSegment={importSegment} forkContext={forkContext} onClosePlan={controller.sidePanel.close} showOutline={!visibleSidePanelState}
-          routeSearch={location.search} surfaceVisible={surfaceVisible} />,
+          routeSearch={location.search} surfaceVisible={surfaceVisible} /></MessageFileLinkProvider>,
       }} status={
         includeGlobalMemory && memory.status?.enabled && memory.status.paused ? (
           <div
@@ -295,6 +297,6 @@ export function ChatViewFrame({
             managedWorktree={managedWorktree}
           />
         )}
-    /></ArtifactHostProvider>
+    /></ArtifactHostProvider></NativeCommandRuntimeProvider>
   );
 }

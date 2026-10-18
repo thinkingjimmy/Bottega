@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on guarded Node fs/crypto/path, the shared 8 MiB image data-URL limits, canonical ChatAttachmentMeta, main/errors, and the persistence errno predicate
+ * [INPUT]: Depends on guarded Node fs/crypto/path, shared 8 MiB attachment data-URL limits, canonical metadata and the persistence errno predicate
  * [OUTPUT]: Provides exportAttachmentFile: a verified data URL in, O_NOFOLLOW|O_NONBLOCK targets, MIME and length agreement, 0700/0600 modes, and an atomic rename from a randomly named temporary file
  * [POS]: apps/desktop/electron/main/chats/attachments; Security kernel of attachment export; AttachmentStore proves the source bytes and ChatsService proves ownership, while this file owns the target file-system state machine and its injectable failure seams
  */
@@ -7,10 +7,10 @@
 import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { chmod, lstat, mkdir, open, rename, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { join, extname } from "node:path";
 import {
   ATTACHMENT_BYTE_LIMIT,
-  isValidImageDataUrl,
+  isValidAttachmentDataUrl,
 } from "../../../../shared/ipc/agent/agent-ipc";
 import type { ChatAttachmentMeta } from "../../../../shared/ipc/content/chats-ipc";
 import { statusError } from "../../ipc/errors";
@@ -36,7 +36,7 @@ export async function exportAttachmentFile(input: {
   if (Buffer.byteLength(dataUrl, "utf8") > ENCODED_CAP) {
     throw statusError(413, "附件源编码体积超限");
   }
-  if (!isValidImageDataUrl(dataUrl)) throw new Error("附件内容已损坏");
+  if (!isValidAttachmentDataUrl(dataUrl)) throw new Error("Attachment content is invalid");
   const comma = dataUrl.indexOf(",");
   const mediaType = dataUrl.slice(5, dataUrl.indexOf(";", 5));
   if (asciiLower(mediaType) !== asciiLower(input.meta.mediaType)) {
@@ -49,7 +49,7 @@ export async function exportAttachmentFile(input: {
   await ensurePrivateDirectory(input.exportsRoot);
   const path = join(
     input.exportsRoot,
-    `${input.attachmentId}.${extensionForMime(mediaType)}`
+    `${input.attachmentId}.${extensionForMime(mediaType, input.meta.filename)}`
   );
   const existing = await readExistingTarget(path, content.byteLength);
   if (!existing || !existing.equals(content)) {
@@ -119,7 +119,7 @@ async function writePrivateTemp(path: string, content: Buffer) {
   }
 }
 
-function extensionForMime(mediaType: string) {
+function extensionForMime(mediaType: string, filename: string) {
   const known: Record<string, string> = {
     "image/png": "png",
     "image/jpeg": "jpg",
@@ -130,7 +130,8 @@ function extensionForMime(mediaType: string) {
     "image/bmp": "bmp",
     "image/tiff": "tiff",
   };
-  return known[asciiLower(mediaType)] ?? "img";
+  const suffix = extname(filename).slice(1);
+  return known[asciiLower(mediaType)] ?? (/^[A-Za-z0-9]{1,12}$/.test(suffix) ? suffix.toLowerCase() : "bin");
 }
 
 const asciiLower = (value: string) =>

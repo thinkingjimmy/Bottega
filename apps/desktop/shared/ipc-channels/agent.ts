@@ -5,6 +5,9 @@
  */
 export const AGENT_CHANNEL = {
   event: "agent:event",
+  nativeBackgroundList: "agent:native-background-list",
+  nativeBackgroundStop: "agent:native-background-stop",
+  nativeBackgroundChanged: "agent:native-background-changed",
   cancel: "agent:cancel",
   respondApproval: "agent:respond-approval",
   respondUserInput: "agent:respond-user-input",

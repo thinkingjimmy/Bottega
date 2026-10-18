@@ -4,7 +4,7 @@
  * [POS]: The executor's only path (TASK-11 D8, flip). Admission, lease, credential reservation, `spec()`, the fence and the spec's release stay with the executor; this owns the job's lifecycle (deadline, abort, cancel, the process-group hooks, release after the owner's settle, the exit error with main-redacted stderr) and returns a HeadlessRun
  */
 import { randomUUID } from "node:crypto";
-import type { BackendDescriptor, HeadlessJob, HeadlessParserState, HeadlessRun, ResolvedRuntime, TurnProcessOwner } from "../../../backends/types";
+import type { BackendDescriptor, HeadlessJob, HeadlessParserState, HeadlessRun, ResolvedRuntime, TurnProcessOwner } from "../../../backends/contracts/types";
 import type { CleanupResult } from "../../../agent/process/process-group";
 import { EventQueue } from "../../../backends/jobs/output";
 import type { BridgeHeadlessOutcome, BridgeTurnEvent, BridgeTurnRequest, BridgedWork } from "../protocol";

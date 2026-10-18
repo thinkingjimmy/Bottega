@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on OpenCode CLI native ACP, the launch-environment external-override gate, model catalog, frozen third-party plus turn-leased built-in MCP overlay, AcpTurn and ACP failure classification
  * [OUTPUT]: Provides opencodeBackend, its minimum supported version, override validation against the spawn environment, authenticated local transport, permission modes, turn-leased tools and explicit Skill roots, models with optional probe admission, provider-scoped auth checks and its Provider bridge readiness plan (behind the same override gate).
- * [POS]: The only installation point for the OpenCode descriptor; it stats but never reads or copies user/agent override configuration or credentials. Its turns are BridgedAcpTurns over this spawn config
+ * [POS]: The only installation point for the OpenCode descriptor; it stats but never reads or copies user/agent override configuration or credentials. Its turns are BridgedTurns over this spawn config
  */
 
 import { opencodeQuota } from "./quota";
@@ -16,7 +16,7 @@ import {
   probeRuntimeCandidatesAsync,
   runtimeVersionAtLeast,
 } from "../../backends/runtime/runtime-probe";
-import type { BackendDescriptor, BackendTurnOptions } from "../../backends/types";
+import type { BackendDescriptor, BackendTurnOptions } from "../../backends/contracts/types";
 import { SESSION_CAPABILITY_POLICY } from "../../backends/acp/startup/client-capabilities";
 import { createOpencodeAuthCheck } from "./auth";
 import { opencodeClassifyFailure } from "./failure";
@@ -26,7 +26,7 @@ import {
   opencodeEnvironment,
 } from "./home";
 import { opencodeTurnValues, validateOpencodeSessionId } from "./turn-config";
-import { BridgedAcpTurn } from "../host/turns/bridged-turn";
+import { BridgedTurn } from "../host/turns/bridged-turn";
 import { requireProviderBridge } from "../host/runtime";
 import {
   invalidateOpencodeModels,
@@ -184,7 +184,7 @@ export const opencodeBackend: BackendDescriptor = {
     const spawnConfig = opencodeSpawnConfig(options);
     assertNoExternalOpencodeOverrides(spawnConfig.env);
     /* Switched on, the launch (overlay and server credentials included) is sealed in main; the bridge gets only the values (C9, D2 5). */
-    return new BridgedAcpTurn(options, spawnConfig, requireProviderBridge());
+    return new BridgedTurn(options, spawnConfig, requireProviderBridge());
   },
   skills: {
     sources: workspace => [

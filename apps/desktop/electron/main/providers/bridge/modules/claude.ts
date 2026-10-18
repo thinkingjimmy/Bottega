@@ -6,3 +6,5 @@
 export { claudeTurnValues as turnValues, claudeHeadlessParseLine as headlessParser } from "../../claude/turn-config";
 export { claudePromptReplay as promptReplay } from "../acp/turn/prompt-replay";
 export { openClaudeQuotaControl as quotaExchange } from "../../../usage-limits/readers/exchange";
+
+export const protocol = "acp" as const;

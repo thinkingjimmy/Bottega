@@ -1,12 +1,23 @@
 /**
  * [INPUT]: Depends on the chatSurfacesEn structural type
- * [OUTPUT]: Provides the French Chat surfaces catalog with the exact English structure
+ * [OUTPUT]: French Chat surfaces, including local-file preview actions and failures
  * [POS]: French Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
 import { chatSurfacesEn } from "./en";
 
 export const chatSurfacesFr: typeof chatSurfacesEn = {
+  nativeBackground: {
+    "stop": "Arrêter",
+    "stopping": "Arrêt en cours…",
+    "started": "Lancé avec « {{mode}} ». Continue après la réponse.",
+    "failed": "Impossible de confirmer l’arrêt de cette commande. Réessayez.",
+    "modes": {
+      "ask-for-approval": "Demander une autorisation",
+      "approve-for-me": "Approuver pour moi",
+      "full-access": "Accès complet"
+    }
+  },
   sidePanel: {
     shell: {
       loadingBase: "Chargement de Base",
@@ -16,6 +27,19 @@ export const chatSurfacesFr: typeof chatSurfacesEn = {
       resize: "Redimensionner le panneau latéral",
       resizeHint:
         "Faites glisser ou utilisez les touches fléchées pour redimensionner le panneau latéral",
+    },
+    file: {
+      open: "Ouvrir avec l’application système",
+      reveal: "Afficher dans le Finder",
+      copyPath: "Copier le chemin",
+      copied: "Chemin copié",
+      retry: "Réessayer",
+      missing: "Ce fichier a été déplacé ou supprimé de ce chemin.",
+      outside: "Ce fichier est hors de l’espace de travail actuel, ou celui-ci a changé.",
+      readFailed: "Impossible d’afficher ce fichier. Réessayez.",
+      actionFailed: "L’action a échoué. Rouvrez l’aperçu et réessayez.",
+      tooLarge: "Ce fichier dépasse la limite d’aperçu de 1 Mio. Vous pouvez l’ouvrir avec une application système.",
+      binary: "Ce fichier n’est pas du texte UTF-8. Vous pouvez l’ouvrir avec une application système.",
     },
     appGrant: {
       badgeAria:

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical submissions, staged resources, main Skill custody and typed design-reference authorization.
- * [OUTPUT]: Immutable manual/workflow preparation, pinned Skill generations and fixed design-reference validation before admission effects.
+ * [OUTPUT]: Immutable manual/workflow preparation, retained user-file snapshots, pinned Skill generations and design-reference validation before admission effects.
  * [POS]: Coordinator admission boundary; package Providers still freeze no Skill catalog.
  */
 
@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { ATTACHMENT_LIMIT } from "../../../../../shared/ipc/agent/agent-ipc";
 import type {
   AgentSendPayload,
   AgentUserInput,
@@ -221,7 +222,7 @@ async function writeBlob(
 }
 
 const parseDataUrl = (value: string) => {
-  const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/s.exec(value);
+  const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=]*)$/s.exec(value);
   if (!match) throw new Error("附件不是合法 base64 data URL");
   return { mediaType: match[1], content: Buffer.from(match[2], "base64") };
 };
@@ -233,7 +234,7 @@ async function stagePayload(
   const decoded = parseDataUrl(payload.dataUrl);
   return writeBlob(
     directory,
-    "image",
+    payload.mediaType.startsWith("image/") ? "image" : "file",
     payload.filename,
     payload.mediaType || decoded.mediaType,
     decoded.content
@@ -479,17 +480,17 @@ async function stageInput(
           text: `@${item.name} 的附件 ${attachment.filename}（来自 Section ${plan.sectionId}，${attachment.mediaType}，${attachment.byteSize} 字节；该 Section 由 ${plan.sourceAgent} 处理）`,
           resolvedOnly: true,
         });
-        result.push({
-          type: "image",
-          blob: await writeBlob(
+        const isImage = attachment.mediaType.startsWith("image/");
+        const attachmentBlob = await writeBlob(
             directory,
-            "image",
+            isImage ? "image" : "file",
             attachment.filename,
             attachment.mediaType,
             decoded.content
-          ),
-          resolvedOnly: true,
-        });
+          );
+        result.push(isImage
+          ? { type: "image", blob: attachmentBlob, resolvedOnly: true }
+          : { type: "mention", name: attachment.filename, blob: attachmentBlob, resolvedOnly: true });
       }
     }
   }
@@ -528,6 +529,11 @@ export async function prepareManualTurn(
       persistence.input.attachmentPayloads ?? [],
       explicitSkills
     );
+    // Retain admitted user files before temporary turn custody is released.
+    if (!(persistence.kind === "append" && persistence.input.revise)) {
+      const files = stagedInput.flatMap(item => item.type === "mention" && !item.resolvedOnly ? [item.blob] : []);
+      persistence.input.attachmentPayloads = [...(persistence.input.attachmentPayloads ?? []), ...files];
+    }
     for (const item of submission.remoteInput ?? []) {
       const bytes = await readFile(item.path), attachment = item.attachment;
       if (attachment.blob.encryption.owner.kind !== "chat" || attachment.blob.encryption.owner.id !== submission.turn.scope.conversationId ||
@@ -536,12 +542,14 @@ export async function prepareManualTurn(
       persistence.input.attachmentPayloads = [...(persistence.input.attachmentPayloads ?? []), blob];
       stagedInput.push(attachment.kind === "image" ? { type: "image", blob } : { type: "mention", name: attachment.filename, blob });
     }
+    if ((persistence.input.attachmentPayloads?.length ?? 0) > ATTACHMENT_LIMIT) throw new Error("ATTACHMENT_COUNT_EXCEEDED");
     const input =
       persistence.kind === "append" && persistence.input.revise
         ? [
             ...stagedInput,
             ...(persistence.input.attachmentPayloads ?? []).map((blob) => ({
-              type: "image" as const,
+              type: blob.mediaType.startsWith("image/") ? "image" as const : "mention" as const,
+              name: blob.filename,
               blob,
             })),
           ]

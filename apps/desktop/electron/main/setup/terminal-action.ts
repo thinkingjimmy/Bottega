@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import { clipboard, dialog, type BrowserWindow } from "electron";
 import type { SetupTerminalResult } from "../../../shared/ipc/agent/setup-ipc";
 import { diagnosticFailureDetails } from "../../../shared/product/product-failure";
-import type { SetupCommand } from "../backends/types";
+import type { SetupCommand } from "../backends/contracts/types";
 import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { translate } from "../../../shared/i18n/native";
 

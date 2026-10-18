@@ -4,7 +4,7 @@
  * [POS]: Sole owner of ACP startup settlement state; AcpTurn only performs protocol actions and no longer tracks its own stopped/terminal/startRequested flags
  */
 
-import type { StartOutcome } from "../../../backends/types";
+import type { StartOutcome } from "../../../backends/contracts/types";
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;

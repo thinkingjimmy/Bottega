@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses public transcript/attachment budgets and depends on the public backend identity tuple, chat-turn/chats/codex contracts, canonical Project scope, Extension generation identities, and Project Tools session receipts
- * [OUTPUT]: Provides shared Agent IPC contracts including descriptor minimum versions, pending terminal actions and availability facts; BackendInfo names any Provider with facts here (a package Provider's never leaves this computer) and BuiltinBackendInfo narrows it to a built-in.
+ * [OUTPUT]: Provides shared Agent IPC contracts, bounded image/file data-URL validation, minimum versions and availability facts; BackendInfo names any Provider and BuiltinBackendInfo narrows it to a built-in.
  * [POS]: apps/desktop/shared/ipc/agent; Shared Agent wire truth connecting Electron main, preload, and renderer without exposing mutable scope authority
  */
 
@@ -137,6 +137,7 @@ export type BackendServiceTierInfo = {
 };
 
 export type BackendModelInfo = {
+  inputModalities?: Array<"text" | "image" | "audio">;
   slug: string;
   displayName: string;
   isDefault: boolean;
@@ -299,6 +300,13 @@ export const OPAQUE_REF_BYTE_LIMIT = 256;
 export const IMAGE_DATA_URL_PATTERN = /^data:image\/[a-z0-9+.-]+;base64,/i;
 
 const BASE64_BODY_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/** Validates stored attachment data URLs without restricting document MIME types to images. */
+export function isValidAttachmentDataUrl(value: string) {
+  if (!/^data:[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*;base64,/i.test(value)) return false;
+  const body = value.slice(value.indexOf(",") + 1);
+  return body.length % 4 === 0 && (body.length === 0 || BASE64_BODY_PATTERN.test(body));
+}
 
 /** 完整校验图片 dataURL：前缀 + 非空 body + base64 字符集 + padding 对齐（主进程边界用） */
 export function isValidImageDataUrl(value: string) {
@@ -701,6 +709,9 @@ export type ChatActivitySnapshot = ActivityTurnIdentity & {
 export { AGENT_CHANNEL } from "../../ipc-channels/agent";
 
 export type AgentBridgeApi = {
+  listNativeBackground?: (conversationId: string) => Promise<import("./background-ipc").NativeBackgroundCommand[]>;
+  stopNativeBackground?: (conversationId: string, incarnationId: string, id: string) => Promise<void>;
+  onNativeBackgroundChanged?: (callback: (conversationId: string) => void) => () => void;
   cancel: (requestId: string) => void;
   respondApproval: (response: AgentApprovalResponse) => Promise<ControlResult>;
   respondUserInput: (response: AgentUserInputResponse) => Promise<ControlResult>;

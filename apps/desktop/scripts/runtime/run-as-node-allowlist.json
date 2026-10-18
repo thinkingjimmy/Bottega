@@ -26,11 +26,6 @@
       "uses": 1,
       "keep": true
     },
-    "electron/main/runtime/index.ts": {
-      "class": "the launch port refuses the app's own executable as CODEX_PATH (E4)",
-      "uses": 1,
-      "keep": true
-    },
     "electron/main/runtime/plan.ts": {
       "class": "the launch port strips it",
       "uses": 1,

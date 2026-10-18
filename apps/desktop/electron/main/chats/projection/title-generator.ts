@@ -4,7 +4,7 @@
  * [POS]: apps/desktop/electron/main/chats/projection; Thin title policy of the chats module; untrusted text, tool denial, process budgets, cancellation, and cleanup all belong to the HeadlessExecutor or the one-shot turn runner
  */
 
-import type { BackendDescriptor, ProviderBackend, ResolvedRuntime } from "../../backends/types";
+import type { BackendDescriptor, ProviderBackend, ResolvedRuntime } from "../../backends/contracts/types";
 import {
   headlessExecutor,
   type HeadlessExecutor,

@@ -25,7 +25,7 @@ import { providerTraits } from "../../../../shared/providers/traits";
 import type {
   AgentRuntime,
   RuntimeConfirmation,
-} from "../types";
+} from "../contracts/types";
 import {
   acquireAgentProcessLease,
   reserveAgentCredentialUse,

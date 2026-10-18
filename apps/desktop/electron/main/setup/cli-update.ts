@@ -1,12 +1,12 @@
 /**
- * [INPUT]: Depends on backend descriptors' fixed selfUpdate arguments, the resolved runtime snapshot, the supervised command host, a sanitized login PATH and a caller-owned recheck.
- * [OUTPUT]: Provides CliUpdater, which runs one provider CLI self-update at a time and reports a result verified by the post-update version.
+ * [INPUT]: Depends on backend descriptors' fixed selfUpdate or qualified installer commands, the resolved runtime snapshot, the supervised command host, a sanitized login PATH and a caller-owned recheck.
+ * [OUTPUT]: Provides CliUpdater, which runs one provider CLI self-update at a time and reports a result verified by post-update runtime admission and version.
  * [POS]: setup's headless update boundary behind Settings › Updates; Terminal delivery in terminal-action.ts stays the fallback for installs a CLI cannot update itself.
  */
 
 import type { AgentBackendId, BackendInfo } from "../../../shared/ipc/agent/agent-ipc";
 import type { CliUpdateResult } from "../../../shared/ipc/agent/setup-ipc";
-import type { ResolvedRuntime } from "../backends/types";
+import type { ResolvedRuntime } from "../backends/contracts/types";
 import { isVersionNewer, sanitizedProcessEnvironment } from "../backends/runtime/runtime-probe";
 import { runSupervisedCommand } from "../backends/jobs/supervised-command";
 
@@ -18,6 +18,7 @@ const LOG_TAIL_CHARS = 16 * 1024;
 export type CliUpdaterDependencies = {
   runtime(backend: AgentBackendId): ResolvedRuntime | undefined;
   args(backend: AgentBackendId): readonly string[] | undefined;
+  command?(backend: AgentBackendId): { command: string; args: readonly string[] } | undefined;
   /** Re-probes the CLI after the command exits and returns the fresh facts. */
   recheck(backend: AgentBackendId): Promise<BackendInfo | undefined>;
   run?: typeof runSupervisedCommand;
@@ -45,14 +46,15 @@ export class CliUpdater {
 
   private async run(backend: AgentBackendId): Promise<CliUpdateResult> {
     const runtime = this.dependencies.runtime(backend);
-    const args = this.dependencies.args(backend);
+    const installer = this.dependencies.command?.(backend);
+    const args = installer?.args ?? this.dependencies.args(backend);
     if (!runtime || !args) return { ok: false, reason: "unavailable", log: "" };
     const before = runtime.version;
     let log = "";
     try {
       const { stdout } = await (this.dependencies.run ?? runSupervisedCommand)({
         backend,
-        command: runtime.executable,
+        command: installer?.command ?? runtime.executable,
         args: [...args],
         env: sanitizedProcessEnvironment(runtime.path),
         timeoutMs: UPDATE_TIMEOUT_MS,
@@ -67,7 +69,8 @@ export class CliUpdater {
     /* Exit 0 only proves the updater ran. Package-manager installs often print advice and exit cleanly. */
     const after = await this.dependencies.recheck(backend).catch(() => undefined);
     const version = after?.version;
-    const upToDate = Boolean(version) && (
+    if (after?.runtimeStatus === "unsupported") return { ok: false, reason: "failed", log: tail([log, after.reason ?? "Updated CLI is not supported."].filter(Boolean).join("\n")) };
+    const upToDate = after?.runtimeStatus === "installed" && Boolean(version) && (
       (after?.latestVersion ? !isVersionNewer(after.latestVersion, version!) : false) ||
       version !== before && isVersionNewer(version!, before)
     );

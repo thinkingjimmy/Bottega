@@ -1,12 +1,14 @@
 /**
- * [INPUT]: Depends on Node crypto, the backend turn types, the shared fenced launch (turnLaunch), ACP process evidence (redaction), the bridge protocol and ProviderBridgeRuntime
- * [OUTPUT]: Provides BridgedAcpTurn, an AgentTurn whose ACP client runs in the Provider bridge while every effect it has on main is applied here; for the acp MCP transport it answers the session's servers (tokens included) while the turn lives; a prompt handoff the bridge can no longer answer is pending, so a dead bridge never blocks finalization or quit
- * [POS]: The main half of a bridged turn (Codex, OpenCode, Kimi). The turn registry, ChatsService and renderer see an ordinary AgentTurn; main seals the launch (fence + environment + secrets) on the execution ref, applies the bridge's ordered events to the real callbacks, answers its awaited requests, and forwards approvals, answers, steer and Stop; its process is owned by host custody, bound here as processOwner (B2-01)
+ * [INPUT]: Uses product turn/input contracts, main-sealed ACP or native plans, execution references and ordered bridge events.
+ * [OUTPUT]: Exports BridgedTurn with frozen configuration, approval/control forwarding, delivery evidence and cancellation-safe Chat background transfer with exact-owner durable result commits.
+ * [POS]: Main-side authorization and custody owner; protocol parsing remains in the pinned bridge driver.
  */
 import { randomUUID } from "node:crypto";
 import type { AgentApprovalDecision, AgentUserInputAnswers, AgentUserInputQuestion, PromptHandoff } from "../../../../../shared/ipc/agent/agent-ipc";
-import type { ContentBlock } from "@agentclientprotocol/sdk";
-import type { AdapterSteerOutcome, AgentTurn, BackendTurnOptions, StartOutcome, TurnProcessOwner } from "../../../backends/types";
+import type { ProviderTurnInput } from "../../../backends/contracts/turn-input";
+import type { NativeSpawnConfig } from "../../codex/native/policy/launch";
+import { nativeBackgrounds } from "../../codex/native/background/registry";
+import type { AdapterSteerOutcome, AgentTurn, BackendTurnOptions, StartOutcome, TurnProcessOwner } from "../../../backends/contracts/types";
 import { acpMcpServers, turnLaunch, type AcpSpawnConfig } from "../../../backends/acp/launch";
 import { AcpProcessEvidence } from "../../../backends/acp/startup/evidence";
 import type { UtilityHost } from "../../../host/utility-host";
@@ -16,11 +18,12 @@ import type { ProviderBridgeRuntime } from "../runtime";
 
 const REDACTED_CALLBACKS = new Set(["onTerminal", "onProcessError", "onPolicyViolation"]);
 const RELEASE_GRACE_MS = 30_000;
+type NativePlan = { protocol: "codex-app-server"; env: NodeJS.ProcessEnv; prepare(): Promise<NativeSpawnConfig> };
 const secretsOf = (options: BackendTurnOptions) => [...(options.thirdPartyMcpPlan?.entries ?? [])
   .flatMap(entry => Object.values(entry.transport === "stdio" ? entry.env : entry.headers)),
   ...Object.values(options.builtinMcp?.server.env ?? {})].filter(Boolean);
 
-export class BridgedAcpTurn implements AgentTurn {
+export class BridgedTurn implements AgentTurn {
   readonly turnKey = randomUUID();
   private host: UtilityHost | null = null;
   private ref: string | null = null;
@@ -28,11 +31,16 @@ export class BridgedAcpTurn implements AgentTurn {
   private owner: TurnProcessOwner | null = null;
   private steering = false;
   private done = false;
+  private closed = false;
+  private stopping = false;
+  private backgroundStaged = false;
   private readonly questions = new Map<string, { questions: AgentUserInputQuestion[] }>();
   private readonly evidence: AcpProcessEvidence;
+  private native: NativeSpawnConfig | null = null;
+  private nativeConfigIssued = false;
 
-  constructor(private readonly options: BackendTurnOptions, private readonly config: AcpSpawnConfig, private readonly runtime: ProviderBridgeRuntime,
-    private readonly prepareLaunch?: (launch: ReturnType<typeof turnLaunch>) => Promise<import("../../../backends/types").AgentProcessLaunch>) {
+  constructor(private readonly options: BackendTurnOptions, private readonly config: AcpSpawnConfig | NativePlan, private readonly runtime: ProviderBridgeRuntime,
+    private readonly prepareLaunch?: (launch: ReturnType<typeof turnLaunch>) => Promise<import("../../../backends/contracts/types").AgentProcessLaunch>) {
     this.evidence = new AcpProcessEvidence(config.env, { secrets: secretsOf(options) });
   }
 
@@ -45,12 +53,18 @@ export class BridgedAcpTurn implements AgentTurn {
 
   async start(startupSignal?: AbortSignal): Promise<StartOutcome> {
     /* The launch is sealed here, with the fence and the full environment; the bridge only ever asks to spawn it (C2, C3). */
-    const baseLaunch = turnLaunch(this.options, this.config);
-    const launch = this.prepareLaunch ? await this.prepareLaunch(baseLaunch) : baseLaunch;
+    startupSignal?.throwIfAborted();
+    if ("protocol" in this.config) this.native = await this.config.prepare();
+    startupSignal?.throwIfAborted();
+    if (this.closed) throw new Error("Turn stopped before launch preparation completed");
+    const baseLaunch = this.native ? this.native.launch : turnLaunch(this.options, this.config as AcpSpawnConfig);
+    const launch = this.prepareLaunch ? await this.prepareLaunch({ ...baseLaunch, args: [...baseLaunch.args] }) : baseLaunch;
     const chat = { chatId: this.options.payload.scope.conversationId,
-      incarnationId: this.options.builtinMcp?.lease.incarnationId ?? "provider-bridge" };
-    const principal: VerifiedPrincipal = this.runtime.turnPrincipal(chat, this.options.payload.requestId, this.turnKey, () => !this.done);
+      incarnationId: this.options.chatIncarnationId ?? this.options.builtinMcp?.lease.incarnationId ?? "provider-bridge" };
+    const principal: VerifiedPrincipal = this.runtime.turnPrincipal(chat, this.options.payload.requestId, this.turnKey, () => !this.closed);
     this.host = await this.runtime.ensure(this.providerId, principal, this.options.runtime);
+    startupSignal?.throwIfAborted();
+    if (this.closed) throw new Error("Turn stopped before process admission");
     this.ref = this.runtime.issue(principal, { launch, bind: owner => { this.owner = owner; },
       dependencies: this.options.custodyDependencies ?? [] }, this);
     const abort = () => { void this.host?.invoke("turn.abortStart", { turnKey: this.turnKey }, []).catch(() => undefined); };
@@ -64,21 +78,26 @@ export class BridgedAcpTurn implements AgentTurn {
 
   /** Applied in the order the bridge produced them; a finished turn applies nothing more (C5, C6). */
   apply(event: BridgeTurnEvent) {
+    if (event.k === "native-background-update") { nativeBackgrounds.update(this.turnKey, event.terminals, event.output); return; }
+    if (event.k === "native-background-ended") { void nativeBackgrounds.stop(this.turnKey, "unknown").catch(cause => console.warn("[codex] background cleanup failed", cause)); return; }
     if (this.done) return;
     const callbacks = this.options.callbacks as unknown as Record<string, ((...args: unknown[]) => void) | undefined>;
     if (event.k === "cb") {
       if (!NOTIFY_CALLBACKS.includes(event.name)) return;
-      const args = REDACTED_CALLBACKS.has(event.name) ? this.redact(event.args) : event.args;
+      const args = this.native || REDACTED_CALLBACKS.has(event.name) ? this.redact(event.args) : event.args;
       if (event.name === "onUserInput") { const request = args[0] as { userInputId: string; questions: AgentUserInputQuestion[] }; this.questions.set(request.userInputId, { questions: request.questions }); }
       if (event.name === "onUserInputClosed") this.questions.delete(args[0] as string);
       callbacks[event.name]?.(...args);
-      if (event.name === "onTerminal" || event.name === "onProcessError") this.finish();
+      if (event.name === "onTerminal" || event.name === "onProcessError") {
+        const retain = this.backgroundStaged && !this.stopping && event.name === "onTerminal" && (args[0] as { type?: string })?.type === "done";
+        this.finish(retain);
+      }
     } else if (event.k === "subagent-meta") {
       this.options.subagents.upsertMeta(event.input as Parameters<BackendTurnOptions["subagents"]["upsertMeta"]>[0]);
     } else if (event.k === "trace-wire") {
-      this.options.trace?.recordWire(event.direction as never, event.line);
+      this.options.trace?.recordWire(event.direction as never, this.evidence.redact(event.line));
     } else if (event.k === "trace-mapped") {
-      this.options.trace?.recordMapped(event.event as never);
+      this.options.trace?.recordMapped(this.redact([event.event])[0] as never);
     } else if (event.k === "process") {
       this.pidValue = event.pid ?? undefined; this.steering = event.steering;
     }
@@ -86,15 +105,54 @@ export class BridgedAcpTurn implements AgentTurn {
 
   /** The awaited callbacks, answered by the real main objects; the synchronous authority check rides along (C5). */
   async request(request: BridgeTurnRequest): Promise<unknown> {
+    if (request.k === "native-background-result") {
+      if (!this.native || !this.backgroundStaged) throw new Error("No native background result authority");
+      const result = { ...request.result, output: this.evidence.redact(request.result.output) };
+      await nativeBackgrounds.complete(this.turnKey, result); return null;
+    }
     if (this.done) throw new Error("turn already finished");
     switch (request.k) {
-      case "thread": return this.options.callbacks.onThread(request.session);
+      case "thread": {
+        const expected = this.native?.nativeConfig.continuation?.threadId;
+        if (request.previous && (!expected || request.previous.backend !== "codex" || request.previous.id !== expected ||
+          this.options.payload.session?.id !== expected || request.session.backend !== "codex" || request.session.id === expected)) throw new Error("Native fork binding does not match its frozen source");
+        if (expected && !request.previous) throw new Error("Native fork requires an atomic source-session replacement");
+        return this.options.callbacks.onThread(request.session, request.previous);
+      }
       case "authority": await this.options.trustedAuthority?.validate(); this.options.trustedAuthority?.current(); return null;
       case "session-prompt": this.options.trustedAuthority?.current(); await this.options.onSessionPrompt?.(request.sessionId, request.texts as string[]); return null;
       case "builtin-ready": await this.options.builtinMcp?.waitReady(new AbortController().signal); return null;
       case "recovery-complete": await this.options.sessionRecovery?.complete(request.outcome as "resumed" | "replayed"); return null;
       /* Only a live turn is answered: the tokens exist in the bridge for this session's creation, never for a later one. */
-      case "mcp-servers": return acpMcpServers(this.options, this.config);
+      case "mcp-servers": {
+        if (this.native) throw new Error("Native turns do not expose ACP MCP servers");
+        return acpMcpServers(this.options, this.config as AcpSpawnConfig);
+      }
+      case "native-config": {
+        if (!this.native || this.nativeConfigIssued) throw new Error("Native configuration is unavailable or already consumed");
+        this.options.trustedAuthority?.current();
+        this.nativeConfigIssued = true;
+        return this.native.nativeConfig;
+      }
+      case "native-background": {
+        if (!this.native || !this.owner || this.backgroundStaged) throw new Error("Native background ownership is unavailable");
+        this.backgroundStaged = true;
+        const owner = this.owner;
+        if (!owner.recordDescendants) throw new Error("Native background custody requires durable descendant evidence");
+        await owner.recordDescendants();
+        if (this.done || this.closed || this.stopping) throw new Error("Native background transfer was cancelled");
+        await nativeBackgrounds.stage({ key: this.turnKey, requestId: this.options.payload.requestId, providerId: this.providerId, chatId: this.options.payload.scope.conversationId,
+          incarnationId: this.options.chatIncarnationId ?? "provider-bridge", threadId: request.threadId, lastTurnId: request.lastTurnId,
+          persist: results => { if (!this.options.persistNativeBackgroundResults) throw new Error("Background result persistence unavailable"); return this.options.persistNativeBackgroundResults(results); },
+          permissionMode: this.options.payload.turnOptions.permissionMode, terminals: request.terminals.map(terminal => ({ ...terminal, command: this.evidence.redact(terminal.command), cwd: this.evidence.redact(terminal.cwd) })),
+          stopNative: () => this.invoke("turn.background.stop", {}).then(() => undefined), settle: () => owner.settle(),
+          forget: () => { this.closed = true; this.runtime.forget(this); void this.host?.invoke("turn.release", { turnKey: this.turnKey }, []).catch(() => undefined); } });
+        if (this.done || this.closed || this.stopping) {
+          nativeBackgrounds.discard(this.turnKey);
+          throw new Error("Native background transfer was cancelled");
+        }
+        return null;
+      }
       case "contribution-consume": {
         /* Main owns the lease: it is consumed here, once per ask, and the bridge's prompt uses the validation it gets back (G9). */
         const contribution = this.options.sensitiveContribution;
@@ -114,31 +172,42 @@ export class BridgedAcpTurn implements AgentTurn {
     this.questions.delete(userInputId);
     void this.invoke("turn.respondUserInput", { userInputId, answers }).catch(() => undefined);
   }
-  steer(prompt: ContentBlock[]) { return this.invoke("turn.steer", { prompt }) as Promise<AdapterSteerOutcome>; }
+  steer(prompt: ProviderTurnInput[]) { return this.invoke("turn.steer", { prompt }) as Promise<AdapterSteerOutcome>; }
   /* A bridge that cannot answer (gone with the process group at quit, or the turn already released there) leaves the handoff unknowable:
      the prompt counts as possibly handed off, and finalization, quit included, goes on. */
   promptHandoff() {
     return (this.invoke("turn.promptHandoff", {}) as Promise<PromptHandoff>).catch((): PromptHandoff => ({ kind: "pending" }));
   }
-  interrupt() { void this.invoke("turn.interrupt", {}).catch(() => undefined); }
+  interrupt() { this.stopping = true; void this.invoke("turn.interrupt", {}).catch(() => undefined); }
   markStopped() {
+    this.stopping = true;
     void this.invoke("turn.markStopped", {}).catch(() => undefined);
     this.finish();
+    if (!this.closed) { this.closed = true; nativeBackgrounds.discard(this.turnKey); this.runtime.forget(this); }
     /* The finalizer may still ask for the prompt handoff after Stop; the bridge keeps the turn for a short grace. */
     setTimeout(() => { void this.host?.invoke("turn.release", { turnKey: this.turnKey }, []).catch(() => undefined); }, RELEASE_GRACE_MS).unref();
   }
 
+  async transferBackground(release: () => Promise<void>) {
+    return this.backgroundStaged && this.done && !this.closed && !this.stopping && nativeBackgrounds.activate(this.turnKey, release);
+  }
+
   /** The bridge died or went away mid-turn: the Chat fails typed instead of hanging (C8). */
   bridgeLost(reason: string) {
+    this.stopping = true;
+    if (this.backgroundStaged && this.done) { void nativeBackgrounds.stop(this.turnKey, "unknown").catch(cause => console.warn("[codex] lost background cleanup failed", cause)); return; }
     if (this.done) return;
     this.options.callbacks.onProcessError({ kind: "unknown", message: `Provider bridge stopped: ${reason}` } as never);
     this.finish();
   }
 
   /** Terminal: no further event is applied and the execution ref dies with the principal; bridge state waits for Stop. */
-  private finish() {
+  private finish(retain = false) {
     if (this.done) return;
     this.done = true;
+    if (retain) return;
+    this.closed = true;
+    nativeBackgrounds.discard(this.turnKey);
     this.runtime.forget(this);
   }
 
@@ -151,11 +220,11 @@ export class BridgedAcpTurn implements AgentTurn {
     return JSON.parse(JSON.stringify(args), (_key, value) => typeof value === "string" ? this.evidence.redact(value) : value) as unknown[];
   }
 
-  /** Everything the bridge needs, secrets blanked: MCP credentials stay in the sealed launch environment (C9). */
+  /** Initial bridge input has no secrets; main supplies frozen MCP configuration through an awaited authorized request. */
   private startInput(): BridgeTurnStart {
     const options = this.options, blank = (record: Record<string, string>) => Object.fromEntries(Object.keys(record).map(key => [key, ""]));
     return JSON.parse(JSON.stringify({
-      turnKey: this.turnKey, payload: options.payload, input: options.input.input, runtime: options.runtime, workspace: options.workspace,
+      turnKey: this.turnKey, protocol: this.native ? "codex-app-server" : "acp", chatIncarnationId: options.chatIncarnationId, payload: options.payload, input: options.input.input, runtime: options.runtime, workspace: options.workspace,
       artifactDirectory: options.artifactDirectory, productContext: options.productContext,
       sensitive: options.sensitiveContribution && { kind: options.sensitiveContribution.kind, text: options.sensitiveContribution.text,
         count: options.sensitiveContribution.count, bytes: options.sensitiveContribution.bytes },
@@ -166,7 +235,7 @@ export class BridgedAcpTurn implements AgentTurn {
       thirdPartyMcpPlan: options.thirdPartyMcpPlan && { ...options.thirdPartyMcpPlan, entries: options.thirdPartyMcpPlan.entries.map(entry =>
         entry.transport === "stdio" ? { ...entry, env: blank(entry.env) } : { ...entry, headers: blank(entry.headers) }) },
       subagents: options.subagents.persisted(),
-      sessionMeta: this.config.sessionMeta?.(options),
+      sessionMeta: "sessionMeta" in this.config ? this.config.sessionMeta?.(options) : undefined,
       trace: Boolean(options.trace),
     }));
   }

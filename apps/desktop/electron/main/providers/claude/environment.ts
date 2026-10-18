@@ -6,7 +6,7 @@
  */
 
 import { sanitizedProcessEnvironment } from "../../backends/runtime/runtime-probe";
-import type { AcpLauncher, ResolvedRuntime } from "../../backends/types";
+import type { AcpLauncher, ResolvedRuntime } from "../../backends/contracts/types";
 import { adapterLaunch } from "../../runtime";
 
 const CLAUDE_ENV_KEYS = [

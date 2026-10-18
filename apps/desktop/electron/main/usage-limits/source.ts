@@ -10,7 +10,7 @@ import { builtinProviderCatalog, knownBackend } from "../../../shared/providers/
 import type { BackendRuntimeSnapshot } from "../backends/runtime/runtime-registry";
 import { runtimeEnvironmentIdentity } from "../backends/runtime/availability/scope";
 import { waitForSharedFlight } from "../backends/jobs/supervised-command";
-import type { ResolvedRuntime } from "../backends/types";
+import type { ResolvedRuntime } from "../backends/contracts/types";
 import { createQuotaChannelPool, type QuotaChannelPool, type QuotaDemandState } from "./channel";
 import { QuotaReadError, type QuotaReadResult } from "./readers/common";
 export type QuotaTarget = { runtime: ResolvedRuntime; identity: string; snapshot: BackendRuntimeSnapshot };

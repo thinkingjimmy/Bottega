@@ -1,12 +1,23 @@
 /**
  * [INPUT]: Depends on the chatSurfacesEn structural type
- * [OUTPUT]: Provides the Simplified Chinese Chat surfaces catalog with the exact English structure
+ * [OUTPUT]: Simplified Chinese Chat surfaces, including local-file preview actions and failures
  * [POS]: Simplified Chinese Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
 import { chatSurfacesEn } from "./en";
 
 export const chatSurfacesZhCN: typeof chatSurfacesEn = {
+  nativeBackground: {
+    "stop": "停止",
+    "stopping": "正在停止…",
+    "started": "以「{{mode}}」启动，回复结束后继续运行。",
+    "failed": "尚未确认此命令已停止，请重试。",
+    "modes": {
+      "ask-for-approval": "询问审批",
+      "approve-for-me": "自动审批",
+      "full-access": "完全访问"
+    }
+  },
   sidePanel: {
     shell: {
       loadingBase: "正在加载 Base",
@@ -15,6 +26,19 @@ export const chatSurfacesZhCN: typeof chatSurfacesEn = {
       bytes: "{{count}} 字节",
       resize: "调整第三栏宽度",
       resizeHint: "拖动或使用方向键调整第三栏宽度",
+    },
+    file: {
+      open: "用系统应用打开",
+      reveal: "在 Finder 中显示",
+      copyPath: "复制路径",
+      copied: "路径已复制",
+      retry: "重试",
+      missing: "文件已移动或删除，原路径下找不到此文件。",
+      outside: "文件不在当前工作区内，或工作区已改变。",
+      readFailed: "无法预览此文件，请重试。",
+      actionFailed: "文件操作失败，请重新打开预览后重试。",
+      tooLarge: "文件超过 1 MiB 预览上限，可以用系统应用打开。",
+      binary: "文件不是 UTF-8 文本，可以用系统应用打开。",
     },
     appGrant: {
       badgeAria: "{{name}} 的权限 —— 数据：{{data}}；代你操作：{{delegation}}",

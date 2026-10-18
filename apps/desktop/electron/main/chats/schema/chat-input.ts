@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, shared chat/agent/project Limit, renderer ManualTurn and main-only Trusted adopt
- * [OUTPUT]: Provides strict local and main-authenticated remote append validation with real attachment parity; an ordinary Chat may be created on a package Provider (its options in the package shape), App and adopted Chats stay built-in (TASK-11 S3-b).
+ * [OUTPUT]: Provides strict image/file attachment persistence and main-authenticated remote append validation; ordinary Chats accept package Providers, while App/adopted Chats stay built-in.
  * [POS]: apps/desktop/electron/main/chats/schema; The input boundary of the chats module; renderer cannot construct an adopt, main trusted path to parse without performing perpetuation or lifecycle side effects
  */
 
@@ -12,7 +12,7 @@ import {
   ATTACHMENT_FILENAME_BYTE_LIMIT,
   ATTACHMENT_LIMIT,
   dataUrlByteSize,
-  isValidImageDataUrl,
+  isValidAttachmentDataUrl,
 } from "../../../../shared/ipc/agent/agent-ipc";
 import {
   MESSAGE_BYTE_LIMIT,
@@ -55,12 +55,12 @@ const attachmentPayloadSchema = z
       .refine((value) => utf8Length(value) <= ATTACHMENT_FILENAME_BYTE_LIMIT, {
         message: "附件文件名过长",
       }),
-    mediaType: z.string().regex(/^image\/[a-z0-9+.-]+$/i, "仅支持图片附件落盘"),
+    mediaType: z.string().max(100).regex(/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i, "Invalid attachment media type"),
     dataUrl: z
       .string()
-      .refine(isValidImageDataUrl, "附件必须是合法的 base64 图片 data URL")
+      .refine(isValidAttachmentDataUrl, "Attachment must be a valid base64 data URL")
       .refine((value) => dataUrlByteSize(value) <= ATTACHMENT_BYTE_LIMIT, {
-        message: "图片附件不能超过 8 MB",
+        message: "Attachments must not exceed 8 MiB",
       }),
   })
   .strict()

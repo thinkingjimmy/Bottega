@@ -2,7 +2,7 @@
  * [INPUT]: Depends on the plugin contract (BUILTIN_PLUGINS, views, details, settings, contract kinds), the one resolver (resolve.ts), the
  *           projections (describe.ts), the reserved identity policy, provenance-bearing owners, plugin state and settings stores, and read/disable ports over the Extension Registry, host-package
  *           manifests, each Agent's native plugins, Agent configurations and health; uses SerialQueue for settings persistence.
- * Artifact switch transitions use checkpoint/closing hooks and persisted generation under one serialized mutation lane.
+ * Switch transitions are serialized; Provider disable closes admission before awaiting retained process cleanup.
  * [OUTPUT]: Provides PluginCatalog — list, detail, setEnabled (C.3's rules: always-on, setup-required, unsupported, not-switchable),
  *           settings / setSettings (serialized persistence and revision-bound restart acknowledgement, or the owner's adapter with confirm), stopAdmission / close (flush accepted settings), resolve (the shared Resolution over every plugin),
  *           refresh (re-read and announce) / resolveNow, providerEnabled, workflowEnabled, workflowBlockedBy (named reasons for admission), dependentsOf, effectsOf and providersOf (impact),
@@ -73,6 +73,7 @@ export type CatalogPorts = {
   workflowProjects(): readonly string[];
   /** Q29 effects of a built-in Provider switching: the process gate that stops new turns, probes and readers. */
   applyProvider(providerId: string, enabled: boolean): void;
+  stopProvider?(providerId: string): Promise<void>;
   /** A plugin's health, provided in main by whoever runs it; null leaves it unknown. */
   health?(pluginId: string, entry: PluginEntry): Promise<PluginHealth | null>;
   /** Settings a package reads changed: `immediate` ids are published to it, `process-start` ones restart it when idle. */
@@ -91,7 +92,7 @@ export class PluginCatalog {
   private readonly pendingRestart = new Map<string, symbol>();
   private readonly settingsQueues = new Map<string, SerialQueue>();
   private settingsClosed = false;
-  private readonly artifactSwitch = new SerialQueue();
+  private readonly switches = new SerialQueue();
   constructor(private readonly ports: CatalogPorts) {}
   onChanged(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
 
@@ -189,8 +190,7 @@ export class PluginCatalog {
 
   /** Turning on needs no confirmation; turning off is confirmed by the page after the impact preview (Q29). */
   async setEnabled(pluginId: string, enabled: boolean) {
-    if (pluginId === "artifact") return this.artifactSwitch.enqueue(() => this.setEnabledNow(pluginId, enabled));
-    return this.setEnabledNow(pluginId, enabled);
+    return this.switches.enqueue(() => this.setEnabledNow(pluginId, enabled));
   }
   private async setEnabledNow(pluginId: string, enabled: boolean) {
     const entry = await this.fieldsOf(pluginId);
@@ -210,8 +210,13 @@ export class PluginCatalog {
       try {
         await this.ports.states.set(pluginId, enabled, this.ports.now());
       } finally { artifact?.finishArtifactToggle(); }
-      if (descriptor.kind === "provider") this.ports.applyProvider(pluginId, enabled);
-      return this.emit();
+      try {
+        if (descriptor.kind === "provider") {
+          this.ports.applyProvider(pluginId, enabled);
+          if (!enabled) await this.ports.stopProvider?.(pluginId);
+        }
+      } finally { this.emit(); }
+      return;
     }
     const item = this.ports.hostPackages().find(candidate => candidate.installIdentity === pluginId);
     if (!item) throw new PluginError("plugin-not-found");
@@ -247,13 +252,13 @@ export class PluginCatalog {
 
   stopAdmission() {
     this.settingsClosed = true;
-    this.artifactSwitch.close();
+    this.switches.close();
     for (const queue of this.settingsQueues.values()) queue.close();
   }
 
   async close() {
     this.stopAdmission();
-    await this.artifactSwitch.flush();
+    await this.switches.flush();
     await Promise.all([...this.settingsQueues.values()].map(queue => queue.flush()));
   }
 

@@ -493,6 +493,12 @@ export class ChatsService {
   rollbackCreationById(chatId: string) {
     return this.options.chatHomes!.rollbackCreation(chatId);
   }
+  async applyNativeBackgroundResults(input: import("../store/background/results").BackgroundResultCommit) {
+    if (this.admission === "closed") throw new Error("Background result store is closed");
+    const mutation = await this.store.applyNativeBackgroundResults(input);
+    try { this.events.emitMutation(mutation); } catch { /* The receipt already committed. */ }
+  }
+
   async appendTurnResult(
     conversationId: string,
     input: TurnCommitInput

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the live Provider catalog and its IPC narrowing, the runtime registry, version cache, model-catalog change notifications, fixed terminal delivery, credential reservations and trusted Setup IPC.
- * [OUTPUT]: Owns installation-only/full check scopes (the check channels take any Provider a backend runs now, built-in or available package Provider; the setup actions stay the built-ins'), per-Agent coordination, window-scoped login-return listeners, scope-preserving terminal return checks, verified headless CLI updates, and notifyModelsInvalidated as the single, 250 ms-merged models-invalidated sink; every id channel answers a ProviderIpcRefusal for a malformed or unknown id.
+ * [OUTPUT]: Owns installation/full checks, descriptor-defined exact/newer update targets, window-scoped login-return checks, verified headless updates and merged model invalidations; malformed or unknown Provider ids receive a ProviderIpcRefusal.
  * [POS]: Main setup coordinator; registration stays passive and the workbench requests full checks after onboarding.
  */
 
@@ -64,6 +64,7 @@ export class BackendSetupService {
   private readonly updater = new CliUpdater({
     runtime: (backend) => backendRuntimeRegistry.current(backend)?.runtime,
     args: (backend) => backendById(backend).setup?.selfUpdate,
+    command: (backend) => backendById(backend).setup?.updateCommand,
     recheck: async (backend) => (await this.recheck(backend)).backends.find((entry) => entry.id === backend),
   });
 
@@ -342,13 +343,14 @@ export class BackendSetupService {
   private withLatest(base: BackendInfo): BackendInfo {
     const builtin = knownBackend(builtinProviderCatalog, base.id);
     const latest = builtin ? this.latest.current(builtin)?.version : undefined;
+    const setup = resolveProvider(base.id)?.setup;
     return {
       ...base,
       setupAction: this.pendingActions.get(base.id),
-      loginAvailable: Boolean(resolveProvider(base.id)?.setup?.commands.login),
+      loginAvailable: Boolean(setup?.commands.login),
       ...(latest ? { latestVersion: latest } : {}),
       ...(latest && base.version
-        ? { updateAvailable: isVersionNewer(latest, base.version) }
+        ? { updateAvailable: setup?.updatePolicy === "exact" ? latest !== base.version : isVersionNewer(latest, base.version) }
         : {}),
     };
   }

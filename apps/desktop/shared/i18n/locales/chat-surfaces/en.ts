@@ -1,10 +1,21 @@
 /**
  * [INPUT]: Depends on no runtime modules; defines the structural baseline for side-panel and usage-limit copy
- * [OUTPUT]: Provides chatSurfacesEn for Chat side-panel shells, App grant status/diagnostics, transcript controls, image previews, and usage-limit cards
+ * [OUTPUT]: Provides Chat surface copy, including local-file preview actions and failures
  * [POS]: English Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
 export const chatSurfacesEn = {
+  nativeBackground: {
+    "stop": "Stop",
+    "stopping": "Stopping…",
+    "started": "Started with {{mode}}. Continues after the reply.",
+    "failed": "Could not confirm that this command stopped. Try again.",
+    "modes": {
+      "ask-for-approval": "Ask for approval",
+      "approve-for-me": "Approve for me",
+      "full-access": "Full access"
+    }
+  },
   sidePanel: {
     shell: {
       loadingBase: "Loading Base",
@@ -13,6 +24,19 @@ export const chatSurfacesEn = {
       bytes: "{{count}} bytes",
       resize: "Resize side panel",
       resizeHint: "Drag or use the arrow keys to resize the side panel",
+    },
+    file: {
+      open: "Open with system app",
+      reveal: "Show in Finder",
+      copyPath: "Copy path",
+      copied: "Path copied",
+      retry: "Retry",
+      missing: "This file no longer exists at this path.",
+      outside: "This file is outside the current workspace, or the workspace has changed.",
+      readFailed: "This file could not be previewed. Try again.",
+      actionFailed: "The file action failed. Open the preview again and retry.",
+      tooLarge: "This file exceeds the 1 MiB preview limit. You can open it with a system app.",
+      binary: "This file is not UTF-8 text. You can open it with a system app.",
     },
     appGrant: {
       badgeAria: "{{name}} permissions — data: {{data}}; acts for you: {{delegation}}",

@@ -4,6 +4,7 @@
  * [POS]: apps/desktop/electron/main/chats/lifecycle; The chats deletion orchestration boundary; ChatsService delegates removal while durable deletion details remain in ChatDeletionDriver
  */
 
+import { nativeBackgrounds } from "../../providers/codex/native/background/registry";
 import type { ChatRecord } from "../../../../shared/ipc/content/chats-ipc";
 import type { ConversationDeletionMode } from "../../deletion/conversation-deletion-coordinator";
 import { ChatNotFoundError } from "../chat-commit";
@@ -45,8 +46,14 @@ export class ChatRemovalController {
     this.appDeactivation = handler;
   }
 
-  prepareForArchive(chat: ChatLifecycleFacts) {
-    return this.appDeactivation?.(chat, "archive") ?? Promise.resolve();
+  async prepareForArchive(chat: ChatLifecycleFacts) {
+    await nativeBackgrounds.stopChat(chat.id);
+    await this.appDeactivation?.(chat, "archive");
+  }
+
+  private async cancelConversations(chatIds: string[]) {
+    for (const id of chatIds) await nativeBackgrounds.stopChat(id);
+    await this.ports.cancelConversations(chatIds);
   }
 
   assertOrdinaryTurnAllowed(chatId: string) {
@@ -85,7 +92,7 @@ export class ChatRemovalController {
       record = current;
       await this.ports.deletion.prepare(current, "local-only", memory);
     });
-    await this.ports.cancelConversations([chatId]);
+    await this.cancelConversations([chatId]);
     await this.ports.deletion.drive(record!);
     this.ports.releaseConversations?.([chatId]);
   }
@@ -104,7 +111,7 @@ export class ChatRemovalController {
     this.assertSnapshotCurrent(candidate, current);
     const retained = { ...current, retainedAppId: appId };
     await this.ports.deletion.prepare(retained, "local-only", memory);
-    await this.ports.cancelConversations([chatId]);
+    await this.cancelConversations([chatId]);
     await this.ports.deletion.drive(retained);
     this.ports.releaseConversations?.([chatId]);
   }
@@ -124,7 +131,7 @@ export class ChatRemovalController {
       record = current;
       await this.ports.deletion.prepare(current, mode, memory);
     });
-    await this.ports.cancelConversations([chatId]);
+    await this.cancelConversations([chatId]);
     await this.ports.deletion.drive(record!, mode);
     this.ports.releaseConversations?.([chatId]);
   }
@@ -149,7 +156,7 @@ export class ChatRemovalController {
       if (projectLifecycle === "held") await prepare();
       else await this.ports.withConversationLifecycle(prepare);
       if (!record) continue;
-      await this.ports.cancelConversations([chatId]);
+      await this.cancelConversations([chatId]);
       await this.ports.deletion.drive(record);
       this.ports.releaseConversations?.([chatId]);
     }

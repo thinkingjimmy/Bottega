@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on a locked folder, attachment payloads, logical blob hashes and durable publication.
- * [OUTPUT]: Persists validated images and trusted remote files with stable identity, hash checks and original cloud descriptors.
+ * [OUTPUT]: Persists validated image/file snapshots with stable identity, hash checks and original cloud descriptors.
  * [POS]: AttachmentStore's only backing store; cloud and interactive writers share one queue per Chat directory.
  */
 import { lstat, readFile, readdir, realpath, rm } from "node:fs/promises";
@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import type { ChatAttachmentMeta, ChatAttachmentPayload } from "../../../../shared/ipc/content/chats-ipc";
-import { ATTACHMENT_BYTE_LIMIT, IMAGE_DATA_URL_PATTERN } from "../../../../shared/ipc/agent/agent-ipc";
+import { ATTACHMENT_BYTE_LIMIT, isValidAttachmentDataUrl } from "../../../../shared/ipc/agent/agent-ipc";
 import { describeBlob, verifyBlob } from "../../persistence/logical-blob";
 import { durableReplaceBytes, durableReplaceFile, isErrnoCode } from "../../persistence/durable-json";
 import { SerialQueue } from "../../persistence/serial-queue";
@@ -55,10 +55,10 @@ export class LibraryAttachments {
       for (const [index, payload] of payloads.entries()) {
         const id = libraryObjectId(ids?.[index] ?? nanoid());
         const remote = remotePayload(payload);
-        if (!remote && !IMAGE_DATA_URL_PATTERN.test(payload.dataUrl)) throw new Error("ATTACHMENT_CONTENT_INVALID");
+        if (!isValidAttachmentDataUrl(payload.dataUrl)) throw new Error("ATTACHMENT_CONTENT_INVALID");
         if (remote && (remote.remote.attachmentId !== id || remote.remote.blob.encryption.owner.kind !== "chat" || remote.remote.blob.encryption.owner.id !== chatId)) throw new Error("ATTACHMENT_IDENTITY_CHANGED");
         const mime = payload.dataUrl.slice(5, payload.dataUrl.indexOf(";")), bytes = Buffer.from(payload.dataUrl.slice(payload.dataUrl.indexOf(",") + 1), "base64");
-        if (!bytes.length || bytes.length > ATTACHMENT_BYTE_LIMIT || mime !== payload.mediaType.toLowerCase()) throw new Error("ATTACHMENT_CONTENT_INVALID");
+        if ((!bytes.length && mime.startsWith("image/")) || bytes.length > ATTACHMENT_BYTE_LIMIT || mime !== payload.mediaType.toLowerCase()) throw new Error("ATTACHMENT_CONTENT_INVALID");
         const blob = describeBlob(id, bytes, mime), path = join(directory, "attachments", id);
         if (map.attachments[id] && map.attachments[id]!.sha256 !== blob.sha256) throw new Error("ATTACHMENT_IDENTITY_CHANGED");
         try {

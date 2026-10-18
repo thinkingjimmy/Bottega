@@ -5,7 +5,7 @@
  */
 
 import { classifyAcpFailure, record } from "../../backends/acp/failure";
-import type { BackendFailure, FailureHints } from "../../backends/types";
+import type { BackendFailure, FailureHints } from "../../backends/contracts/types";
 import { agentRuntimeFailure } from "@ai-chat/cloud-protocol/chats/content/failure-values";
 
 const OPENCODE_AUTH_MESSAGES = new Set([

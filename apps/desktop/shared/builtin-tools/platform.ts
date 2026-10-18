@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, Agent backend identity and shared Bases schema/budget
- * [OUTPUT]: Provides built-in tool platform types, the English socket-path backstop, per-domain budgets, Plan exclusion, cross-referencing, timeouts, common id schemas, the `read_base` query shape, and annotation constants
+ * [OUTPUT]: Provides tool platform types, CLI-bounded history image delivery, domain budgets, Plan exclusion, timeouts, common schemas and annotations
  * [POS]: Domain-neutral foundation of builtin-tools; domain specs depend only downward on this file and never on the index barrel
  */
 
@@ -35,7 +35,7 @@ export type BuiltinToolDomainSpec = {
 
 export const BUILTIN_TOOL_DOMAINS = {
   preview: { id: "preview", rateLimit: 6, rateWindowMs: 60_000, logicalResultByteLimit: 16 * 1024 },
-  history: { id: "history", rateLimit: 8, rateWindowMs: 60_000, logicalResultByteLimit: 16 * 1024 },
+  history: { id: "history", rateLimit: 8, rateWindowMs: 60_000, logicalResultByteLimit: BASE_WIRE_BYTE_LIMIT },
   sections: {
     id: "sections",
     rateLimit: 12,

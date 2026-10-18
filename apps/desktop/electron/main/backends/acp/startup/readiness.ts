@@ -20,7 +20,7 @@ import type {
   AuthCheckStatus,
   BackendFailure,
   ResolvedRuntime,
-} from "../../types";
+} from "../../contracts/types";
 
 /* ============================================================
  * 握手成功到底证明了什么——每后端一格数据。

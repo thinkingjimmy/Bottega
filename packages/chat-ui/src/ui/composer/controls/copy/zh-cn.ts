@@ -136,6 +136,8 @@ export const copy = {
     },
   },
   "permission": {
+    "codexPolicy": "Codex 可访问网络，也可读取工作区外的普通文件。写入授权根之外的位置需要原生批准。Plan 沿用当前权限。Bottega 不额外提供路径保护。",
+    "codexAuto": "Codex 会审核额外权限请求，也可能拒绝，不会批准所有请求。",
     "trigger": "当前操作权限：{{mode}}",
     "heading": "{{backend}} 的操作如何批准？",
     "learnMore": "了解更多",
@@ -156,7 +158,7 @@ export const copy = {
     },
     "fullAccess": {
       "title": "开启完全访问？",
-      "description": "Agent 将无需你的许可即可执行命令、访问互联网，并在本次聊天之外创建和修改文件。AI Chat 的控制数据仍受保护，你的其他文件不受保护。这包括但不限于：",
+      "description": "Agent 将无需你的许可即可执行命令、访问互联网，并在本次聊天之外创建和修改文件。这包括但不限于：",
       "files": {
         "title": "文件与文件夹",
         "description": "读取、创建、修改、上传或删除这台电脑上任意位置的文件"

@@ -1,8 +1,7 @@
 /**
- * [INPUT]: Depends on the Codex-ACP, Registry first-valid flight, codex quadrangular auth, ACP turn/models, authorized processEnv, frozen MCP backend-config, installers and headless/maintenance
- * [OUTPUT]: Provides codexBackend, its minimum supported version, ACP chat, third-party MCP wiring, read-only Skill sources, auth, its Provider bridge readiness plan, approvals, model options and background capabilities.
- * Passes the main-owned workflow memory policy into the ACP launcher.
- * [POS]: The only chat installation point for the Codex descriptor; Skills are Library-first product state — this backend only declares read-only discovery roots and never writes or reconciles Codex-native Skill config
+ * [INPUT]: Uses validated native CLI discovery, bb-native-v1 launch policy, the pinned Provider bridge and model/auth/quota controls and the pinned official installer target.
+ * [OUTPUT]: Exports codexBackend with exact-version native Chat, readiness, model options, quota and strict-role admission.
+ * [POS]: Codex composition boundary; all subprocesses retain main authorization and custody.
  */
 
 import { codexQuota } from "./quota";
@@ -10,11 +9,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { CodexTurnOptions } from "../../../../shared/ipc/agent/codex-ipc";
 import { systemSkillsPath } from "../../skills/catalog/system-skills";
-import { npmLatestVersion } from "../../setup/latest-version";
-import { codexEnvironment, findCodexRuntime } from "./environment";
-import { classifyAcpFailure } from "../../backends/acp/failure";
-import { CODEX_SERVICE_TIER, codexTurnValues } from "./turn-config";
-import { BridgedAcpTurn } from "../host/turns/bridged-turn";
+import { SUPPORTED_CODEX_VERSION } from "./version";
+import { codexEnvironment, codexHomePath, findCodexRuntime } from "./environment";
+import { nativeFailure } from "./native/mapping/failure";
+import { BridgedTurn } from "../host/turns/bridged-turn";
 import { requireProviderBridge } from "../host/runtime";
 import {
   MODEL_ID_PATTERN,
@@ -22,17 +20,12 @@ import {
 } from "../../backends/runtime/capability-validation";
 import {
   builtinToolsForVersion,
-  runtimeVersionAtLeast,
 } from "../../backends/runtime/runtime-probe";
-import type { BackendDescriptor } from "../../backends/types";
-import { codexModelCatalog } from "./background/models";
-import {
-  codexAcpLaunch,
-  validateCodexSessionId,
-} from "./adapter-entry";
+import type { BackendDescriptor } from "../../backends/contracts/types";
+import { codexModels } from "./background/catalog";
+import { nativeCodexLaunch } from "./native/policy/spawn";
+import { validateCodexSessionId } from "./native/policy/session-id";
 import { checkCodexAuth, codexRoute } from "./auth";
-import { codexHeadlessSpec } from "./background/headless";
-import { codexMaintenance } from "./background/maintenance";
 import { SESSION_CAPABILITY_POLICY } from "../../backends/acp/startup/client-capabilities";
 
 const PERMISSION_MODES = new Set([
@@ -40,12 +33,10 @@ const PERMISSION_MODES = new Set([
   "approve-for-me",
   "full-access",
 ]);
-const MINIMUM_VERSION = "0.145.0";
+
 const INSTALL_COMMAND =
-  "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
-/* 装与登是两种永不同时成立的状态，指令必须分开：一句「请安装
-   Codex CLI，并在终端运行 codex login」在已装的机器上前半句就是
-   谎话。主权承诺两态都要说，故提取复用。 */
+  `curl -fsSL https://chatgpt.com/codex/install.sh | sh -s -- --release ${SUPPORTED_CODEX_VERSION}`;
+/* Installation and sign-in remain separate product states. */
 function assertCodexOptions(value: unknown): asserts value is CodexTurnOptions {
   if (!value || typeof value !== "object") {
     throw new Error("Codex turn 选项不完整");
@@ -72,8 +63,7 @@ function assertCodexOptions(value: unknown): asserts value is CodexTurnOptions {
   }
 }
 
-// builtinTools 由 oracle 按 runtime 版本推导（实测锚点 0.144.4，低于产品
-// 最低线 0.145.0，故所有可安装版本都解锁）；硬编码第二份真相已废除。
+// Tool availability still comes from the runtime oracle; strict roles require separate admission.
 const capabilities: Omit<
   ReturnType<BackendDescriptor["capabilitiesFor"]>,
   "builtinTools"
@@ -87,89 +77,77 @@ const capabilities: Omit<
   modelOptions: "full",
   imageInput: true,
   planMode: true,
-  headless: ["title", "install-analysis", "repair", "serve", "subagent"],
-  maintenance: true,
+  headless: [],
+  maintenance: false,
 };
 
 export const codexBackend: BackendDescriptor = {
   id: "codex",
   displayName: "Codex",
-  minimumVersion: MINIMUM_VERSION,
+  minimumVersion: SUPPORTED_CODEX_VERSION,
   workspaceDirName: "codex-workspace",
   sessionCapabilityPolicy: SESSION_CAPABILITY_POLICY.codex,
   quota: codexQuota,
-  serviceTier: CODEX_SERVICE_TIER,
+  serviceTier: { configOptionId: "service-tier", values: { default: "default", priority: "priority" } },
   detectRuntime: findCodexRuntime,
-  // version 探针与 turn/headless 同政策：CODEX_HOME 随 env 漂移时，
-  // 探针必须落在同一状态根，否则会在错位目录建目录、落缓存。
+  // Version probes and execution use the same normalized state root.
   versionEnvironment: codexEnvironment,
   validateRuntime: (runtime) =>
-    runtimeVersionAtLeast(runtime.version, MINIMUM_VERSION)
+    runtime.version.replace(/^codex-cli\s+/, "") === SUPPORTED_CODEX_VERSION
       ? { status: "installed" }
       : {
           status: "unsupported",
-          reason: `Codex CLI 需要 ${MINIMUM_VERSION} 或更高版本。`,
+          reason: `This native integration supports Codex CLI ${SUPPORTED_CODEX_VERSION} only. Recheck after installing that version.`,
         },
   capabilitiesFor: (runtime) => ({
     ...capabilities,
     builtinTools: builtinToolsForVersion("codex", runtime.version),
   }),
-  classifyFailure: classifyAcpFailure,
+  classifyFailure: cause => nativeFailure(cause),
   auth: {
     check: checkCodexAuth,
     route: codexRoute,
   },
-  readiness: async (runtime) => ({ launch: { ...codexAcpLaunch(runtime, { session: {} }), cwd: homedir() } }),
+  readiness: async (runtime) => ({ launch: nativeCodexLaunch(runtime, homedir()) }),
   validateTurnOptions: assertCodexOptions,
   validateSessionId: validateCodexSessionId,
   models: {
-    list: codexModelCatalog.list,
-    cached: codexModelCatalog.cached,
-    invalidate: codexModelCatalog.invalidate,
+    list: codexModels.list,
+    cached: codexModels.cached,
+    invalidate: codexModels.invalidate,
   },
   createTurn: (options) => {
     assertCodexOptions(options.payload.turnOptions);
-    const turnOptions = options.payload.turnOptions;
-    const config = {
-      ...codexAcpLaunch(options.runtime, {
-        processEnv: options.processEnv,
-        session: {
-          disableProviderMemory: options.disableProviderMemory,
-          artifactDirectory: options.artifactDirectory,
-          approveForMe: turnOptions.permissionMode === "approve-for-me",
-          builtinMcp: options.builtinMcp?.server,
-          thirdPartyMcpPlan: options.thirdPartyMcpPlan,
-          providerSettings: options.backendSessionConfig?.providerSettings,
-        },
-      }),
-      ...codexTurnValues,
-    };
-    return new BridgedAcpTurn(options, config, requireProviderBridge());
+    return new BridgedTurn(options, {
+      protocol: "codex-app-server",
+      env: codexEnvironment(options.runtime),
+      prepare: async () => (await import("./native/policy/launch")).nativeCodexTurnPlan(options),
+    }, requireProviderBridge());
   },
   skills: {
     sources: (workspace) => [
       { path: join(homedir(), ".agents", "skills"), scope: "user" },
-      { path: join(homedir(), ".codex", "skills"), scope: "user" },
+      { path: join(codexHomePath(), "skills"), scope: "user" },
       { path: join(workspace, ".agents", "skills"), scope: "repo" },
       { path: join(workspace, ".codex", "skills"), scope: "repo" },
       { path: systemSkillsPath(), scope: "system" },
     ],
   },
   setup: {
-    latestVersion: () => npmLatestVersion("@openai/codex"),
-    selfUpdate: ["update"],
+    latestVersion: async () => SUPPORTED_CODEX_VERSION,
+    updatePolicy: "exact",
+    updateCommand: { command: "/bin/sh", args: ["-c", `curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh -s -- --release ${SUPPORTED_CODEX_VERSION}`] },
     commands: {
       install: {
         command: INSTALL_COMMAND,
         dangerous: true,
       },
-      update: { command: "codex update", dangerous: true },
+      update: { command: INSTALL_COMMAND, dangerous: true },
       login: { command: "codex login", dangerous: false },
     },
   },
-  headless: {
-    purposes: ["title", "install-analysis", "repair", "serve", "subagent"],
-    spec: codexHeadlessSpec,
+  maintenance: {
+    open: async context => (await import("./background/maintenance")).codexMaintenance.open(context),
+    cleanup: async context => (await import("./background/maintenance")).codexMaintenance.cleanup?.(context),
   },
-  maintenance: codexMaintenance,
 };

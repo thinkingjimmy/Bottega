@@ -8,7 +8,7 @@ import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
-import type { ResolvedRuntime } from "../../types";
+import type { ResolvedRuntime } from "../../contracts/types";
 import { codexEnvironment } from "../../../providers/codex/environment";
 import { CLAUDE_MANAGED_SETTINGS, claudeAdapterEnvironment, selectClaudeProductEnvironment } from "../../../providers/claude/environment";
 

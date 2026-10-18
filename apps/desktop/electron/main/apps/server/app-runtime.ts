@@ -29,7 +29,7 @@ import type {
   BackendDescriptor,
   HeadlessRun,
   MaintenanceSession,
-} from "../../backends/types";
+} from "../../backends/contracts/types";
 import { stopProcessGroup, wait } from "../../agent/process/process-group";
 import { AppGateway } from "../gateway/app-gateway";
 import { AppStore } from "../store/app-store";

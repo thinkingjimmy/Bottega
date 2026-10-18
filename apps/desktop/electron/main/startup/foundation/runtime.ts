@@ -6,6 +6,7 @@
  * Package metadata remains readable while disabled; settings.get supplies effective values through the host's process-start snapshot.
  * Settings delivery carries a revision acknowledgement invoked after successful replacement, while Provider overrides remain changed-only.
  * Shutdown first stops package admission, then closes package queues and hosts before the utility-host and persistence owners.
+ * Built-in Provider disable closes process admission and awaits bridge/background custody cleanup before confirming the switch.
  * [POS]: The one startup seam for the composable-workbench foundation; index.ts calls it once after the ledgers and the builtin bridge exist, and closes it among the terminal owners
  */
 import type { HostCustodyDependencyPorts } from "../../host/processes/custody";
@@ -191,6 +192,7 @@ export async function composeFoundationRuntime(input: Parameters<typeof composeO
     applyProvider: (providerId, enabled) => {
       if ((AGENT_BACKEND_ORDER as readonly string[]).includes(providerId)) setAgentBackendDisabled(providerId as AgentBackendId, !enabled);
     },
+    stopProvider: providerId => providers!.stop(providerId, "provider-disabled"),
     health: (pluginId, entry) => pluginHealth(entry, { now: Date.now(),
       provider: providerId => (AGENT_BACKEND_ORDER as readonly string[]).includes(providerId) ? backendRuntimeRegistry.current(providerId as AgentBackendId) : null,
       packageRunning: installIdentity => hostPackages.outstanding(installIdentity).length > 0,

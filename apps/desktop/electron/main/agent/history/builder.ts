@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on saved records, UTF-8 budgets, envelope stripping, shared search guidance, and the production receiver digest
- * [OUTPUT]: Builds bounded original excerpts and saved imported tool evidence with explicit disclosure of omitted bodies and parts
+ * [OUTPUT]: Builds bounded originals, attachment manifests and saved imported tool evidence with explicit disclosure of omitted content
  * [POS]: No model calls or checkpoints; only the injected package and its source cut are frozen
  */
 
@@ -22,10 +22,13 @@ export function buildHandoff(history: PreparedHistory, input: readonly { type: s
   const packageOf = () => ({ version: 1, checkpoint: null, sourceCut: history.binding.cut,
     coverage: { ...coverage, historyIncluded: selected.length + evidence.length > 0, mode: coverage.mode === "full" ? "full" : selected.length + evidence.length ? "excerpts" : "none" },
     scanned: { messages: history.scannedMessages, bytes: history.scannedBytes },
-    omitted: ["historical image pixels", "live tool execution state", "unsaved details"],
+    omitted: ["live tool execution state", "unsaved details"],
     lookup: { name: lookup === "available" ? "read_chat_history" : null, availability: lookup,
       view: "live; stale pages require explicit recent/search refresh; history boundary is fixed",
       search: HISTORY_SEARCH_GUIDANCE,
+      attachments: lookup === "available"
+        ? "Saved attachments are listed on their source records. Use read_chat_history mode=attachment with that message ref and attachmentId; read the returned original file when not inline. Pixels are delivered on demand."
+        : "Saved attachment metadata is included when available; attachment reading is unavailable under the current history tool policy.",
       limits: { calls: 8, turnBytes: 98304, responseBytes: 16384, records: 20, searchCandidates: 200, searchBytes: 262144 } },
     excerpts: evidence, recentOriginals: selected });
   const render = () => JSON.stringify({ historical_handoff: packageOf() });

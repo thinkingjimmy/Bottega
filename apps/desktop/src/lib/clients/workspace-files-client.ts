@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared WorkspaceFiles bridge contract, renderer locale, shared i18n runtime, and preload window.workspaceFiles
- * [OUTPUT]: Provides searchWorkspaceFiles (fails open to an "unavailable" result), plus resignWorkspaceFile and readWorkspaceFile, which throw explicit errors on failure
+ * [OUTPUT]: Provides workspace search, opaque reads and scoped message-file resolution/native actions
  * [POS]: apps/desktop/src/lib/clients; Renderer's sole boundary for Workspace Files IPC; components never read window.workspaceFiles directly
  */
 
@@ -11,6 +11,8 @@ import type {
   WorkspaceFileReadInput,
   WorkspaceFileReadResult,
   WorkspaceFileResignInput,
+  WorkspaceFileLinkInput,
+  WorkspaceFileLinkActionInput,
 } from "../../../shared/ipc/workspace/workspace-files-ipc";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { effectiveLocale } from "../appearance/i18n-locale";
@@ -64,4 +66,14 @@ export async function readWorkspaceFile(
     );
   }
   return window.workspaceFiles.read(input);
+}
+
+export async function resolveWorkspaceFileLink(input: WorkspaceFileLinkInput) {
+  if (!window.workspaceFiles?.resolveLink) throw new Error("WORKSPACE_FILE_LINK_UNAVAILABLE");
+  return window.workspaceFiles.resolveLink(input);
+}
+
+export async function actOnWorkspaceFileLink(input: WorkspaceFileLinkActionInput) {
+  if (!window.workspaceFiles?.linkAction) throw new Error("WORKSPACE_FILE_LINK_UNAVAILABLE");
+  return window.workspaceFiles.linkAction(input);
 }

@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * [INPUT]: Depends on UI Button/Tooltip, host-injected UI text, streamdown/CJK, MessageRendererContext, and the message plugin loader
+ * [INPUT]: Depends on UI Button/Tooltip, host-injected UI text, streamdown/CJK, MessageRendererContext, opt-in local file links and the message plugin loader
  * [OUTPUT]: Provides Message/MessageContent layout with a message-content slot for bubble-scoped navigation emphasis, MessageActions/MessageAction, MessageResponse and messageRehypePlugins (repairs unfinished Markdown only while streaming, parses raw HTML only when the text has a tag, re-renders on any prop change); stabilizes locale-key/plugin detection, streams code-only rendering while Math/Mermaid stay available, and applies syntax highlighting once in a single pass after streaming settles
  * [POS]: ai-elements' message-display family; a Message never overflows its parent content list, and MessageResponse only auto-links http/mailto and hides behind a full skeleton until its plugins are chosen. Links render as real anchors (target="_blank" rel="noopener noreferrer") with no in-page confirmation, so a host may intercept the click and route the URL into its own surface. The default Markdown heading scale is re-anchored here to the text-sm body size (h1-h4 keep distinct sizes, h5/h6 collapse onto text-sm); other rendering contexts need their own scale. className is always merged last through cn's tw-merge so a caller's class wins without needing to guess specificity
+ * Local TXT/Markdown/JSON links require an explicit host provider and remain inert outside that host.
  */
 
 import { Button } from "@ai-chat/ui/components/ui/button";
@@ -27,6 +28,7 @@ import {
   type OptionalPluginKey,
 } from "./message/plugin-loader";
 import { useMessageRenderers } from "./message/renderer-context";
+import { preserveMessageFileLinks, useMessageFileLinks } from "./message/local-file-links";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -186,12 +188,8 @@ function MessageResponseLoading({ className }: { className?: string }) {
 }
 
 // ============================================================
-// 链接降级策略：消息里只有 http(s)/mailto/页内锚点可点击
-//
-// streamdown 内置 rehype-harden 会拦截裸相对路径（如 todo/foo.md），
-// 默认 indicator 策略追加 " [blocked]" 噪音文本。改为 text-only 静默
-// 解包；"./"、"/" 前缀的相对路径能通过 harden 但点击必死（desktop 被
-// 导航锁拦截、web 落 404），由 unwrapPlainLinks 统一解包为纯文本。
+// Only a host with a file opener retains local text links. It converts them to
+// inert fragments before sanitization; all other local paths stay plain text.
 // ============================================================
 const CLICKABLE_HREF = /^(?:https?:|mailto:|#)/i;
 
@@ -236,9 +234,13 @@ const safeRehypePlugins = [
 /* E-22: raw HTML parsing only runs on text that has a tag-like "<"; sanitize and harden run either way. */
 const rawRehypePlugins = [defaultRehypePlugins.raw, ...safeRehypePlugins] as MessageResponseProps["rehypePlugins"];
 const plainRehypePlugins = safeRehypePlugins as MessageResponseProps["rehypePlugins"];
+const localPlainPlugins = [preserveMessageFileLinks, ...safeRehypePlugins] as MessageResponseProps["rehypePlugins"];
+const localRawPlugins = [defaultRehypePlugins.raw, preserveMessageFileLinks, ...safeRehypePlugins] as MessageResponseProps["rehypePlugins"];
 const HTML_TAG = /<[a-zA-Z!/?]/;
 /** The rehype chain MessageResponse hands Streamdown for this text: raw parsing only when it has a tag-like "<". */
-export const messageRehypePlugins = (text: string) => (HTML_TAG.test(text) ? rawRehypePlugins : plainRehypePlugins)!;
+export const messageRehypePlugins = (text: string, localFiles = false) => (localFiles
+  ? HTML_TAG.test(text) ? localRawPlugins : localPlainPlugins
+  : HTML_TAG.test(text) ? rawRehypePlugins : plainRehypePlugins)!;
 
 const sameProps = (previous: MessageResponseProps, next: MessageResponseProps) => {
   const keys = Object.keys(next) as (keyof MessageResponseProps)[];
@@ -248,6 +250,7 @@ const sameProps = (previous: MessageResponseProps, next: MessageResponseProps) =
 export const MessageResponse = memo(
   function MessageResponse({ className, ...props }: MessageResponseProps) {
     const contextRenderers = useMessageRenderers();
+    const localFiles = useMessageFileLinks();
     const { plugins: callerPlugins, ...streamdownProps } = props;
     const renderers = useMemo(
       () => [
@@ -322,7 +325,7 @@ export const MessageResponse = memo(
           ...callerPlugins,
           ...(renderers.length ? { renderers } : {}),
         }}
-        rehypePlugins={messageRehypePlugins(typeof props.children === "string" ? props.children : "")}
+        rehypePlugins={messageRehypePlugins(typeof props.children === "string" ? props.children : "", localFiles)}
       />
     );
   },

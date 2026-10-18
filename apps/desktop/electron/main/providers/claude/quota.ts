@@ -5,7 +5,7 @@
  *           rate_limits_available: false both when logged out and when the plan has no limits; its route and settings file come from auth.ts.
  * [POS]: Claude's half of TASK-13 B, carried by claudeBackend; the bridge speaks the protocol (usage-limits/readers/exchange.ts).
  */
-import type { ResolvedRuntime } from "../../backends/types";
+import type { ResolvedRuntime } from "../../backends/contracts/types";
 import { bridgedQuotaChannel } from "../host/turns/bridged-quota";
 import { readOnce, type QuotaHook } from "../../usage-limits/readers/common";
 import { claudeAdapterEnvironment } from "./environment";

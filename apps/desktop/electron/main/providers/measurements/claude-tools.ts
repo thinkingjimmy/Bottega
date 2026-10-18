@@ -10,7 +10,7 @@ import { adapterLaunch } from "../../runtime";
 import { claudeAdapterEnvironment } from "../claude/environment";
 import { claudeInteractiveSessionMeta } from "../claude/index";
 import { claudeSessionMissing, validateClaudeSessionId } from "../claude/turn-config";
-import type { ResolvedRuntime } from "../../backends/types";
+import type { ResolvedRuntime } from "../../backends/contracts/types";
 import { openRequestSink, openScriptedEndpoint } from "./sink";
 
 /* Built-ins that can change the workspace or run code. An unknown name also counts as able to write (P8). */

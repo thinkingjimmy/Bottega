@@ -4,7 +4,7 @@
  * [POS]: Adapter between generic registry observations and ACP generation trace records
  */
 
-import type { AgentTurn } from "../backends/types";
+import type { AgentTurn } from "../backends/contracts/types";
 import { acpTraceEnabled } from "../backends/acp/trace";
 import type { TurnRegistry } from "./turns/turn/turn-registry";
 import type { BridgeEntry } from "./bridge/bridge-types";

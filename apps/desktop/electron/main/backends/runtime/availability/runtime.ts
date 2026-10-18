@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { sep } from "node:path";
 import type { BackendAuthStatus, BackendCapabilities } from "../../../../../shared/ipc/agent/agent-ipc";
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
-import type { AgentRuntime, ProviderBackend, ResolvedRuntime } from "../../types";
+import type { AgentRuntime, ProviderBackend, ResolvedRuntime } from "../../contracts/types";
 import { runtimeVersionAsync } from "../runtime-probe";
 import type { AgentProcessLease } from "../../../agent-process-supervisor";
 export type DisabledCapabilities = BackendCapabilities & {

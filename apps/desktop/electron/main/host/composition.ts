@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron app/utilityProcess/MessageChannelMain, the operation runtime (refs + registry), the descendant registry,
- *          process custody, PackagePorts holds, abortable timer waits, the process port and UtilityHost.
+ *          process custody with exact-owner descendant recording, PackagePorts holds, abortable timer waits, the process port and UtilityHost.
  * [OUTPUT]: Provides hostExitCleanup and createHostRuntime / HostRuntime: initialize/create/get/remove/close, isIdle/drain across host
  *           activity, package holds and both process owners, package-port attachment and exit subscriptions. remove shares concurrent
  *           disposal and preserves a replacement slot; package RPC uses its channel owner and ref-less RPC its App-surface principal.
@@ -21,7 +21,7 @@ import { UtilityHost } from "./utility-host";
 import type { BridgeMessage, HostLaunchPlan, HostToBridge } from "./protocol";
 import { isPackagePortOperation, type PackagePorts } from "../extensions/host/ports";
 import { hostPackagePrincipal } from "../operations/principals";
-import type { TurnProcessOwner } from "../backends/types";
+import type { TurnProcessOwner } from "../backends/contracts/types";
 
 export type HostRuntime = ReturnType<typeof createHostRuntime>;
 type PackagePortBinding = Readonly<{
@@ -124,21 +124,21 @@ export function createHostRuntime(options: { userData: string; mainDirectory: st
         let spec: Parameters<typeof processes.spawn>[1] = message;
         let bind: ((owner: TurnProcessOwner) => void) | undefined;
         if (message.plan) {
-          const target = refs.resolve<{ providerId?: string; launch?: { command: string; args: readonly string[]; cwd: string; env: NodeJS.ProcessEnv }; bind?(owner: TurnProcessOwner): void;
+          const target = refs.resolve<{ providerId?: string; launch?: { command: string; args: readonly string[]; cwd: string; env: NodeJS.ProcessEnv; relayOutput?: "base64" }; bind?(owner: TurnProcessOwner): void;
             dependencies?: readonly AgentTurnCustodyDependency[] }>(message.ref, "execution", principal);
           const launch = target?.launch;
           if (fence && (!fence.providerId || target?.providerId !== fence.providerId)) throw new Error("package-process-owner-mismatch");
           bind = target?.bind;
           if (!launch) throw new Error("this execution ref carries no sealed launch");
           /* A turn's launch (it binds an owner) records its request in host custody, so the process stays findable by it; readiness does not. */
-          spec = { command: launch.command, args: [...launch.args], cwd: launch.cwd, custody: true, exactEnv: true, requestId: bind && principal.principal.kind === "agent-turn" ? principal.principal.turnId : null,
+          spec = { relayOutput: launch.relayOutput, command: launch.command, args: [...launch.args], cwd: launch.cwd, custody: true, exactEnv: true, requestId: bind && principal.principal.kind === "agent-turn" ? principal.principal.turnId : null,
             env: Object.fromEntries(Object.entries(launch.env).flatMap(([key, value]) => typeof value === "string" ? [[key, value]] : [])),
             /* The work's dependencies travel main-side on the ref and are journaled with the process (ruling (a)); never in a bridge message. */
             dependencies: target.dependencies ?? [] };
         }
         const { processId, pid, identity } = await processes.spawn(hostId, spec, reply);
         /* B2-01: the turn that sealed this launch owns its process through host custody; it stops only by that owner. */
-        if (bind && identity) bind({ identity, settle: () => processes.settleCustody(processId) });
+        if (bind && identity) bind({ identity, recordDescendants: () => processes.recordCustodyDescendants(processId), settle: () => processes.settleCustody(processId) });
         reply({ t: "process-spawned", id: message.id, ok: true, processId, pid });
       } catch (cause) {
         reply({ t: "process-spawned", id: message.id, ok: false, error: (cause as Error).message });

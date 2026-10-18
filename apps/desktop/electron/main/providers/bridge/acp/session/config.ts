@@ -9,7 +9,7 @@ import {
   type ClientContext,
   type SessionConfigOption,
 } from "@agentclientprotocol/sdk";
-import type { BackendTurnOptions } from "../../../../backends/types";
+import type { BackendTurnOptions } from "../../../../backends/contracts/types";
 
 /**
  * 每 turn 会话配置的数据；AcpSpawnConfig 组合本类型，方向恒为

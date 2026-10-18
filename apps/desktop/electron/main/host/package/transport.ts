@@ -7,7 +7,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import type { Readable } from "node:stream";
 import type { UtilityHostPorts } from "../utility-host";
-import type { AgentProcessLaunch } from "../../backends/types";
+import type { AgentProcessLaunch } from "../../backends/contracts/types";
 
 const MAX_FRAME = 8 * 1024 * 1024;
 export function packageTransport(launch: () => AgentProcessLaunch, journal: { record(pid: number): Promise<unknown> }): Pick<UtilityHostPorts, "channel" | "fork"> {

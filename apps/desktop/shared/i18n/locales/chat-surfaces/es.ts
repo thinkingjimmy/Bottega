@@ -1,12 +1,23 @@
 /**
  * [INPUT]: Depends on the chatSurfacesEn structural type
- * [OUTPUT]: Provides the Spanish Chat surfaces catalog with the exact English structure
+ * [OUTPUT]: Spanish Chat surfaces, including local-file preview actions and failures
  * [POS]: Spanish Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
 import { chatSurfacesEn } from "./en";
 
 export const chatSurfacesEs: typeof chatSurfacesEn = {
+  nativeBackground: {
+    "stop": "Detener",
+    "stopping": "Deteniendo…",
+    "started": "Iniciado con «{{mode}}». Continúa después de la respuesta.",
+    "failed": "No se pudo confirmar que el comando se detuviera. Inténtalo de nuevo.",
+    "modes": {
+      "ask-for-approval": "Pedir aprobación",
+      "approve-for-me": "Aprobar por mí",
+      "full-access": "Acceso completo"
+    }
+  },
   sidePanel: {
     shell: {
       loadingBase: "Cargando Base",
@@ -16,6 +27,19 @@ export const chatSurfacesEs: typeof chatSurfacesEn = {
       resize: "Cambiar el tamaño del panel lateral",
       resizeHint:
         "Arrastra o usa las teclas de flecha para cambiar el tamaño del panel lateral",
+    },
+    file: {
+      open: "Abrir con la aplicación del sistema",
+      reveal: "Mostrar en Finder",
+      copyPath: "Copiar ruta",
+      copied: "Ruta copiada",
+      retry: "Reintentar",
+      missing: "El archivo se ha movido o eliminado de esta ruta.",
+      outside: "El archivo está fuera del espacio de trabajo actual, o este ha cambiado.",
+      readFailed: "No se pudo mostrar el archivo. Inténtalo de nuevo.",
+      actionFailed: "La acción falló. Abre la vista previa de nuevo y reintenta.",
+      tooLarge: "El archivo supera el límite de vista previa de 1 MiB. Puedes abrirlo con una aplicación del sistema.",
+      binary: "El archivo no es texto UTF-8. Puedes abrirlo con una aplicación del sistema.",
     },
     appGrant: {
       badgeAria:

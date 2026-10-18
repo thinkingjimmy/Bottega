@@ -121,7 +121,7 @@ export function useDraftExecution(original: ChatSessionController["composer"]) {
     agent: <RemoteAgentSelector locale={i18n.language} target={target} value={backend} copy={copy} disabled={busy || Boolean(draft.creation)} onSelect={value => { setAgent(value); store.update({ options: null }); }} />,
     model: capability?.models ? <ComposerModelSelector locale={i18n.language} backend={backend} models={capability.models} disabled={busy || Boolean(draft.creation)} value={draft.options?.backend === backend ? draft.options : {}}
       onChange={value => store.update({ options: { backend, ...value } })} /> : null,
-    permission: <ChatPermissionSelector locale={i18n.language} deferConfirmation value={turnOptions.permissionMode} allowedModes={capability?.capabilities?.permissionModes}
+    permission: <ChatPermissionSelector providerId={backend} locale={i18n.language} deferConfirmation value={turnOptions.permissionMode} allowedModes={capability?.capabilities?.permissionModes}
       disabled={busy || Boolean(draft.creation)} onChange={async permissionMode => { store.update({ permissionMode }); }} />,
   } : null, dialogs: remote ? consent.dialog : null };
 }

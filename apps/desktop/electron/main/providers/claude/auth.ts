@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createCliAuthCheck } from "../../backends/runtime/cli-auth";
-import type { ResolvedRuntime } from "../../backends/types";
+import type { ResolvedRuntime } from "../../backends/contracts/types";
 import { claudeAdapterEnvironment, selectClaudeProductEnvironment } from "./environment";
 
 /* The keys that send Claude Code's requests somewhere other than Anthropic's own API: a base URL, a cloud switch or resource.

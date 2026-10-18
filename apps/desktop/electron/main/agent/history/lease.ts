@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on current-turn MCP leases, opaque random cursors, and the serialized Chat worker reader
- * [OUTPUT]: Provides independent history call/byte budgets, explicit live refresh, and view-bound page/chunk cursors
+ * [INPUT]: Depends on current-turn MCP leases, the serialized Chat reader and current-Chat attachment/workspace ports
+ * [OUTPUT]: Provides bounded text/attachment reads, source-verified original bytes, explicit live refresh and view-bound cursors
  * [POS]: History tool handler; neither arguments nor source refs authorize another Chat
  */
 
@@ -11,9 +11,10 @@ import type { ChatStore } from "../../chats/chat-store";
 import type { BuiltinMcpLease } from "../../tools/lease";
 import type { BuiltinToolset } from "../../tools/registry";
 import { builtinCallToolResultBytes } from "../../tools/result";
+import { deliverHistoryAttachment, type HistoryAttachmentPorts } from "./attachments";
 type Page = { binding: HistoryBinding; position: HistoryPosition };
-type HistoryLease = { binding: HistoryBinding; calls: number; bytes: number; pages: Map<string, Page>; tail: Promise<unknown>; dead: boolean };
-export function createChatHistoryToolset(store: Pick<ChatStore, "readHistory">): BuiltinToolset {
+type HistoryLease = { binding: HistoryBinding; calls: number; bytes: number; attachmentBytes: number; pages: Map<string, Page>; tail: Promise<unknown>; dead: boolean };
+export function createChatHistoryToolset(store: Pick<ChatStore, "readHistory">, attachments?: HistoryAttachmentPorts): BuiltinToolset {
   const leases = new WeakMap<BuiltinMcpLease, HistoryLease>();
   return { read_chat_history: async (args, context) => {
     const input = historyToolInputSchema.parse(args);
@@ -22,16 +23,44 @@ export function createChatHistoryToolset(store: Pick<ChatStore, "readHistory">):
     let lease = leases.get(owner);
     if (!lease) {
       if (owner.historyBinding.chatId !== owner.chatId || owner.historyBinding.view.incarnationId !== owner.incarnationId) return { status: "unavailable" };
-      lease = { binding: structuredClone(owner.historyBinding), calls: 0, bytes: 0, pages: new Map(), tail: Promise.resolve(), dead: false };
+      lease = { binding: structuredClone(owner.historyBinding), calls: 0, bytes: 0, attachmentBytes: 0, pages: new Map(), tail: Promise.resolve(), dead: false };
       leases.set(owner, lease);
       owner.signal.addEventListener("abort", () => { lease!.dead = true; lease!.pages.clear(); }, { once: true });
     }
     const current = lease;
     const execute = async () => {
-      if (current.dead || context.signal.aborted) return { status: "unavailable" };
-      if (current.calls >= 8 || current.bytes >= 96 * 1024 - 1024) return { status: "budget-exhausted" };
+      const unavailable = () => current.dead || context.signal.aborted || owner.signal.aborted || owner.state === "revoked";
+      if (unavailable()) return { status: "unavailable" };
+      const attachmentRead = input.mode === "attachment";
+      if (current.calls >= 8 || (attachmentRead ? current.attachmentBytes >= 4 * 1024 * 1024 - 1024 : current.bytes >= 96 * 1024 - 1024)) return { status: "budget-exhausted" };
       current.calls++;
-      const charge = (result: unknown) => { current.bytes += builtinCallToolResultBytes(result); return result; };
+      const charge = (result: unknown) => {
+        if (attachmentRead) current.attachmentBytes += builtinCallToolResultBytes(result);
+        else current.bytes += builtinCallToolResultBytes(result);
+        return result;
+      };
+      if (input.mode === "attachment") {
+        if (!attachments) return charge({ status: "unavailable" });
+        const verify = () => store.readHistory({ binding: current.binding,
+          position: { mode: "chunk", offset: 0, ref: input.ref! }, refresh: false, byteLimit: 15 * 1024 });
+        const source = await verify();
+        if (unavailable()) return charge({ status: "unavailable" });
+        if (source.status !== "ok") return charge({ status: source.status });
+        const attachment = source.records.find(record => record.ref.messageId === input.ref!.messageId)?.attachments?.find(item => item.id === input.attachmentId);
+        if (!attachment) return charge({ status: "unavailable" });
+        try {
+          const dataUrl = await attachments.readAttachment(owner.chatId, attachment.id);
+          const after = await verify();
+          if (unavailable()) return charge({ status: "unavailable" });
+          if (after.status !== "ok") return charge({ status: after.status });
+          const limit = Math.min(owner.resultByteBudget, 4 * 1024 * 1024 - current.attachmentBytes);
+          const result = await deliverHistoryAttachment({ chatId: owner.chatId, attachment, dataUrl,
+            workspace: attachments.workspace(owner.chatId, owner.incarnationId), byteLimit: limit });
+          if (unavailable()) return charge({ status: "unavailable" });
+          if (builtinCallToolResultBytes(result) > limit) return charge({ status: "budget-exhausted" });
+          return charge(result);
+        } catch { return charge({ status: "unavailable" }); }
+      }
       const page = input.cursor ? current.pages.get(input.cursor) : undefined;
       if (input.cursor && (!page || page.position.mode !== input.mode ||
         page.binding.view.nativeMessageRevision !== current.binding.view.nativeMessageRevision ||

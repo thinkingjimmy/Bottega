@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the POSIX `ps` pgid/lstart fields and Node fs realpath/stat
- * [OUTPUT]: Provides observeProcessBirth (present with process-group id and birth, including macOS's transient ? state / absent, proven by a successful read / unverified: the read failed, timed out or could not be parsed), probeProcessBirth (the nullable capture shape over it) and executableIdentity (realpath+dev/ino/size fingerprint of a binary)
+ * [OUTPUT]: Provides observeProcessGroup and observeProcessBirth (present with process-group id and birth, including macOS's transient ? state / absent, proven by a successful read / unverified: the read failed, timed out or could not be parsed), probeProcessBirth (the nullable capture shape over it) and executableIdentity (realpath+dev/ino/size fingerprint of a binary)
  * [POS]: Custody's process-identity evidence leaf; the sole rule governing whether to kill is that an inconclusive probe must never be treated as confirmed exit
  */
 
@@ -73,4 +73,19 @@ export function executableIdentity(path: string): string {
   } catch {
     return `${path}:unresolved`;
   }
+}
+
+/** Captures only numeric group members and birth facts; command arguments and environments are never read. */
+export function observeProcessGroup(processGroupId: number): Array<{ pid: number; processGroupId: number; birthIdentity: string }> | null {
+  const result = spawnSync("ps", ["-axo", "pid=,pgid=,stat=,lstart="], { encoding: "utf8", timeout: 5_000, env: { ...process.env, LC_ALL: "C", TZ: "UTC" } });
+  if (result.error || result.signal || result.status !== 0) return null;
+  const members = [];
+  for (const line of String(result.stdout).split("\n")) {
+    const match = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/.exec(line);
+    if (!match || Number(match[2]) !== processGroupId || match[3].startsWith("Z")) continue;
+    if (!/^[IRSTU?][A-Za-z<>+]*$/.test(match[3]) || !match[4].trim()) return null;
+    members.push({ pid: Number(match[1]), processGroupId, birthIdentity: match[4].trim() });
+    if (members.length > 256) return null;
+  }
+  return members;
 }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared BackendInfo facts, the CliUpdateResult contract, version comparison and the setup-client updateBackendCli command
- * [OUTPUT]: Provides cliUpdateStore (in-flight and failed provider updates that outlive the page), isUpdatableCli (installed built-in CLIs only) and describeCliUpdate, the pure per-row verdict
+ * [OUTPUT]: Provides cliUpdateStore (in-flight and failed provider updates that outlive the page), isUpdatableCli (installed built-in CLIs only) and describeCliUpdate, the per-row verdict preserving unsupported-update failures
  * [POS]: Provider half of Settings › Updates' conclusion layer; the Bottega row stays in update-view.ts, the rows only render these verdicts
  */
 
@@ -59,8 +59,8 @@ export const isUpdatableCli = (backend: BackendInfo): backend is BuiltinBackendI
 export function describeCliUpdate(backend: BuiltinBackendInfo, state: CliUpdateSnapshot): CliUpdateVerdict {
   if (state.updating.has(backend.id)) return { kind: "updating" };
   const failure = state.failures[backend.id];
-  /* A failure belongs to the version it tried to leave; once the CLI moved on (e.g. updated in Terminal) it is stale. */
-  if (failure && failure.fromVersion === backend.version) return { kind: "failed", failure };
+  /* A failure belongs to the version it tried to leave; once a different supported CLI is admitted (e.g. from Terminal), it is stale. */
+  if (failure && (failure.fromVersion === backend.version || backend.runtimeStatus === "unsupported")) return { kind: "failed", failure };
   const required = backend.runtimeStatus === "unsupported";
   if (backend.updateAvailable || required) {
     return { kind: "available", latest: backend.latestVersion ?? backend.minimumVersion ?? "", required };

@@ -30,7 +30,7 @@ import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
 import { ATTACHMENT_BYTE_LIMIT } from "../../../../shared/ipc/agent/agent-ipc";
 import type { ChatRecord } from "../../../../shared/ipc/content/chats-ipc";
 import { ProductFailureError, skillsRuntimeFailure } from "../../../../shared/product/product-failure";
-import type { ResolvedAgentInput } from "../../backends/types";
+import type { ResolvedAgentInput } from "../../backends/contracts/types";
 import type {
   FileAuthorizationStore,
   FileReservation,

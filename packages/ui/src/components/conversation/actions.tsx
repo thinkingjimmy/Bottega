@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared message action primitives and caller-owned clipboard, edit/fork capabilities, labels, timestamps and optional actions.
- * [OUTPUT]: Provides ConversationActions and ConversationDownload (native save inside the mobile shell) with common edit/fork controls, mirrored alignment, hover/keyboard visibility and single-flight copy feedback.
+ * [OUTPUT]: Provides ConversationActions and ConversationDownload (native save inside the mobile shell) with common edit/fork controls, consistent muted action colors, mirrored alignment, hover/keyboard visibility and single-flight copy feedback.
  * [POS]: Common action row for native, remote and imported messages; platform capabilities stay with the caller.
  */
 import { ArrowsSplitIcon } from "../icons/phosphor-regular";
@@ -83,7 +83,7 @@ export function ConversationActions({
     <MessageActions
       data-slot="conversation-actions"
       className={cn(
-        "opacity-0 transition-opacity has-[:focus-visible]:opacity-100 group-hover:opacity-100 no-hover:opacity-100 max-md:opacity-100 max-md:[&>button]:size-11 max-md:[&>a]:size-11",
+        "text-muted-foreground opacity-0 transition-opacity has-[:focus-visible]:opacity-100 group-hover:opacity-100 no-hover:opacity-100 max-md:opacity-100 max-md:[&>button]:size-11 max-md:[&>a]:size-11",
         role === "user" && "ml-auto flex-row-reverse",
       )}
     >

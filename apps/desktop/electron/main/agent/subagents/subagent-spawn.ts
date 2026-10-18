@@ -32,7 +32,7 @@ import {
 import type {
   BackendDescriptor,
   HeadlessJob,
-} from "../../backends/types";
+} from "../../backends/contracts/types";
 import type { BackendRuntimeRegistry } from "../../backends/runtime/runtime-registry";
 import { asError, statusError } from "../../ipc/errors";
 import {

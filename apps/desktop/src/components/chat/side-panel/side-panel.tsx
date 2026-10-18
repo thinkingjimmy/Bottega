@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, PanelSessionContext, horizontal resize, PanelTabs, Plan/file/Workspace previews, Gallery projection, and the shared SidePanelShell and localized shell catalog
- * [OUTPUT]: Provides localized panel chrome, design-owned unified headers and Artifact takeover/guarded-close hooks and canonical context for each consumer
+ * [INPUT]: React, session identity, panel layout, Plan/file/Workspace previews, message-file actions, Gallery and localized copy
+ * [OUTPUT]: Localized panel chrome, file actions and existing Artifact takeover/guarded-close hooks
  * [POS]: The visual shell of chat/side-panel; ChatView owns width and visibility
  */
 
@@ -30,6 +30,7 @@ import { ChartScrollRootProvider } from "@/components/charts/chart-scroll-root";
 import type { ConversationImageProjection } from "./image/image-projection";
 import { GalleryOverlayProvider } from "@/lib/gallery/overlay";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
+import { MessageFileActions } from "./message-file-actions";
 const PanelTabs = lazy(() =>
   import("./tabs/panel-tabs").then((module) => ({
     default: module.PanelTabs,
@@ -61,6 +62,7 @@ export const SidePanel = memo(function SidePanel({
   onClose,
   subagents,
   galleryProjection,
+  onOpenLocalFile,
 }: {
   crossHeader?: boolean;
   state: Exclude<SidePanelState, { kind: "none" }> | null;
@@ -72,6 +74,7 @@ export const SidePanel = memo(function SidePanel({
   onClose: () => void;
   subagents: Record<string, ProjectedSubagent>;
   galleryProjection: ConversationImageProjection;
+  onOpenLocalFile?: (href: string) => void;
 }) {
   const { t } = useAppTranslation();
   const [documentScrollRoot, setDocumentScrollRoot] =
@@ -138,6 +141,9 @@ export const SidePanel = memo(function SidePanel({
                 <XIcon />
               </Button>
             </header>}
+            {documentState?.kind === "workspace-preview" && documentState.localFile && <MessageFileActions
+              key={`${documentState.nodeId}:${documentState.status}`} preview={documentState}
+              retry={() => onOpenLocalFile?.(documentState.localFile!.href)} />}
             {/* 正文基准归容器，不归分支：加载/报错/文档三态同处一栏，字号本就
                 该是这一栏的属性。此前只有前两态各自写了 text-sm，文档态漏写，
                 于是同一段 Markdown 在聊天流是 14px、在这里回落根字号 16px，
@@ -164,7 +170,7 @@ export const SidePanel = memo(function SidePanel({
                 documentState.status === "metadata" ? (
                 <div className="space-y-2 text-muted-foreground">
                   <p>
-                    {workspacePreviewMetadataMessage(documentState.reason)}
+                    {documentState.localFile ? t(documentState.reason === "too-large" ? "chat.sidePanel.file.tooLarge" : "chat.sidePanel.file.binary") : workspacePreviewMetadataMessage(documentState.reason)}
                   </p>
                   <p>
                     {t("chat.sidePanel.shell.bytes", {

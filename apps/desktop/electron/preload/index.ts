@@ -3,6 +3,7 @@
  * Announces surface readiness only after the renderer command listener is installed.
  * [OUTPUT]: Exposes explicit Project history preview/import commands and renderer bridges including pathless native local-package selection, the main-window macOS Settings → Dock bridge, the main-window Agent-configuration, Plugins & Apps, workflow and Provider catalog bridges, nested quota snapshot/demand access, the fire-and-forget Agent connection warm intent, fixed-purpose background display selection and panel/Agent management, explicit manual/adopt retry intents, the main-window-only frozen startup snapshot, scoped plugin surfaces and GUI history in both product window roles, and the launch-flagged startup trace mark channel; rejects extra navigation arguments. Exposes the typed App impact and enablement bridge.
  * Artifact workspace requests and revocable lifecycle events remain restricted to the trusted main frame.
+ * Workspace file links expose scoped resolution and enumerated native actions, never a general path opener.
  * [POS]: All-frame preload security boundary; OOPIF/srcdoc frames receive RTC denial but no Electron, Node, IPC, path, secret, or product bridge. Memory and Extensions single-input methods share a fixed-arity invoke factory.
  */
 
@@ -266,6 +267,9 @@ contextBridge.exposeInMainWorld("projectPersonalization", {
 } satisfies ProjectPersonalizationBridgeApi);
 
 contextBridge.exposeInMainWorld("agent", {
+  listNativeBackground: (conversationId: string) => ipcRenderer.invoke(AGENT_CHANNEL.nativeBackgroundList, conversationId),
+  stopNativeBackground: (conversationId: string, incarnationId: string, id: string) => ipcRenderer.invoke(AGENT_CHANNEL.nativeBackgroundStop, conversationId, incarnationId, id),
+  onNativeBackgroundChanged: subscribe(AGENT_CHANNEL.nativeBackgroundChanged),
   cancel: (requestId: string) =>
     ipcRenderer.send(AGENT_CHANNEL.cancel, requestId),
   respondApproval: (response) =>
@@ -366,6 +370,8 @@ contextBridge.exposeInMainWorld("workspaceFiles", {
     ipcRenderer.invoke(WORKSPACE_FILES_CHANNEL.resign, input),
   read: (input) =>
     ipcRenderer.invoke(WORKSPACE_FILES_CHANNEL.read, input),
+  resolveLink: input => ipcRenderer.invoke(WORKSPACE_FILES_CHANNEL.resolveLink, input),
+  linkAction: input => ipcRenderer.invoke(WORKSPACE_FILES_CHANNEL.linkAction, input),
 } satisfies WorkspaceFilesBridgeApi);
 
 contextBridge.exposeInMainWorld("sections", {

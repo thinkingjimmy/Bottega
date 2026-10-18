@@ -20,7 +20,7 @@ import {
   submissionContentV1Schema,
   workspacePreconditionSchema,
 } from "../../../../../shared/content/submission/submission";
-import type { AdapterSteerOutcome } from "../../../backends/types";
+import type { AdapterSteerOutcome } from "../../../backends/contracts/types";
 import type { CoordinatorDependencies } from "../coordinator-runtime";
 import {
   canonicalHash,

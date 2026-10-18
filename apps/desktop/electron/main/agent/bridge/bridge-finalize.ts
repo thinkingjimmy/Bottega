@@ -15,7 +15,7 @@ import {
   reportAgentCleanupFailure,
 } from "../../agent-process-supervisor";
 import { providerDisplayName } from "../../backends";
-import type { AgentTurn } from "../../backends/types";
+import type { AgentTurn } from "../../backends/contracts/types";
 import { asError } from "../../ipc/errors";
 import type { CleanupResult } from "../process/process-group";
 import { type TurnRegistry } from "../turns/turn/turn-registry";
@@ -249,23 +249,34 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
         entry.resolvedInput = undefined;
       }
       let cleanupError: Error | undefined;
+      let backgroundTransferred = false;
       try {
         try {
           await turns.runCleanup(entry, async () => {
             /* Never spawned: nothing to settle (a launch still on its way is refused once the turn's ref dies with it). */
             if (!entry.turn) return;
+            const resolved = entry.resolvedInput, sessionConfig = entry.backendSessionConfig, context = entry.context;
+            if (source.type === "done" && await entry.turn.transferBackground?.(async () => {
+              await resolved?.release();
+              await sessionConfig?.releaseClaudePluginProjection?.();
+              if (context) await options.releaseContext?.(context);
+            })) {
+              backgroundTransferred = true;
+              entry.resolvedInput = undefined;
+              return;
+            }
             /* Host custody settles the process and proves it gone before `released`, which is what lets its dependencies go. */
             const result = await cleanupAgentTurn(entry.turn);
             if (!result.ok) throw result.error;
             await entry.resolvedInput?.release();
             entry.resolvedInput = undefined;
           });
-          await entry.backendSessionConfig?.releaseClaudePluginProjection?.();
+          if (!backgroundTransferred) await entry.backendSessionConfig?.releaseClaudePluginProjection?.();
           entry.backendSessionConfig = undefined;
           /* dependency 只能在 custody 收口之后释放，而且必须在同一条路径上：
              上面任何一步抛出，这一行就不会执行，generation 于是继续被账本
              钉住，交给下次启动的 reconcile 收敛——这正是 D33 要的顺序。 */
-          if (entry.context) await options.releaseContext?.(entry.context);
+          if (!backgroundTransferred && entry.context) await options.releaseContext?.(entry.context);
         } finally {
           entry.processLease?.release();
           entry.processLease = undefined;

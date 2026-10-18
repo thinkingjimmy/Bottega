@@ -22,7 +22,7 @@ import type {
   ProviderBackend,
   BackendTurnOptions,
   ResolvedRuntime,
-} from "../types";
+} from "../contracts/types";
 
 export type OneShotTurnJob = {
   descriptor: ProviderBackend;

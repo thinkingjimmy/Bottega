@@ -67,7 +67,7 @@ import { registerCloudRemote } from "../remote/commands/registration";
 import type { ConversationCoordinator } from "../../sections/coordinator/conversation-coordinator";
 import type { SettingsStore } from "../../settings/settings-store";
 import type { TurnRegistry } from "../../agent/turns/turn/turn-registry";
-import type { AgentTurn } from "../../backends/types";
+import type { AgentTurn } from "../../backends/contracts/types";
 import { composeSyncEncryption } from "../encryption/composition";
 import type { PreparedCloudRuntime } from "./prepare";
 import type { UnifiedSkillsService } from "../../skills-management/service";

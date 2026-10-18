@@ -280,6 +280,7 @@ currentModelUnavailable: "{{model}}（当前不可用）"
         "app-context-base-unavailable": "App 会话不提供 Base。",
       },
     },
+    nativeBackground: chatSurfacesZhCN.nativeBackground,
     transcript: chatSurfacesZhCN.transcript,
     usageLimit: chatSurfacesZhCN.usageLimit,
     composer: {
