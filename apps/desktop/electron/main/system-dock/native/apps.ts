@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the native bridge port (running apps, resolution, icons, launch, AX status/unminimize) and node:crypto for opaque icon keys.
- * [OUTPUT]: Provides NativeApps: the regular-app running projection with first-seen ordering, bundle/path resolution with a bounded cache, cached installed-app candidates, opaque icon keys and cached PNG data URLs, single-flight launch/activate per target, the optional AX unminimize branch, and capturable generation-fenced cleanup that retires old async work while allowing explicit setup reads and fresh facts after re-enable.
+ * [INPUT]: Depends on the native bridge port (running apps, resolution, icons, launch, identity-bound normal quit, AX status/unminimize) and node:crypto for opaque icon keys.
+ * [OUTPUT]: Provides NativeApps: the regular-app running projection with first-seen ordering, bundle/path resolution with a bounded cache, cached installed-app candidates, opaque icon keys and cached PNG data URLs, single-flight launch/activate per target, captured-process normal quit with retirement fencing, a separate own-process fact, the optional AX unminimize branch, and capturable generation-fenced cleanup that retires old async work while allowing explicit setup reads and fresh facts after re-enable.
  * [POS]: system-dock/native App adapter (3.3/3.5, INV-08); running means actually running, never "requested"; paths stay in main and renderers only see icon keys.
  */
 
@@ -21,6 +21,7 @@ export class NativeApps {
   private readonly iconPaths = new Map<string, string>();
   private readonly icons = new Map<string, string>();
   private readonly launches = new Map<string, Promise<LaunchOutcome>>();
+  private readonly quits = new Map<number, Promise<boolean>>();
   private readonly listeners = new Set<() => void>();
   private stop: (() => void) | null = null;
   private installed: { at: number; apps: { path: string; bundleIdentifier: string | null; name: string }[]; flight: Promise<void> | null } = { at: 0, apps: [], flight: null };
@@ -59,8 +60,35 @@ export class NativeApps {
     }
     return [...byIdentity.values()];
   }
+  /** The host is projected separately so accessory/background residence never makes it disappear. */
+  hostApp(): RunningApp | null { return this.running.find((app) => app.pid === this.ownPid) ?? null; }
   isRunning(target: { bundleIdentifier: string | null; path: string | null }) {
     return this.running.some((app) => (target.bundleIdentifier && app.bundleIdentifier === target.bundleIdentifier) || (target.path && app.path === target.path));
+  }
+  /** Resolve a live native target; Finder and every host instance never expose Quit. */
+  quitTarget(target: { pid?: number; bundleIdentifier: string | null; path: string | null }): RunningApp | null {
+    return this.running.find((app) => app.pid !== this.ownPid
+      && (!this.ownBundleId || app.bundleIdentifier !== this.ownBundleId)
+      && app.bundleIdentifier !== "com.apple.finder" && app.path !== "/System/Library/CoreServices/Finder.app"
+      && (target.pid === undefined || app.pid === target.pid)
+      && (target.path ? app.path === target.path : Boolean(target.bundleIdentifier))
+      && (!target.bundleIdentifier || app.bundleIdentifier === target.bundleIdentifier)) ?? null;
+  }
+  /** Request normal termination once; running facts change only when the OS reports the actual exit. */
+  quit(app: RunningApp, allowed: () => boolean): Promise<boolean> {
+    const existing = this.quits.get(app.pid);
+    if (existing) return existing;
+    const generation = this.generation;
+    const current = () => generation === this.generation && allowed() && this.quitTarget(app) !== null;
+    const operation: Promise<boolean> = (async () => {
+      if (!current()) return false;
+      const processInfo = await this.native.request({ op: "process-info", pid: app.pid });
+      if (!current() || !processInfo.alive || processInfo.startedAt === null) return false;
+      return (await this.native.request({ op: "quit-app", pid: app.pid, startedAt: processInfo.startedAt,
+        bundleIdentifier: app.bundleIdentifier, path: app.path })).requested;
+    })().finally(() => { if (this.quits.get(app.pid) === operation) this.quits.delete(app.pid); });
+    this.quits.set(app.pid, operation);
+    return operation;
   }
   frontmostPid() {
     return this.running.find((app) => app.active && app.pid !== this.ownPid && app.bundleIdentifier !== this.ownBundleId)?.pid ?? null;
@@ -158,7 +186,7 @@ export class NativeApps {
   close() {
     // Retire accepted work without blocking later explicit setup reads or a new observation lifetime.
     this.generation++;
-    this.stop?.(); this.stop = null; this.listeners.clear(); this.running = []; this.firstSeen.clear(); this.seen = 0; this.invalidate();
+    this.stop?.(); this.stop = null; this.listeners.clear(); this.running = []; this.firstSeen.clear(); this.seen = 0; this.quits.clear(); this.invalidate();
     this.installed = { at: 0, apps: [], flight: null }; this.launches.clear();
   }
 }

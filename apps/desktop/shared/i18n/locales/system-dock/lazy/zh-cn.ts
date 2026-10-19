@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain zh-cn copy.
- * [OUTPUT]: Provides systemDockLazyZhCN, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status.
+ * [OUTPUT]: Provides systemDockLazyZhCN, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes grouped Downloads, previews and named Finder actions.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../zh-cn.ts.
  */
 
@@ -105,6 +105,14 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     openFinder: "打开访达",
   },
   downloads: {
+    groupRecent: "最近",
+    groupWeek: "过去 7 天",
+    groupEarlier: "更早",
+    preview: "预览{{name}}",
+    revealEntry: "在访达中显示{{name}}",
+    previewLoading: "正在载入预览…",
+    previewUnavailable: "暂时无法预览，你仍可打开文件。",
+    openFile: "打开文件",
     loading: "正在载入下载…",
     empty: "「下载」文件夹是空的。",
     denied: "Bottega 没有读取「下载」文件夹的权限。你可以在「系统设置」›「隐私与安全性」›「文件和文件夹」中允许，或在访达中打开「下载」。",
@@ -410,6 +418,7 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     edit: "编辑程序坞…",
     settings: "程序坞设置…",
     open: "打开",
+    quit: "退出",
     remove: "从程序坞中移除",
     keep: "在程序坞中保留",
     reveal: "在访达中显示",

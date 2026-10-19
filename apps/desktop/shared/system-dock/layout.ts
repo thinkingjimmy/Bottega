@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, the canonical Agent backend schema, and the local usage source identities.
- * [OUTPUT]: Provides the portable DockLayout schema (native/Bottega App, system entry, two built-in Widget kinds), budgets, identity helpers, the item category projection, and the first-run default layout builder.
+ * [OUTPUT]: Provides the portable DockLayout schema (native/Bottega App, system entry, two built-in Widget kinds), budgets, identity helpers, the item category projection, anchored Downloads/Trash ordering, and the first-run default layout builder.
  * [POS]: shared/system-dock data model; the only shape that may enter the account-config dock-layout ciphertext. Machine facts (paths, PIDs, permissions, mode, displays) never live here.
  */
 
@@ -66,7 +66,8 @@ export function itemCategory(item: DockItem | DockItemDraft): DockItemCategory {
 }
 export function orderedItems(layout: DockLayout): DockItem[] {
   const byId = new Map(layout.items.map((item) => [item.id, item]));
-  return layout.order.flatMap((itemId) => byId.get(itemId) ?? []);
+  const rank = (item: DockItem) => item.kind === "system" ? item.entry === "system.trash" ? 2 : item.entry === "system.downloads" ? 1 : 0 : 0;
+  return layout.order.flatMap((itemId) => byId.get(itemId) ?? []).sort((a, b) => rank(a) - rank(b));
 }
 /** Semantic identity used to detect singletons and duplicate pins; never a display name. */
 export function semanticKey(item: DockItem | DockItemDraft): string | null {

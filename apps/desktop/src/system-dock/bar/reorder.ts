@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React state/refs and DOM geometry of `[data-item-id]` bar slots.
+ * [INPUT]: Depends on React state/refs and DOM geometry of `[data-item-id]` bar slots, excluding anchored Downloads/Trash.
  * [OUTPUT]: Provides `useBarReorder`: edge-aware pointer-driven drag of pinned items (and running items into the pinned area) with a live placeholder, per-slot shift offsets, click suppression, immediate placement cancellation and cancel on Escape/pointercancel, and exactly one commit per drop.
  * [POS]: system-dock/bar interaction kernel; it never writes the layout — the drop hands one final pinned index to the caller, which turns it into move / pin-running intents (3.2 "commit once on drop").
  */
@@ -74,7 +74,7 @@ export function useBarReorder({ gap, edge, resetKey, onDrop }: { gap: number; ed
       const strip = event.currentTarget.closest<HTMLElement>("[data-strip]");
       if (!strip) return;
       const vertical = edge !== "bottom";
-      const pinned = [...strip.querySelectorAll<HTMLElement>('[data-item-id][data-area="pinned"]')];
+      const pinned = [...strip.querySelectorAll<HTMLElement>('[data-item-id][data-area="pinned"]:not([data-entry="system.downloads"]):not([data-entry="system.trash"])')];
       const slots = pinned.map((element) => {
         const rect = element.getBoundingClientRect();
         return { id: element.dataset.itemId!, left: vertical ? rect.top : rect.left, width: vertical ? rect.height : rect.width };

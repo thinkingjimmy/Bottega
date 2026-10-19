@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses the work's actual Provider identity, product turn/input contracts, main-sealed ACP or native plans, execution references and ordered bridge events.
- * [OUTPUT]: Exports BridgedTurn with frozen configuration, approval/control forwarding, live exact-owner MCP consent eligibility, delivery evidence and cancellation-safe Chat background transfer with exact-owner durable result commits.
+ * [OUTPUT]: Exports BridgedTurn with frozen configuration, approval/control forwarding, live exact-owner MCP consent eligibility, delivery evidence and cancellation-safe Chat background transfer with exact-item termination and exact-owner durable result commits.
  * [POS]: Main-side authorization and custody owner; protocol parsing remains in the pinned bridge driver.
  */
 import { randomUUID } from "node:crypto";
@@ -167,6 +167,7 @@ export class BridgedTurn implements AgentTurn {
           persist: results => { if (!this.options.persistNativeBackgroundResults) throw new Error("Background result persistence unavailable"); return this.options.persistNativeBackgroundResults(results); },
           permissionMode: this.options.payload.turnOptions.permissionMode, terminals: request.terminals.map(terminal => ({ ...terminal, command: this.evidence.redact(terminal.command), cwd: this.evidence.redact(terminal.cwd) })),
           stopNative: () => this.invoke("turn.background.stop", {}).then(() => undefined), settle: () => owner.settle(),
+          stopCommandNative: itemId => this.invoke("turn.background.stopCommand", { itemId }).then(() => undefined),
           forget: () => { this.closed = true; this.runtime.forget(this); void this.host?.invoke("turn.release", { turnKey: this.turnKey }, []).catch(() => undefined); } });
         if (this.done || this.closed || this.stopping) {
           nativeBackgrounds.discard(this.turnKey);

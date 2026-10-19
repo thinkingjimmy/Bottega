@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses the product permission mode contract.
- * [OUTPUT]: Exports NATIVE_BACKGROUND_PENDING_DETAIL, NativeBackgroundResult and NativeBackgroundCommand, non-authorizing original-item identity and bounded output of a Chat-owned native command.
+ * [OUTPUT]: Exports NATIVE_BACKGROUND_PENDING_DETAIL, NativeBackgroundResult and NativeBackgroundCommand, per-item control status, non-authorizing original-item identity and bounded output of a Chat-owned native command.
  * [POS]: Shared background-running-item DTO; native terminal IDs and process authority remain in main.
  */
 export const NATIVE_BACKGROUND_PENDING_DETAIL = "Execution result unknown until completion is confirmed.";

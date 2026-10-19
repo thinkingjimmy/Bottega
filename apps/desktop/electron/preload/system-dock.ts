@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Electron contextBridge/ipcRenderer, the launch argument naming this window's role, and (type-only) the isolated Bottega Dock channel contract.
- * [OUTPUT]: Exposes `window.systemDock` (role, snapshot, enumerated intents, icon lookup, bounded change subscription) to the bar or panel main frame only.
- * [POS]: Auxiliary preload beside task-panel.ts; no product settings, file, shell, account, AX, or Apple Event bridge is reachable from here (INV-13).
+ * [OUTPUT]: Exposes `window.systemDock` with snapshots, intents, opaque icon/download visual lookups and bounded change subscriptions to Dock main frames only.
+ * [POS]: Auxiliary preload beside task-panel.ts; no product settings, arbitrary file paths, shell, account, AX, or Apple Event bridge is reachable from here (INV-13).
  */
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
@@ -15,6 +15,7 @@ const CHANNEL: typeof SYSTEM_DOCK_CHANNEL = {
   changed: "system-dock:changed",
   intent: "system-dock:intent",
   icons: "system-dock:icons",
+  downloadVisual: "system-dock:download-visual",
 };
 const ROLE_ARGUMENT = "--system-dock-role=";
 const role = process.argv.find((argument) => argument.startsWith(ROLE_ARGUMENT))?.slice(ROLE_ARGUMENT.length);
@@ -24,6 +25,7 @@ if (process.isMainFrame && (role === "bar" || role === "panel")) contextBridge.e
   snapshot: () => ipcRenderer.invoke(CHANNEL.snapshot),
   intent: (intent) => ipcRenderer.invoke(CHANNEL.intent, intent),
   icons: (keys) => ipcRenderer.invoke(CHANNEL.icons, [...keys]),
+  downloadVisual: (input) => ipcRenderer.invoke(CHANNEL.downloadVisual, input),
   onChanged(listener) {
     const receive = (_event: IpcRendererEvent, value: DockBarSnapshot | PanelSnapshot) => listener(value);
     ipcRenderer.on(CHANNEL.changed, receive);

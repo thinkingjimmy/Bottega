@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Apple Team ID, codesign, Gatekeeper, stapler, an application path, and either an explicit DMG or the existing release directory.
- * [OUTPUT]: Verifies strict nested Developer ID signatures, hardened runtime, helper entitlements, the bundled Node's own signature, Gatekeeper, and the application notarization ticket. A requested DMG must exist; electron-builder 26.15.3 does not staple that container. Failures retain process status, signal, spawn errors and both output streams without adding command arguments or environment dumps. Only the evidenced ticket-delivery connection loss permits three validate attempts with fixed 5/15-second waits; every attempt remains visible.
+ * [OUTPUT]: Verifies strict nested Developer ID signatures, hardened runtime, helper entitlements, the bundled Node's own signature, Gatekeeper, and the application notarization ticket. A requested DMG must exist; electron-builder 26.15.3 does not staple that container. Failures retain process status, signal, spawn errors and both output streams without adding command arguments or environment dumps. Only the evidenced ticket-delivery connection loss permits five validate attempts with fixed 5/15/30/60-second waits; every attempt remains visible.
  * [POS]: macOS release verification; distribution supplies exact fresh artifacts instead of newest-file inference.
  */
 
@@ -55,7 +55,7 @@ const run = (command, args) => {
 };
 
 async function validateNotarizationTicket(appPath) {
-  const waits = [5_000, 15_000];
+  const waits = [5_000, 15_000, 30_000, 60_000];
   const args = ["stapler", "validate", appPath];
   for (let attempt = 1; attempt <= waits.length + 1; attempt += 1) {
     const result = spawnSync("xcrun", args, { encoding: "utf8" });

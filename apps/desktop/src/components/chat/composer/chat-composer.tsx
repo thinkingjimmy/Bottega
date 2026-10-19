@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the canonical permission presentation lookup, React/router, runtime controller, Agent submission custody, cloud account predicates, idle chunk prefetch, queue capacity, Chat i18n, workspace hooks, Gallery/Sketch custody, modal keyboard ownership, the per-Chat submission gate, unavailable draft images, the Agent connection warm-up client, startup marks, PromptInputProvider and RichInput.
+ * [INPUT]: Depends on the canonical permission presentation lookup, React/router, runtime controller, Chat-scoped NativeCommandBar, Agent submission custody, cloud account predicates, idle chunk prefetch, queue capacity, Chat i18n, workspace hooks, Gallery/Sketch custody, modal keyboard ownership, the per-Chat submission gate, unavailable draft images, the Agent connection warm-up client, startup marks, PromptInputProvider and RichInput.
  * [OUTPUT]: Native rich submission, model and permission edits for later submissions during an active turn, Agent-menu availability recovery without a duplicate status/manage/recheck strip, preserved drafts and image warnings, queued Plan/authentication retry, prepare-failure recovery, Sketch and account-owned remote draft execution.
  * [POS]: Chat command surface; candidate projection is read-only while drafts, attachments, and Gallery custody remain in the per-Chat store
  */
@@ -16,6 +16,7 @@ import { useSetup } from "@/components/providers/setup-provider";
 import { projectAvailability } from "../../../../shared/agent-availability/projection";
 import { builtinAgent } from "../../../../shared/chat-agent/options";
 import { PendingAgentStatus } from "../agent-switch/pending";
+import { NativeCommandBar } from "../runtime/background/native-command-bar";
 import { applyComposerAttachmentCommand, composerSubmissionGate, readComposerInput } from "@/lib/chat/state/composer/chat-composer-store";
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
@@ -445,6 +446,7 @@ function ChatComposerContent({
         <ChatManagedWorktreeRow controller={controller} />
       )}
       <PendingAgentStatus pending={controller.pendingAgent} undo={controller.undoAgentSwitch} />
+      <NativeCommandBar />
       {controller.approval?.purpose === "plan-review" ? (
         <ChatApprovalCard
           approval={controller.approval}

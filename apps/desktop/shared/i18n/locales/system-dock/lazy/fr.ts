@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain fr copy.
- * [OUTPUT]: Provides systemDockLazyFr, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status.
+ * [OUTPUT]: Provides systemDockLazyFr, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes grouped Downloads, previews and named Finder actions.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../fr.ts.
  */
 
@@ -105,6 +105,14 @@ export const systemDockLazyFr: typeof systemDockLazyEn = {
     openFinder: "Ouvrir le Finder",
   },
   downloads: {
+    groupRecent: "Récents",
+    groupWeek: "7 derniers jours",
+    groupEarlier: "Plus anciens",
+    preview: "Aperçu de {{name}}",
+    revealEntry: "Afficher {{name}} dans le Finder",
+    previewLoading: "Chargement de l’aperçu…",
+    previewUnavailable: "Aperçu indisponible. Vous pouvez toujours ouvrir le fichier.",
+    openFile: "Ouvrir le fichier",
     loading: "Chargement des téléchargements…",
     empty: "Votre dossier Téléchargements est vide.",
     denied: "Bottega n’a pas l’autorisation de lire votre dossier Téléchargements. Vous pouvez l’autoriser dans Réglages Système › Confidentialité et sécurité › Fichiers et dossiers, ou ouvrir Téléchargements dans le Finder.",
@@ -410,6 +418,7 @@ export const systemDockLazyFr: typeof systemDockLazyEn = {
     edit: "Modifier le Dock…",
     settings: "Réglages du Dock…",
     open: "Ouvrir",
+    quit: "Quitter",
     remove: "Retirer du Dock",
     keep: "Garder dans le Dock",
     reveal: "Afficher dans le Finder",

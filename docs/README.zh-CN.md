@@ -2,7 +2,7 @@
 
 [English](./README.md) · [仓库首页](../README.md)
 
-当前版本：[0.2.7 正式稳定版](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7)，仅提供 macOS Apple 芯片（ARM64）安装包。Codex CLI 仅支持 0.163.0-alpha.10.2，并使用[原生命令权限](./features/README.zh-CN.md#codex-命令权限)。0.2.5 个人版需要手动更新。升级前请阅读[安装与更新说明](./getting-started/README.zh-CN.md#升级到-027)。[Bottega Web](https://app.getbottega.app) 继续可用。
+当前版本：[0.2.8 正式稳定版](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8)，仅提供 macOS Apple 芯片（ARM64）安装包。Codex CLI 仅支持 0.163.0-alpha.10.2，并使用[原生命令权限](./features/README.zh-CN.md#codex-命令权限)。0.2.5 个人版需要手动更新。升级前请阅读[安装与更新说明](./getting-started/README.zh-CN.md#升级到-028)。[Bottega Web](https://app.getbottega.app) 继续可用。
 
 文档按职责组织，让仓库根目录只聚焦源码与构建配置。
 

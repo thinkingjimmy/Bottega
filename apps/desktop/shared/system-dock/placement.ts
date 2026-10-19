@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared DockLayout model and its category/semantic-key projections.
- * [OUTPUT]: Provides pure layout edits: default insertion points, singleton-aware add, drop-time move, remove with an undo token that re-adds under a fresh ID, clear, and bounded import append.
+ * [OUTPUT]: Provides pure group-aware layout edits with anchored Downloads/Trash: default insertion points, singleton-aware add, drop-time move, remove with an undo token that re-adds under a fresh ID, clear, and bounded import append.
  * [POS]: shared/system-dock editing kernel used by main (the only Store writer) and by renderer previews; never performs I/O.
  */
 
@@ -34,7 +34,8 @@ export function findSemantic(layout: DockLayout, draft: DockItemDraft): DockItem
   return key ? layout.items.find((item) => semanticKey(item) === key) : undefined;
 }
 function commit(layout: DockLayout, items: DockItem[], order: string[]): DockLayout {
-  return dockLayoutSchema.parse({ ...layout, initialized: true, items, order });
+  const next = { ...layout, initialized: true, items, order };
+  return dockLayoutSchema.parse({ ...next, order: orderedItems(next).map((item) => item.id) });
 }
 /** Singletons and duplicate pins keep their existing position (3.3); a Widget is never deduplicated. */
 export function addItem(layout: DockLayout, draft: DockItemDraft, options: { index?: number; mint?: () => string } = {}): AddResult | { failure: EditFailure } {
@@ -43,21 +44,22 @@ export function addItem(layout: DockLayout, draft: DockItemDraft, options: { ind
   if (layout.items.length >= DOCK_LAYOUT_BUDGET.items) return { failure: "budget" };
   const item = { ...draft, id: (options.mint ?? newDockItemId)() } as DockItem;
   const index = Math.max(0, Math.min(options.index ?? defaultInsertIndex(layout, draft), layout.order.length));
-  const order = [...layout.order]; order.splice(index, 0, item.id);
+  const order = orderedItems(layout).map((item) => item.id); order.splice(index, 0, item.id);
   try { return { layout: commit(layout, [...layout.items, item], order), itemId: item.id, added: true }; }
   catch { return { failure: "invalid" }; }
 }
 /** One commit per drop; never called on pointer move. `index` is the final position in the resulting order. */
 export function moveItem(layout: DockLayout, itemId: string, index: number): DockLayout | { failure: EditFailure } {
-  const from = layout.order.indexOf(itemId);
+  const currentOrder = orderedItems(layout).map((item) => item.id);
+  const from = currentOrder.indexOf(itemId);
   if (from < 0) return { failure: "missing" };
-  const order = layout.order.filter((value) => value !== itemId);
+  const order = currentOrder.filter((value) => value !== itemId);
   order.splice(Math.max(0, Math.min(index, order.length)), 0, itemId);
   return commit(layout, layout.items, order);
 }
 /** Unpinning is not uninstalling, quitting, or emptying anything (INV-07). */
 export function removeItem(layout: DockLayout, itemId: string): { layout: DockLayout; undo: UndoToken } | { failure: EditFailure } {
-  const index = layout.order.indexOf(itemId);
+  const index = orderedItems(layout).findIndex((item) => item.id === itemId);
   const item = layout.items.find((value) => value.id === itemId);
   if (index < 0 || !item) return { failure: "missing" };
   const { id: _id, ...draft } = item;

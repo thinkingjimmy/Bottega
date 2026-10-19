@@ -4,7 +4,7 @@
  * [POS]: system-dock/panel/views/detail dispatcher; one panel host serves every detail (5.2), so a second item switches content instead of opening a window.
  */
 import { usePanel } from "../../context";
-import { DownloadsDetail } from "./downloads";
+import { DownloadsDetail } from "./download-view";
 import { LimitsDetail } from "./limits";
 import { TokensDetail } from "./tokens";
 import { TrashDetail } from "./trash";

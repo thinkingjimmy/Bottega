@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the shared layout/IPC/metrics models and caller-supplied resolution, running, entry and Widget facts.
- * [OUTPUT]: Provides pure pinned/running item projections with bundle-identity de-duplication, shared face-dependent metric items for fitting, and privacy-safe labels.
+ * [INPUT]: Depends on the shared layout/IPC/metrics models and caller-supplied branded host, resolution, running, entry and Widget facts.
+ * [OUTPUT]: Provides pure pinned/running item projections with bundle-identity de-duplication and one always-reachable branded host, shared face-dependent metric items for fitting, and privacy-safe labels.
  * [POS]: system-dock projection kernel; DockService owns facts, this file only shapes them for renderers (INV-06/08/12).
  */
 
@@ -16,6 +16,7 @@ export type ProjectionFacts = {
   resolution(item: DockItem): NativeResolution | undefined;
   bottega(appId: string | null): BottegaAppFact;
   running: readonly RunningApp[];
+  host?: RunningApp;
   isRunning(target: { bundleIdentifier: string | null; path: string | null }): boolean;
   iconKey(path: string | null): string | null;
   finderPath: string | null;
@@ -25,6 +26,10 @@ export type ProjectionFacts = {
   label(key: "finder" | "downloads" | "trash" | "limits" | "activity"): string;
   showRunning: boolean;
 };
+function isHost(facts: ProjectionFacts, target: { bundleIdentifier: string | null; path: string | null }): boolean {
+  return Boolean(facts.host && ((target.bundleIdentifier && target.bundleIdentifier === facts.host.bundleIdentifier)
+    || (target.path && target.path === facts.host.path)));
+}
 export function projectPinned(layout: DockLayout, facts: ProjectionFacts): DockBarItem[] {
   return orderedItems(layout).map((item): DockBarItem => {
     if (item.kind === "system") {
@@ -42,14 +47,15 @@ export function projectPinned(layout: DockLayout, facts: ProjectionFacts): DockB
         status: fact.state === "ready" ? "ok" : fact.state === "missing" ? "missing" : "unavailable" };
     }
     const resolved = facts.resolution(item);
+    const host = isHost(facts, { bundleIdentifier: item.bundleIdentifier ?? resolved?.bundleIdentifier ?? null, path: resolved?.path ?? null });
     // Unresolved-yet is not missing: the placeholder stays repairable and keeps its position (INV-07).
-    return { id: item.id, kind: "native-app", pinned: true, label: resolved?.name ?? item.label ?? item.bundleIdentifier ?? "", iconKey: facts.iconKey(resolved?.path ?? null),
-      running: resolved ? facts.isRunning(resolved) : false, status: resolved === null ? "missing" : "ok" };
+    return { id: item.id, kind: "native-app", pinned: true, ...(host ? { host: true } : {}), label: host ? facts.host!.name : resolved?.name ?? item.label ?? item.bundleIdentifier ?? "", iconKey: host ? null : facts.iconKey(resolved?.path ?? null),
+      running: host || (resolved ? facts.isRunning(resolved) : false), status: !host && resolved === null ? "missing" : "ok" };
   });
 }
 /** Temporary area: running regular apps not already pinned, first-seen order, never persisted (INV-07/08). */
 export function projectRunning(layout: DockLayout, facts: ProjectionFacts): DockBarItem[] {
-  if (!facts.showRunning) return [];
+  if (!facts.showRunning && !facts.host) return [];
   const pinnedIdentities = new Set<string>();
   for (const item of layout.items) {
     if (item.kind === "native-app") {
@@ -60,8 +66,13 @@ export function projectRunning(layout: DockLayout, facts: ProjectionFacts): Dock
     }
     if (item.kind === "system" && item.entry === "system.finder") pinnedIdentities.add("b:com.apple.finder");
   }
-  return facts.running.filter((app) => !(app.bundleIdentifier && pinnedIdentities.has(`b:${app.bundleIdentifier}`)) && !(app.path && pinnedIdentities.has(`p:${app.path}`)))
-    .map((app) => ({ id: `running-${app.pid}`, kind: "native-app", pinned: false, label: app.name, iconKey: facts.iconKey(app.path), running: true, status: "ok" }));
+  const running = [...(facts.host ? [facts.host] : []), ...(facts.showRunning ? facts.running.filter((app) => app.pid !== facts.host?.pid) : [])];
+  return running.filter((app) => !(app.bundleIdentifier && pinnedIdentities.has(`b:${app.bundleIdentifier}`)) && !(app.path && pinnedIdentities.has(`p:${app.path}`)))
+    .map((app): DockBarItem => {
+      const host = app.pid === facts.host?.pid;
+      return { id: `running-${app.pid}`, kind: "native-app", pinned: false, ...(host ? { host: true } : {}),
+        label: host ? facts.host!.name : app.name, iconKey: host ? null : facts.iconKey(app.path), running: true, status: "ok" };
+    });
 }
 /** Literal keys so the catalog gate can see every reader. */
 export function entryLabel(locale: import("@ai-chat/ui/lib/locale").AppLocale, key: "finder" | "downloads" | "trash" | "limits" | "activity"): string {
@@ -75,7 +86,7 @@ export function entryLabel(locale: import("@ai-chat/ui/lib/locale").AppLocale, k
 }
 /** Empty means nothing to show at all: no pins and no running Apps in the area this mode displays (INV-07). */
 export function isDockEmpty(layout: DockLayout, facts: ProjectionFacts): boolean {
-  return !layout.items.length && !projectRunning(layout, facts).length;
+  return !facts.host && !layout.items.length && !projectRunning(layout, facts).length;
 }
 export function metricItems(items: readonly DockBarItem[]): MetricItem[] {
   return items.map(metricItem);

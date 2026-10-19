@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron screen/power/shortcut/menu/shell, the Dock stores, native bridge adapters, entries, Usage adapter, replacement controller, read-only signed-installation verification, window surfaces/geometry/panel lifecycle, projections, and caller ports (Bottega Apps, main-window destinations, tray refresh, background retention).
- * [OUTPUT]: Provides DockService: the single main-owned Dock runtime — enable/start/stop, actual mode, three-edge display directory/placement and revision-fenced hover, authoritative presentation, bounded transparent-frame transitions, the revealed bar's native glass, lazy panel orchestration, bar/panel/settings snapshots with coalesced publication, consumer demand per ready visible surface, serialized startup cleanup, generation-fenced startup, renderer recovery, native-failure replacement suspension, intent admission and resolution, disabled recovery responsibility, truthful recovery/permission health, keyboard entry, temporary hide, and the replacement admission facts.
+ * [OUTPUT]: Provides DockService: the single main-owned Dock runtime — enable/start/stop, actual mode, three-edge display directory/placement, grouped overflow-aware panel anchors and revision-fenced hover, authoritative presentation, bounded transparent-frame transitions, the revealed bar's native glass, lazy panel orchestration, bar/panel/settings snapshots with an always-reachable local host and coalesced publication, consumer demand per ready visible surface, serialized startup cleanup, generation-fenced startup, renderer recovery, native-failure replacement suspension, intent admission, reference-only download visuals and resolution, disabled recovery responsibility, truthful recovery/permission health, keyboard entry, temporary hide, and the replacement admission facts.
  * [POS]: system-dock orchestrator; intents live in intents.ts and Settings flows in setup.ts, both acting through this service. It is the only writer of DockConfigStore's working layout and DockLocalStore.
  */
 
@@ -34,7 +34,7 @@ import { DisplayDirectory, dockClock, type DockClock } from "./window/display-ob
 import { PanelLifecycle, type OpenRequest } from "./window/panel";
 import { applyDockGlass, clearDockGlass } from "./window/glass";
 import { createDockSurface, DockIpc, dockEntryUrl, type DockRole } from "./window/surface";
-import { DOCK_METRICS } from "../../../shared/system-dock/metrics";
+import { barGroups, DOCK_METRICS } from "../../../shared/system-dock/metrics";
 
 export type BottegaAppsPort = { list(): { id: string; label: string; ready: boolean }[]; fact(appId: string | null): BottegaAppFact; open(appId: string): Promise<void> };
 export type SyncHandle = { status(): DockSyncStatus; onChanged(listener: () => void): () => void; resolveConflict(choice: import("../../../shared/system-dock/ipc").ConflictChoice): Promise<unknown>; wake(): void };
@@ -49,6 +49,7 @@ export type DockServicePorts = {
   profile: string;
   appPath: string;
   ownBundleId: string | null;
+  host?: { open(): void; quit(): void };
   limits: LimitsPort | null;
   history: HistoryPort | null;
   /** Which account each Agent CLI is signed in to (an opaque fingerprint, null when unknown); read-only. */
@@ -141,7 +142,8 @@ export class DockService {
     }) : null;
     this.apps = this.native ? new NativeApps(this.native, ports.ownBundleId) : null;
     this.trash = this.native ? new TrashEntry(this.native, () => this.schedule()) : null;
-    this.downloads = new DownloadsEntry({ openPath: (path) => import("electron").then(({ shell }) => shell.openPath(path)) }, () => this.schedule());
+    this.downloads = new DownloadsEntry({ openPath: (path) => import("electron").then(({ shell }) => shell.openPath(path)),
+      showItemInFolder: (path) => import("electron").then(({ shell }) => shell.showItemInFolder(path)) }, () => this.schedule());
     this.usage = new DockUsage(ports.limits, ports.history, () => this.schedule());
     this.stopAccounts = this.watchAccounts();
     const serviceName = ports.platform.serviceName;
@@ -258,7 +260,16 @@ export class DockService {
           this.layoutQueue = next.catch(() => undefined);
           return next;
         },
-        icons: (_role, keys) => this.apps?.iconData(keys) ?? Promise.resolve({}) });
+        icons: (_role, keys) => this.apps?.iconData(keys) ?? Promise.resolve({}),
+        downloadVisual: async (_role, input) => {
+          const allowed = () => !this.ports.local.get().privacyMask && Boolean(this.panelSnapshot().downloads);
+          const native = this.native;
+          if (!allowed() || !native) return null;
+          const current = this.captureInteraction();
+          const { loadDownloadVisual } = await import("./entries/download-visual");
+          const visual = await this.downloads.visual(input, (path, size, regularFile) => loadDownloadVisual(native, path, size, regularFile));
+          return current() && allowed() ? visual : null;
+        } });
       await this.apps?.start();
       assertCurrent();
       const stopApps = this.apps?.onChanged(() => { this.schedule(); this.checkEmpty(); });
@@ -436,10 +447,12 @@ export class DockService {
   private placePanel(anchor: string | null) {
     const placement = this.runtime.placement;
     if (!placement) return null;
-    const { pinned, running } = this.visibleItems();
+    const { pinned, running, overflow } = this.visibleItems();
     const visible = [...pinned, ...running];
     const index = anchor ? visible.findIndex((item) => item.id === anchor) : -1;
-    return placePanel(placement, metricItems(visible), pinned.length, index >= 0 ? index : null, this.ports.local.get().scale);
+    const item = anchor ? this.layoutItem(anchor) : null;
+    const preferred = item?.kind === "system" && item.entry === "system.downloads" ? DOCK_METRICS.downloadsPanel : DOCK_METRICS.panel;
+    return placePanel(placement, metricItems(visible), pinned.length, index >= 0 ? index : null, this.ports.local.get().scale, overflow > 0, preferred);
   }
   private onPanelPresented(request: OpenRequest | null) {
     const view = request?.view ?? null;
@@ -543,6 +556,8 @@ export class DockService {
       resolution: (item: DockItem) => this.resolution.has(item.id) ? this.resolution.get(item.id)! : undefined,
       bottega: (appId: string | null) => this.ports.apps.fact(appId),
       running: this.apps?.runningRegular() ?? [],
+      host: this.ports.host ? { ...(this.apps?.hostApp() ?? { pid: process.pid, bundleIdentifier: this.ports.ownBundleId, path: null,
+        activationPolicy: "regular" as const, finishedLaunching: true, active: false, hidden: false }), name: "Bottega" } : undefined,
       isRunning: (target: { bundleIdentifier: string | null; path: string | null }) => this.apps?.isRunning(target) ?? false,
       iconKey: (path: string | null) => this.apps?.iconKey(path) ?? null,
       finderPath: "/System/Library/CoreServices/Finder.app",
@@ -566,7 +581,7 @@ export class DockService {
     return { pinned: pinned.slice(0, fit.pinned), running: running.slice(0, fit.running), overflow: pinned.length - Math.min(fit.pinned, pinned.length) + running.length - Math.min(fit.running, running.length) };
   }
   isEmpty(): boolean { return isDockEmpty(this.ports.config.layout(), this.facts()); }
-  allItems(): DockBarItem[] { const layout = this.ports.config.layout(); const facts = this.facts(); return [...projectPinned(layout, facts), ...projectRunning(layout, facts)]; }
+  allItems(): DockBarItem[] { const layout = this.ports.config.layout(); const facts = this.facts(); return barGroups(projectPinned(layout, facts), projectRunning(layout, facts)).flatMap((group) => group.items); }
   private refreshAccessibility() {
     if (process.platform !== "darwin") return;
     try { this.accessibility = systemPreferences.isTrustedAccessibilityClient(false) ? "granted" : "not-granted"; } catch { this.accessibility = "unsupported"; }

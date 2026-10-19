@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron app, the macOS product-version Dock gate, stores, DockService/DockSetup, PluginCatalog, native menus, main-role renderer IPC, the window registry/surface residence, Bottega App records, and caller-provided Usage owners, presence destinations and background residence.
- * [OUTPUT]: Provides createSystemDockRuntime: (its account watch hears built-ins only) constructs the Dock (stores under userData, gate evaluated before any Dock window/registration/write), registers Settings → Dock IPC for the main window only, publishes settings snapshots, exposes the Presence submenu, the plugin owner, sync attachment seam and ordered close.
+ * [OUTPUT]: Provides createSystemDockRuntime: (its account watch hears built-ins only) constructs the Dock (stores under userData, gate evaluated before any Dock window/registration/write), registers Settings → Dock IPC for the main window only, publishes settings snapshots, routes the host through normal application activation and safe quit, exposes the Presence submenu, the plugin owner, sync attachment seam and ordered close.
  * [POS]: system-dock composition beneath the desktop root; the bar/panel never receive product capabilities and the main window never receives Dock paths or permissions.
  */
 
@@ -69,6 +69,7 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
   const service = new DockService({
     platform, mainDirectory: ports.mainDirectory, local: new DockLocalStore(ports.userData), config: new DockConfigStore(ports.userData),
     locale: ports.locale, installation: ports.installation, profile: createHash("sha256").update(ports.userData).digest("hex").slice(0, 32),
+    host: { open: () => { app.emit("activate"); }, quit: () => app.quit() },
     appPath: process.execPath, ownBundleId: null, limits: ports.limits, history: ports.history, apps,
     accounts: { fingerprint: (backend) => backendRuntimeRegistry.accountFingerprint(backend), subscribe: (listener) => { const stop = backendRuntimeRegistry.subscribe((id) => { const backend = knownBackend(builtinProviderCatalog, id); if (backend) listener(backend); }); return () => { stop(); }; } },
     destination: (target) => ports.send(target.kind === "dock" ? { type: "presence-destination", destination: "dock" }

@@ -1,4 +1,5 @@
 /**
+ * Native command titles feed the shared composer service controls without remounting the Chat.
  * [INPUT]: Depends on React layout measurement, ChatSessionController, window role, canonical transcript and its hydration skeleton, lib/idle-prefetch, composer, optional side panel, Gallery, and main-window Memory state
  * [OUTPUT]: Native/imported Chat layout, scoped local message-file links, non-visual command execution context, Artifact panel resizing and paged transcript states.
  * [POS]: The single horizontal chat layout for draft and canonical native/imported sessions
@@ -260,11 +261,13 @@ export function ChatViewFrame({
       controller.transcript.loading,
     ]
   );
+  const nativeCommandTitles = useMemo(() => new Map(conversationMessages.flatMap(message =>
+    (message.parts ?? []).flatMap(part => part.type === "tool" && part.tool === "command" ? [[part.itemId, part.title] as const] : []))), [conversationMessages]);
   return (
-    <NativeCommandRuntimeProvider chatId={conversationId} incarnationId={controller.transcript.incarnationId ?? null}><ArtifactHostProvider value={artifactHost}><ChatPageSessionView renderPage={renderPage} header={header} notices={notices} className={header ? "[--page-shell-header-height:2.5rem]" : undefined} containOverflow={Boolean(header)} containerRef={layoutRootRef} panel={enableSidePanel && visibleSidePanelState && (
+    <NativeCommandRuntimeProvider chatId={conversationId} incarnationId={controller.transcript.incarnationId ?? null} titles={nativeCommandTitles}><ArtifactHostProvider value={artifactHost}><ChatPageSessionView renderPage={renderPage} header={header} notices={notices} className={header ? "[--page-shell-header-height:2.5rem]" : undefined} containOverflow={Boolean(header)} containerRef={layoutRootRef} panel={enableSidePanel && visibleSidePanelState && (
         <Suspense fallback={null}>
           <SidePanel crossHeader={!header} open={Boolean(sidePanelState)} state={visibleSidePanelState} width={panelGeometry.width} minWidth={panelGeometry.minWidth} maxWidth={panelGeometry.maxWidth}
-            onWidthChange={commitPanelWidth} onClose={controller.sidePanel.close} subagents={controller.sidePanel.subagents} galleryProjection={galleryProjection} onOpenLocalFile={controller.sidePanel.openLocalFile} />
+            onWidthChange={commitPanelWidth} onClose={controller.sidePanel.close} subagents={controller.sidePanel.subagents} galleryProjection={galleryProjection} />
         </Suspense>
       )} conversation={{ empty: showEmptyState, mounted: mountTranscript,
         emptyView: <ChatEmptyState composer={controller.composer} description={emptyDescription} title={emptyTitle} />,

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React, session identity, panel layout, Plan/file/Workspace previews, message-file actions, Gallery and localized copy
- * [OUTPUT]: Localized panel chrome, file actions and existing Artifact takeover/guarded-close hooks
+ * [OUTPUT]: Localized panel chrome with a single Finder action before Close and existing Artifact takeover/guarded-close hooks
  * [POS]: The visual shell of chat/side-panel; ChatView owns width and visibility
  */
 
@@ -62,7 +62,6 @@ export const SidePanel = memo(function SidePanel({
   onClose,
   subagents,
   galleryProjection,
-  onOpenLocalFile,
 }: {
   crossHeader?: boolean;
   state: Exclude<SidePanelState, { kind: "none" }> | null;
@@ -74,7 +73,6 @@ export const SidePanel = memo(function SidePanel({
   onClose: () => void;
   subagents: Record<string, ProjectedSubagent>;
   galleryProjection: ConversationImageProjection;
-  onOpenLocalFile?: (href: string) => void;
 }) {
   const { t } = useAppTranslation();
   const [documentScrollRoot, setDocumentScrollRoot] =
@@ -127,6 +125,8 @@ export const SidePanel = memo(function SidePanel({
               <h2 className="min-w-0 flex-1 truncate font-medium text-sm">
                 {title}
               </h2>
+              {documentState?.kind === "workspace-preview" && documentState.localFile && <MessageFileActions
+                key={`${documentState.nodeId}:${documentState.status}`} preview={documentState} />}
               <Button
                 aria-label={t("chat.sidePanel.shell.closePreview")}
                 className={cn(
@@ -141,9 +141,6 @@ export const SidePanel = memo(function SidePanel({
                 <XIcon />
               </Button>
             </header>}
-            {documentState?.kind === "workspace-preview" && documentState.localFile && <MessageFileActions
-              key={`${documentState.nodeId}:${documentState.status}`} preview={documentState}
-              retry={() => onOpenLocalFile?.(documentState.localFile!.href)} />}
             {/* 正文基准归容器，不归分支：加载/报错/文档三态同处一栏，字号本就
                 该是这一栏的属性。此前只有前两态各自写了 text-sm，文档态漏写，
                 于是同一段 Markdown 在聊天流是 14px、在这里回落根字号 16px，

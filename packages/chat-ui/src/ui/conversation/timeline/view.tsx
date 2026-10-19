@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The reader's state and native Conversation geometry.
- * [OUTPUT]: Provides TimelineView — one transcript layout with row/live ordering, navigation slots and a gap slot before a named row — and TimelineNotice, the divider-styled note with one action (a gap, the way back to the newest messages).
+ * [OUTPUT]: Provides TimelineView with 12px row spacing, row/live ordering, navigation slots and a gap slot before a named row, plus TimelineNotice for divider-styled navigation.
  * [POS]: The timeline's only rendered surface; every rule it shows comes from reader.ts.
  */
 import { Fragment, useState, type ReactNode } from "react";
@@ -40,7 +40,7 @@ function TimelineContent<Row extends TranscriptRow>(props: TimelineViewProps<Row
     return <>{imported.length > 0 && <section aria-label={copy.imported} className="contents">{imported.map(render)}</section>}{native.map(render)}</>;
   };
   return <>
-    <ConversationContent className={`${conversationColumnClassName} gap-6`} data-transcript-content="" tabIndex={-1}>
+    <ConversationContent className={`${conversationColumnClassName} gap-3`} data-transcript-content="" tabIndex={-1}>
       {props.before}
       {reader.hasEarlier && <ConversationDivider><Button size="pill" variant="ghost" data-load-earlier="" disabled={reader.loadingEarlier} onClick={reader.loadEarlier} type="button">
         {reader.loadingEarlier ? <><Spinner aria-hidden="true" />{copy.loading}</> : <><ChevronUp className="size-3" />{copy.earlier}</>}

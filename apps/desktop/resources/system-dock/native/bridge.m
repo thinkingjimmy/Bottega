@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on AppKit/NSWorkspace (running apps, LaunchServices resolution, icons, launch), ApplicationServices AX, CFPreferences via shared.m, and bridge-system.m for Trash/Finder/agent ops.
- * [OUTPUT]: Provides the `system-dock-bridge` executable: newline-delimited JSON requests on stdin, one bounded response per id plus coalesced "running" events on stdout, exactly as electron/main/system-dock/native/protocol.ts (hello, running-apps, process-info, activate-pid, installed-apps, resolve-app, icons, launch, finder-activate, ax-status, unminimize, dock-prefs-*, verified dock-reload, dock-persistent-apps).
+ * [INPUT]: Depends on AppKit/NSWorkspace (running apps, LaunchServices resolution, icons, launch, normal termination), ApplicationServices AX, CFPreferences via shared.m, and bridge-system.m for Trash/Finder/agent ops.
+ * [OUTPUT]: Provides the `system-dock-bridge` executable: newline-delimited JSON requests on stdin, one bounded response per id plus coalesced "running" events on stdout, exactly as electron/main/system-dock/native/protocol.ts (hello, running-apps, process-info, activate-pid, identity-bound quit-app, installed-apps, resolve-app, icons, launch, finder-activate, ax-status, unminimize, dock-prefs-*, verified dock-reload, dock-persistent-apps).
  * [POS]: system-dock/native I/O core and app/preference ops; a long-lived child of Electron main that never blocks its read loop or main run loop and never talks to a renderer.
  */
 
@@ -224,6 +224,27 @@ static void activatePid(NSDictionary *request, BDReply *reply) {
   });
 }
 
+static void quitApp(NSDictionary *request, BDReply *reply) {
+  BOOL validPid = NO, validStart = NO;
+  pid_t pid = (pid_t)BDInteger(request, @"pid", 1, INT32_MAX, &validPid);
+  int64_t started = BDInteger(request, @"startedAt", 0, 9007199254740991LL, &validStart);
+  NSString *path = BDString(request, @"path", 4096), *bundle = BDString(request, @"bundleIdentifier", 255);
+  if (!validPid || !validStart || (!path && !bundle) || (path && !path.isAbsolutePath)
+    || (!path && request[@"path"] != NSNull.null) || (!bundle && request[@"bundleIdentifier"] != NSNull.null)) {
+    [reply fail:@"invalid-request"]; return;
+  }
+  dispatch_async(dispatch_get_main_queue(), ^{
+    NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+    BOOL matches = app && app.bundleURL && !app.terminated && BDProcessStartMs(pid) == started
+      && [app.bundleURL.pathExtension caseInsensitiveCompare:@"app"] == NSOrderedSame
+      && (!path || [app.bundleURL.path isEqualToString:path]) && (!bundle || [app.bundleIdentifier isEqualToString:bundle]);
+    BOOL protectedApp = pid == getppid() || pid == getpid() || [app.bundleIdentifier isEqualToString:@"com.apple.finder"]
+      || [app.bundleURL.path isEqualToString:@"/System/Library/CoreServices/Finder.app"];
+    // Normal termination preserves document confirmation and cancellation. Never fall back to forceTerminate or signals.
+    [reply ok:@{ @"requested": flag(matches && !protectedApp && [app terminate]) }];
+  });
+}
+
 // ---- Accessibility ---------------------------------------------------------------------------
 
 static void axStatus(NSDictionary *request, BDReply *reply) {
@@ -383,6 +404,7 @@ static void handle(NSData *line) {
   else if ([op isEqualToString:@"finder-activate"]) activateFinder(reply);
   else if ([op isEqualToString:@"process-info"]) processInfo(request, reply);
   else if ([op isEqualToString:@"activate-pid"]) activatePid(request, reply);
+  else if ([op isEqualToString:@"quit-app"]) quitApp(request, reply);
   else if ([op isEqualToString:@"installed-apps"]) installedApps(reply);
   else if (!BDHandleSystemOp(op, request, reply)) [reply fail:@"unknown-op"];
 }

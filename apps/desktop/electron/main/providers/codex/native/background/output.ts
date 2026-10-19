@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses retained owner snapshots and request-scoped command identity.
- * [OUTPUT]: Projects original-command DTOs and appends item-scoped output under one UTF-8 owner byte budget.
+ * [OUTPUT]: Projects per-command stopping/failure DTOs and appends item-scoped output under one UTF-8 owner byte budget.
  * [POS]: Lazy background projection loaded before staging; keeps inactive execution transforms out of main startup.
  */
 import type { NativeBackgroundCommand } from "../../../../../../shared/ipc/agent/background-ipc";
@@ -21,7 +21,7 @@ export function listCommands(entries: Iterable<BackgroundEntry>, chatId: string)
   return [...entries].filter(e => e.active && e.chatId === chatId).flatMap(e => e.terminals.filter(terminal => !e.persisted.has(terminal.itemId)).map(terminal => ({
     id: e.key, itemId: nativeCommandItemId(e.requestId, terminal.itemId), chatId, incarnationId: e.incarnationId,
     command: terminal.command.slice(0, 8192), cwd: terminal.cwd,
-    permissionMode: e.permissionMode, status: e.status, output: tail(e.output.get(terminal.itemId) ?? "", 8192),
+    permissionMode: e.permissionMode, status: e.status === "running" ? e.commandStatus.get(terminal.itemId) ?? "running" : e.status, output: tail(e.output.get(terminal.itemId) ?? "", 8192),
   })));
 }
 

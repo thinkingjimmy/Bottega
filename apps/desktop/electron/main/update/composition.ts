@@ -25,7 +25,6 @@ const E2E_FALLBACK_VERSION = "0.1.1";
 export type DesktopUpdateServiceOptions = Readonly<{
   resolveAppRequirement?(requestId: string): Promise<AppCompatibilityFailure>;
   prepareSafeQuit(reason: "update", interactive?: boolean): Promise<SafeQuitResult>;
-  hasStopOperations?(): boolean;
   env?: NodeJS.ProcessEnv;
   applyCandidateCompatibility?: (
     matrix: AppGuiCompatibilitySupport
@@ -74,7 +73,6 @@ export function createDesktopUpdateService(
     automaticInstall: !manualOnly && process.platform !== "win32",
     manualOnly,
     prepareSafeQuit: options.prepareSafeQuit,
-    hasStopOperations: options.hasStopOperations,
     forceExit: (code) => app.exit(code),
   });
 }

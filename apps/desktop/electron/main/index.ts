@@ -269,7 +269,6 @@ if (!hasSingleInstanceLock) {
           return appsService.compatibilityRequests.require(requestId);
         },
         prepareSafeQuit: (_reason, interactive) => presenceLifecycle.prepareUpdate(updateService?.snapshot().availableVersion ?? null, interactive),
-        hasStopOperations: () => stopOperations().length > 0,
         applyCandidateCompatibility: (matrix) => {
           if (!appsService) throw new Error("GUI_COMPATIBILITY_PREFLIGHT_UNAVAILABLE");
           return appsService.applyCandidateCompatibility(matrix);

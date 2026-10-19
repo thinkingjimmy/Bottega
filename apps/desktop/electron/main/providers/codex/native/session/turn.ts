@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses canonical built-in Provider identity, a custody-backed AgentProcessHost, main-frozen NativeTurnConfig, live main-owned MCP consent queries, native RPC and product callbacks.
- * [OUTPUT]: Exports CodexNativeTurn, implementing the product AgentTurn over native Thread/Turn methods.
+ * [OUTPUT]: Exports CodexNativeTurn, implementing native Thread/Turn methods and exact-terminal background termination with list readback.
  * Native Skill-budget warnings remain durable turn facts on success and failure.
  * [POS]: Native lifecycle owner; no ACP methods, launcher fallback or client-side automatic approval.
  */
@@ -52,6 +52,7 @@ export class CodexNativeTurn implements AgentTurn {
   private readonly retainedTerminals = new Map<string, NativeTerminal>();
   private backgroundTimer?: ReturnType<typeof setInterval>;
   private polling = false;
+  private readonly stoppingTerminals = new Set<string>();
   private skillDescriptionsTruncated = false;
 
   constructor(private readonly options: BackendTurnOptions, host: AgentProcessHost,
@@ -205,6 +206,29 @@ export class CodexNativeTurn implements AgentTurn {
     } finally { this.backgroundActive = false; this.rpc.close(); }
   }
 
+  async stopBackgroundCommand(itemId: string) {
+    const terminal = this.retainedTerminals.get(itemId);
+    if (!terminal || !this.backgroundActive) throw new Error("Native background terminal is no longer owned");
+    this.stoppingTerminals.add(itemId);
+    try {
+      const before = await this.backgroundTerminals();
+      const owned = (row: NativeTerminal) => {
+        const original = this.retainedTerminals.get(row.itemId);
+        return original?.processId === row.processId && original.command === row.command && original.cwd === row.cwd;
+      };
+      if (before.some(row => !owned(row))) throw new Error("Native background terminal identity changed");
+      if (before.some(row => row.processId === terminal.processId)) {
+        await this.rpc.request("thread/backgroundTerminals/terminate", { threadId: this.threadId, processId: terminal.processId }, { timeoutMs: 5000 });
+      }
+      const remaining = await this.backgroundTerminals();
+      if (remaining.some(row => row.processId === terminal.processId)) throw new Error("Native background terminal exit is unconfirmed");
+      if (remaining.some(row => !owned(row))) throw new Error("Native background terminal identity changed");
+      await this.chain;
+      this.terminals = remaining;
+      this.background?.update(remaining);
+    } finally { this.stoppingTerminals.delete(itemId); }
+  }
+
   private async backgroundTerminals() {
     const terminals: NativeTerminal[] = [];
     let cursor: string | null = null;
@@ -233,8 +257,8 @@ export class CodexNativeTurn implements AgentTurn {
         this.terminals = terminals;
         this.background?.update(terminals);
         this.rpc.resetBudget();
-        if (!terminals.length) { clearInterval(this.backgroundTimer); this.background?.ended(); }
-      }).catch(() => { clearInterval(this.backgroundTimer); this.background?.ended(); }).finally(() => { this.polling = false; });
+        if (!terminals.length && !this.stoppingTerminals.size) { clearInterval(this.backgroundTimer); this.background?.ended(); }
+      }).catch(() => { if (!this.stoppingTerminals.size) { clearInterval(this.backgroundTimer); this.background?.ended(); } }).finally(() => { this.polling = false; });
     }, 2000);
     this.backgroundTimer.unref();
   }

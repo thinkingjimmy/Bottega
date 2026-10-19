@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on React, the isolated `window.systemDock` bridge contract, the lazy locale catalog loader, and the renderer Intl locale snapshot.
- * [OUTPUT]: Provides the window typing, bar/panel snapshot guards, `useDockSnapshot` (revision-ordered, catalog/presentation-ready, locale synced), a coarse `useNow` clock, the fire-and-forget `sendIntent`, and `useHoverIntent` (edge-only window pointer presence).
+ * [OUTPUT]: Provides window typing, ordered/catalog-ready snapshots, a coarse clock, intent dispatch, pathless download visual reads and edge-only pointer presence.
  * [POS]: system-dock/common transport adapter shared by the bar and panel roots; the only file that touches `window.systemDock`'s snapshot stream.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DockBarSnapshot, DockIntent, PanelSnapshot, SystemDockBridge } from "../../../shared/system-dock/ipc";
+import type { DockBarSnapshot, DockIntent, DownloadVisualRequest, PanelSnapshot, SystemDockBridge } from "../../../shared/system-dock/ipc";
 import { loadCatalog } from "../../../shared/i18n/catalogs";
 import { loadSection } from "../../../shared/i18n/sections";
 import { setEffectiveLocale } from "../../lib/appearance/i18n-locale";
@@ -65,6 +65,10 @@ export function useNow(intervalMs = 30_000) {
 /** Intents are commands to main; main answers with a new snapshot, so the renderer never awaits a result to render. */
 export function sendIntent(intent: DockIntent): Promise<boolean> {
   return window.systemDock?.intent(intent).then(() => true, () => false) ?? Promise.resolve(false);
+}
+
+export function readDownloadVisual(input: DownloadVisualRequest) {
+  return window.systemDock?.downloadVisual?.(input).catch(() => null) ?? Promise.resolve(null);
 }
 
 /**

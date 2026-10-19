@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses public transcript/attachment budgets and depends on the public backend identity tuple, chat-turn/chats/codex contracts, canonical Project scope, Extension generation identities, and Project Tools session receipts
- * [OUTPUT]: Provides shared Agent IPC contracts, bounded image/file data-URL validation, minimum versions and availability facts; BackendInfo names any Provider and BuiltinBackendInfo narrows it to a built-in.
+ * [OUTPUT]: Provides exact-item native Stop and shared Agent IPC contracts, bounded image/file data-URL validation, minimum versions and availability facts; BackendInfo names any Provider and BuiltinBackendInfo narrows it to a built-in.
  * [POS]: apps/desktop/shared/ipc/agent; Shared Agent wire truth connecting Electron main, preload, and renderer without exposing mutable scope authority
  */
 
@@ -710,7 +710,7 @@ export { AGENT_CHANNEL } from "../../ipc-channels/agent";
 
 export type AgentBridgeApi = {
   listNativeBackground?: (conversationId: string) => Promise<import("./background-ipc").NativeBackgroundCommand[]>;
-  stopNativeBackground?: (conversationId: string, incarnationId: string, id: string) => Promise<void>;
+  stopNativeBackground?: (conversationId: string, incarnationId: string, id: string, itemId: string) => Promise<void>;
   onNativeBackgroundChanged?: (callback: (conversationId: string) => void) => () => void;
   cancel: (requestId: string) => void;
   respondApproval: (response: AgentApprovalResponse) => Promise<ControlResult>;

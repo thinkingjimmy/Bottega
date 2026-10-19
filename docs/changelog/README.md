@@ -4,6 +4,19 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-10-19 — v0.2.8
+
+[Download 0.2.8](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8) for macOS on Apple silicon (ARM64), using the official stable update channel.
+
+- **Update when you are ready.** Download a new version from the sidebar without leaving your work. The sidebar and Settings show progress and a visible percentage. When the download finishes, choose Restart and update. Bottega waits for this action before restarting.
+- **Control background services.** Codex services show their command name, status and Stop above the Chat input. Stop one service while the others keep running. Read output in the original command details, and retry if a stop fails.
+- **Keep Bottega within reach.** Bottega Dock keeps one Bottega icon available, including when other open Apps are hidden. Return to your current page or reopen the main window from that icon. Running Apps have a Quit action that preserves their normal save and cancel prompts.
+- **A clearer Dock.** New Dock settings keep the bar visible. Apps and widgets, other running Apps, and Downloads and Trash have separate groups. Replacement placement stays at the display edge. Existing auto-hide choices remain available.
+- **Preview Downloads.** Browse Recent, Previous 7 days and Earlier groups with native image thumbnails and file icons. Enlarge a preview, return with Escape, or reveal the file in Finder. Privacy masking also hides thumbnail content.
+- **Simpler Chat details.** File previews place Reveal in Finder beside Close. Conversation rows use tighter spacing, and the Archive tooltip has a shorter label.
+
+This release keeps **protocol 19**, existing content, sync passwords and account keys. No data reset is required. Versions 0.2.6 and 0.2.7 use the stable update channel; 0.2.5 personal requires a manual update. Bottega Dock remains **Alpha** and requires macOS 27.x with Apple silicon. Replacement recovery and physical display/fullscreen scenarios retain their separate device validation.
+
 ## 2026-10-18 — v0.2.7
 
 [Download 0.2.7](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7) for macOS on Apple silicon (ARM64), using the official stable update channel.
@@ -14,7 +27,7 @@ This file records product milestones, not internal implementation iterations. Da
 - **Chat continuity.** After an Agent switch, chats can recover saved images and files from earlier messages. Local TXT, Markdown and JSON links open in the side preview.
 - **Title generation.** Supported Agents recheck sign-in when cached authentication expires. This version's Codex connection does not support the restricted, tool-free execution required for generated titles. With Codex selected for titles, Bottega uses the first message and keeps the selected Agent and model. To generate titles, select a supported Agent in Settings › General › Title generation. Bottega never switches Providers automatically.
 - **Connection checks.** Model discovery and connection checks report startup failures, cancellation and early process exits without remaining stuck.
-- **Fewer download attachments.** Release and acceptance evidence is grouped in `Bottega-0.2.7-release-evidence.tar.gz`. The DMG, ZIP, update feed, blockmaps and signed compatibility files remain separate downloads. The archive contains `release-manifest.json` for installer checksum checks.
+- **Validation status.** Published by owner decision before completion of the full local end-to-end suite and the final-package Codex/Electron GUI checks. Remaining issues will be handled as follow-up bugs. No complete acceptance evidence archive is provided, and a real installed upgrade has not been verified.
 - **Dock stays Alpha.** The whole plugin requires macOS 27.x and Apple silicon. Replacement, recovery across logout or restart, and display/fullscreen combinations are still being validated; the main application's requirements stay unchanged.
 
 This release keeps **protocol 19**, existing content, sync passwords and account keys. No data reset is required. Version 0.2.6 uses the stable update channel; 0.2.5 personal requires a manual update. See the [upgrade guide](../getting-started/README.md#upgrading-to-027).

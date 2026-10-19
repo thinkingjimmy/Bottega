@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain es copy.
- * [OUTPUT]: Provides systemDockLazyEs, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status.
+ * [OUTPUT]: Provides systemDockLazyEs, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes grouped Downloads, previews and named Finder actions.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../es.ts.
  */
 
@@ -105,6 +105,14 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
     openFinder: "Abrir el Finder",
   },
   downloads: {
+    groupRecent: "Recientes",
+    groupWeek: "Últimos 7 días",
+    groupEarlier: "Anteriores",
+    preview: "Vista previa de {{name}}",
+    revealEntry: "Mostrar {{name}} en el Finder",
+    previewLoading: "Cargando vista previa…",
+    previewUnavailable: "Vista previa no disponible. Aún puedes abrir el archivo.",
+    openFile: "Abrir archivo",
     loading: "Cargando Descargas…",
     empty: "Tu carpeta Descargas está vacía.",
     denied: "Bottega no tiene permiso para leer tu carpeta Descargas. Puedes permitirlo en Ajustes del Sistema › Privacidad y seguridad › Archivos y carpetas, o abrir Descargas en el Finder.",
@@ -410,6 +418,7 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
     edit: "Editar Dock…",
     settings: "Ajustes del Dock…",
     open: "Abrir",
+    quit: "Salir",
     remove: "Quitar del Dock",
     keep: "Mantener en el Dock",
     reveal: "Mostrar en el Finder",

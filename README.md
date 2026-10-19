@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7"><img alt="0.2.7 stable" src="https://img.shields.io/badge/release-0.2.7%20stable-blue"></a>
+  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8"><img alt="0.2.8 stable" src="https://img.shields.io/badge/release-0.2.8%20stable-blue"></a>
   <a href="https://github.com/thinkingjimmy/Bottega/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/thinkingjimmy/Bottega?style=flat&amp;logo=github"></a>
   <a href="./LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
@@ -21,7 +21,7 @@
   <a href="https://www.getbottega.app">Website</a> ·
   <a href="./docs/README.md">Docs</a> ·
   <a href="./docs/getting-started/README.md">Quickstart</a> ·
-  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7">Download</a> ·
+  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8">Download</a> ·
   <a href="./docs/features/README.md">Features</a> ·
   <a href="./docs/changelog/README.md">Changelog</a> ·
   <a href="https://x.com/hellojimmywong">X</a>
@@ -57,19 +57,21 @@ Choose a prebuilt desktop release or run Bottega directly from source. Before la
 
 ## Download
 
-[Download 0.2.7 →](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7)
+[Download 0.2.8 →](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8)
 
 | Platform | Download |
 | --- | --- |
-| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7) |
+| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8) |
 
-0.2.7 is an **official stable release for macOS on Apple silicon only**. Automatic updates are enabled for this release and follow the official stable channel.
+0.2.8 is an **official stable release for macOS on Apple silicon only**. Automatic updates are enabled for this release and follow the official stable channel.
 
-**Updating:** 0.2.6 installations use the stable update channel. The shipped 0.2.5 personal build has its updater disabled and requires a manual installation of 0.2.7. Before replacing the app, quit Bottega completely and back up your Bottega folder and application data.
+**Updating:** 0.2.6 and 0.2.7 installations use the stable update channel. The shipped 0.2.5 personal build has its updater disabled and requires a manual installation of 0.2.8. Before replacing the app, quit Bottega completely and back up your Bottega folder and application data.
 
-This release keeps **protocol 19**. Existing Bottega content, cloud content, sync passwords, and account keys remain. No data reset is required. See the [changelog](./docs/changelog/README.md) for the native Codex connection and permission changes.
+This release keeps **protocol 19**. Existing Bottega content, cloud content, sync passwords, and account keys remain. No data reset is required. See the [changelog](./docs/changelog/README.md) for update controls, Chat services and Dock improvements.
 
-Use the official **Developer ID signed and Apple notarized** DMG or ZIP. Download `Bottega-0.2.7-release-evidence.tar.gz` from the same release and read the `release-manifest.json` at its root. Run `shasum -a 256` on the installer and compare the result with its `sha256` in the manifest, then copy Bottega into `Applications`. See the [installation guide](./docs/getting-started/README.md#download-and-install) for the commands.
+Use the official **Developer ID signed and Apple notarized** DMG or ZIP. Download `Bottega-0.2.8-release-evidence.tar.gz` from the same release and read `release-manifest.json` at its root. Run `shasum -a 256` on the installer and compare the result with its `sha256` in the manifest, then copy Bottega into `Applications`. See the [installation guide](./docs/getting-started/README.md#download-and-install) for the commands.
+
+**Historical validation:** 0.2.7 was published by owner decision before complete local and final-package GUI acceptance. It has no complete acceptance evidence archive. Those facts remain specific to 0.2.7; its Release page lists the actual assets.
 
 Bottega drives the Codex, Claude Code, Kimi Code, and OpenCode CLIs already installed and logged in on your machine. On first launch, pick your Bottega folder, let Bottega detect the CLIs, then create a task and choose its Agent before sending the first message. Setup never asks about an account: signing in is a later step, from Settings.
 
@@ -95,13 +97,13 @@ pnpm build
 pnpm dist
 ```
 
-A signed distribution requires your own Apple signing configuration. Official release installers are available from the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7). See the [getting-started guide](./docs/getting-started/README.md) for requirements, supported Agent CLIs, and build commands.
+A signed distribution requires your own Apple signing configuration. Official release installers are available from the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8). See the [getting-started guide](./docs/getting-started/README.md) for requirements, supported Agent CLIs, and build commands.
 
 ## Build provenance
 
 The [macOS candidate workflow](./.github/workflows/build-macos.yml) builds the production source in this repository. Its [Actions runs](https://github.com/thinkingjimmy/Bottega/actions/workflows/build-macos.yml) record the exact source commit, pinned tools, installer hashes and GitHub provenance. Published installers keep the original GitHub build bytes and their recorded hashes.
 
-Build-only candidates validate this build process and expire after one day. Official stable downloads are published on the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.7). Personal installers use manual updates; official 0.2.7 installers enable the stable automatic-update channel.
+Build-only candidates validate this build process and expire after one day. Official stable downloads are published on the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8). Personal installers use manual updates; official 0.2.8 installers enable the stable automatic-update channel.
 
 # Collaboration
 

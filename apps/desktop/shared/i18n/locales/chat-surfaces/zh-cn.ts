@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the chatSurfacesEn structural type
- * [OUTPUT]: Simplified Chinese Chat surfaces, including local-file preview actions and failures
+ * [OUTPUT]: Simplified Chinese Chat surfaces, including exact-command service controls and local-file preview actions
  * [POS]: Simplified Chinese Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
@@ -8,6 +8,12 @@ import { chatSurfacesEn } from "./en";
 
 export const chatSurfacesZhCN: typeof chatSurfacesEn = {
   nativeBackground: {
+    "running": "运行中",
+    "stopFailed": "停止失败",
+    "retry": "重试停止",
+    "stopNamed": "停止 {{name}}",
+    "retryNamed": "重试停止 {{name}}",
+    "services": "此对话运行的服务",
     "stop": "停止",
     "stopping": "正在停止…",
     "started": "以「{{mode}}」启动，回复结束后继续运行。",

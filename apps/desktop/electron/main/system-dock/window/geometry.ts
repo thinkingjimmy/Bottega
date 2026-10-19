@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared axis metrics and logical display facts in DIP, including negative coordinates.
- * [OUTPUT]: Provides deterministic target resolution, bounded safe fallback, three-edge bar/handle/gap placement, interval-based shared edges and inward panel bounds respecting the shared content minimum.
+ * [OUTPUT]: Provides deterministic display/edge geometry and inward panel placement with view-specific preferred dimensions and a fixed usable minimum.
  * [POS]: system-dock/window geometry kernel; never measures DOM, multiplies display scale factors or mutates the requested preference.
  */
 
@@ -86,8 +86,14 @@ export function placeBar(input: BarPlacementInput): BarPlacement | null { return
 
 function onDisplay(input: BarPlacementInput, selected: SelectedDisplay): BarPlacement | null {
   const { display, fallback, reason } = selected;
-  const safeArea = displaySafeArea(display);
-  if (!safeArea) return null;
+  const observedSafeArea = displaySafeArea(display);
+  if (!observedSafeArea) return null;
+  // Replacement owns the Dock edge. Its asynchronous restart must not move our bar with the old reservation.
+  // Keep the top menu/notch exclusion, but release the system Dock's left/right/bottom reservation.
+  const safeArea = input.mode === "replace"
+    ? { x: display.bounds.x, y: observedSafeArea.y, width: display.bounds.width,
+      height: display.bounds.y + display.bounds.height - observedSafeArea.y }
+    : observedSafeArea;
   const { edge, scale } = input.state;
   const vertical = edge !== "bottom";
   const mainSize = vertical ? safeArea.height : safeArea.width, crossSize = vertical ? safeArea.width : safeArea.height;
@@ -138,11 +144,12 @@ export function inBarGap(bar: BarPlacement, point: { x: number; y: number }, sca
 }
 
 /** Panels open inward, shift along the edge, then shrink; an unusable viewport is refused. */
-export function placePanel(bar: BarPlacement, visible: readonly MetricItem[], pinnedCount: number, anchorIndex: number | null, scale: number): Rect | null {
+export function placePanel(bar: BarPlacement, visible: readonly MetricItem[], pinnedCount: number, anchorIndex: number | null, scale: number, overflow = false,
+  preferred: Pick<Rect, "width" | "height"> = DOCK_METRICS.panel): Rect | null {
   const { gap, minWidth, minHeight } = DOCK_METRICS.panel;
   const safe = bar.safeArea, vertical = bar.edge !== "bottom";
   const center = anchorIndex !== null && anchorIndex >= 0 && anchorIndex < visible.length
-    ? (vertical ? bar.bounds.y : bar.bounds.x) + itemCenter(visible, anchorIndex, pinnedCount, bar.edge) * scale
+    ? (vertical ? bar.bounds.y : bar.bounds.x) + itemCenter(visible, anchorIndex, pinnedCount, bar.edge, overflow) * scale
     : (vertical ? bar.bounds.y + bar.bounds.height / 2 : bar.bounds.x + bar.bounds.width / 2);
   const area = { x: safe.x + 8, y: safe.y + 8, width: safe.width - 16, height: safe.height - 16 };
   const reserved = bar.revealed ? 0 : (DOCK_METRICS.barHeight + DOCK_METRICS.bottomMargin) * scale;
@@ -158,7 +165,7 @@ export function placePanel(bar: BarPlacement, visible: readonly MetricItem[], pi
     area.width = end - area.x;
   }
   if (area.width < minWidth || area.height < minHeight) return null;
-  const width = Math.min(DOCK_METRICS.panel.width, area.width), height = Math.min(DOCK_METRICS.panel.height, area.height);
+  const width = Math.min(preferred.width, area.width), height = Math.min(preferred.height, area.height);
   const x = vertical ? bar.edge === "left" ? area.x : area.x + area.width - width : clamp(center - width / 2, area.x, area.x + area.width - width);
   const y = vertical ? clamp(center - height / 2, area.y, area.y + area.height - height) : area.y + area.height - height;
   const bounds = roundInside({ x, y, width, height }, area);

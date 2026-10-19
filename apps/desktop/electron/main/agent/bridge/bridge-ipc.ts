@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on original Agent runtime handlers, trusted renderer residency, exact interaction stamps and durable control receipts.
+ * [INPUT]: Depends on exact-item native background controls, original Agent runtime handlers, trusted renderer residency, exact interaction stamps and durable control receipts.
  * [OUTPUT]: Provides local/remote first-writer approval, user-input and cancel handlers plus original Steer routing; abandoning a fatal turn wakes the dispatchers so queued messages run.
  * [POS]: apps/desktop/electron/main/agent/bridge; Agent IPC and main control adapter; backend behavior remains owned by the original runtime.
  */
@@ -212,10 +212,11 @@ export function registerAgentBridgeIpc(
       backgroundSubscribers.set(context.window.id, { window: context.window, chatId });
       return nativeBackgrounds.list(chatId);
     })
-    .handleWithContext(AGENT_CHANNEL.nativeBackgroundStop, (context, value, incarnation, id) => {
+    .handleWithContext(AGENT_CHANNEL.nativeBackgroundStop, (context, value, incarnation, id, itemId) => {
       const chatId = assertConversation(context, assertConversationId(value));
       if (typeof incarnation !== "string" || incarnation.length > 128 || typeof id !== "string" || !/^[a-f0-9-]{36}$/.test(id)) throw new Error("Invalid native background command identity");
-      return nativeBackgrounds.stopCommand(chatId, incarnation, id);
+      if (typeof itemId !== "string" || !itemId || itemId.length > 65_536) throw new Error("Invalid native background item identity");
+      return nativeBackgrounds.stopCommand(chatId, incarnation, id, itemId);
     })
     .handleWithContext(
       AGENT_CHANNEL.turnAttach,

@@ -119,6 +119,56 @@
     {
       "date": "2026-10-18",
       "reason": "0.2.7 production review: native Provider and durable background ownership, attachment validation/local preview and Dock recovery increased main by 28,795 public bytes (0.643 percent) versus the retained 0.2.6 build; history increased by 1,683 (0.310 percent), including 1,080 import/export/helper bytes from shared chunk repartitioning. No new eager external package or duplicate Zod core was found; the native connection remains lazy. The fresh private production sample at 5ad812ced2fb884a6abdf833c1e2fad89d72eaa7 measures main 4,510,664 and history 544,164 raw bytes. Resample every surface with the unchanged 2 percent policy, including tighter Provider bridge ceilings. No boundary gate or two-byte allowance changes. Evidence: DEV/cloud/release/0.2.7/budget/README.md."
+    },
+    {
+      "date": "2026-10-19",
+      "reason": "Approved native-thumbnail Downloads redesign: grouped two-line rows, enlarged preview, focus/empty/privacy styles and the reference-only downloadVisual preload method. Production out-budget measurement; resample only renderer/system-dock-panel/css and preload/system-dock, retaining every other ceiling and the 2% policy.",
+      "surfaces": {
+        "renderer/system-dock-panel/css": {
+          "before": {
+            "raw": 10599,
+            "gzip": 3197,
+            "brotli": 2696,
+            "twoByteChunks": 0,
+            "measured": {
+              "raw": 10391,
+              "gzip": 3134,
+              "brotli": 2643
+            }
+          },
+          "after": {
+            "raw": 13844,
+            "gzip": 3870,
+            "brotli": 3287,
+            "twoByteChunks": 0,
+            "measured": {
+              "raw": 13572,
+              "gzip": 3794,
+              "brotli": 3222
+            }
+          }
+        },
+        "preload/system-dock": {
+          "before": {
+            "raw": 745,
+            "twoByteChunks": 0,
+            "measured": {
+              "raw": 730,
+              "gzip": 415,
+              "brotli": 351
+            }
+          },
+          "after": {
+            "raw": 872,
+            "twoByteChunks": 0,
+            "measured": {
+              "raw": 854,
+              "gzip": 446,
+              "brotli": 377
+            }
+          }
+        }
+      }
     }
   ],
   "surfaces": {
@@ -200,14 +250,14 @@
       }
     },
     "renderer/system-dock-panel/css": {
-      "raw": 10599,
-      "gzip": 3197,
-      "brotli": 2696,
+      "raw": 13844,
+      "gzip": 3870,
+      "brotli": 3287,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 10391,
-        "gzip": 3134,
-        "brotli": 2643
+        "raw": 13572,
+        "gzip": 3794,
+        "brotli": 3222
       }
     },
     "preload/index": {
@@ -229,12 +279,12 @@
       }
     },
     "preload/system-dock": {
-      "raw": 745,
+      "raw": 872,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 730,
-        "gzip": 415,
-        "brotli": 351
+        "raw": 854,
+        "gzip": 446,
+        "brotli": 377
       }
     },
     "main/index": {

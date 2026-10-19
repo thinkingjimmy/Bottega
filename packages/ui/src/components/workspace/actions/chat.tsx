@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Host copy, archive preference, busy state and rename/archive callbacks.
- * [OUTPUT]: Shared Chat More menu and archive quick action with keyboard/pointer focus handoff.
+ * [OUTPUT]: Shared Chat More menu and archive quick action with a concise Archive tooltip and keyboard/pointer focus handoff.
  * [POS]: Root and Project row actions consumed by Cloud Web and Electron.
  */
 import { useState } from "react";
@@ -33,7 +33,7 @@ export function ChatRowActions({ nested = false, confetti, disabled, copy, onArc
           {confetti ? <ConfettiIcon aria-hidden data-archive-icon="confetti" /> : <Archive aria-hidden data-archive-icon="archive" />}
         </SidebarMenuAction>
       </TooltipTrigger>
-      {confetti && <TooltipContent side="top">{copy.archiveHint}</TooltipContent>}
+      {confetti && <TooltipContent side="top">{copy.archive}</TooltipContent>}
     </Tooltip>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

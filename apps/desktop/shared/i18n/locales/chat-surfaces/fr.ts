@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the chatSurfacesEn structural type
- * [OUTPUT]: French Chat surfaces, including local-file preview actions and failures
+ * [OUTPUT]: French Chat surfaces, including exact-command service controls and local-file preview actions
  * [POS]: French Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
@@ -8,6 +8,12 @@ import { chatSurfacesEn } from "./en";
 
 export const chatSurfacesFr: typeof chatSurfacesEn = {
   nativeBackground: {
+    "running": "En cours",
+    "stopFailed": "Échec de l’arrêt",
+    "retry": "Réessayer l’arrêt",
+    "stopNamed": "Arrêter {{name}}",
+    "retryNamed": "Réessayer d’arrêter {{name}}",
+    "services": "Services actifs dans cette discussion",
     "stop": "Arrêter",
     "stopping": "Arrêt en cours…",
     "started": "Lancé avec « {{mode}} ». Continue après la réponse.",

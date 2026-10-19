@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on DockService facts and effects, the shared placement kernel, the add-candidate table, and Electron dialog/Menu for the two native affordances.
- * [OUTPUT]: Provides handleIntent: the single dispatcher for validated bar/panel intents — hover, activation (native/Bottega App, running item, Finder, detail toggle), context menu, panel navigation, Downloads/Trash actions, add/remove/undo/move/pin, Widget draft/apply (refused as stale when the applied Widget changed since the draft began, unless forced)/cancel/refresh, full Usage and Settings destinations, system Dock restore, and runtime- and placement-fenced action completions that cannot invalidate or close a later run.
+ * [OUTPUT]: Provides handleIntent: the single dispatcher for validated bar/panel intents — hover, activation (native/Bottega App, same-process host activation, running item, Finder, detail toggle), context menu, panel navigation, Downloads/Trash actions, add/remove/undo/move/pin, Widget draft/apply (refused as stale when the applied Widget changed since the draft began, unless forced)/cancel/refresh, full Usage and Settings destinations, system Dock restore, and runtime- and placement-fenced action completions that cannot invalidate or close a later run.
  * [POS]: system-dock intent boundary; every layout edit commits once through DockConfigStore.edit, and no intent can reach a path, shell, AX or Apple Event beyond the fixed adapters (INV-13/14).
  */
 
@@ -20,6 +20,7 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
   if (role === "panel" && intent.kind !== "hover" && intent.kind !== "close-panel") service.panel.focus();
   switch (intent.kind) {
     case "layout-ready": return;
+    case "focus-panel": return;
     case "hover": service.hover(role, intent.inside); return;
     case "activate": return activate(service, role, intent.itemId);
     case "context-menu": {
@@ -32,6 +33,7 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
     }
     case "close-panel": service.closePanel(intent.restoreFocus); return;
     case "open-download": { const current = service.captureInteraction(); if (await service.downloads.open(intent.ref) === "opened" && current()) service.closePanel(false); return; }
+    case "reveal-download": { const current = service.captureInteraction(); if (await service.downloads.revealItem(intent.ref) === "opened" && current()) service.closePanel(false); return; }
     case "reveal-downloads": { const current = service.captureInteraction(); await service.downloads.reveal(); if (current()) service.closePanel(false); return; }
     case "open-finder": { const current = service.captureInteraction(); await service.native?.request({ op: "finder-activate" }).catch(() => undefined); if (current()) service.closePanel(false); return; }
     case "empty-trash": await service.trash?.empty(); return;
@@ -123,12 +125,19 @@ function canonical(value: unknown): string {
 }
 function runningApp(service: DockService, itemId: string) {
   const match = /^running-(\d+)$/.exec(itemId);
-  return match ? service.apps?.runningRegular().find((app) => app.pid === Number(match[1])) ?? null : null;
+  if (!match) return null;
+  const pid = Number(match[1]);
+  return service.apps?.runningRegular().find((app) => app.pid === pid) ?? (service.apps?.hostApp()?.pid === pid ? service.apps.hostApp() : null);
 }
 async function activate(service: DockService, role: DockRole, itemId: string) {
   const placementCurrent = service.captureInteraction();
   const appCurrent = service.apps?.captureGeneration() ?? (() => service.started);
   const current = () => placementCurrent() && appCurrent();
+  if (service.allItems().some((item) => item.id === itemId && item.host)) {
+    service.ports.host?.open();
+    if (current() && role === "panel") service.closePanel(false);
+    return;
+  }
   const running = runningApp(service, itemId);
   if (running) {
     if (running.path) await service.apps?.launch({ path: running.path, bundleIdentifier: running.bundleIdentifier }, service.settingsSnapshot().accessibility === "granted");

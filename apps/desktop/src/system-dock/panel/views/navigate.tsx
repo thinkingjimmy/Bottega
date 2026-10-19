@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the panel context, the common item name/detail policy and glyph cache, and lucide affordance glyphs.
+ * [INPUT]: Depends on the panel context, the common item name/detail policy and native/host glyph cache, and lucide affordance glyphs.
  * [OUTPUT]: Provides `NavigateView`: every Dock item (pinned, then open Apps) as one grouped listbox with arrow/J/K/Home/End movement, Enter to activate, Space/→ to open a detail, Shift+F10 for the item menu, plus Add and Edit exits.
  * [POS]: system-dock/panel keyboard entry and overflow destination (DCK-36); the equivalent of every bar gesture without a pointer (INV-09).
  */
@@ -45,7 +45,7 @@ export function NavigateView() {
   const option = (item: DockBarItem) => <div key={item.id} id={`dock-option-${item.id}`} role="option" className="row option"
     aria-selected={item.id === active?.id} aria-label={dockItemName(item, t, mask, now)} data-status={item.status}
     onPointerDown={(event) => event.preventDefault()} onClick={() => { setActiveId(item.id); activate(item); }}>
-    <span className="row-glyph"><DockGlyph subject={{ kind: item.kind, iconKey: item.iconKey, entry: item.entry, trash: item.trash, widgetType: item.widget?.type }} icons={icons} /></span>
+    <span className="row-glyph"><DockGlyph subject={{ kind: item.kind, host: item.host, iconKey: item.iconKey, entry: item.entry, trash: item.trash, widgetType: item.widget?.type }} icons={icons} /></span>
     <span className="row-text"><span className="row-title">{item.label}</span>
       {item.running && item.pinned && <span className="row-meta">{t("systemDock.item.running")}</span>}</span>
     {hasDetail(item) && <ChevronRight className="row-trailing" aria-hidden="true" />}

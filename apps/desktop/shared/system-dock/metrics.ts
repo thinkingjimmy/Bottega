@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the machine-local Dock edge vocabulary.
- * [OUTPUT]: Provides axis-aware bar metrics, a shared face-to-metric projection, compact content-dependent sidebar extents, anchors, overflow calculations and usable panel dimensions.
+ * [OUTPUT]: Provides axis-aware bar metrics, face extents, grouped ordering, anchors, overflow and preferred panel dimensions, including the larger Downloads detail.
  * [POS]: shared/system-dock geometry kernel; main never measures DOM, the renderer never guesses window bounds, both read these numbers.
  */
 
@@ -17,13 +17,14 @@ export const DOCK_METRICS = {
      edge follows it at every scale. The bar window is exactly the strip, so the two must agree. */
   stripRadius: 17,
   panel: { width: 360, height: 440, minWidth: 320, minHeight: 240, gap: 8 },
+  downloadsPanel: { width: 408, height: 600 },
 } as const;
 
-export type MetricItem = { kind: string; widgetType?: string; limits?: { configured: boolean; sourceCount: number; more: number } };
+export type MetricItem = { kind: string; entry?: string; widgetType?: string; limits?: { configured: boolean; sourceCount: number; more: number } };
 /** Only projection facts affect geometry; the same adapter serves main and the item renderer. */
-export function metricItem(item: { kind: string; widget?: { type: string; configured?: boolean; sources?: readonly unknown[]; more?: number } }): MetricItem {
+export function metricItem(item: { kind: string; entry?: string; widget?: { type: string; configured?: boolean; sources?: readonly unknown[]; more?: number } }): MetricItem {
   const widget = item.widget;
-  return { kind: item.kind, widgetType: widget?.type,
+  return { kind: item.kind, entry: item.entry, widgetType: widget?.type,
     ...(widget?.type === "builtin.ai-limits" ? { limits: { configured: widget.configured === true, sourceCount: widget.sources?.length ?? 0, more: widget.more ?? 0 } } : {}) };
 }
 export function itemExtent(item: MetricItem, edge: DockEdge): number {
@@ -39,14 +40,26 @@ export function itemExtent(item: MetricItem, edge: DockEdge): number {
   const count = Math.min(sourceCount, 3);
   return count * side.ring + Math.max(0, count - 1) * side.gap + side.padding + (more > 0 ? side.more : 0);
 }
-/** Main-axis content extent in DIP before Dock scale, including padding and the running separator. */
+/** Apps and Widgets, temporary running Apps, then Downloads and Trash. Empty groups have no divider. */
+export function barGroups<T extends { entry?: string }>(pinned: readonly T[], running: readonly T[]) {
+  const trailing = pinned.filter((item) => item.entry === "system.downloads" || item.entry === "system.trash")
+    .sort((a, b) => Number(a.entry === "system.trash") - Number(b.entry === "system.trash"));
+  return [
+    { area: "pinned" as const, items: pinned.filter((item) => !trailing.includes(item)) },
+    { area: "running" as const, items: running },
+    { area: "pinned" as const, items: trailing },
+  ];
+}
+/** Main-axis content extent in DIP before Dock scale, including padding and group dividers. */
 export function barExtent(pinned: readonly MetricItem[], running: readonly MetricItem[], overflow: boolean, edge: DockEdge): number {
   const extents = [...pinned, ...running].map((item) => itemExtent(item, edge));
   const count = extents.length + (overflow ? 1 : 0);
-  // An empty Dock still shows its "add" call to action instead of a zero-width strip (INV-07).
   if (!count) return edge === "bottom" ? DOCK_METRICS.emptyCta : DOCK_METRICS.sidebarEmptyCta;
+  const groups = barGroups(pinned, running);
+  const overflowGroup = running.length ? 1 : 0;
+  const groupCount = groups.filter((group, index) => group.items.length || (overflow && index === overflowGroup)).length;
   return DOCK_METRICS.padding * 2 + extents.reduce((sum, value) => sum + value, 0) + Math.max(0, count - 1) * DOCK_METRICS.gap
-    + (running.length && pinned.length ? DOCK_METRICS.separator : 0) + (overflow ? DOCK_METRICS.overflowButton : 0);
+    + Math.max(0, groupCount - 1) * DOCK_METRICS.separator + (overflow ? DOCK_METRICS.overflowButton : 0);
 }
 /**
  * How many pinned items fit (running items overflow first, then trailing pinned items).
@@ -59,8 +72,20 @@ export function fitItems(pinned: readonly MetricItem[], running: readonly Metric
   return { pinned: 0, running: 0 };
 }
 /** Main-axis centre of an item relative to the strip's leading edge (DIP, unscaled). */
-export function itemCenter(visible: readonly MetricItem[], index: number, pinnedCount: number, edge: DockEdge): number {
+export function itemCenter(visible: readonly MetricItem[], index: number, pinnedCount: number, edge: DockEdge, overflow = false): number {
+  const target = visible[index];
+  const overflowGroup = visible.length > pinnedCount ? 1 : 0;
+  const groups = barGroups(visible.slice(0, pinnedCount), visible.slice(pinnedCount))
+    .map((group, index) => ({ ...group, overflow: overflow && index === overflowGroup }))
+    .filter((group) => group.items.length || group.overflow);
   let position = DOCK_METRICS.padding;
-  for (let i = 0; i < index; i += 1) position += itemExtent(visible[i]!, edge) + DOCK_METRICS.gap + (i === pinnedCount - 1 && pinnedCount < visible.length ? DOCK_METRICS.separator : 0);
-  return position + itemExtent(visible[index]!, edge) / 2;
+  for (const [groupIndex, group] of groups.entries()) {
+    if (groupIndex > 0) position += DOCK_METRICS.separator;
+    for (const item of group.items) {
+      if (item === target) return position + itemExtent(item, edge) / 2;
+      position += itemExtent(item, edge) + DOCK_METRICS.gap;
+    }
+    if (group.overflow) position += DOCK_METRICS.overflowButton + DOCK_METRICS.gap;
+  }
+  return position;
 }

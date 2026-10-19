@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod only.
- * [OUTPUT]: Provides the machine-local DockLocalState schema/defaults (disabled coexistence, preferred mode, replacement intent, consent version, three-edge display intents with additive defaults, visibility, handle, shortcut, scale, privacy mask, per-mode running area, native bindings) and the replacement phase/registration vocabularies.
+ * [OUTPUT]: Provides the machine-local DockLocalState schema/defaults (disabled coexistence, preferred mode, replacement intent, consent version, three-edge display intents with additive defaults, pinned visibility by default, handle, shortcut, scale, privacy mask, per-mode running area, native bindings) and the replacement phase/registration vocabularies.
  * [POS]: shared/system-dock local facts; never synced, never uploaded (INV-06). Three lifetimes stay separate: intent (replacementEnabled), this run's takeover (phase), and the system registration fact (INV-02).
  */
 
@@ -52,7 +52,7 @@ export type DockLocalState = z.infer<typeof dockLocalStateSchema>;
 
 export const DEFAULT_DOCK_LOCAL_STATE: DockLocalState = Object.freeze({
   version: 1, enabled: false, preferredMode: "coexist", replacementEnabled: false, consentVersion: null,
-  displayPreference: { displayId: null, preferExternal: false, label: null }, edge: "bottom", visibility: "autohide", showHandle: true,
+  displayPreference: { displayId: null, preferExternal: false, label: null }, edge: "bottom", visibility: "pinned", showHandle: true,
   shortcut: "Alt+Shift+Command+D", scale: 1, privacyMask: false,
   showRunningByMode: { replace: true, coexist: false }, coexistenceFallback: "above-system-dock", nativeBindings: {},
 }) as DockLocalState;

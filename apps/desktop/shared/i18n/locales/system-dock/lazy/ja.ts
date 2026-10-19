@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain ja copy.
- * [OUTPUT]: Provides systemDockLazyJa, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status.
+ * [OUTPUT]: Provides systemDockLazyJa, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes grouped Downloads, previews and named Finder actions.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../ja.ts.
  */
 
@@ -105,6 +105,14 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     openFinder: "Finder を開く",
   },
   downloads: {
+    groupRecent: "最近",
+    groupWeek: "過去7日間",
+    groupEarlier: "それ以前",
+    preview: "{{name}}をプレビュー",
+    revealEntry: "{{name}}をFinderに表示",
+    previewLoading: "プレビューを読み込み中…",
+    previewUnavailable: "プレビューできません。ファイルを開くことはできます。",
+    openFile: "ファイルを開く",
     loading: "ダウンロードを読み込み中…",
     empty: "「ダウンロード」フォルダは空です。",
     denied: "Bottega には「ダウンロード」フォルダを読み取る許可がありません。「システム設定」›「プライバシーとセキュリティ」›「ファイルとフォルダ」で許可するか、Finder で「ダウンロード」を開いてください。",
@@ -410,6 +418,7 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     edit: "Dock を編集…",
     settings: "Dock 設定…",
     open: "開く",
+    quit: "終了",
     remove: "Dock から取り除く",
     keep: "Dock に追加",
     reveal: "Finder に表示",

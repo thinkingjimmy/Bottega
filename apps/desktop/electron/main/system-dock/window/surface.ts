@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow/ipcMain, the frame guard, the isolated system-dock preload, and the shared bar/panel channels and intent validator.
- * [OUTPUT]: Provides createDockSurface (least-privilege auxiliary window: sandboxed, context-isolated, no Node, exact URL, navigation/popup denial, role argument, explicitly clear background so native glass is not covered by the default white) and DockIpc (one registration of snapshot/intent/icons that authorizes by live webContents identity, main frame and exact entry URL, never by a caller-claimed role).
+ * [OUTPUT]: Provides least-privilege Dock windows and DockIpc, authorizing snapshots/intents/icons and panel-only bounded download visuals by live webContents, main frame and exact URL.
  * [POS]: system-dock/window trust boundary (INV-13); stale, destroyed or foreign senders are rejected before any intent reaches DockService.
  */
 
@@ -8,7 +8,7 @@ import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { devRendererUrl, rendererMatches } from "../../window/security/frame-guard";
-import { dockIntentSchema, SYSTEM_DOCK_CHANNEL, type DockIntent } from "../../../../shared/system-dock/ipc";
+import { dockIntentSchema, downloadVisualRequestSchema, SYSTEM_DOCK_CHANNEL, type DockIntent, type DownloadVisual, type DownloadVisualRequest } from "../../../../shared/system-dock/ipc";
 
 export type DockRole = "bar" | "panel";
 export function dockEntryUrl(mainDirectory: string, role: DockRole, rendererUrl = devRendererUrl(app.isPackaged)) {
@@ -32,7 +32,8 @@ export function createDockSurface(input: { mainDirectory: string; role: DockRole
   return window;
 }
 
-type Handlers = { snapshot(role: DockRole): unknown; intent(role: DockRole, intent: DockIntent): Promise<void>; icons(role: DockRole, keys: string[]): Promise<Record<string, string>> };
+type Handlers = { snapshot(role: DockRole): unknown; intent(role: DockRole, intent: DockIntent): Promise<void>; icons(role: DockRole, keys: string[]): Promise<Record<string, string>>;
+  downloadVisual(role: DockRole, input: DownloadVisualRequest): Promise<DownloadVisual | null> };
 export class DockIpc {
   private readonly surfaces = new Map<DockRole, { window: BrowserWindow; url: string }>();
   constructor(private readonly handlers: Handlers) {
@@ -47,6 +48,12 @@ export class DockIpc {
       const role = this.trusted(event);
       if (!Array.isArray(raw) || raw.length > 128 || raw.some((key) => typeof key !== "string" || !/^i[A-Za-z0-9_-]{8,40}$/.test(key))) throw new Error("SYSTEM_DOCK_ICONS_INVALID");
       return this.handlers.icons(role, raw as string[]);
+    });
+    ipcMain.handle(SYSTEM_DOCK_CHANNEL.downloadVisual, (event, raw: unknown) => {
+      const role = this.trusted(event);
+      const input = downloadVisualRequestSchema.safeParse(raw);
+      if (role !== "panel" || !input.success) throw new Error("SYSTEM_DOCK_DOWNLOAD_VISUAL_INVALID");
+      return this.handlers.downloadVisual(role, input.data);
     });
   }
   bind(role: DockRole, window: BrowserWindow | null, url = "") { if (window) this.surfaces.set(role, { window, url }); else this.surfaces.delete(role); }
@@ -64,6 +71,7 @@ export class DockIpc {
   }
   close() {
     ipcMain.removeHandler(SYSTEM_DOCK_CHANNEL.snapshot); ipcMain.removeHandler(SYSTEM_DOCK_CHANNEL.intent); ipcMain.removeHandler(SYSTEM_DOCK_CHANNEL.icons);
+    ipcMain.removeHandler(SYSTEM_DOCK_CHANNEL.downloadVisual);
     this.surfaces.clear();
   }
 }

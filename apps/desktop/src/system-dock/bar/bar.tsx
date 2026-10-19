@@ -1,13 +1,13 @@
 /**
  * [INPUT]: Depends on the isolated Dock bridge adapter, shared bar metrics, on-demand side styles, the common translator/glyph cache, BarItem, and the reorder gesture.
- * [OUTPUT]: Provides `DockBar`: the handle-only state, the three-edge translucent strip (pinned, separator, running, overflow), committed-layout ACKs, revision-fenced interaction and geometry-fenced dragging, the just-added highlight, the empty-layout CTA, hover/activate/context-menu/move/pin-running intents, and the refusal of external file drops.
+ * [OUTPUT]: Provides `DockBar`: the handle-only state, the three-edge translucent strip (Apps/Widgets, running Apps, Downloads/Trash with group dividers, overflow), committed-layout ACKs, revision-fenced interaction and geometry-fenced dragging, the just-added highlight, the empty-layout CTA, hover/activate/context-menu/move/pin-running intents, and the refusal of external file drops.
  * [POS]: system-dock/bar root composed by main.tsx; main owns window bounds from the same DOCK_METRICS, every reveal delay, and what an activation means (launch, open detail, or close the served detail).
  */
 
-import { useEffect, useLayoutEffect, type CSSProperties, type MouseEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, type CSSProperties, type MouseEvent } from "react";
 import { Ellipsis, Plus } from "lucide-react";
 import type { DockBarSnapshot } from "../../../shared/system-dock/ipc";
-import { DOCK_METRICS, itemExtent, metricItem } from "../../../shared/system-dock/metrics";
+import { barGroups, DOCK_METRICS, itemExtent, metricItem } from "../../../shared/system-dock/metrics";
 import { isBarSnapshot, sendIntent, useDockSnapshot, useHoverIntent, useNow } from "../common/bridge";
 import { dockTranslator } from "../common/format";
 import { useDockIcons } from "../common/icons";
@@ -80,6 +80,10 @@ export function DockBar() {
   const common = { edge: snapshot.edge, t, mask: snapshot.privacyMask, now, icons, reorder, onActivate: activate };
   const style = { zoom: snapshot.scale, "--gap": `${DOCK_METRICS.gap}px`, "--pad": `${DOCK_METRICS.padding}px`,
     [vertical ? "width" : "height"]: DOCK_METRICS.barHeight, borderRadius: DOCK_METRICS.stripRadius / snapshot.scale } as CSSProperties;
+  const overflowGroup = snapshot.running.length ? 1 : 0;
+  const groups = barGroups(snapshot.pinned, snapshot.running)
+    .map((group, index) => ({ ...group, overflow: snapshot.overflow > 0 && index === overflowGroup }))
+    .filter((group) => group.items.length || group.overflow);
   return <main className="dock" data-mode={snapshot.mode} data-edge={snapshot.edge}>
     <div className="strip" data-strip role="toolbar" aria-orientation={vertical ? "vertical" : "horizontal"} aria-label={t("systemDock.bar.label")} style={style}
       data-dragging={reorder.view ? "true" : undefined} onContextMenu={contextMenu}>
@@ -87,17 +91,18 @@ export function DockBar() {
         onClick={() => void sendIntent({ kind: "open-panel", view: { kind: "add" }, placementRevision })}>
         <Plus aria-hidden="true" strokeWidth={2} /><span>{t("systemDock.bar.emptyCta")}</span>
       </button> : <>
-        {snapshot.pinned.map((item, index) => <BarItem key={item.id} item={item} index={index} area="pinned" {...common}
-          open={snapshot.panelTarget === item.id} busy={snapshot.busyItemId === item.id} highlight={snapshot.highlightItemId === item.id} />)}
-        {snapshot.pinned.length > 0 && snapshot.running.length > 0 &&
-          <span className="separator" role="separator" aria-orientation={vertical ? "horizontal" : "vertical"} style={{ [vertical ? "height" : "width"]: DOCK_METRICS.separator - DOCK_METRICS.gap }} />}
-        {snapshot.running.map((item, index) => <BarItem key={item.id} item={item} index={index} area="running" {...common}
-          open={snapshot.panelTarget === item.id} busy={snapshot.busyItemId === item.id} highlight={snapshot.highlightItemId === item.id} />)}
-        {snapshot.overflow > 0 && <button type="button" className="overflow" style={{ width: vertical ? DOCK_METRICS.item : DOCK_METRICS.overflowButton, height: DOCK_METRICS.overflowButton }}
+        {groups.map((group, groupIndex) => <Fragment key={groupIndex}>
+          {groupIndex > 0 && <span className="separator" role="separator" aria-orientation={vertical ? "horizontal" : "vertical"}
+            style={{ [vertical ? "height" : "width"]: DOCK_METRICS.separator - DOCK_METRICS.gap }} />}
+          {group.items.map((item) => <BarItem key={item.id} item={item}
+            index={(group.area === "pinned" ? snapshot.pinned : snapshot.running).indexOf(item)} area={group.area} {...common}
+            open={snapshot.panelTarget === item.id} busy={snapshot.busyItemId === item.id} highlight={snapshot.highlightItemId === item.id} />)}
+        {group.overflow && <button type="button" className="overflow" style={{ width: vertical ? DOCK_METRICS.item : DOCK_METRICS.overflowButton, height: DOCK_METRICS.overflowButton }}
           aria-label={t("systemDock.bar.overflow", { count: snapshot.overflow })} title={t("systemDock.bar.overflow", { count: snapshot.overflow })}
           aria-haspopup="dialog" onClick={() => void sendIntent({ kind: "open-panel", view: { kind: "navigate" }, placementRevision })}>
           <Ellipsis aria-hidden="true" strokeWidth={2} />
         </button>}
+        </Fragment>)}
       </>}
     </div>
   </main>;

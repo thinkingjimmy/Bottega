@@ -2,6 +2,7 @@
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, role-scoped plugin bridge installers, shared renderer IPC contracts, and the build-gated cloud account lifecycle.
  * Announces surface readiness only after the renderer command listener is installed.
  * [OUTPUT]: Exposes explicit Project history preview/import commands and renderer bridges including pathless native local-package selection, the main-window macOS Settings → Dock bridge, the main-window Agent-configuration, Plugins & Apps, workflow and Provider catalog bridges, nested quota snapshot/demand access, the fire-and-forget Agent connection warm intent, fixed-purpose background display selection and panel/Agent management, explicit manual/adopt retry intents, the main-window-only frozen startup snapshot, scoped plugin surfaces and GUI history in both product window roles, and the launch-flagged startup trace mark channel; rejects extra navigation arguments. Exposes the typed App impact and enablement bridge.
+ * Native Stop carries exact Chat/incarnation/owner/item identities; native process IDs remain private.
  * Artifact workspace requests and revocable lifecycle events remain restricted to the trusted main frame.
  * Workspace file links expose scoped resolution and enumerated native actions, never a general path opener.
  * [POS]: All-frame preload security boundary; OOPIF/srcdoc frames receive RTC denial but no Electron, Node, IPC, path, secret, or product bridge. Memory and Extensions single-input methods share a fixed-arity invoke factory.
@@ -268,7 +269,7 @@ contextBridge.exposeInMainWorld("projectPersonalization", {
 
 contextBridge.exposeInMainWorld("agent", {
   listNativeBackground: (conversationId: string) => ipcRenderer.invoke(AGENT_CHANNEL.nativeBackgroundList, conversationId),
-  stopNativeBackground: (conversationId: string, incarnationId: string, id: string) => ipcRenderer.invoke(AGENT_CHANNEL.nativeBackgroundStop, conversationId, incarnationId, id),
+  stopNativeBackground: (conversationId: string, incarnationId: string, id: string, itemId: string) => ipcRenderer.invoke(AGENT_CHANNEL.nativeBackgroundStop, conversationId, incarnationId, id, itemId),
   onNativeBackgroundChanged: subscribe(AGENT_CHANNEL.nativeBackgroundChanged),
   cancel: (requestId: string) =>
     ipcRenderer.send(AGENT_CHANNEL.cancel, requestId),

@@ -27,7 +27,7 @@ Bottega no longer adds its previous credential-path denials, protected internal 
 
 Plan uses the selected permission mode; it does not make the filesystem read-only. Tasks that require strict read-only access, no network, no tools or Skill file isolation are unavailable through this Codex integration. Bottega explains the unsupported requirement before execution instead of silently relaxing it or switching a task fixed to Codex to another Provider.
 
-Command output, background status and Stop stay in the original command details. Bottega continues to check tool access, Chat ownership and process lifecycle.
+Command output stays in the original command details. Background services show their command name, status and independent Stop above the Chat input. A failed Stop keeps its retry action, and other services continue running. Bottega continues to check tool access, Chat ownership and process lifecycle.
 
 ## Sketch
 
@@ -115,12 +115,13 @@ Command output, background status and Stop stay in the original command details.
 - On macOS, choose a Bottega Logo icon, a monochrome menu-bar icon, or the notch task panel. The selection is remembered, with an icon available when no notched display is connected. Windows and Linux use their system tray.
 - Follow running tasks and pending requests in the notch panel, navigate with the keyboard, and return to the related chat.
 - Reopen or quit Bottega through the available background entry.
+- Download updates from the sidebar without leaving your current page. The sidebar and Settings share progress and a percentage. When a download finishes, choose Restart and update; an idle workspace does not trigger a restart.
 
 ## Bottega Dock
 
 **Alpha · macOS 27 · Apple silicon**
 
-Dock remains **Alpha** in 0.2.7. Replacement, recovery across logout or restart, and display/fullscreen combinations are still being validated. The plugin requires macOS 27.x and Apple silicon; the main application's requirements stay unchanged.
+Dock remains **Alpha** in 0.2.8. Replacement, recovery across logout or restart, and display/fullscreen combinations are still being validated. The plugin requires macOS 27.x and Apple silicon; the main application's requirements stay unchanged.
 
 - On macOS 27.x with Apple silicon, keep the Apps you build in Bottega, your other Apps, Finder, Downloads, the Trash, and an AI-limits ring per Agent in one Dock. This requirement applies to the entire Dock plugin; the main application's requirements stay unchanged.
 - Enable it from Settings › Plugins › Dock. Choose coexistence, or replacement after the installed app, native helper, recovery executable and bundled background-service configuration pass verification. Development and unsigned builds offer coexistence.
@@ -130,6 +131,10 @@ Dock remains **Alpha** in 0.2.7. Replacement, recovery across logout or restart,
 - Choose the primary display, prefer an external display, or select a specific display, then place the Dock on the left, bottom, or right edge. Display and edge preferences stay on this computer.
 - Use the native glass appearance where supported, with a fallback background when it is unavailable. Turning the plugin off preserves your layout.
 - Keep the same end-to-end encrypted Dock layout on every computer in your account; simultaneous changes merge, and real conflicts ask you.
+
+- Keep new Dock preferences pinned on screen, or select auto-hide. Apps and widgets, other running Apps, and Downloads and Trash use separate groups.
+- Return to Bottega from its own Dock icon, even when other open Apps are hidden. Quit a running native App through its normal save and cancel prompts.
+- Browse Downloads by time with native thumbnails and file icons. Enlarge previews, return with Escape, and reveal files in Finder. Privacy masking also hides thumbnails.
 
 ## Cloud Sync
 
@@ -170,7 +175,7 @@ Dock remains **Alpha** in 0.2.7. Replacement, recovery across logout or restart,
 - Rebuild conversations from the folder when the local Chat database cannot be opened, while the previous database is preserved.
 - Move the folder from Settings › General, including to another disk, with every saved path following it; or erase all of Bottega's data on this computer while cloud data stays in your account.
 - Keep a Bottega folder with the computer that published it: the same computer takes it back after a reinstall, a cleared data folder, or a new profile with nothing to confirm, and another computer is refused by name. A folder that has never synchronized opens anywhere.
-- Back up the Bottega folder and complete application data before changing versions. 0.2.7 retains existing content and uses protocol 19; see the [upgrade guide](../getting-started/README.md#upgrading-to-027), including historical migration notes for older releases.
+- Back up the Bottega folder and complete application data before changing versions. 0.2.8 retains existing content and uses protocol 19; see the [upgrade guide](../getting-started/README.md#upgrading-to-028), including historical migration notes for older releases.
 
 ## Bundled runtime and Agent boundaries
 

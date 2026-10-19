@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, the Dock layout/local-state models, Agent/usage identities, and the shared locale type.
- * [OUTPUT]: Provides the least-privilege bar/panel channels, snapshots with display placement/presentation, revision-fenced bar intents and layout ACK, enumerated intents with strict validators, the isolated `systemDock` bridge type, and the main-window Settings → Dock channels, snapshot with signed-installation capability reasons, and bridge.
+ * [OUTPUT]: Provides least-privilege Dock channels, pathless download visual requests, snapshots, validated intents, isolated bridges and the main-window Settings contract.
  * [POS]: shared/system-dock transport contract; auxiliary renderers receive projections and opaque short-lived references only, never paths, accounts, shell, AX or Apple Event senders (INV-13).
  */
 
@@ -21,6 +21,7 @@ export const SYSTEM_DOCK_CHANNEL = {
   changed: "system-dock:changed",
   intent: "system-dock:intent",
   icons: "system-dock:icons",
+  downloadVisual: "system-dock:download-visual",
 } as const;
 
 export type TrashState = "empty" | "full" | "unknown";
@@ -34,6 +35,8 @@ export type DockBarItem = Readonly<{
   id: string;
   kind: "native-app" | "bottega-app" | "system" | "widget";
   pinned: boolean;
+  /** The current Bottega process uses product branding and its own activation/quit lifecycle. */
+  host?: boolean;
   label: string;
   iconKey: string | null;
   running: boolean;
@@ -76,6 +79,9 @@ export type PanelView =
   | Readonly<{ kind: "navigate" }>;
 export type DownloadEntry = Readonly<{ ref: string; name: string; kind: "file" | "directory" | "package"; modifiedAt: number; size: number | null }>;
 export type DownloadsDetail = Readonly<{ state: "ok" | "partial" | "empty" | "denied" | "missing" | "error" | "loading"; entries: readonly DownloadEntry[] }>;
+export type DownloadVisual = Readonly<{ kind: "thumbnail" | "icon"; dataUrl: string }>;
+export const downloadVisualRequestSchema = z.object({ ref: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/), size: z.enum(["thumbnail", "preview"]) }).strict();
+export type DownloadVisualRequest = z.infer<typeof downloadVisualRequestSchema>;
 export type TrashDetail = Readonly<{ state: TrashState; emptying: boolean; automation: "unknown" | "granted" | "needs-prompt" | "denied" | "unavailable";
   lastResult: "none" | "emptied" | "partial" | "failed" | "unknown" | "denied" | "cancelled" }>;
 export type AddCandidate = Readonly<{ key: string; kind: "native-app" | "bottega-app" | "system" | "widget"; label: string; iconKey: string | null;
@@ -117,7 +123,9 @@ export const dockIntentSchema = z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("navigate") }).strict(),
   ]) }).strict(),
   z.object({ kind: z.literal("close-panel"), restoreFocus: z.boolean() }).strict(),
+  z.object({ kind: z.literal("focus-panel") }).strict(),
   z.object({ kind: z.literal("open-download"), ref: shortRef }).strict(),
+  z.object({ kind: z.literal("reveal-download"), ref: shortRef }).strict(),
   z.object({ kind: z.literal("reveal-downloads") }).strict(),
   z.object({ kind: z.literal("open-finder") }).strict(),
   z.object({ kind: z.literal("empty-trash"), confirmed: z.literal(true) }).strict(),
@@ -146,6 +154,7 @@ export type SystemDockBridge = {
   snapshot(): Promise<DockBarSnapshot | PanelSnapshot>;
   intent(intent: DockIntent): Promise<void>;
   icons(keys: readonly string[]): Promise<Record<string, string>>;
+  downloadVisual(input: DownloadVisualRequest): Promise<DownloadVisual | null>;
   onChanged(listener: (snapshot: DockBarSnapshot | PanelSnapshot) => void): () => void;
 };
 

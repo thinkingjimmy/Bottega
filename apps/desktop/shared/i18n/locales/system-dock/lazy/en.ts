@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain en copy.
- * [OUTPUT]: Provides systemDockLazyEn, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status.
+ * [OUTPUT]: Provides systemDockLazyEn, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes grouped Downloads, previews and named Finder actions.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../en.ts.
  */
 
@@ -103,6 +103,14 @@ export const systemDockLazyEn = {
     openFinder: "Open Finder",
   },
   downloads: {
+    groupRecent: "Recent",
+    groupWeek: "Previous 7 days",
+    groupEarlier: "Earlier",
+    preview: "Preview {{name}}",
+    revealEntry: "Show {{name}} in Finder",
+    previewLoading: "Loading preview…",
+    previewUnavailable: "Preview unavailable. You can still open the file.",
+    openFile: "Open file",
     loading: "Loading Downloads…",
     empty: "Your Downloads folder is empty.",
     denied: "Bottega doesn’t have permission to read your Downloads folder. You can allow it in System Settings › Privacy & Security › Files & Folders, or open Downloads in Finder.",
@@ -408,6 +416,7 @@ export const systemDockLazyEn = {
     edit: "Edit Dock…",
     settings: "Dock Settings…",
     open: "Open",
+    quit: "Quit",
     remove: "Remove from Dock",
     keep: "Keep in Dock",
     reveal: "Show in Finder",

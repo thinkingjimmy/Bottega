@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the chatSurfacesEn structural type
- * [OUTPUT]: Japanese Chat surfaces, including local-file preview actions and failures
+ * [OUTPUT]: Japanese Chat surfaces, including exact-command service controls and local-file preview actions
  * [POS]: Japanese Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
@@ -8,6 +8,12 @@ import { chatSurfacesEn } from "./en";
 
 export const chatSurfacesJa: typeof chatSurfacesEn = {
   nativeBackground: {
+    "running": "実行中",
+    "stopFailed": "停止に失敗",
+    "retry": "停止を再試行",
+    "stopNamed": "{{name}} を停止",
+    "retryNamed": "{{name}} の停止を再試行",
+    "services": "このチャットで実行中のサービス",
     "stop": "停止",
     "stopping": "停止中…",
     "started": "「{{mode}}」で起動。返信後も実行を続けます。",

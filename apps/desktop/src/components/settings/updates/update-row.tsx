@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, ui Spinner, Settings icon buttons and lucide status glyphs
- * [OUTPUT]: Provides UpdateRow (identity, `current → latest` versions, one trailing status/action and an optional detail line) and its trailing slot helpers
+ * [OUTPUT]: Provides wrapping UpdateRow (identity, versions, trailing action and optional detail) and status helpers with optional visible busy text and a phase-specific icon
  * [POS]: Shared row shell of Settings › Updates; AppUpdateRow and CliUpdateRow only decide what fills the slots
  */
 
@@ -19,7 +19,7 @@ export function UpdateRow({ icon, name, current, latest, trailing, detail }: {
   detail?: ReactNode;
 }) {
   return <div role="group" aria-label={name} className="px-4 py-3">
-    <div className="flex min-h-8 items-center gap-3">
+    <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-2">
       <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center">{icon}</span>
       <span className="font-medium text-sm">{name}</span>
       {current && <span className="flex min-w-0 items-center gap-1 truncate text-muted-foreground text-xs tabular-nums">
@@ -38,8 +38,8 @@ export const UpToDateMark = ({ label }: { label: string }) =>
 export const FailedMark = ({ label }: { label: string }) =>
   <CircleAlert role="img" aria-label={label} className="mx-2 size-4 text-destructive" />;
 
-export const UpdatingMark = ({ label }: { label: string }) =>
-  <span role="status" aria-label={label} className="mx-2 flex"><Spinner className="size-4 text-muted-foreground" /></span>;
+export const UpdatingMark = ({ label, children, icon }: { label: string; children?: ReactNode; icon?: ReactNode }) =>
+  <span role="status" aria-label={label} className="mx-2 flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">{icon ?? <Spinner className="size-4 shrink-0" />}{children}</span>;
 
 export const UpdateButton = ({ label, onClick, disabled }: { label: string; onClick(): void; disabled?: boolean }) =>
   <SettingsIconButton label={label} variant="ghost" disabled={disabled} onClick={onClick}><Download /></SettingsIconButton>;

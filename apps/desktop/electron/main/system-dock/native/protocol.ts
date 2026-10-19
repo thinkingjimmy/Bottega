@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod only.
- * [OUTPUT]: Provides the versioned JSON-line protocol between main and the `system-dock-bridge` helper: request ops, strict result schemas, pushed events, and the recovery-agent XPC handshake payloads relayed through the helper.
+ * [OUTPUT]: Provides the versioned JSON-line protocol between main and the `system-dock-bridge` helper: request ops including identity-bound normal App quit, strict result schemas, pushed events, and the recovery-agent XPC handshake payloads relayed through the helper.
  * [POS]: system-dock/native wire contract; the Objective-C helper (resources/system-dock/native/bridge.m) implements exactly these ops. Paths may cross this pipe; they never reach a renderer.
  */
 
@@ -49,6 +49,7 @@ export type BridgeRequest =
   | { op: "icons"; paths: string[]; size: number }
   | { op: "launch"; path: string; activate: true }
   | { op: "activate-pid"; pid: number }
+  | { op: "quit-app"; pid: number; startedAt: number; bundleIdentifier: string | null; path: string | null }
   | { op: "ax-status"; prompt: boolean }
   | { op: "unminimize"; pid: number }
   | { op: "dock-prefs-read" }
@@ -77,6 +78,8 @@ export const bridgeResults = {
   launch: z.object({ pid: pid.nullable() }).strict(),
   /** NSRunningApplication activation without a reopen event: returns focus to the app that had it (INV-09). */
   "activate-pid": z.object({ activated: z.boolean() }).strict(),
+  /** A request accepted by AppKit is not proof of exit; the App may ask to save or cancel. */
+  "quit-app": z.object({ requested: z.boolean() }).strict(),
   "ax-status": z.object({ trusted: z.boolean() }).strict(),
   unminimize: unminimizeSchema,
   "dock-prefs-read": dockPrefsSchema,

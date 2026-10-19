@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on BrowserWindow, shared update IPC including manual-only policy, one UpdateAdapter, signed candidate compatibility preflight, scheduling/forced-exit hooks, and a two-phase safe-quit port
- * [OUTPUT]: Provides app-singleton UpdateService with check/download state, durable-contract preflight, installer handoff (a macOS exit deadline that waits for native staging), deferred requirement cancellation, candidate identity fences, a reported and re-scheduled failed validation, and retryable installation intent.
+ * [OUTPUT]: Provides app-singleton UpdateService with check/download state, explicit restart admission, durable-contract preflight, native installer handoff, deferred requirement cancellation, candidate fences and retryable validation failures.
  * [POS]: The main-owned update lifecycle authority; windows subscribe to it but never own timers or updater listeners
  */
 
@@ -47,7 +47,6 @@ export type UpdateServiceOptions = {
     apply(matrix: AppGuiCompatibilitySupport): Promise<void>;
   }>;
   prepareSafeQuit(reason: "update", interactive?: boolean): Promise<SafeQuitResult>;
-  hasStopOperations?(): boolean;
   forceExit(code: number): void;
   now?: () => number;
   setTimer?: (action: () => void, delay: number) => Timer;
@@ -81,7 +80,6 @@ export class UpdateService {
   private requirementFlight: Promise<UpdateSnapshot> | null = null;
   private requirement: AppCompatibilityFailure | null = null;
   private minimumCheck = false;
-  private suppressAutomaticInstall = false;
   private installFlight: Promise<void> | null = null;
   private firstTimer: Timer | null = null;
   private intervalTimer: Timer | null = null;
@@ -186,7 +184,6 @@ export class UpdateService {
     }
     if (this.requirementFlight) return this.requirementFlight;
     // Synchronous admission also fences installNow while candidate validation yields.
-    this.suppressAutomaticInstall = true;
     this.suspendChecks();
     let finish!: (snapshot: UpdateSnapshot) => void;
     const flight = new Promise<UpdateSnapshot>((resolve) => { finish = resolve; });
@@ -213,7 +210,6 @@ export class UpdateService {
     // The cleared intent is observed after the admitted operation settles;
     // requirementFlight keeps installation fenced until that safe boundary.
     this.requirement = null;
-    // Dismissing guidance never resumes a previously suppressed automatic restart.
     this.publish({ ...this.snapshotValue, appRequirement: null });
     if (this.requirementFlight) return this.requirementFlight;
     this.scheduleNextCheck();
@@ -294,18 +290,18 @@ export class UpdateService {
     const flight = Promise.resolve()
       .then(async () => {
         if (!version) throw new Error("GUI_COMPATIBILITY_VERSION_UNAVAILABLE");
-        const compatibility = this.options.candidateCompatibility;
-        if (compatibility) {
-          const matrix = await compatibility.load(version);
-          await compatibility.apply(matrix);
-        }
-        if (this.downloadVersion !== version || this.candidateHeld()) return;
         this.publish({
           ...this.snapshotValue,
           phase: "downloading",
           progress: { percent: 0, transferred: 0, total: 0 },
           error: null,
         });
+        const compatibility = this.options.candidateCompatibility;
+        if (compatibility) {
+          const matrix = await compatibility.load(version);
+          await compatibility.apply(matrix);
+        }
+        if (this.downloadVersion !== version || this.candidateHeld()) return;
         await this.options.adapter!.downloadUpdate(operationId);
       })
       .then(async () => {
@@ -371,7 +367,7 @@ export class UpdateService {
       const candidateId = randomUUID();
       this.suspendChecks();
       this.publish({ ...this.snapshotValue, phase: "ready", candidateId, progress: null, error: null });
-      if (!this.suppressAutomaticInstall && !this.requirementFlight && !(this.options.hasStopOperations?.() ?? true)) void this.installNow(candidateId, false);
+      // Downloading is not permission to interrupt the workspace with a restart.
     });
     this.listen("error", (error) => {
       if (!this.currentEvent(error)) return;

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the panel context (items, undo token, optional mode), the sortable list, the common glyph cache, and lucide action glyphs.
+ * [INPUT]: Depends on the panel context (items, undo token, optional mode), the sortable list, the common native/host glyph cache, and lucide action glyphs.
  * [OUTPUT]: Provides `ArrangeView`: the pinned order as a reorderable list (drag commits once on drop; Move up/down by keyboard), per-item Remove with the snapshot's Undo notice, the Dock settings exit, and Restore system Dock in replace mode.
  * [POS]: system-dock/panel edit view (DCK-10, DCK-37); removing only unpins — it never quits, uninstalls or empties anything (INV-07).
  */
@@ -33,7 +33,7 @@ export function ArrangeView() {
         <button type="button" className="text-button" onClick={() => send({ kind: "open-panel", view: { kind: "add" } })}><Plus aria-hidden="true" />{t("systemDock.navigate.add")}</button>
       </div> : <SortableList rows={rows} label={t("systemDock.edit.listLabel")} onMove={(itemId, index) => send({ kind: "move", itemId, index })}
         render={({ item }, controls) => <div className="row static" data-status={item.status}>
-          <span className="row-glyph"><DockGlyph subject={{ kind: item.kind, iconKey: item.iconKey, entry: item.entry, trash: item.trash, widgetType: item.widget?.type }} icons={icons} /></span>
+          <span className="row-glyph"><DockGlyph subject={{ kind: item.kind, host: item.host, iconKey: item.iconKey, entry: item.entry, trash: item.trash, widgetType: item.widget?.type }} icons={icons} /></span>
           <span className="row-text"><span className="row-title">{item.label}</span></span>
           <span className="row-actions">{controls}
             <button type="button" className="icon-button small" data-remove aria-label={t("systemDock.edit.remove", { name: item.label })} title={t("systemDock.edit.remove", { name: item.label })}

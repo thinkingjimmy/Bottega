@@ -1,11 +1,17 @@
 /**
  * [INPUT]: Depends on no runtime modules; defines the structural baseline for side-panel and usage-limit copy
- * [OUTPUT]: Provides Chat surface copy, including local-file preview actions and failures
+ * [OUTPUT]: Provides Chat surface copy, including exact-command service controls and local-file preview actions
  * [POS]: English Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
 export const chatSurfacesEn = {
   nativeBackground: {
+    "running": "Running",
+    "stopFailed": "Stop failed",
+    "retry": "Retry stop",
+    "stopNamed": "Stop {{name}}",
+    "retryNamed": "Retry stopping {{name}}",
+    "services": "Services running in this chat",
     "stop": "Stop",
     "stopping": "Stopping…",
     "started": "Started with {{mode}}. Continues after the reply.",

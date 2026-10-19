@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses HostApi, pinned protocol declarations, lazily loaded ACP/native drivers and ordered process/event ports and live names-only MCP consent queries.
- * [OUTPUT]: Exports activate for protocol-specific readiness, native catalogs, turns, retained background Stop/results, headless parsing and quota.
+ * [OUTPUT]: Exports activate for protocol-specific readiness, native catalogs, turns, independent-terminal and owner-wide background Stop/results, headless parsing and quota.
  * [POS]: Provider utility-process dispatcher; main alone freezes launch policy, grants tool authority and owns custody.
  */
 import type { HostApi } from "../../host/entry";
@@ -217,6 +217,11 @@ export function activate(api: HostApi) {
       const turn = live(turnKey).native;
       if (!turn) throw new Error("Turn has no native background owner");
       await turn.stopBackground(); return null;
+    },
+    "turn.background.stopCommand": async ({ turnKey, itemId }: { turnKey: string; itemId: string }) => {
+      const turn = live(turnKey).native;
+      if (!turn) throw new Error("Turn has no native background owner");
+      await turn.stopBackgroundCommand(itemId); return null;
     },
     "turn.release": async ({ turnKey }: { turnKey: string }) => {
       const entry = turns.get(turnKey);

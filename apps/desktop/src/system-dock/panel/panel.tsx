@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the isolated Dock bridge adapter, the panel context, the common translator, and every panel view.
- * [OUTPUT]: Provides `DockPanel`: header with back/close, the view switch (detail, add, edit, navigate), layered Escape (nested step → keyboard list → close with focus restore), activation-aware initial focus, pointer presence, and one polite live region.
+ * [OUTPUT]: Provides DockPanel with detail-scoped styling and Downloads count, view navigation, layered Escape, activation-aware focus, pointer presence and a polite live region.
  * [POS]: system-dock/panel root composed by main.tsx; main owns panel visibility, activation and blur-to-close, so a null view renders nothing (the hidden-ready prewarm state, 5.2).
  */
 
@@ -74,11 +74,13 @@ export function DockPanel() {
   const title = view.kind === "add" ? t("systemDock.add.title") : view.kind === "edit" ? t("systemDock.edit.title")
     : view.kind === "navigate" ? t("systemDock.navigate.title") : item?.label ?? t("systemDock.panel.title");
   return <PanelContext.Provider value={api}>
-    <section ref={rootRef} className="panel" aria-labelledby="dock-panel-title" data-view={view.kind} onKeyDown={onKeyDown}>
+    <section ref={rootRef} className="panel" aria-labelledby="dock-panel-title" data-view={view.kind} data-detail={item?.entry} onKeyDown={onKeyDown}>
       <header className="panel-header">
         {canGoBack && <button type="button" className="icon-button" aria-label={t("systemDock.panel.back")} title={t("systemDock.panel.back")} onClick={back}>
           <ArrowLeft aria-hidden="true" /></button>}
         <h1 id="dock-panel-title">{title}</h1>
+        {item?.entry === "system.downloads" && snapshot.downloads && ["ok", "partial", "empty"].includes(snapshot.downloads.state)
+          && <span className="download-count">{snapshot.downloads.entries.length}</span>}
         <button type="button" className="icon-button" aria-label={t("systemDock.panel.close")} title={t("systemDock.panel.close")} onClick={close}>
           <X aria-hidden="true" /></button>
       </header>
