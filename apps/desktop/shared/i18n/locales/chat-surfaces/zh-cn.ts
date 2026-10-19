@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the chatSurfacesEn structural type
- * [OUTPUT]: Simplified Chinese Chat surfaces, including exact-command service controls and local-file preview actions
+ * [OUTPUT]: Simplified Chinese Chat surfaces, including exact-command service controls, one Finder header action, and local-file preview failure copy
  * [POS]: Simplified Chinese Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
@@ -34,11 +34,7 @@ export const chatSurfacesZhCN: typeof chatSurfacesEn = {
       resizeHint: "拖动或使用方向键调整第三栏宽度",
     },
     file: {
-      open: "用系统应用打开",
       reveal: "在 Finder 中显示",
-      copyPath: "复制路径",
-      copied: "路径已复制",
-      retry: "重试",
       missing: "文件已移动或删除，原路径下找不到此文件。",
       outside: "文件不在当前工作区内，或工作区已改变。",
       readFailed: "无法预览此文件，请重试。",

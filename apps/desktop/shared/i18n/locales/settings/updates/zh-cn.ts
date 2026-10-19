@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsUpdatesEn structural type
- * [OUTPUT]: Provides settingsUpdatesZhCN, the Simplified Chinese Settings › Updates catalog
+ * [OUTPUT]: Provides settingsUpdatesZhCN, the Simplified Chinese Settings › Updates catalog; failure recovery uses shared retry and manual-download copy
  * [POS]: Simplified Chinese leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
@@ -40,7 +40,6 @@ export const settingsUpdatesZhCN: typeof settingsUpdatesEn = {
   failed: "更新失败：{{message}}",
   failedUnknown: "更新失败，原因未知。",
   validationFailed: "下载的更新未通过校验，Bottega 会重新检查。",
-  failedFallback: "自动更新未能完成。请打开 Releases 页面下载 {{version}}。",
   failedResolution: "请从 Releases 页面下载新版本，或在 GitHub 反馈问题。",
   backgroundFailed: "上次自动检查失败",
   backgroundFailedOpen: "自动检查更新持续失败，点击查看详情",

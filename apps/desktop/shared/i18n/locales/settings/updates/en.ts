@@ -1,6 +1,6 @@
 /**
  * [INPUT]: No runtime dependencies
- * [OUTPUT]: Provides settingsUpdatesEn — Settings › Updates page, provider CLI row, platform-support, and updater-state copy — and the structural shape its translated leaves derive from
+ * [OUTPUT]: Provides settingsUpdatesEn — Settings › Updates page, provider CLI row, platform-support, and updater-state copy — and the structural shape its translated leaves derive from; failure recovery uses shared retry and manual-download copy
  * [POS]: English leaf of shared/i18n/locales/settings/updates; the Updates feature catalog
  */
 
@@ -39,8 +39,6 @@ export const settingsUpdatesEn = {
   failed: "Update failed: {{message}}",
   failedUnknown: "The update failed for an unknown reason.",
   validationFailed: "The downloaded update did not pass verification. Bottega will check for it again.",
-  failedFallback:
-    "Update could not be installed automatically. Open the Releases page to download version {{version}}.",
   failedResolution:
     "Download the new version from the Releases page, or report the problem on GitHub.",
   backgroundFailed: "The last automatic check failed",

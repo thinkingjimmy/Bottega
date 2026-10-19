@@ -10,7 +10,6 @@ import type { DownloadEntry } from "../../../../../../shared/system-dock/ipc";
 import { relativeTime } from "../../../../common/format";
 import { useEscapeLayer, usePanel } from "../../../context";
 import { DownloadImage, useDownloadVisual } from "./visual";
-import "./downloads.css";
 
 const STATE_KEYS = {
   loading: "systemDock.downloads.loading", empty: "systemDock.downloads.empty", denied: "systemDock.downloads.denied",

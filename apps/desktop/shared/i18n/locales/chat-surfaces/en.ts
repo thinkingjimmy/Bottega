@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on no runtime modules; defines the structural baseline for side-panel and usage-limit copy
- * [OUTPUT]: Provides Chat surface copy, including exact-command service controls and local-file preview actions
+ * [OUTPUT]: Provides Chat surface copy, including exact-command service controls, one Finder header action, and local-file preview failure copy
  * [POS]: English Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
@@ -32,11 +32,7 @@ export const chatSurfacesEn = {
       resizeHint: "Drag or use the arrow keys to resize the side panel",
     },
     file: {
-      open: "Open with system app",
       reveal: "Show in Finder",
-      copyPath: "Copy path",
-      copied: "Path copied",
-      retry: "Retry",
       missing: "This file no longer exists at this path.",
       outside: "This file is outside the current workspace, or the workspace has changed.",
       readFailed: "This file could not be previewed. Try again.",

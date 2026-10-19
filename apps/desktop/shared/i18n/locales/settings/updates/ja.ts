@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsUpdatesEn structural type
- * [OUTPUT]: Provides settingsUpdatesJa, the Japanese Settings › Updates catalog
+ * [OUTPUT]: Provides settingsUpdatesJa, the Japanese Settings › Updates catalog; failure recovery uses shared retry and manual-download copy
  * [POS]: Japanese leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
@@ -40,8 +40,6 @@ export const settingsUpdatesJa: typeof settingsUpdatesEn = {
   failed: "更新に失敗しました: {{message}}",
   failedUnknown: "不明な理由で更新に失敗しました。",
   validationFailed: "ダウンロードした更新は検証に通りませんでした。Bottega がもう一度確認します。",
-  failedFallback:
-    "自動更新を完了できませんでした。Releases ページを開いてバージョン {{version}} をダウンロードしてください。",
   failedResolution:
     "Releases ページから新しいバージョンをダウンロードするか、GitHub で問題を報告してください。",
   backgroundFailed: "前回の自動確認に失敗しました",

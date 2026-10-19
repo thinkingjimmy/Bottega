@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the chatSurfacesEn structural type
- * [OUTPUT]: Japanese Chat surfaces, including exact-command service controls and local-file preview actions
+ * [OUTPUT]: Japanese Chat surfaces, including exact-command service controls, one Finder header action, and local-file preview failure copy
  * [POS]: Japanese Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
@@ -34,11 +34,7 @@ export const chatSurfacesJa: typeof chatSurfacesEn = {
       resizeHint: "ドラッグまたは矢印キーでサイドパネルの幅を変更",
     },
     file: {
-      open: "システムアプリで開く",
       reveal: "Finder で表示",
-      copyPath: "パスをコピー",
-      copied: "パスをコピーしました",
-      retry: "再試行",
       missing: "このパスにファイルがありません。移動または削除された可能性があります。",
       outside: "ファイルが現在のワークスペース外にあるか、ワークスペースが変更されました。",
       readFailed: "ファイルをプレビューできませんでした。再試行してください。",

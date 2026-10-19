@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsUpdatesEn structural type
- * [OUTPUT]: Provides settingsUpdatesFr, the French Settings › Updates catalog
+ * [OUTPUT]: Provides settingsUpdatesFr, the French Settings › Updates catalog; failure recovery uses shared retry and manual-download copy
  * [POS]: French leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
@@ -40,8 +40,6 @@ export const settingsUpdatesFr: typeof settingsUpdatesEn = {
   failed: "Échec de la mise à jour : {{message}}",
   failedUnknown: "La mise à jour a échoué pour une raison inconnue.",
   validationFailed: "La mise à jour téléchargée n’a pas passé la vérification. Bottega va la rechercher à nouveau.",
-  failedFallback:
-    "La mise à jour n'a pas pu être installée automatiquement. Ouvrez la page Releases pour télécharger la version {{version}}.",
   failedResolution:
     "Téléchargez la nouvelle version depuis la page Releases, ou signalez le problème sur GitHub.",
   backgroundFailed: "La dernière vérification automatique a échoué",

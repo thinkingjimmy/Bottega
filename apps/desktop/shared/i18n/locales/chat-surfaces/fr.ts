@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the chatSurfacesEn structural type
- * [OUTPUT]: French Chat surfaces, including exact-command service controls and local-file preview actions
+ * [OUTPUT]: French Chat surfaces, including exact-command service controls, one Finder header action, and local-file preview failure copy
  * [POS]: French Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
@@ -35,11 +35,7 @@ export const chatSurfacesFr: typeof chatSurfacesEn = {
         "Faites glisser ou utilisez les touches fléchées pour redimensionner le panneau latéral",
     },
     file: {
-      open: "Ouvrir avec l’application système",
       reveal: "Afficher dans le Finder",
-      copyPath: "Copier le chemin",
-      copied: "Chemin copié",
-      retry: "Réessayer",
       missing: "Ce fichier a été déplacé ou supprimé de ce chemin.",
       outside: "Ce fichier est hors de l’espace de travail actuel, ou celui-ci a changé.",
       readFailed: "Impossible d’afficher ce fichier. Réessayez.",

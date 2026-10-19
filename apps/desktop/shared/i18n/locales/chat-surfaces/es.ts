@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the chatSurfacesEn structural type
- * [OUTPUT]: Spanish Chat surfaces, including exact-command service controls and local-file preview actions
+ * [OUTPUT]: Spanish Chat surfaces, including exact-command service controls, one Finder header action, and local-file preview failure copy
  * [POS]: Spanish Chat surfaces locale leaf assembled into the existing chat namespace
  */
 
@@ -35,11 +35,7 @@ export const chatSurfacesEs: typeof chatSurfacesEn = {
         "Arrastra o usa las teclas de flecha para cambiar el tamaño del panel lateral",
     },
     file: {
-      open: "Abrir con la aplicación del sistema",
       reveal: "Mostrar en Finder",
-      copyPath: "Copiar ruta",
-      copied: "Ruta copiada",
-      retry: "Reintentar",
       missing: "El archivo se ha movido o eliminado de esta ruta.",
       outside: "El archivo está fuera del espacio de trabajo actual, o este ha cambiado.",
       readFailed: "No se pudo mostrar el archivo. Inténtalo de nuevo.",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsUpdatesEn structural type
- * [OUTPUT]: Provides settingsUpdatesEs, the Spanish Settings › Updates catalog
+ * [OUTPUT]: Provides settingsUpdatesEs, the Spanish Settings › Updates catalog; failure recovery uses shared retry and manual-download copy
  * [POS]: Spanish leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
@@ -40,8 +40,6 @@ export const settingsUpdatesEs: typeof settingsUpdatesEn = {
   failed: "Error de actualización: {{message}}",
   failedUnknown: "La actualización falló por un motivo desconocido.",
   validationFailed: "La actualización descargada no superó la verificación. Bottega volverá a buscarla.",
-  failedFallback:
-    "La actualización no pudo instalarse automáticamente. Abre la página de Releases para descargar la versión {{version}}.",
   failedResolution:
     "Descarga la nueva versión desde la página de Releases, o informa del problema en GitHub.",
   backgroundFailed: "La última comprobación automática falló",
