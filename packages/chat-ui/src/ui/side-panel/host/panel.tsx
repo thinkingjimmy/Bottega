@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Chat identity, Router takeover history, host catalog visibility, shared ConversationModel and authority-checked Base resolution.
- * [OUTPUT]: Shared session-owned panels, Artifact-owned design headers and takeover/presentation, awaited handoff and retained Base/Plan/subagent state.
+ * [OUTPUT]: Shared session-owned panels, Artifact-owned design headers and takeover/presentation, awaited handoff with composer-owned focus, committed close/trigger-focus ownership, and retained Base/Plan/subagent state.
  * [POS]: Shared panel composition with host-owned Base authority, navigation, draft guards and artifact callbacks.
  */
 import { MessageResponse } from "@ai-chat/ui/components/ai-elements/message";
@@ -10,7 +10,7 @@ import { capMarkdown } from "../../conversation/turn/projection";
 import { usePanelLayout, type PanelWidths } from "../layout";
 import { PanelHost, type PanelLeaf } from "../frame";
 import { WorkspacePreview, type WorkspacePreviewRequest } from "../workspace";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BotIcon, DatabaseIcon, ImageIcon, GlobeIcon, BlocksIcon, LoaderCircle } from "lucide-react";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
@@ -81,9 +81,38 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   const openShell = () => { if (!history.open) setCycle(value => value + 1); setPreview(null); history.openShell(); };
   const closeHandlers = useRef(new Set<() => Promise<unknown>>()), [closeFailed, setCloseFailed] = useState(false);
   const beforeClose = useCallback((handler: () => Promise<unknown>) => { closeHandlers.current.add(handler); return () => { closeHandlers.current.delete(handler); }; }, []);
-  const close = () => { void Promise.all([...closeHandlers.current].map(handler => handler())).then(() => {
-    setCloseFailed(false); history.close(); requestAnimationFrame(() => triggerRef.current?.focus());
-  }).catch(() => setCloseFailed(true)); };
+  const closeOwner = useMemo(() => ({ key, preview, slots, cycle }), [key, preview, slots, cycle]);
+  const activeCloseOwner = useRef<typeof closeOwner | null>(null), closingOwner = useRef<typeof closeOwner | null>(null);
+  useLayoutEffect(() => {
+    activeCloseOwner.current = closeOwner;
+    return () => { if (activeCloseOwner.current === closeOwner) activeCloseOwner.current = null; };
+  }, [closeOwner]);
+  const [triggerFocusRequest, setTriggerFocusRequest] = useState<{ owner: typeof closeOwner } | null>(null);
+  const consumedTriggerFocus = useRef<typeof triggerFocusRequest>(null);
+  useLayoutEffect(() => {
+    if (!triggerFocusRequest || consumedTriggerFocus.current === triggerFocusRequest) return;
+    if (activeCloseOwner.current !== triggerFocusRequest.owner) { consumedTriggerFocus.current = triggerFocusRequest; return; }
+    const trigger = triggerRef.current;
+    if (!mounted.current || history.open || !trigger?.isConnected || trigger.closest("[hidden], [inert]")) return;
+    consumedTriggerFocus.current = triggerFocusRequest; trigger.focus();
+  });
+  const closePanel = (restoreTrigger: boolean) => {
+    const current = () => mounted.current && activeCloseOwner.current === closeOwner;
+    if (!current() || closingOwner.current === closeOwner) return;
+    closingOwner.current = closeOwner;
+    void (async () => {
+      try {
+        await Promise.all([...closeHandlers.current].map(handler => handler()));
+        if (!current()) return;
+        setCloseFailed(false);
+        if (restoreTrigger) setTriggerFocusRequest({ owner: closeOwner });
+        history.close();
+      } catch { if (current()) setCloseFailed(true); }
+      finally { if (closingOwner.current === closeOwner) closingOwner.current = null; }
+    })();
+  };
+  const close = () => closePanel(true);
+  const closeAfterFollowUp = () => closePanel(false);
   const onOpenImage = (identity: ImageIdentity) => {
     const message = identity.kind === "generated" ? model.bodies.find(body => body.message.id === identity.messageId) : null;
     const region = encodeImageIdentity(message && identity.kind === "generated" ? { ...identity, messageId: `seq:${message.message.seq}` } : identity); if (!eligible || !imageAllowed(region)) return;
@@ -151,7 +180,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
     </>)}
     {!preview && creating && <p role="status" className="px-4 py-2 text-sm">{copy.loadingBase}</p>}
     {!preview && creationError && <p role="alert" className="px-4 py-2 text-sm">{creationError === "base-identity-mismatch" ? copy.basePromoted : copy.createFailed}{promotedPath && <a className="ml-2 underline" href={promotedPath} onClick={event => { event.preventDefault(); services.navigate(promotedPath); }}>{copy.openFull}</a>}</p>}
-    {preview && visible && ("workspace" in preview ? <WorkspacePreview request={preview.workspace} copy={{ loading: remote.readingFile, failed: remote.requestFailed, retry: copy.retry }} /> : "planId" in preview ? <div className="min-h-0 flex-1 overflow-auto px-6 py-5 text-sm"><MessageResponse isAnimating={Boolean(livePlan?.editing)}>{capMarkdown(planContent)}</MessageResponse></div> : <ArtifactPresentationProvider value={{ full: history.takeover || artifactFull, canExpand: !narrow, setFull: setArtifactFull, close, beforeClose }}><ExpandedArtifact preview={preview} close={close} /></ArtifactPresentationProvider>)}
+    {preview && visible && ("workspace" in preview ? <WorkspacePreview request={preview.workspace} copy={{ loading: remote.readingFile, failed: remote.requestFailed, retry: copy.retry }} /> : "planId" in preview ? <div className="min-h-0 flex-1 overflow-auto px-6 py-5 text-sm"><MessageResponse isAnimating={Boolean(livePlan?.editing)}>{capMarkdown(planContent)}</MessageResponse></div> : <ArtifactPresentationProvider value={{ full: history.takeover || artifactFull, canExpand: !narrow, setFull: setArtifactFull, close, beforeClose }}><ExpandedArtifact preview={preview} close={closeAfterFollowUp} /></ArtifactPresentationProvider>)}
     </>} />
   </SidePanelShell>;
   return { eligible, containerRef, triggerRef, takeover: history.takeover, openShell, onOpenImage, onOpenArtifact,
@@ -162,7 +191,15 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
 }
 function ExpandedArtifact({ preview, close }: { preview: ArtifactPreviewValue; close(): void }) {
   const host = useArtifactHost();
-  const followUp = preview.followUp ?? host?.followUp;
-  const value = useMemo(() => host ? { ...host, followUp: followUp ? async (request: Parameters<NonNullable<ArtifactHost["followUp"]>>[0]) => { await followUp(request); close(); } : undefined } : null, [host, followUp, close]);
+  const followUp = preview.followUp ?? host?.followUp, activePreview = useRef<ArtifactPreviewValue | null>(null);
+  useLayoutEffect(() => {
+    activePreview.current = preview;
+    return () => { if (activePreview.current === preview) activePreview.current = null; };
+  }, [preview]);
+  const value = useMemo(() => host ? { ...host, followUp: followUp ? async (request: Parameters<NonNullable<ArtifactHost["followUp"]>>[0]) => {
+    if (activePreview.current !== preview) return;
+    await followUp(request);
+    if (activePreview.current === preview) close();
+  } : undefined } : null, [host, followUp, close, preview]);
   return <ArtifactHostProvider value={value}><div className="flex min-h-0 flex-1 flex-col overflow-hidden text-sm"><ArtifactPreview key={preview.fence.id} fence={preview.fence} expanded /></div></ArtifactHostProvider>;
 }

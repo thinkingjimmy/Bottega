@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Chat facades, confirmed heads, ConversationModel, shared send projection, complete queue, command/draft custody and scoped consent.
  * [OUTPUT]: Shared messages, successor queue and composer; destination commit consumes creation custody, view-local body readiness retires pending bubbles, uncertain delivery retains loading, and Stop cancels the original request. Shared queue custody survives route changes, restores complete inputs and pauses successors through Stop; explicit auth-required retry retains capability and permission checks.
- * Design draft/send uses this original durable owner, one target chip without repeated title text, exact reference/computer checks and existing unknown-command recovery.
+ * Design draft/send uses this original durable owner, one target chip without repeated title text, exact reference/computer checks and existing unknown-command recovery. Durable follow-ups schedule composer focus after takeover ends only while the original conversation and focus origin remain current.
  * [POS]: Shared Web and desktop mirror host; transcript, composer and sibling panels read one published live projection without another subscription.
  */
 import { ChatConversation, type ConversationRegions } from "../page/conversation";
@@ -97,19 +97,21 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
   const [sentAsNew, setSentAsNew] = useState<ReadonlySet<string>>(() => new Set());
   const [sendBusy, setSendBusy] = useState(false), [completedPlan, setCompletedPlan] = useState<string | null>(null), [restoring, setRestoring] = useState(false);
   const artifactHost = useArtifactHost(), composerElement = useRef<{ focus(): void }>(null);
-  const conversationElement = useRef<HTMLDivElement>(null), focusRequested = useRef(false);
+  const conversationElement = useRef<HTMLDivElement>(null), focusedRequest = useRef(0);
+  const [focusRequest, setFocusRequest] = useState(0);
   const bindConversation = useCallback((node: HTMLDivElement | null) => { conversationElement.current = node; }, []);
   const composerLatest = useRef({ text, change });
   useLayoutEffect(() => { composerLatest.current = { text, change }; }, [text, change]);
   useLayoutEffect(() => {
     // A takeover panel must finish its Router POP before the hidden composer can take focus.
-    if (focusRequested.current && !conversationElement.current?.closest("[hidden], [inert]")) {
-      focusRequested.current = false; composerElement.current?.focus();
+    if (focusRequest !== focusedRequest.current && composerElement.current && !conversationElement.current?.closest("[hidden], [inert]")) {
+      focusedRequest.current = focusRequest; composerElement.current.focus();
     }
   });
   const reviewSend = useRef<NonNullable<ArtifactHost["sendReview"]>>(async () => { throw new Error("Original Chat is unavailable"); });
   const artifactComposer = useMemo(() => artifactHost ? { ...artifactHost, sendReview: (value: Parameters<NonNullable<ArtifactHost["sendReview"]>>[0]) => reviewSend.current(value),
     followUp: async (value: Parameters<NonNullable<ArtifactHost["followUp"]>>[0]) => {
+      const focusOwner = conversationElement.current, focusOrigin = document.activeElement;
       const current = composerLatest.current, block = artifactFollowUpBlock(current.text, value.design ? { prompt: value.prompt } : value);
       const next = block ? [current.text, block].filter(Boolean).join("\n\n") : current.text;
       if (utf8Length(next) > REMOTE_LIMITS.textBytes) throw new Error("Review exceeds the original draft budget");
@@ -120,7 +122,8 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
         const held = store.snapshot().references;
         if (!held.some(item => JSON.stringify(item.value) === JSON.stringify(reference))) store.update({ references: [...held, { id: crypto.randomUUID(), label: value.title ?? value.design.documentId, value: reference }] });
       }
-      current.text = next; current.change(next); await store.checkpoint?.flushStrict(); focusRequested.current = true;
+      current.text = next; current.change(next); await store.checkpoint?.flushStrict();
+      if (focusOwner?.isConnected && conversationElement.current === focusOwner && document.activeElement === focusOrigin) setFocusRequest(value => value + 1);
     } } : null, [artifactHost, store, head.ownerDeviceId, head.chat.incarnationId]);
   const [pendingAgent, setPendingAgent] = useState<{ backend: CloudChatHead["chat"]["agent"]; head: CloudChatHead } | null>(null);
   const [preparing, setPreparing] = useState(false), [outcome, setOutcome] = useState<Outcome | null>(null);
