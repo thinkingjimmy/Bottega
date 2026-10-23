@@ -47,6 +47,10 @@ Setup has one path and never mentions an account: choose your Bottega folder, th
 
 See the [features guide](../features/README.md) for the product model and its four core capability areas.
 
+### Upgrading to 0.2.9
+
+0.2.9 uses protocol 21. Update the desktop computers that run your Agents and reload Bottega Web after the coordinated service update. Earlier desktop versions cannot use the new protocol. Existing content, sync passwords and account keys remain; no data reset is required. Stable macOS Apple silicon builds use the stable update channel. Version 0.2.5 personal requires a manual installation.
+
 ## Requirements
 
 - A Mac with Apple silicon

@@ -4,6 +4,21 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-10-23 — v0.2.9
+
+[Download 0.2.9](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.9) for macOS on Apple silicon (ARM64), or [open Bottega Web](https://app.getbottega.app).
+
+- **More room for Artifacts.** Reduce the Chat column to 180px and give the side preview more space. Composer controls wrap within narrow columns. Manual panel widths return when the window has enough space again.
+- **Clearer Canvas controls.** Open work and version history from the title. Floating tools and inspectors adapt to the available width without resizing the Canvas. Single-object actions contain Duplicate and Delete. Typography has a readable font row and clear Close, Cancel and recovery actions. Enter a zoom percentage or fit the page, artboard or selection.
+- **Keep the Canvas in place.** Pan through the gaps between toolbar groups. Creating or duplicating an object preserves the current view, including a pan still in progress. Images load as needed, previews share bounded resources, and the gesture clock stops after activity ends.
+- **Bring comments into Chat.** Select an element, write a comment and choose Confirm to add its reference and comment to the original Chat draft. Existing draft text and files stay available. You choose when to send the message.
+- **Recover replies and Artifacts.** Retry saving a finished reply or loading its original Artifact without sending the prompt again. Preserve unsaved edits after a save conflict or failed refresh, and wait for saving before closing. Improve preview cleanup, version handling and recovery for forks and initial design-system saves.
+- **A more readable Dock.** Dock panels use solid backgrounds in light and dark appearances. The Bottega icon follows the sizing of native App artwork while keeping its full click target.
+
+This release uses **protocol 21**. Update the desktop computers that run your Agents to 0.2.9 and reload Bottega Web. Desktop, Web and Cloud must use the matching protocol. Existing content, sync passwords and account keys remain; no data reset is required.
+
+**Canvas validation limits.** Common-operation checks passed. Six controlled idle observations measured about 83.6% less CPU in the host renderer, compared with the retained baseline; this is not a whole-app or energy claim. Final memory comparison remains incomplete, a measured handoff response difference remains open, and strict latency, extreme cases, physical trackpad, native IME and physical 120 Hz checks remain deferred. Bottega Dock stays **Alpha**, requires macOS 27.x with Apple silicon, and retains separate replacement-recovery and physical display/fullscreen validation.
+
 ## 2026-10-19 — v0.2.8
 
 [Download 0.2.8](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8) for macOS on Apple silicon (ARM64), using the official stable update channel.
