@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node:child_process spawn, custody control-channel/protocol/identity-probe, and process-group cleanup, all keyed by shared ProcessIdentity
- * [OUTPUT]: Provides CustodyAttachment, the per-attempt guardian spawn/handshake/activation/release state machine, and converge, the sole release-outcome arbiter based on real process evidence TASK-35: the guardian's command is options.guardian() (the bundled Node); an unusable runtime fails the launch before any spawn, and the guardian env carries no run-as-Node variable. converge verifies the full recorded group even after guardian exit and never releases on an unverified birth read: it quarantines without signalling.
+ * [OUTPUT]: Provides CustodyAttachment, the per-attempt guardian spawn/handshake/activation/release state machine, and converge, the sole release-outcome arbiter based on real process evidence TASK-35: the guardian's command is options.guardian() (the bundled Node); an unusable runtime fails the launch before any spawn, and the guardian env carries no run-as-Node variable. converge durably records verified live descendants before default termination when the journal supports witnesses, retains existing live birth-witness authority when that guardian exits during snapshot/persistence, verifies the full recorded group even after guardian exit and never releases on an unverified birth read: it quarantines without signalling.
  * [POS]: Custody's journal-agnostic runtime leaf; Agent turn and the App server each keep their own ledger but share this single "when to deliver, when to release" state machine
  */
 
@@ -385,6 +385,28 @@ export async function converge<E extends CustodyRecord>(
   }
   if (!sameProcess(before, identity)) {
     return quarantine("PROCESS_IDENTITY_MISMATCH", "identity", before.state);
+  }
+  if (!options.stopGroup && journal.recordDescendants) {
+    // SIGTERM can end the guardian first. Save birth witnesses while its exact identity still owns the group.
+    const members = observeProcessGroup(identity.processGroupId, deadline - Date.now());
+    const captured = observe(identity.pid);
+    if (Date.now() >= deadline || !members || !members.some(member => member.pid === identity.pid && sameProcess(member, identity))
+      || captured.state !== "present" || !sameProcess(captured, identity)) {
+      if (captured.state === "absent" && !exists(identity.processGroupId)) return journal.release(entry.custodyId, entry.revision);
+      if (captured.state !== "absent" || !witnessedMember() || Date.now() >= deadline) {
+        return quarantine("DESCENDANT_SNAPSHOT_UNCONFIRMED", "witness-before-stop", captured.state);
+      }
+      // A prior durable handoff can still prove the live group after its guardian exits. Keep those witnesses.
+    } else {
+      entry = await journal.recordDescendants(entry.custodyId, entry.revision, members.filter(member => member.pid !== identity.pid));
+      const committed = observe(identity.pid);
+      if (Date.now() >= deadline || committed.state !== "present" || !sameProcess(committed, identity)) {
+        if (committed.state === "absent" && !exists(identity.processGroupId)) return journal.release(entry.custodyId, entry.revision);
+        if (committed.state !== "absent" || !witnessedMember() || Date.now() >= deadline) {
+          return quarantine("DESCENDANT_COMMIT_UNCONFIRMED", "witness-before-stop", committed.state);
+        }
+      }
+    }
   }
   const result = await stop(identity.processGroupId);
   const after = observe(identity.pid);

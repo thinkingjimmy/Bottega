@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod, Node path/crypto, DurableJson, the custody kernel (CustodyAttachment/converge) and its guardian control channel
- * [OUTPUT]: Provides HostProcessCustody with durable guardian launch, serialized descendant recording/settlement per owner, retryable unconfirmed owners, heldBy request evidence and startup reconciliation. Dependencies remain pinned until verified release; guardians use bundled Node.
- * [POS]: The process port's custody mode (host-runtime.md §4): a Provider turn process that a bridge asks for keeps the same guardian, the same intent → owned → activated journal and the same `converge` release rule as Agent turns and App servers; this file is only the third journal driver, the kernel is unchanged
+ * [OUTPUT]: Provides HostProcessCustody with durable guardian launch, serialized descendant recording/settlement per owner (including birth witnesses during release-pending/quarantined cleanup), retryable unconfirmed owners, heldBy request evidence and startup reconciliation. Dependencies remain pinned until verified release; guardians use bundled Node.
+ * [POS]: The process port's custody mode (host-runtime.md §4): a Provider turn process that a bridge asks for keeps the same guardian, the same intent → owned → activated journal and the same `converge` release rule as Agent turns and App servers; this file is the third journal driver and persists verified birth witnesses for the shared kernel
  */
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -61,7 +61,7 @@ class HostCustodyJournal {
   recordDescendants = (id: string, revision: number, members: HostCustodyEntry["descendantIdentities"]) => {
     const entry = this.list().find(row => row.custodyId === id);
     if (!entry) throw new Error("Custody entry missing");
-    return this.step(id, revision, ["activated", "activation-authorized"], entry.phase, { descendantIdentities: members });
+    return this.step(id, revision, ["owned", "activation-authorized", "activated", "release-pending", "quarantined"], entry.phase, { descendantIdentities: members });
   };
   diagnose = (id: string, revision: number, fact: { code: string; stage: string; elapsedMs: number; probe: string }) => {
     const entry = this.list().find(row => row.custodyId === id);

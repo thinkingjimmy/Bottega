@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the POSIX `ps` pgid/lstart fields and Node fs realpath/stat
- * [OUTPUT]: Provides deadline-bounded process probes: observeProcessGroup and observeProcessBirth (present with process-group id and birth, including macOS's transient ? state / absent, proven by a successful read / unverified: the read failed, timed out or could not be parsed), probeProcessBirth (the nullable capture shape over it) and executableIdentity (realpath+dev/ino/size fingerprint of a binary)
+ * [OUTPUT]: Provides deadline-bounded process probes: observeProcessGroup (optional remaining timeout) and observeProcessBirth (present with process-group id and birth, including macOS's transient ? state / absent, proven by a successful read / unverified: the read failed, timed out or could not be parsed), probeProcessBirth (the nullable capture shape over it) and executableIdentity (realpath+dev/ino/size fingerprint of a binary)
  * [POS]: Custody's process-identity evidence leaf; the sole rule governing whether to kill is that an inconclusive probe must never be treated as confirmed exit
  */
 
@@ -76,8 +76,9 @@ export function executableIdentity(path: string): string {
 }
 
 /** Captures only numeric group members and birth facts; command arguments and environments are never read. */
-export function observeProcessGroup(processGroupId: number): Array<{ pid: number; processGroupId: number; birthIdentity: string }> | null {
-  const result = spawnSync("ps", ["-axo", "pid=,pgid=,stat=,lstart="], { encoding: "utf8", timeout: 5_000, env: { ...process.env, LC_ALL: "C", TZ: "UTC" } });
+export function observeProcessGroup(processGroupId: number, timeout = 5_000): Array<{ pid: number; processGroupId: number; birthIdentity: string }> | null {
+  if (timeout <= 0) return null;
+  const result = spawnSync("ps", ["-axo", "pid=,pgid=,stat=,lstart="], { encoding: "utf8", timeout: Math.max(1, Math.min(5_000, timeout)), env: { ...process.env, LC_ALL: "C", TZ: "UTC" } });
   if (result.error || result.signal || result.status !== 0) return null;
   const members = [];
   for (const line of String(result.stdout).split("\n")) {
