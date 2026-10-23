@@ -20,7 +20,7 @@ const createArtifactFenceSchema = () => z.object({
   sha256: z.string().regex(/^[a-f0-9]{64}$/).optional(), bytes: z.number().int().min(0).max(MAX_BLOB_BYTES).optional(),
   mime: z.string().min(1).max(128).optional(), entry: artifactRelativePathSchema.optional(),
   files: z.number().int().min(1).max(200).optional(), url: z.string().max(2048).refine(isClaudeArtifactUrl).optional(),
-  rejected: z.enum(["path-denied", "too-large", "not-utf8", "symlink", "budget", "unsupported", "interrupted", "unavailable"]).optional(),
+  rejected: z.enum(["path-denied", "too-large", "not-utf8", "symlink", "budget", "unsupported", "interrupted", "unavailable", "missing", "unreadable", "changed", "storage", "publish"]).optional(),
   location: z.enum(["artifacts", "workspace", "session"]).optional(),
   collection: z.enum(["tree", "dependencies", "entry-only"]).optional(),
   createdAt: z.number().int().nonnegative().optional(),

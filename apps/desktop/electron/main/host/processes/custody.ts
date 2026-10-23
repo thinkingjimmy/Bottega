@@ -20,6 +20,7 @@ const identitySchema = z.object({ pid: z.number().int().positive(), processGroup
   executableIdentity: z.string() }).strict();
 const entrySchema = z.object({ custodyId: z.string().min(1), controlNonce: z.string().uuid(), phase: z.enum(PHASES), revision: z.number().int().min(0),
   processIdentity: identitySchema.optional(), descendantIdentities: z.array(identitySchema.omit({ executableIdentity: true })).max(256).optional(), hostId: z.string().min(1).max(128), processId: z.string().min(1).max(64),
+  diagnostics: z.array(z.object({ code: z.string().max(64), stage: z.string().max(32), elapsedMs: z.number(), probe: z.string().max(32) }).strict()).max(32).optional(),
   command: z.string().max(4096), reason: z.string().max(64).nullable(), createdAt: z.number().int().min(0),
   /* The Agent turn this process runs for (its request id), so a quarantined one stays findable after the turn left the registry; null
      for a process started without a turn (readiness). */
@@ -61,6 +62,11 @@ class HostCustodyJournal {
     const entry = this.list().find(row => row.custodyId === id);
     if (!entry) throw new Error("Custody entry missing");
     return this.step(id, revision, ["activated", "activation-authorized"], entry.phase, { descendantIdentities: members });
+  };
+  diagnose = (id: string, revision: number, fact: { code: string; stage: string; elapsedMs: number; probe: string }) => {
+    const entry = this.list().find(row => row.custodyId === id);
+    if (!entry) throw new Error("Custody entry missing");
+    return this.step(id, revision, [entry.phase], entry.phase, { diagnostics: entry.diagnostics?.length === 32 ? [entry.diagnostics[0], ...entry.diagnostics.slice(-30), fact] : [...entry.diagnostics ?? [], fact] });
   };
   markOwned = (id: string, revision: number, identity: ProcessIdentity) => this.step(id, revision, ["intent"], "owned", { processIdentity: identity });
   authorizeActivation = (id: string, revision: number) => this.step(id, revision, ["owned"], "activation-authorized");
@@ -172,8 +178,14 @@ export class HostProcessCustody {
     return this.serializeOwner(processId, async () => {
       const attachment = this.live.get(processId);
       if (!attachment) return null;
-      await attachment.beginRelease();
-      const entry = await attachment.settle();
+      let entry: HostCustodyEntry;
+      try { await attachment.beginRelease(); entry = await attachment.settle(); }
+      catch (cause) {
+        const current = attachment.entry;
+        console.warn("[custody] settlement exception", { custodyId: current.custodyId, processId,
+          stage: "settle", code: (cause as NodeJS.ErrnoException)?.code ?? "SETTLE_EXCEPTION", revision: current.revision });
+        throw cause;
+      }
       if (SETTLED.includes(entry.phase) && this.live.get(processId) === attachment) this.live.delete(processId);
       return entry;
     });

@@ -61,6 +61,6 @@ export const chatRuntimeJa: typeof chatRuntimeEn = {
   relayStopFailed: "Section リレーチェーン全体を停止できなかったため、現在のリクエストを停止しました：{{message}}。再試行できます。",
   actionFailed: "**{{action}}に失敗しました：** {{message}}",
   abandonTurn: "turn を破棄",
-  acknowledgeCleanup: "クリーンアップを確認",
+  acknowledgeCleanup: "クリーンアップを再試行",
   unnamed: "無題",
 };

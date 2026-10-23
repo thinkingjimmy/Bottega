@@ -31,9 +31,9 @@ export async function transferDesignExport(input: WorkspaceCommand, workspace: A
     }
     await flight;
   }
-  const result = await artifacts.resolve(ref); await artifacts.publisher.flush();
+  const result = await artifacts.resolve(ref), published = await artifacts.publisher.flushRef(ref);
   await workspace.version(input);
   return { fence: result.record.fence, filename: result.record.fence.title,
     revision: snapshot.version.revision, snapshotRef: snapshot.version.snapshotRef, readSetDigest: snapshot.version.readSetDigest,
-    published: artifacts.publisher.jobs().some(job => job.ref.artifactId === id && job.ref.chatId === input.chatId && job.state === "published") };
+    published };
 }

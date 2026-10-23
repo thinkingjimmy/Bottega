@@ -1,9 +1,9 @@
 /**
- * [INPUT]: Original scoped workspace catalog, displayed immutable version history and owner-guarded version navigation; catalog-owned labels use the shared formatCopy formatter.
- * [OUTPUT]: One shared catalog, an app work/version menu and compact explicit current-version links.
+ * [INPUT]: Original scoped workspace catalog, displayed immutable version history, header title/status content and owner-guarded version navigation; catalog-owned labels use the shared formatCopy formatter.
+ * [OUTPUT]: One shared catalog with isolated reader/timer ownership, a header work/version menu and compact explicit current-version links.
  * [POS]: Work navigation reader; catalog reads never register documents or import old source.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { formatCopy } from "@ai-chat/ui/lib/workbench-copy/format";
@@ -15,31 +15,36 @@ import { workspaceCopy } from "./copy";
 export type ArtifactWork = { documentId: string; title: string; revision: number; dirty: boolean; artifactRef: { artifactId: string }; fence?: ArtifactFence; format?: string };
 type Catalog = { works: ArtifactWork[]; listeners: Set<() => void>; timer?: ReturnType<typeof setInterval>; flight?: Promise<void>; load(): void };
 const catalogs = new WeakMap<NonNullable<ArtifactHost["workspace"]>, Catalog>();
+function createCatalog(workspace: NonNullable<ArtifactHost["workspace"]>): Catalog {
+  const next: Catalog = { works: [], listeners: new Set(), load() {
+    if (next.flight) return;
+    next.flight = workspace({ action: "list" }).then(value => { next.works = (value as { documents: ArtifactWork[] }).documents; for (const notify of next.listeners) notify(); }).catch(() => {}).finally(() => { next.flight = undefined; });
+  } };
+  return next;
+}
 export function useArtifactCatalog() {
   const host = useArtifactHost()!, [, refresh] = useState(0);
   let catalog = host.workspace ? catalogs.get(host.workspace) : undefined;
-  if (!catalog && host.workspace) {
-    const workspace = host.workspace, next: Catalog = { works: [], listeners: new Set(), load() {
-      if (next.flight) return;
-      next.flight = workspace({ action: "list" }).then(value => { next.works = (value as { documents: ArtifactWork[] }).documents; for (const notify of next.listeners) notify(); }).catch(() => {}).finally(() => { next.flight = undefined; });
-    } }; catalogs.set(workspace, catalog = next);
-  }
+  if (!catalog && host.workspace) { catalog = createCatalog(host.workspace); catalogs.set(host.workspace, catalog); }
   useEffect(() => {
     if (!catalog) return; const notify = () => refresh(value => value + 1); catalog.listeners.add(notify); catalog.load();
-    catalog.timer ??= setInterval(() => catalog.load(), 5_000);
+    catalog.timer ??= setInterval(catalog.load, 5_000);
     return () => { catalog.listeners.delete(notify); if (!catalog.listeners.size) { clearInterval(catalog.timer); catalog.timer = undefined; } };
   }, [catalog]);
   return catalog?.works ?? [];
 }
-export function ArtifactDirectory({ state, artifactId, onVersion }: { state: WorkspaceRead; artifactId: string; onVersion(id: string): void }) {
+export function ArtifactDirectory({ state, artifactId, onVersion, children }: { state: WorkspaceRead; artifactId: string; onVersion(id: string): void; children: ReactNode }) {
   const host = useArtifactHost()!, copy = workspaceCopy(host.locale), works = useArtifactCatalog(), [failed, setFailed] = useState(false);
   const others = works.filter(work => work.documentId !== state.documentId);
-  return <nav aria-label={copy.works} className="flex min-w-0 items-center gap-2"><DropdownMenu>
-    <DropdownMenuTrigger asChild><Button type="button" variant="ghost" aria-label={copy.works} className="min-h-[44px] w-56 min-w-0 max-w-full justify-between gap-2 px-2 text-xs font-normal">
-      <span className="truncate">{state.title} · {formatCopy(copy.revisionTag, { revision: state.revision })}{state.revision === state.latestRevision && state.dirty ? " *" : ""}</span><ChevronDown className="size-4 shrink-0" />
+  return <nav data-workspace-directory="" aria-label={copy.works} className="flex min-w-0 items-center gap-2"><DropdownMenu>
+    <DropdownMenuTrigger asChild><Button type="button" variant="ghost" aria-label={copy.works} className="-ml-2 min-h-[44px] min-w-0 max-w-full justify-start gap-2 px-2 py-1 text-left font-normal [-webkit-app-region:no-drag]">
+      {children}<ChevronDown className="size-4 shrink-0" />
     </Button></DropdownMenuTrigger>
-    <DropdownMenuContent side="top" align="start" className="w-72 max-w-[calc(100vw-24px)]" data-workspace-directory-menu="" data-canvas-chrome="">
+    <DropdownMenuContent side="bottom" align="start" className="w-72 max-w-[calc(100vw-24px)]" data-workspace-directory-menu="" data-canvas-chrome="">
       <DropdownMenuLabel className="truncate" title={state.title}>{state.title}</DropdownMenuLabel>
+      {state.revision < state.latestRevision && <DropdownMenuItem className="min-h-[44px]" onSelect={() => {
+        setFailed(false); const latest = state.versions.find(version => version.revision === state.latestRevision); if (latest) onVersion(latest.artifactId);
+      }}>{copy.current}</DropdownMenuItem>}
       <DropdownMenuRadioGroup aria-label={copy.version} value={artifactId} onValueChange={id => { setFailed(false); if (id !== artifactId) onVersion(id); }}>
         {[...state.versions].sort((left, right) => right.revision - left.revision).map(version => <DropdownMenuRadioItem key={version.artifactId} value={version.artifactId} className="min-h-[44px]">{formatCopy(copy.revisionTag, { revision: version.revision })}</DropdownMenuRadioItem>)}
       </DropdownMenuRadioGroup>

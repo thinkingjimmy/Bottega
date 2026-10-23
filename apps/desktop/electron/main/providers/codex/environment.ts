@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical built-in Provider ids from shared/providers/builtin; Depends on runtime probing/common command paths, Node OS/path helpers and backends/contracts/types AgentRuntime
- * [OUTPUT]: Provides findCodexRuntime (CLI and macOS desktop-bundled candidates), codexDesktopPaths, codexHomePath and codexEnvironment (allowlisted environment plus CODEX_HOME)
+ * [OUTPUT]: Freezes the Codex home source shared by native launch and visualization admission.
  * [POS]: The Codex backend's runtime discovery and environment seam, shared by the descriptor, auth, native launch, headless, and maintenance
  */
 import { BUILTIN_PROVIDER_IDS } from "../../../../shared/providers/builtin";
@@ -25,13 +25,15 @@ export function codexDesktopPaths(platform = process.platform, home = homedir())
   ]);
 }
 
-export function codexHomePath(value = process.env.CODEX_HOME) {
+const frozenCodexHome = process.env.CODEX_HOME;
+
+export function codexHomePath(value = frozenCodexHome) {
   return value?.trim() ? resolve(value.trim()) : join(homedir(), ".codex");
 }
 
 export function codexEnvironment(
   runtime: AgentRuntime,
-  codexHome = process.env.CODEX_HOME
+  codexHome = frozenCodexHome
 ): NodeJS.ProcessEnv {
   return {
     ...sanitizedProcessEnvironment(runtime.path),

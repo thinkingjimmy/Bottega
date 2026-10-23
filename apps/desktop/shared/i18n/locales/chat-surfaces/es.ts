@@ -140,8 +140,8 @@ export const chatSurfacesEs: typeof chatSurfacesEn = {
     abandonFatal: "Descartar el resultado de este turno",
     cleanupFailedTitle: "La limpieza de procesos no terminó",
     cleanupFailed:
-      "No se pudo limpiar el grupo de procesos de {{backend}}. Confirma que los procesos relacionados hayan terminado antes de desbloquear este Chat.",
-    acknowledgeCleanup: "He confirmado que los procesos terminaron",
+      "La limpieza de {{backend}} aún no está verificada. Reintenta la limpieza para que el sistema compruebe los procesos originales y desbloquee este Chat de forma segura.",
+    acknowledgeCleanup: "Reintentar limpieza",
     loadedEarlier: "Se cargaron {{count}} mensajes anteriores",
     subagentDetailsCleared: "Se borraron los detalles de este Subagent",
     subagentDetailsLimited: "Los detalles en tiempo real alcanzaron el límite",

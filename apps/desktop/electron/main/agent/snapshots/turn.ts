@@ -37,15 +37,15 @@ export function createTurnSnapshot(entry: TurnEntry | undefined, blocked: boolea
         .sort((left, right) => (right.expiresAt ?? Infinity) - (left.expiresAt ?? Infinity))
         .map((value) => structuredClone(value)),
       liveSubagents: entry.subagents.live(),
-      ...(entry.effectiveTerminal
+      ...((entry.sourceTerminal ?? entry.effectiveTerminal)
         ? {
-            terminal: entry.effectiveTerminal.type,
-            ...(entry.effectiveTerminal.failureKind
-              ? { failureKind: entry.effectiveTerminal.failureKind }
+            terminal: (entry.sourceTerminal ?? entry.effectiveTerminal)!.type,
+            ...(entry.effectiveTerminal?.failureKind
+              ? { failureKind: entry.effectiveTerminal?.failureKind }
               : {}),
-            ...(entry.effectiveTerminal.failure ? { failure: entry.effectiveTerminal.failure } : {}),
-            ...(entry.effectiveTerminal.usageLimit
-              ? { usageLimit: entry.effectiveTerminal.usageLimit }
+            ...(entry.effectiveTerminal?.failure ? { failure: entry.effectiveTerminal?.failure } : {}),
+            ...(entry.effectiveTerminal?.usageLimit
+              ? { usageLimit: entry.effectiveTerminal?.usageLimit }
               : {}),
           }
         : {}),

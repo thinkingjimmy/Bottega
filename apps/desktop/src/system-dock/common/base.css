@@ -1,5 +1,5 @@
 /* [INPUT]: System appearance media queries (color scheme, contrast, forced colors, reduced transparency/motion) and the root `data-reduced-motion` flag set from the bar snapshot.
- * [OUTPUT]: Shared Dock tokens (translucent and solid surfaces, the bar's glass edge and solid fallback, text, hover, focus, caution/danger), resets, glyph sizing, and the high-contrast / solid / no-motion treatments for both Dock renderers.
+ * [OUTPUT]: Shared Dock tokens (translucent and solid surfaces, the bar's glass edge and solid fallback, text, hover, focus, caution/danger), resets, glyph sizing with native artwork proportions for the host, and the high-contrast / solid / no-motion treatments for both Dock renderers.
  * [POS]: system-dock/common stylesheet imported first by bar and panel entries; surface-specific layout lives in bar.css and panel.css.
  */
 :root {
@@ -66,6 +66,8 @@ button:disabled { opacity: 0.45; }
 .glyph { display: grid; place-items: center; width: 100%; height: 100%; }
 .glyph svg { width: 62%; height: 62%; }
 .glyph.native { object-fit: contain; }
+/* The full-bleed brand tile matches resources/icon.png's 816/1024 artwork area; the item keeps its full hit target. */
+.glyph.host { scale: 0.796875; }
 /* Full-colour art (the Trash) is drawn to the same optical size as a native App icon, so it takes the whole slot. */
 .glyph.art svg { width: 100%; height: 100%; }
 .glyph.placeholder { border-radius: 22%; background: var(--hover); }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared turn reducer, Agent/chats agreement with conversation level SubagentRegistry, and the turn model in ./turn-registry-model (TurnOrigin, TurnEntry, RetryClaim and the tombstone predicates)
- * [OUTPUT]: Provides TurnRegistry lifecycle ownership, ordered event observers, exact terminal identities stamped from persisted results and legacy terminal events, Subagent outcomes, steering fences, input leases, retry claims (a Stop during a claim cancels the next generation), tombstones, drain and the quit-only settle drain (a stored tombstone's onTurnSettled tail).
+ * [OUTPUT]: Retains shared locks for failed and retrying cleanup owners; provides TurnRegistry lifecycle ownership, ordered event observers, exact terminal identities stamped from persisted results and legacy terminal events, Subagent outcomes, steering fences, input leases, retry claims (a Stop during a claim cancels the next generation), tombstones, drain and the quit-only settle drain (a stored tombstone's onTurnSettled tail).
  * [POS]: apps/desktop/electron/main/agent/turns/turn; Electron main's single source of truth for turn lifecycle; carries no Electron dependency itself, with IO and release owned by agent-bridge.ts
  */
 
@@ -392,7 +392,9 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
   }
 
   runCleanup(entry: TurnEntry<TTurn>, task: () => Promise<void>) {
+    entry.cleanupTask = task;
     if (!entry.cleanupInFlight) {
+      entry.cleanup = "pending";
       entry.cleanupInFlight = Promise.resolve().then(task).then(
         () => {
           entry.cleanup = "complete";
@@ -400,6 +402,7 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
         },
         (cause) => {
           entry.cleanup = "failed";
+          entry.cleanupInFlight = undefined;
           throw cause;
         }
       );
@@ -433,14 +436,13 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
     return entry;
   }
 
-  acknowledgeCleanupFailure(conversationId: string) {
+  async acknowledgeCleanupFailure(conversationId: string) {
     const entry = this.entries.get(conversationId);
-    if (!entry || entry.cleanup !== "failed") {
-      throw new Error("没有可确认的 cleanup failure");
+    if (!entry || !entry.cleanupTask || !["failed", "pending"].includes(entry.cleanup)) {
+      throw new Error("No retryable cleanup owner is available");
     }
-    entry.cleanup = "complete";
-    entry.cleanupInFlight = undefined;
-    this.scheduleTombstone(entry);
+    await this.runCleanup(entry, entry.cleanupTask);
+    if (this.entries.get(conversationId) !== entry) throw new Error("Cleanup owner changed");
     return entry;
   }
 
@@ -455,10 +457,10 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
     this.clearTombstoneTimer(conversationId);
   }
 
-  hasCleanupFailure(backend?: ProviderId) {
+  hasUnverifiedCleanup(backend?: ProviderId) {
     return [...this.entries.values()].some(
       (entry) =>
-        entry.cleanup === "failed" &&
+        (entry.cleanup === "failed" || entry.cleanup === "pending" && Boolean(entry.cleanupTask)) &&
         (backend === undefined || entry.backend === backend)
     );
   }
@@ -560,7 +562,7 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
 
   /** Quit only (no conversation lock held): a stored turn is a tombstone `drain` skips while onTurnSettled may still write. */
   async drainSettlements() {
-    await Promise.allSettled([...this.entries.values()].flatMap((entry) => [entry.finalizeInFlight, entry.retry.inFlight]));
+    await Promise.allSettled([...this.entries.values()].flatMap((entry) => [entry.finalizeInFlight, entry.retry.inFlight, entry.settlementInFlight]));
   }
   private scheduleTombstone(entry: TurnEntry<TTurn>) {
     if (!isTombstone(entry)) return;

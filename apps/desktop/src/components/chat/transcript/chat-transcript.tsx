@@ -332,6 +332,7 @@ function TranscriptRows({
               chatId={chatId}
               incarnationId={incarnationId}
               assistantSeq={assistantSeq}
+              active={controller.draftActive}
               draft={draft}
               hasPendingApproval={hasPendingApproval}
               queued={queued}
@@ -368,6 +369,7 @@ function TranscriptRows({
           )}
           {canAcknowledgeCleanup && (
             <FailureCard
+              pending={controller.cleanupRetrying}
               action={t("chat.transcript.acknowledgeCleanup")}
               body={t("chat.transcript.cleanupFailed", {
                 backend: backendDisplayName,

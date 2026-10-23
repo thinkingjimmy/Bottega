@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the POSIX `ps` pgid/lstart fields and Node fs realpath/stat
- * [OUTPUT]: Provides observeProcessGroup and observeProcessBirth (present with process-group id and birth, including macOS's transient ? state / absent, proven by a successful read / unverified: the read failed, timed out or could not be parsed), probeProcessBirth (the nullable capture shape over it) and executableIdentity (realpath+dev/ino/size fingerprint of a binary)
+ * [OUTPUT]: Provides deadline-bounded process probes: observeProcessGroup and observeProcessBirth (present with process-group id and birth, including macOS's transient ? state / absent, proven by a successful read / unverified: the read failed, timed out or could not be parsed), probeProcessBirth (the nullable capture shape over it) and executableIdentity (realpath+dev/ino/size fingerprint of a binary)
  * [POS]: Custody's process-identity evidence leaf; the sole rule governing whether to kill is that an inconclusive probe must never be treated as confirmed exit
  */
 
@@ -33,14 +33,14 @@ export function probeProcessBirth(pid: number, run = spawnSync): ProcessBirth | 
  * output it cannot parse. Only `absent` may count as the leader being gone; `unverified` authorizes no signal.
  */
 export type BirthObservation = ({ state: "present" } & ProcessBirth) | { state: "absent" } | { state: "unverified" };
-export function observeProcessBirth(pid: number, run = spawnSync): BirthObservation {
+export function observeProcessBirth(pid: number, run = spawnSync, timeout = 5_000): BirthObservation {
   const unverified = { state: "unverified" } as const;
   if (!Number.isSafeInteger(pid) || pid <= 0) return unverified;
   /* `lstart` follows the caller's locale and time zone ("五  9月/25 …" under zh_CN). Two processes
      comparing a recorded birth must print it identically, or a live owner reads as a reused PID. */
   const result = run("ps", ["-o", "pgid=,stat=,lstart=", "-p", String(pid)], {
     encoding: "utf8",
-    timeout: 5_000,
+    timeout: Math.max(1, Math.min(5_000, timeout)),
     env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
   });
   if (result.error || result.signal) return unverified;

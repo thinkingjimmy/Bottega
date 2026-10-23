@@ -7,7 +7,7 @@ import { parse, type DefaultTreeAdapterTypes as Tree } from "parse5";
 import { posix } from "node:path";
 import { canvasObjectMarkup } from "@ai-chat/cloud-protocol/artifacts/design/canvas/markup";
 import { CANVAS_LIMITS, fontFamilySchema } from "@ai-chat/cloud-protocol/artifacts/design/canvas/model";
-import { canvasFonts, readCanvas } from "@ai-chat/cloud-protocol/artifacts/design/canvas/view";
+import { canvasFonts } from "@ai-chat/cloud-protocol/artifacts/design/canvas/view";
 import { sniffImageMime } from "@ai-chat/cloud-protocol/artifacts/media-types";
 import sharp from "sharp";
 import { designResourceTarget } from "../documents/resources/references";
@@ -68,8 +68,6 @@ export function replaceCanvasLayer(html: string, markup: string) {
 }
 export async function validateCanvasResources(manifest: DesignManifest, files: readonly File[]): Promise<DesignIssue[]> {
   const issues: DesignIssue[] = [];
-  try { readCanvas(manifest, files); }
-  catch { throw new DesignDocumentError("BUDGET_EXCEEDED", "Canvas image projection exceeds the complete generated resource budget"); }
   const checked = new Set<string>();
   for (const object of manifest.objects ?? []) {
     try {

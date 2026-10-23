@@ -44,6 +44,11 @@ export function startArtifact() {
     document.title = fence.title;
     const guard = new ArtifactFollowUpGuard();
     const relay = (message: MessageEvent) => {
+      if (message.source === host && message.origin === __ARTIFACT_PARENT_ORIGIN__ && message.data?.type === "bottega:artifact:follow-up-result" && message.data.nonce === nonce) {
+        let feedback = document.getElementById("artifact-follow-up-status");
+        if (!feedback) { feedback = document.createElement("p"); feedback.id = "artifact-follow-up-status"; feedback.setAttribute("role", "status"); feedback.style.cssText = "position:fixed;bottom:0;left:0;right:0;padding:12px;background:white;color:black"; document.body.append(feedback); }
+        feedback.textContent = message.data.ok ? "" : String(message.data.message ?? "").slice(0, 250); return;
+      }
       if (message.source === host && message.origin === __ARTIFACT_PARENT_ORIGIN__ && ["bottega:artifact:theme", "bottega:design:select", "bottega:design:targets", "bottega:design:tool", "bottega:design:display", "bottega:design:editor"].includes(message.data?.type)) {
         frame.contentWindow?.postMessage(message.data, "*"); return;
       }

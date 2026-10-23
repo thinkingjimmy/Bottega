@@ -538,7 +538,9 @@ export class DesktopSyncRun {
     const remaining = await this.outbox(), outboxRows = this.truncated ? await this.countOutbox() : remaining.length;
     if (this.truncated && outboxRows < this.outboxRows && !failures.all.length) this.woken = true;
     this.outboxRows = this.truncated ? outboxRows : Infinity;
-    const pending = outboxRows + basePending + owners.projects.list().reduce((sum, project) => sum + (project.sync?.pending.length ?? 0), 0) +
+    const artifactJobs = artifactRuntime()?.publisher.jobs().filter(job => job.state !== "published" && !(job.state === "released" && job.settled)) ?? [];
+    const artifactPartial = artifactJobs.some(job => job.failure || job.blocked);
+    const pending = artifactJobs.length + outboxRows + basePending + owners.projects.list().reduce((sum, project) => sum + (project.sync?.pending.length ?? 0), 0) +
       owners.apps.portable.deletion.list(this.scope).filter(item => !item.receipt).length;
     const conflicts = bases.reduce((sum, base) => sum + base.conflictCandidates.filter(candidate => candidate.state === "unresolved").length, 0) +
       owners.projects.list().reduce((sum, project) => sum + (project.sync?.conflicts.length ?? 0), 0) + remaining.filter(item => item.metadata_status === "conflicted" || item.last_error === "CHAT_CLASSIFICATION_CONFLICT").length;
@@ -555,7 +557,7 @@ export class DesktopSyncRun {
     /* A read superseded by a newer one (a Base whose confirmed owner moved mid-pass) is collateral: the pass still fails and
        retries, but it reports the cause behind it, so "Response lost" is not shown as "cloud-request-superseded". */
     if (failures.all.length) throw failures.all.find(error => error.message !== "cloud-request-superseded") ?? failures.all[0];
-    this.input.changed({ status: pending || downloading ? binding.snapshot()!.phase === "initializing" ? "initializing" : "syncing" : appIssues.length ? "partial" : "synced", pending: pending + downloading, waiting: read.waiting, conflicts, appIssues,
+    this.input.changed({ status: artifactPartial ? "partial" : pending || downloading ? binding.snapshot()!.phase === "initializing" ? "initializing" : "syncing" : appIssues.length ? "partial" : "synced", pending: pending + downloading, waiting: read.waiting, conflicts, appIssues,
       phase: null, completed, total: initial.length, ...(initializing ? { uploadedBytes: this.uploaded } : {}) });
     this.input.dataChanged();
   }

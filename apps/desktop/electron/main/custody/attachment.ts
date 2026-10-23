@@ -52,6 +52,7 @@ type CustodyQuarantineReason =
  * 它只按自己手上那一版推进，撞上晚到命令时由账本抛错。
  */
 type CustodyJournalPort<E extends CustodyRecord> = {
+  diagnose?(custodyId: string, revision: number, fact: { code: string; stage: string; elapsedMs: number; probe: string }): Promise<E>;
   recordDescendants?(custodyId: string, revision: number, members: Array<Pick<ProcessIdentity, "pid" | "processGroupId" | "birthIdentity">>): Promise<E>;
   markOwned(custodyId: string, revision: number, identity: ProcessIdentity): Promise<E>;
   authorizeActivation(custodyId: string, revision: number): Promise<E>;
@@ -338,57 +339,65 @@ export async function converge<E extends CustodyRecord>(
   input: E
 ) {
   let entry = input;
+  const started = Date.now(), deadline = started + 20_000;
+  const quarantine = async (code: string, stage: string, probe: string, reason: CustodyQuarantineReason = "process-identity-unconfirmed") => {
+    const fact = { code, stage, elapsedMs: Date.now() - started, probe };
+    console.warn("[custody] verification incomplete", { custodyId: entry.custodyId, identity: entry.processIdentity && { pid: entry.processIdentity.pid, pgid: entry.processIdentity.processGroupId, birth: entry.processIdentity.birthIdentity }, ...fact });
+    if (journal.diagnose) entry = await journal.diagnose(entry.custodyId, entry.revision, fact);
+    return journal.quarantine(entry.custodyId, entry.revision, reason);
+  };
   const identity = entry.processIdentity;
   if (!identity) throw new Error("owned 之后的 custody 必然有 process identity");
   if (entry.phase !== "release-pending") {
     entry = await journal.beginRelease(entry.custodyId, entry.revision);
   }
-  const observe = options.observeBirth ?? observeProcessBirth;
+  const probe = options.observeBirth ?? ((pid: number) => observeProcessBirth(pid, undefined, deadline - Date.now()));
+  const observe = (pid: number): BirthObservation => Date.now() >= deadline ? { state: "unverified" } : probe(pid);
   const before = observe(identity.pid);
   /* A read that proved nothing (ps failed or timed out) is not an exit: keep the entry, signal nothing, try again next start. */
   if (before.state === "unverified") {
-    return journal.quarantine(entry.custodyId, entry.revision, "process-identity-unconfirmed");
+    return quarantine("PROBE_BEFORE_UNKNOWN", "before", before.state);
   }
-  const stop = options.stopGroup ?? cleanProcessGroup;
-  const exists = options.groupExists ?? groupExists;
+  const exists = (pid: number) => Date.now() >= deadline || (options.groupExists ?? ((group: number) => groupExists(group, deadline)))(pid);
+  const witnessedMember = () => (entry.descendantIdentities ?? []).some(member => {
+    const current = observe(member.pid);
+    return member.pid !== identity.pid && member.processGroupId === identity.processGroupId && current.state === "present" && sameProcess(current, member);
+  });
+  const stop = options.stopGroup ?? ((pid: number) => cleanProcessGroup(pid, () => {
+    const current = observe(identity.pid);
+    return Date.now() < deadline && (current.state === "present" ? sameProcess(current, identity) : current.state === "absent" && witnessedMember());
+  }, deadline));
   if (before.state === "absent") {
     if (!exists(identity.processGroupId)) return journal.release(entry.custodyId, entry.revision);
     const witnessed = () => (entry.descendantIdentities ?? []).some(member => {
       const current = observe(member.pid);
       return member.pid !== identity.pid && member.processGroupId === identity.processGroupId && current.state === "present" && sameProcess(current, member);
     });
-    if (!witnessed()) return journal.quarantine(entry.custodyId, entry.revision, "process-identity-unconfirmed");
+    if (!witnessed()) return quarantine("DESCENDANT_WITNESS_MISSING", "witness", before.state);
     const guardedProbe = (pid: number): BirthObservation => {
       const current = observe(pid);
       return current.state === "absent" && !witnessed() ? { state: "unverified" } : current;
     };
     const result = await cleanOwnedProcessGroup({ pid: identity.processGroupId, birthIdentity: identity.birthIdentity }, guardedProbe, stop, exists);
-    return result.ok && (result.verdict === "gone" || result.verdict === "reused" || !exists(identity.processGroupId))
-      ? journal.release(entry.custodyId, entry.revision)
-      : journal.quarantine(entry.custodyId, entry.revision, result.verdict === "unverified" ? "process-identity-unconfirmed" : "process-survived-kill");
+    if (!exists(identity.processGroupId)) return journal.release(entry.custodyId, entry.revision);
+    return quarantine(result.verdict === "unverified" ? "SIGNAL_IDENTITY_UNKNOWN" : "GROUP_STILL_PRESENT", "stop", result.verdict,
+      result.verdict === "unverified" ? "process-identity-unconfirmed" : "process-survived-kill");
   }
   if (!sameProcess(before, identity)) {
-    return journal.quarantine(
-      entry.custodyId,
-      entry.revision,
-      "process-identity-unconfirmed"
-    );
+    return quarantine("PROCESS_IDENTITY_MISMATCH", "identity", before.state);
   }
   const result = await stop(identity.processGroupId);
   const after = observe(identity.pid);
-  /* 身份变了也算释放：那个 PID 已经不是我们的进程了，与彻底消失等价。说不清则不算。 */
+  /* A changed leader alone does not prove its original process group has ended. */
   if (after.state === "unverified") {
-    return journal.quarantine(entry.custodyId, entry.revision, "process-identity-unconfirmed");
+    return quarantine("PROBE_AFTER_UNKNOWN", "after", after.state);
   }
-  if (after.state === "present" && !sameProcess(after, identity) || after.state === "absent" && result.ok && !exists(identity.processGroupId)) {
+  if ((after.state === "present" && !sameProcess(after, identity) || after.state === "absent") && !exists(identity.processGroupId)) {
     return journal.release(entry.custodyId, entry.revision);
   }
-  if (!result.ok) console.warn("[custody] 进程组清理失败", result.error.message);
-  return journal.quarantine(
-    entry.custodyId,
-    entry.revision,
-    "process-survived-kill"
-  );
+  const unconfirmed = !result.ok && (result.error as NodeJS.ErrnoException).code === "PROCESS_IDENTITY_UNCONFIRMED";
+  return quarantine(unconfirmed ? "SIGNAL_IDENTITY_UNKNOWN" : "GROUP_STILL_PRESENT", "stop", after.state,
+    unconfirmed ? "process-identity-unconfirmed" : "process-survived-kill");
 }
 
 function sameProcess(birth: ProcessBirth, identity: Pick<ProcessIdentity, "processGroupId" | "birthIdentity">) {

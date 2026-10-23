@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Admitted immutable bytes, exact Chat incarnations and parent-synced persistence primitives.
- * [OUTPUT]: MIME-named immutable snapshots, document/export custody, cross-Chat reference retention, restart reconstruction and independent Fork references.
+ * [OUTPUT]: Immutable snapshot reads with or without live metadata, custody promotion, restart reconstruction and independent Fork references.
  * [POS]: Local artifact authority independent of cloud credentials or key availability; bytes live beside their Chat in the folder, so Chat deletion collects them with the directory.
  */
+import { ArtifactFailure } from "./failure";
 import { z } from "zod";
 import { lstat, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -58,11 +59,14 @@ export class SnapshotCustody {
   async read(ref: ArtifactRef) {
     const record = this.lookup(ref);
     if (!record) throw new Error("artifact-unavailable");
-    const path = this.path(record.fence, record.ref), metadata = await lstat(path);
-    if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size !== record.fence.bytes) throw new Error("artifact-unavailable");
+    return { record, ...await this.readSnapshot(ref, record.fence) };
+  }
+  async readSnapshot(ref: ArtifactRef, fence: ArtifactFence) {
+    const path = this.path(fence, ref), metadata = await lstat(path);
+    if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size !== fence.bytes) throw new Error("artifact-unavailable");
     const data = await readFile(path);
-    if (artifactHash(data) !== record.fence.sha256) throw new Error("artifact-integrity");
-    return { record, data, path };
+    if (artifactHash(data) !== fence.sha256) throw new Error("artifact-integrity");
+    return { data, path };
   }
   retain(record: ArtifactRecord, data?: Uint8Array) {
     return this.queue.enqueue(async () => {
@@ -72,7 +76,7 @@ export class SnapshotCustody {
       const previous = state.records.find(value => key(value.ref) === key(record.ref));
       if (previous) {
         if (previous.fence.sha256 !== record.fence.sha256) throw new Error("artifact-identity-conflict");
-        record = previous;
+        record = { ...previous, committed: previous.committed || record.committed };
       }
       const fence = record.fence;
       const root = this.libraryRoot(); if (!root) throw new Error("artifact-folder-unavailable");
@@ -80,7 +84,7 @@ export class SnapshotCustody {
       if (!fence.sha256 || fence.bytes === undefined) throw new Error("artifact-unavailable");
       const sum = (records: ArtifactRecord[]) => [...new Map(records.map(value => [this.path(value.fence, value.ref), value.fence.bytes ?? 0])).values()].reduce((total, bytes) => total + bytes, 0);
       const next = previous ? state.records : [...state.records, record];
-      if (sum(next) > ARTIFACT_BUDGET.global || sum(next.filter(value => value.ref.chatId === record.ref.chatId)) > ARTIFACT_BUDGET.chat) throw new Error("budget");
+      if (sum(next) > ARTIFACT_BUDGET.global || sum(next.filter(value => value.ref.chatId === record.ref.chatId)) > ARTIFACT_BUDGET.chat) throw new ArtifactFailure("budget", "retain");
       if (data) {
         if (data.length !== fence.bytes || artifactHash(data) !== fence.sha256) throw new Error("artifact-integrity");
         const existing = await readFile(this.path(fence, record.ref)).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; return null; });
@@ -91,6 +95,7 @@ export class SnapshotCustody {
         if (bytes.length !== fence.bytes || artifactHash(bytes) !== fence.sha256) throw new Error("artifact-integrity");
       }
       if (!previous) await this.write(state => { state.records.push(record); });
+      else if (record.committed !== previous.committed) await this.write(state => { const current = state.records.find(value => key(value.ref) === key(record.ref)); if (current) current.committed = record.committed; });
       return record;
     });
   }

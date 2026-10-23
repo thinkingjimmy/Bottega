@@ -7,7 +7,7 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { useArtifactHost } from "../../../../../context";
 import { canvasCopy } from "../../copy";
-import type { CanvasBox } from "../../camera";
+import type { CanvasBox } from "../../motion/camera";
 import type { TypographyValues } from "./typography";
 const scaled = (value: string | undefined, zoom: number) => value && /^-?[\d.]+px$/.test(value) ? `${parseFloat(value) * zoom}px` : value;
 export function CanvasTextEditor({ value, box, zoom, style, editable, busy, autofocus = false, change, done, cancel }: { value: string; box: CanvasBox; zoom: number; style: TypographyValues; editable: boolean; busy: boolean; autofocus?: boolean; change(value: string): void; done(): void; cancel(): void }) {

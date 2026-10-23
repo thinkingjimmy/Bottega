@@ -61,6 +61,6 @@ export const chatRuntimeEs: typeof chatRuntimeEn = {
   relayStopFailed: "No se pudo detener toda la cadena de relevo Section; en su lugar se detuvo la solicitud actual: {{message}}. Puedes reintentarlo.",
   actionFailed: "**Falló {{action}}:** {{message}}",
   abandonTurn: "Abandonar turn",
-  acknowledgeCleanup: "Confirmar limpieza",
+  acknowledgeCleanup: "Reintentar limpieza",
   unnamed: "Sin título",
 };

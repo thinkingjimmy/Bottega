@@ -6,7 +6,7 @@
 import { canvasOperationSchema, type CanvasOperation, type CanvasTarget } from "@ai-chat/cloud-protocol/artifacts/design/canvas/commands";
 import type { CanvasObject } from "@ai-chat/cloud-protocol/artifacts/design/canvas/model";
 import type { CanvasRead } from "@ai-chat/cloud-protocol/artifacts/design/canvas/view";
-import type { CanvasBox } from "../../camera";
+import type { CanvasBox } from "../../motion/camera";
 import type { FrameHints } from "../../../../preview";
 export function transformOperations({ objects, boards, allBoards, world, screen, next, zoom, source, hints }: { objects: CanvasObject[]; boards: CanvasRead["boards"]; allBoards: CanvasRead["boards"]; world: CanvasBox; screen: CanvasBox; next: CanvasBox; zoom: number; source?: CanvasTarget; hints: FrameHints }): CanvasOperation[] {
   const dx = (next.x - screen.x) / zoom, dy = (next.y - screen.y) / zoom, sx = next.width / screen.width, sy = next.height / screen.height;

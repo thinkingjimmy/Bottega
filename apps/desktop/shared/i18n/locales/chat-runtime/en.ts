@@ -59,6 +59,6 @@ export const chatRuntimeEn = {
   relayStopFailed: "Failed to stop the entire Section relay chain; the current request was stopped instead: {{message}}. You can retry.",
   actionFailed: "**{{action}} failed:** {{message}}",
   abandonTurn: "Abandon turn",
-  acknowledgeCleanup: "Confirm cleanup",
+  acknowledgeCleanup: "Retry cleanup",
   unnamed: "Untitled",
 };

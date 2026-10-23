@@ -3,9 +3,6 @@
  * [OUTPUT]: Exact source extraction, paged three-way review, finite overrides, fixed consumption and controlled mounts.
  * [POS]: Design-system main adapter; no new registry, commit protocol or comment store.
  */
-import { lstat, mkdir, readdir, realpath } from "node:fs/promises";
-import { constants, lstatSync, realpathSync, existsSync, openSync, closeSync, fstatSync, readSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { unpackArtifactArchive } from "@ai-chat/cloud-protocol/artifacts/archive";
 import type { WorkspaceCommand } from "@ai-chat/cloud-protocol/artifacts/design/model";
 import { DEFAULT_PROVIDER_ID } from "../../../../shared/providers/catalog";
@@ -13,11 +10,9 @@ import { designSystemSchema, systemCompileSchema, systemOverrideSchema, type Des
 import { designSystemChanges, mergeDesignSystem } from "@ai-chat/cloud-protocol/artifacts/design/system/difference";
 import { validTokenValue, resolvedSystemToken } from "@ai-chat/cloud-protocol/artifacts/design/system/tokens";
 import { designDocuments } from "../documents/runtime";
-import { DesignDocumentError, designDigest, requestKey, type DesignAuthority } from "../documents/model";
+import { DesignDocumentError, designDigest, requestKey } from "../documents/model";
 import type { DesignRevision } from "../documents/store";
-import { readDesignSet } from "../documents/read-set";
 import { transformedDesignSet } from "../documents/edits";
-import { durableReplaceBytes } from "../../persistence/durable-json";
 import { assertArtifactGeneration } from "../../artifacts/admission/state";
 import { captureSystemSources } from "./sources";
 import { extractCapturedSystem, extractionDigest } from "./extract";
@@ -119,52 +114,6 @@ function differencePage(current: DesignSystem, incoming: DesignSystem, sourceDig
   if (Buffer.byteLength(JSON.stringify(result)) > 8000) throw new DesignDocumentError("BUDGET_EXCEEDED", "Source difference page exceeds its encrypted result budget");
   return result;
 }
-async function initializeFiles(authority: DesignAuthority, path: string, files: readonly { path: string; data: Uint8Array }[], assertAuthority: () => void, generation: string | undefined) {
-  const workspace = await realpath(authority.workspace), parent = join(workspace, "design-systems"), root = join(workspace, path);
-  await mkdir(parent, { recursive: false }).catch(error => { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; });
-  const safeDirectory = async (directory: string) => { const stat = await lstat(directory);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || await realpath(directory) !== directory) throw new DesignDocumentError("PATH_DENIED", "System output directory cannot contain symbolic links"); };
-  await safeDirectory(parent); assertAuthority();
-  await mkdir(root, { recursive: false }).catch(error => { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; });
-  await safeDirectory(root);
-  const expected = new Map(files.map(file => [file.path, designDigest(file.data)]));
-  const existing = (await readdir(root)).length ? await readDesignSet(authority.workspace, path) : null;
-  if (existing?.files.some(file => expected.get(file.path) !== file.digest)) throw new DesignDocumentError("SOURCE_CHANGED", "System directory already contains different user data; it was not overwritten");
-  for (const file of [...files].sort((a, b) => (a.path === "canvas.json" ? 1 : b.path === "canvas.json" ? -1 : a.path.localeCompare(b.path, "en")))) {
-    const target = join(root, file.path), directory = dirname(target);
-    if (directory !== root) { await mkdir(directory, { recursive: false }).catch(error => { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }); await safeDirectory(directory); }
-    assertAuthority();
-    const guard = () => {
-      assertAuthority(); assertArtifactGeneration(generation);
-      for (const directory of [parent, root, dirname(target)]) {
-        const stat = lstatSync(directory);
-        if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(directory) !== directory) throw new DesignDocumentError("PATH_DENIED", "System output directory changed before publication");
-      }
-      if (!existsSync(target)) return;
-      const handle = openSync(target, constants.O_RDONLY | constants.O_NOFOLLOW);
-      try {
-        const before = fstatSync(handle);
-        if (!before.isFile() || before.size !== file.data.length) throw new DesignDocumentError("SOURCE_CHANGED", "Candidate file changed before publication");
-        const bytes = Buffer.alloc(file.data.length); let offset = 0;
-        while (offset < bytes.length) { const count = readSync(handle, bytes, offset, Math.min(65536, bytes.length - offset), offset);
-          if (!count) throw new DesignDocumentError("SOURCE_CHANGED", "Candidate was truncated before publication"); offset += count; }
-        const after = fstatSync(handle);
-        if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs || designDigest(bytes) !== expected.get(file.path)) throw new DesignDocumentError("SOURCE_CHANGED", "Candidate bytes changed; user data was not overwritten");
-      } finally { closeSync(handle); }
-    };
-    // A synchronous guard covers both the temporary write and final atomic publication.
-    await safeDirectory(root); await safeDirectory(directory);
-    const before = await lstat(target).catch(() => null);
-    if (before) {
-      if (!before.isFile() || before.isSymbolicLink()) throw new DesignDocumentError("PATH_DENIED", "System output target is not an ordinary file");
-      guard();
-      continue;
-    }
-    await durableReplaceBytes(target, file.data, 0o600, guard);
-    await safeDirectory(root); await safeDirectory(directory);
-  }
-  assertAuthority();
-}
 export async function extractDesignSystem(input: WorkspaceCommand, backend: string = DEFAULT_PROVIDER_ID) {
   assertArtifactGeneration(input.generation);
   if (input.save) {
@@ -180,30 +129,27 @@ export async function extractDesignSystem(input: WorkspaceCommand, backend: stri
     }
     if (documents.store.latest(authority.ownerId, input.systemId, authority)) throw new DesignDocumentError("REVISION_CONFLICT", "This system already has revisions. Review a source difference instead of rebuilding it.");
   }
-  const extracted = await capture(input), { system, authority, assertAuthority, captured, sourceDigest } = extracted;
+  const extracted = await capture(input), { system, assertAuthority, captured, sourceDigest } = extracted;
   if (!input.save) return inventoryPage(system, sourceDigest, input.value);
   if (!captured.files.length) throw new DesignDocumentError("INVALID_DOCUMENT", "No ordinary supported source files were captured; no system was saved", captured.unsynced.slice(0, 32).map(item => ({ file: item.path, message: item.reason })));
   const manifest = initialSystemManifest(input.systemId!), path = `design-systems/${input.systemId}`;
   system.sources.requestDigest = designDigest(JSON.stringify([input.systemId, input.sources]));
   const files = checkedFiles(path, projectSystemFiles(system, manifest, [], captured));
-  await initializeFiles(authority, path, files, assertAuthority, input.generation);
-  assertArtifactGeneration(input.generation);
-  const documents = designDocuments(), checked = await documents.check(input.chatId, input.incarnationId, path, AbortSignal.timeout(15000));
-  if (checked.status !== "ready") throw new DesignDocumentError("INVALID_DOCUMENT", "Extracted system failed the existing document check", checked.issues);
-  return documents.commit(input.chatId, input.incarnationId, backend, { path, requestId: input.requestId!, expectedRevision: 0, readSetDigest: checked.readSetDigest }, AbortSignal.timeout(15000));
+  assertAuthority(); assertArtifactGeneration(input.generation);
+  return designDocuments().initializeSource(input, backend, files, () => assertArtifactGeneration(input.generation));
 }
 export async function designSystemAction(input: WorkspaceCommand, snapshot: Snapshot) {
   assertArtifactGeneration(input.generation);
   if (input.action !== "system-diff" && input.requestId) {
     const documents = designDocuments(), authority = documents.authority(input.chatId, input.incarnationId);
     const original = documents.store.operation(requestKey(authority, input.requestId));
-    if (original?.sourceEdit) return documents.edit(input, snapshot.version, async () => { throw new DesignDocumentError("REQUEST_MISMATCH", "Original system operation is unavailable"); });
+    if (original?.sourceEdit) return documents.edit(input, snapshot.version, async () => { throw new DesignDocumentError("REQUEST_MISMATCH", "Original system operation is unavailable"); }, () => assertArtifactGeneration(input.generation));
   }
   if (input.action === "system-bind") {
     if (!snapshot.editable) throw new DesignDocumentError("PATH_DENIED", "Retained/historical references cannot change a source binding");
     return designDocuments().edit(input, snapshot.version, async source => {
       const files = await bindDesignSystem(input, snapshot.version, source); assertArtifactGeneration(input.generation); return files;
-    });
+    }, () => assertArtifactGeneration(input.generation));
   }
   const system = checkedSystem(snapshot);
   if (input.action === "system-diff") {
@@ -230,7 +176,7 @@ export async function designSystemAction(input: WorkspaceCommand, snapshot: Snap
         current.aliases.aliases = current.aliases.aliases.filter(alias => alias.name !== override.token || alias.theme !== override.theme);
         if (override.usage !== undefined) token.usage = override.usage;
         assertArtifactGeneration(input.generation); return checkedFiles(source.path, projectSystemFiles(current, snapshot.version.manifest, source.files));
-      });
+      }, () => assertArtifactGeneration(input.generation));
     }
     if (!input.sources || !input.sourceDigest) throw new DesignDocumentError("INVALID_DOCUMENT", "Review the exact current-source difference before applying an update");
     return designDocuments().edit(input, snapshot.version, async source => {
@@ -249,7 +195,7 @@ export async function designSystemAction(input: WorkspaceCommand, snapshot: Snap
       }
       designSystemSchema.parse(merged.system); assertArtifactGeneration(input.generation);
       return checkedFiles(source.path, projectSystemFiles(merged.system, snapshot.version.manifest, source.files, incoming.captured));
-    });
+    }, () => assertArtifactGeneration(input.generation));
   }
   if (input.action === "system-compile") {
     if (!input.entry || !input.value) throw new DesignDocumentError("INVALID_DOCUMENT", "Choose an actual source entry and component name");
@@ -278,7 +224,7 @@ export async function designSystemAction(input: WorkspaceCommand, snapshot: Snap
         current.sources.unsynced.push({ path: component.entry, kind: "component", name: component.name, reason });
         return checkedFiles(source.path, projectSystemFiles(current, snapshot.version.manifest, source.files));
       }
-    });
+    }, () => assertArtifactGeneration(input.generation));
   }
   throw new DesignDocumentError("INVALID_DOCUMENT", "Unknown system action");
 }

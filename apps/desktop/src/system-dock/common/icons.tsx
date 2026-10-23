@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, the isolated bridge's icon lookup, the canonical product mark, lucide glyphs, and Dock item/candidate projections.
- * [OUTPUT]: Provides `useDockIcons` (process-lifetime cache, one in-flight request per key) and `DockGlyph`, which draws the canonical product mark for the host, a native icon when main supplied one and a neutral glyph otherwise, including a shaded frosted-glass Trash bin whose empty/full/unknown variants differ in shape.
+ * [OUTPUT]: Provides `useDockIcons` (process-lifetime cache, one in-flight request per key) and `DockGlyph`, which draws the host product mark with native artwork sizing, a native icon when main supplied one and a neutral glyph otherwise, including a shaded frosted-glass Trash bin whose empty/full/unknown variants differ in shape.
  * [POS]: system-dock/common icon layer shared by bar items, the navigate list and the add picker; never decodes paths itself, only opaque keys main resolved (INV-13).
  */
 
@@ -93,7 +93,7 @@ function TrashGlyph({ state }: { state: TrashState | undefined }) {
 
 type GlyphSubject = Pick<DockBarItem, "kind" | "iconKey" | "host"> & { entry?: DockBarItem["entry"]; trash?: TrashState; widgetType?: string };
 export function DockGlyph({ subject, icons, className }: { subject: GlyphSubject; icons: ReadonlyMap<string, string | null>; className?: string }) {
-  if (subject.host) return <img className={`glyph native ${className ?? ""}`} src={PRODUCT_MARK_URL} alt="" draggable={false} />;
+  if (subject.host) return <img className={`glyph native host ${className ?? ""}`} src={PRODUCT_MARK_URL} alt="" draggable={false} />;
   const url = subject.iconKey ? icons.get(subject.iconKey) : undefined;
   // The Trash always draws its own state glyph so a stale native icon can never claim "empty".
   if (subject.entry === "system.trash") return <span className={`glyph art ${className ?? ""}`}><TrashGlyph state={subject.trash} /></span>;

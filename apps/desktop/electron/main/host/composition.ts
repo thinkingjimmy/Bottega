@@ -144,7 +144,7 @@ export function createHostRuntime(options: { userData: string; mainDirectory: st
         reply({ t: "process-spawned", id: message.id, ok: false, error: (cause as Error).message });
       }
     } else if (message.t === "process-stdin") {
-      processes.write(hostId, message.processId, message.data, message.end);
+      await processes.write(hostId, message.processId, message.data, message.end);
     } else if (message.t === "process-kill") {
       await processes.kill(hostId, message.processId);
     }

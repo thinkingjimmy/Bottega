@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Account-fenced main crypto/transport, original Chat owner and the existing review checkpoint owner.
- * [OUTPUT]: Fresh mirror reads and immutable resource mutations with durable same-record recovery.
+ * [OUTPUT]: Fresh mirror reads, ephemeral thumbnail cancellation and immutable resource mutations with durable same-record recovery.
  * [POS]: Reader-computer adapter; no local workspace authority, plugin state or automatic owner substitution.
  */
 import { createHash } from "node:crypto";
@@ -30,7 +30,7 @@ export function remoteArtifactWorkspace(ports: { config: CloudBuildConfig; devic
     const header = { ...protocolHeader(ports.config), expectedUserId: crypto.session.userId, encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint } };
     const scope = [input.chatId, input.incarnationId, identity, targetDeviceId], key = JSON.stringify([...scope, action, input.action, input.requestId]);
     const digest = createHash("sha256").update(canonicalJson(value)).digest("hex"), checkpoints = artifactWorkspace().checkpoints;
-    const retain = action === "artifact-workspace" && !["operation-status", "system-diff", "resume-edit", "resolve-edit", "thumbnail", "canvas-target"].includes(input.action);
+    const retain = action === "artifact-workspace" && !["capture-status", "operation-status", "system-diff", "resume-edit", "resolve-edit", "thumbnail", "cancel-thumbnail", "canvas-target"].includes(input.action);
     const stored = retain ? checkpoints.command(key) : null;
     if (stored && stored.digest !== digest) throw new Error("artifact-request-conflict");
     let sealed = stored?.sealed;
@@ -54,7 +54,7 @@ export function remoteArtifactWorkspace(ports: { config: CloudBuildConfig; devic
           if (await owner(input) !== targetDeviceId) throw new Error("artifact-owner-changed");
           if (!body?.ok) { if (retain && body) await checkpoints.releaseCommand(key); throw new Error(body && !body.ok ? body.code : "artifact-unavailable"); }
           if (input.requestId && (body.artifactOperation?.status === "committed" || body.artifactOperation?.status === "conflict" && !body.artifactOperation.sourceConflict?.needsResolution)) await checkpoints.releaseRequest(scope, input.requestId);
-          else if (retain && body.artifactExport) await checkpoints.releaseCommand(key);
+          else if (retain && (body.artifactExport || body.artifactRecovery)) await checkpoints.releaseCommand(key);
           current(); return body;
         }
       }

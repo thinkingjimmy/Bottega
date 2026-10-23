@@ -1,18 +1,18 @@
 /**
- * [INPUT]: Persisted original-version feedback targets, projected viewport geometry and existing checkpoint/composer callbacks.
- * [OUTPUT]: Measured viewport-bounded annotation input with scroll-free focus, numbered feedback and explicit locate/retarget/delete/handoff actions.
+ * [INPUT]: Persisted original-version feedback targets, projected stage geometry, a measured chrome-safe viewport rectangle and existing checkpoint/composer callbacks.
+ * [OUTPUT]: Chrome-safe comment input in the unchanged stage coordinate space, with scroll-free focus, direct draft confirmation and numbered feedback history with locate/retarget/delete/handoff actions.
  * [POS]: Canvas opinion surface; no feedback or host authority enters the authored frame.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MapPin, Crosshair, Trash2, X } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import type { DesignCheckpoint } from "@ai-chat/cloud-protocol/artifacts/design/review";
-import type { CanvasBox } from "./editor/camera";
+import type { CanvasBox } from "./editor/motion/camera";
 import { useArtifactHost } from "../../context";
 import { workspaceCopy } from "../copy";
 export type AnnotationDraft = NonNullable<DesignCheckpoint["annotation"]>;
 export function ContextAnnotation({ draft, boardTitle, target, viewport, busy, change, save, close }: { draft: AnnotationDraft; boardTitle: string; target: CanvasBox | null;
-  viewport: Pick<CanvasBox, "width" | "height">; busy: boolean; change(text: string): void; save(): void; close(): void }) {
+  viewport: CanvasBox; busy: boolean; change(text: string): void; save(): void; close(): void }) {
   const copy = workspaceCopy(useArtifactHost()!.locale), input = useRef<HTMLTextAreaElement>(null), surface = useRef<HTMLDivElement>(null), [height, setHeight] = useState(240);
   useLayoutEffect(() => {
     const node = surface.current; if (!node) return;
@@ -21,14 +21,15 @@ export function ContextAnnotation({ draft, boardTitle, target, viewport, busy, c
   }, []);
   useEffect(() => { input.current?.focus({ preventScroll: true }); }, [draft.id]);
   const width = Math.min(304, Math.max(0, viewport.width - 16)), limit = Math.max(0, viewport.height - 16), panelHeight = Math.min(height, limit);
-  const at = target ?? { x: 8, y: 8, width: 0, height: 0 }, below = at.y + at.height + 8, above = at.y - panelHeight - 8;
-  const preferredTop = below + panelHeight <= viewport.height - 8 ? below : above >= 8 ? above : at.y;
-  const top = Math.max(8, Math.min(preferredTop, viewport.height - panelHeight - 8));
+  const right = viewport.x + viewport.width, bottom = viewport.y + viewport.height;
+  const at = target ?? { x: viewport.x + 8, y: viewport.y + 8, width: 0, height: 0 }, below = at.y + at.height + 8, above = at.y - panelHeight - 8;
+  const preferredTop = below + panelHeight <= bottom - 8 ? below : above >= viewport.y + 8 ? above : at.y;
+  const top = Math.max(viewport.y + 8, Math.min(preferredTop, bottom - panelHeight - 8));
   return <div ref={surface} data-context-annotation={draft.id} data-canvas-chrome="" className="absolute z-40 flex max-w-full flex-col gap-3 overflow-y-auto rounded-xl border bg-popover p-3 text-popover-foreground shadow-xl"
-    style={{ left: Math.max(8, Math.min(at.x, viewport.width - width - 8)), top, width, maxHeight: limit }}>
-    <div className="flex min-w-0 items-center gap-1"><div className="min-w-0 flex-1"><p className="truncate text-xs text-muted-foreground">{boardTitle}</p><p className="truncate text-xs font-medium">{draft.anchor.currentText.slice(0, 60) || draft.anchor.selector || copy.region}</p></div><Button type="button" variant="ghost" size="icon" aria-label={copy.closePanel} className="min-h-[44px] min-w-[44px]" onClick={close}><X className="size-4" /></Button></div>
-    <textarea ref={input} aria-label={copy.note} maxLength={4096} rows={3} value={draft.text} className="min-h-20 min-w-0 resize-none rounded-md border bg-background p-2 text-sm focus-visible:outline-2 focus-visible:outline-primary" onChange={event => change(event.target.value)} />
-    <Button type="button" disabled={busy || !draft.text.trim()} className="min-h-[44px] shrink-0" onClick={save}>{copy.saveComment}</Button>
+    style={{ left: Math.max(viewport.x + 8, Math.min(at.x, right - width - 8)), top, width, maxHeight: limit }}>
+    <div className="flex min-w-0 items-center gap-1"><div className="min-w-0 flex-1"><p className="truncate text-xs text-muted-foreground">{boardTitle}</p><p className="truncate text-xs font-medium">{draft.anchor.currentText.slice(0, 60) || draft.anchor.selector || copy.region}</p></div><Button type="button" variant="ghost" size="icon" aria-label={copy.closePanel} className="min-h-[44px] min-w-[44px]" disabled={busy} onClick={close}><X className="size-4" /></Button></div>
+    <textarea ref={input} aria-label={copy.note} maxLength={4096} rows={3} value={draft.text} disabled={busy} className="min-h-20 min-w-0 resize-none rounded-md border bg-background p-2 text-sm focus-visible:outline-2 focus-visible:outline-primary" onChange={event => change(event.target.value)} />
+    <Button type="button" disabled={busy || !draft.text.trim()} aria-busy={busy || undefined} className="min-h-[44px] shrink-0" onClick={save}>{copy.confirm}</Button>
   </div>;
 }
 export function FeedbackNotes({ notes, titles, update, locate, retarget, handoff, enabled, busy }: { notes: DesignCheckpoint["notes"]; titles: Record<string, string>;

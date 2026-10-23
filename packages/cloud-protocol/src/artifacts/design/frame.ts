@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Prepared board HTML, owner-issued frame identity and transient UI edit sessions.
+ * [INPUT]: Prepared board HTML, owner-issued frame identity, transient UI edit sessions and an optional measurement observer.
  * [OUTPUT]: Opaque preview with trusted editor wheel panning, native Preview scrolling, session-owned text and authenticated display metadata.
  * [POS]: Canvas frame interaction bridge; source authority and shared schemas remain with the owner service.
  */
@@ -9,11 +9,11 @@ export type DesignFrameIdentity = { id: string; nonce: string; selectionNonce: s
 export function designFrameHtml(html: string, identity: DesignFrameIdentity) {
   const seed = JSON.stringify(identity).replace(/</g, "\\u003c");
   const script = `(()=>{
-    const identity=${seed};document.currentScript?.remove();const send=parent.postMessage.bind(parent);
+    let messageSequence=0;const identity=${seed};document.currentScript?.remove();const send=parent.postMessage.bind(parent);
     const cssKeys=${JSON.stringify(DESIGN_PROPERTIES.filter(property=>property!=='text'))};
     const hintKeys=[...new Set([...cssKeys,'font-family','font-weight','font-style','text-decoration','text-align','line-height','letter-spacing','position','left','top','border-radius','box-sizing'])];
     let tool='preview',selecting=false,regionMode=false,start=null,overlay=null,touch=null,blockClick=false,targets=[],selected=null,lastGeometry=0,lastHover=0,lastReselect='',lastFocus=0,pan=null,space=false,shadow=null,editor=null,editorSession=-1,wheelEnd;
-    const stamp=type=>({type,id:identity.id,nonce:identity.nonce,generation:identity.generation,boardId:identity.boardId,boardDigest:identity.boardDigest});
+    const stamp=type=>({type,seq:++messageSequence,id:identity.id,nonce:identity.nonce,generation:identity.generation,boardId:identity.boardId,boardDigest:identity.boardDigest});
     const viewport=()=>({width:Math.max(40,Math.min(8000,innerWidth)),height:Math.max(40,Math.min(8000,innerHeight)),scrollX:Math.max(0,Math.min(1000000,scrollX)),scrollY:Math.max(0,Math.min(1000000,scrollY))});
     const point=event=>({x:Math.max(0,Math.min(innerWidth,event.clientX)),y:Math.max(0,Math.min(innerHeight,event.clientY))});
     const nativeTarget=target=>{
@@ -44,7 +44,7 @@ export function designFrameHtml(html: string, identity: DesignFrameIdentity) {
       return {rect:rect(el),anchor:{boardId:identity.boardId,boardDigest:identity.boardDigest,selector,currentText:(el.textContent||'').trim().slice(0,2048),region:null,viewport:viewport(),...(bounds?{bounds}:{}),properties},hints:Object.fromEntries(hintKeys.map(key=>[key,style.getPropertyValue(key).slice(0,128)]))};
     };
     const pick=(el,event,intent='select')=>{const result=anchorFor(el);if(result)send({...stamp('bottega:design:anchor'),...result,extend:event?.shiftKey===true,intent},'*');};
-    const gesture=(kind,phase,event,dx=0,dy=0)=>{const p=point(event);send({...stamp('bottega:design:gesture'),kind,phase,x:p.x/innerWidth,y:p.y/innerHeight,dx:Math.max(-10000,Math.min(10000,dx)),dy:Math.max(-10000,Math.min(10000,dy))},'*');};
+    const gesture=(kind,phase,event,dx=0,dy=0,sample)=>{const p=point(event),packet={...stamp('bottega:design:gesture'),kind,phase,x:p.x/innerWidth,y:p.y/innerHeight,dx:Math.max(-10000,Math.min(10000,dx)),dy:Math.max(-10000,Math.min(10000,dy))};if(sample){const measurement=window.__canvasTiming?.sent(sample,identity.id,packet.seq);if(measurement)packet.measurement=measurement;}send(packet,'*');};
     for(const key of ['RTCPeerConnection','webkitRTCPeerConnection','Worker','SharedWorker']){try{Object.defineProperty(window,key,{value:undefined,writable:false,configurable:false});}catch{}}
     window.open=()=>null;
     addEventListener('message',event=>{
@@ -102,9 +102,10 @@ export function designFrameHtml(html: string, identity: DesignFrameIdentity) {
     addEventListener('blur',()=>{space=false;clean();});
     addEventListener('touchmove',event=>{if(event.isTrusted&&(tool==='hand'||space)&&!nativeTarget(event.target)&&event.cancelable)event.preventDefault();},{capture:true,passive:false});
     addEventListener('wheel',event=>{
-      if(!event.isTrusted||typing(event.target)||nativeTarget(event.target))return;
-      if(!event.ctrlKey&&!event.metaKey&&tool==='preview')return;event.preventDefault();event.stopImmediatePropagation();const unit=event.deltaMode===1?16:event.deltaMode===2?innerHeight:1;
-      const kind=event.ctrlKey||event.metaKey?'zoom':'pan';gesture(kind,'change',event,(kind==='pan'?-1:1)*event.deltaX*unit,(kind==='pan'?-1:1)*event.deltaY*unit);clearTimeout(wheelEnd);wheelEnd=setTimeout(()=>gesture(kind,'end',event),180);
+      const probe=window.__canvasTiming,sample=probe?.enabled?probe.lookup(event,identity.id):undefined;
+      if(!event.isTrusted||typing(event.target)||nativeTarget(event.target)){if(sample)probe.reject(sample,'native');return;}
+      if(!event.ctrlKey&&!event.metaKey&&tool==='preview'){if(sample)probe.reject(sample,'preview');return;}event.preventDefault();event.stopImmediatePropagation();const unit=event.deltaMode===1?16:event.deltaMode===2?innerHeight:1;
+      const kind=event.ctrlKey||event.metaKey?'zoom':'pan';gesture(kind,'change',event,(kind==='pan'?-1:1)*event.deltaX*unit,(kind==='pan'?-1:1)*event.deltaY*unit,sample);clearTimeout(wheelEnd);wheelEnd=setTimeout(()=>gesture(kind,'end',event),180);
     },{capture:true,passive:false});
     addEventListener('pointerdown',event=>{
       if(!event.isTrusted)return;blockClick=false;

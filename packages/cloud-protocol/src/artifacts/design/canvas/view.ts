@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Fixed manifest and captured resource bytes; no live source or platform authority.
- * [OUTPUT]: Implicit pages, resolved membership and offline image/font choices for shared editors.
+ * [OUTPUT]: Implicit pages, byte-free image/font choices and exact immutable image-byte validation for shared editors.
  * [POS]: Read-only Canvas projection; opening an older manifest never rewrites it.
  */
 import type { DesignManifest } from "../model";
@@ -36,24 +36,12 @@ export function readCanvas(manifest: DesignManifest, files: readonly File[]) {
     const mime = sniffImageMime(file.data); if (!mime || file.data.length > CANVAS_LIMITS.imageBytes) return [];
     return [{ path: file.path, digest: "sha256:" + hashBytes(file.data), mime, bytes: file.data.length }];
   });
-  const objectImages: Record<string, string> = {};
-  const urls = new Map<string, string>(); let projectedBytes = 0;
-  for (const object of manifest.objects ?? []) if (object.kind === "image") {
-    const image = images.find(image => image.path === object.asset.path && image.digest === object.asset.digest);
-    const file = image && files.find(file => file.path === image.path);
-    const url = file && (urls.get(file.path) ?? canvasImageUrl(file.data));
-    if (url) {
-      urls.set(file!.path, url); projectedBytes += url.length + object.id.length + 6;
-      if (projectedBytes > CANVAS_LIMITS.resourceBytes - 262144) throw new Error("Canvas image projection exceeds the 50,000,000-byte generated resource budget");
-      objectImages[object.id] = url;
-    }
-  }
   return { pages: canvasPages(manifest), objects: manifest.objects ?? [] as CanvasObject[],
     boards: manifest.boards.map(board => {
       const pageId = canvasBoardPage(manifest, board), index = manifest.boards.filter(value => canvasBoardPage(manifest, value) === pageId).findIndex(value => value.id === board.id);
       return { ...board, pageId, position: board.position ?? { x: index % 4 * width, y: Math.floor(index / 4) * height } };
     }),
-    fonts: canvasFonts(manifest, files), images, objectImages };
+    fonts: canvasFonts(manifest, files), images };
 }
 export type CanvasRead = ReturnType<typeof readCanvas>;
 export function validateCanvasCheckpoint(manifest: DesignManifest, checkpoint: { canvas?: { pageId: string; selection: string[] } }) {
@@ -62,4 +50,10 @@ export function validateCanvasCheckpoint(manifest: DesignManifest, checkpoint: {
   if (!canvasPages(manifest).some(page => page.id === pageId) || selection.some(id =>
     !manifest.boards.some(board => board.id === id && canvasBoardPage(manifest, board) === pageId) &&
     !manifest.objects?.some(object => object.id === id && object.pageId === pageId))) throw new Error("Canvas checkpoint page or selection belongs to another snapshot");
+}
+
+export function readCanvasImage(files: readonly File[], image: import("./model").CanvasImageIdentity) {
+  const file = files.find(file => file.path === image.path);
+  if (!file || file.data.byteLength !== image.bytes || sniffImageMime(file.data) !== image.mime || "sha256:" + hashBytes(file.data) !== image.digest) throw new Error("Canvas image identity changed");
+  return file.data;
 }

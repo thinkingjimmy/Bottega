@@ -1,6 +1,6 @@
 /**
  * [INPUT]: One committed revision's complete immutable resource map and board identity.
- * [OUTPUT]: Offline frozen-board HTML, syntax-position resource rewrites, exact digests and manifest-owned board navigation.
+ * [OUTPUT]: Offline frozen-board HTML with reachable-only resource copies, syntax-position resource rewrites, exact digests and manifest-owned board navigation.
  * [POS]: Snapshot renderer preparation; live workspace bytes never enter a committed render.
  */
 import { artifactMime } from "../../artifacts/admission/files";
@@ -19,15 +19,15 @@ export async function prepareDesignSnapshot(snapshot: { version: DesignRevision;
   const { documentId } = snapshot.version.manifest, { revision } = snapshot.version;
   const board = snapshot.version.manifest.boards.find(value => value.id === (boardId ?? snapshot.version.manifest.launchBoard));
   if (!board) throw new DesignDocumentError("INVALID_DOCUMENT", "Board ID is not in this revision");
-  const files = new Map(snapshot.files.map(file => [file.path, Buffer.from(file.data)]));
+  const files = new Map(snapshot.files.map(file => [file.path, file.data]));
   const cache = new Map<string, string>(), active = new Set<string>();
   let generatedBytes = 0;
   const prepare = async (path: string): Promise<string> => {
     const cached = cache.get(path); if (cached) return cached;
     const bytes = files.get(path);
-    if (!bytes || active.has(path)) throw new DesignDocumentError("INVALID_DOCUMENT", "Missing or cyclic loaded render dependency");
+    if (!bytes || active.has(path)) throw new DesignDocumentError("INVALID_DOCUMENT", `Missing or cyclic loaded render dependency: ${path}`);
     active.add(path);
-    let content: Buffer = bytes;
+    let content: Buffer = Buffer.from(bytes);
     if (/\.(?:html|css|[cm]?js|svg)$/i.test(path)) {
       const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes), references = await designResourceReferences(text, path);
       const replacements = new Map<number, string>();

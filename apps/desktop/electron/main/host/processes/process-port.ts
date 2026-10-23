@@ -94,10 +94,13 @@ export class HostProcessPort {
     return { child, pid, identity };
   }
 
-  write(hostId: string, processId: string, data: string | undefined, end: boolean | undefined) {
+  async write(hostId: string, processId: string, data: string | undefined, end: boolean | undefined) {
     const owned = this.owned(hostId, processId);
     if (data !== undefined) owned.child.stdin.write(data);
-    if (end) owned.child.stdin.end();
+    if (end) {
+      if (owned.custody) await this.custody.recordDescendants(processId).catch(() => undefined);
+      if (this.processes.get(processId) === owned) owned.child.stdin.end();
+    }
   }
 
   async kill(hostId: string, processId: string) {
@@ -133,7 +136,10 @@ export class HostProcessPort {
   recordCustodyDescendants(processId: string) { return this.custody.recordDescendants(processId); }
 
   async settleCustody(processId: string): Promise<"released" | "unconfirmed"> {
-    const entry = await this.settle(processId).catch(() => null);
+    const entry = await this.settle(processId).catch(cause => {
+      console.warn("[host] custody settlement failed", { processId, stage: "settle", code: (cause as NodeJS.ErrnoException)?.code ?? "SETTLE_FAILED" });
+      return null;
+    });
     return entry?.phase === "released" ? "released" : "unconfirmed";
   }
 

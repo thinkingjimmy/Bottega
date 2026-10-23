@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Chat facades, confirmed heads, ConversationModel, shared send projection, complete queue, command/draft custody and scoped consent.
  * [OUTPUT]: Shared messages, successor queue and composer; destination commit consumes creation custody, view-local body readiness retires pending bubbles, uncertain delivery retains loading, and Stop cancels the original request. Shared queue custody survives route changes, restores complete inputs and pauses successors through Stop; explicit auth-required retry retains capability and permission checks.
- * Design draft/send uses this original durable owner, exact reference/computer checks and existing unknown-command recovery.
+ * Design draft/send uses this original durable owner, one target chip without repeated title text, exact reference/computer checks and existing unknown-command recovery.
  * [POS]: Shared Web and desktop mirror host; transcript, composer and sibling panels read one published live projection without another subscription.
  */
 import { ChatConversation, type ConversationRegions } from "../page/conversation";
@@ -110,7 +110,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
   const reviewSend = useRef<NonNullable<ArtifactHost["sendReview"]>>(async () => { throw new Error("Original Chat is unavailable"); });
   const artifactComposer = useMemo(() => artifactHost ? { ...artifactHost, sendReview: (value: Parameters<NonNullable<ArtifactHost["sendReview"]>>[0]) => reviewSend.current(value),
     followUp: async (value: Parameters<NonNullable<ArtifactHost["followUp"]>>[0]) => {
-      const current = composerLatest.current, block = artifactFollowUpBlock(current.text, value);
+      const current = composerLatest.current, block = artifactFollowUpBlock(current.text, value.design ? { prompt: value.prompt } : value);
       const next = block ? [current.text, block].filter(Boolean).join("\n\n") : current.text;
       if (utf8Length(next) > REMOTE_LIMITS.textBytes) throw new Error("Review exceeds the original draft budget");
       if (value.design) {

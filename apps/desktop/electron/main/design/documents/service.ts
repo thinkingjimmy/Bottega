@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Main Chat/workspace facts, admission/generation guards, complete capture, canonical Canvas keys and durable storage.
- * [OUTPUT]: Check/status, guarded source/Canvas CAS, durable conflicts, semantic history, bounded recovery and exact Fork/Chat lifecycle.
+ * [OUTPUT]: Serializes initial revision reservations across request IDs; Check/status, guarded source/Canvas CAS, durable conflicts, semantic history, bounded recovery and exact Fork/Chat lifecycle.
  * [POS]: One document journal for Agent/source/Canvas/restore/system changes; no second registry or legacy App index.
  */
+import { artifactGeneration } from "../../artifacts/admission/state";
 import { randomUUID } from "node:crypto";
 import { lstat, readdir, realpath } from "node:fs/promises";
 import { watch } from "node:fs";
@@ -47,6 +48,10 @@ export class DesignDocuments {
       }
     });
   }
+  private admissionGuard() {
+    const generation = artifactGeneration();
+    return () => { this.ports.assertAdmission(); if (artifactGeneration() !== generation) throw new DesignDocumentError("ARTIFACT_DISABLED", "Artifact generation expired"); };
+  }
   authority(chatId: string, incarnationId: string) { return this.ports.resolve(chatId, incarnationId); }
   async singleHtml(chatId: string, incarnationId: string, file: string) {
     this.ports.assertAdmission();
@@ -78,7 +83,7 @@ export class DesignDocuments {
   commit(chatId: string, incarnationId: string, backend: string, input: DesignCommitInput, signal: AbortSignal) {
     this.ports.assertAdmission();
     if (this.closed) throw new DesignDocumentError("NOT_READY", "Document storage is closed. Reopen the application before saving.");
-    const authority = this.authority(chatId, incarnationId);
+    const authority = this.authority(chatId, incarnationId), assertExecution = this.admissionGuard();
     return this.queue.enqueue(async () => {
       this.assertAuthority(authority);
       const key = requestKey(authority, input.requestId);
@@ -92,7 +97,7 @@ export class DesignDocuments {
         this.recovering.delete(key);
         return this.resume(existing);
       }
-      signal.throwIfAborted();
+      signal.throwIfAborted(); assertExecution();
       const documentId = input.path.split("/")[1]!;
       const pending = this.store.blocking().find(operation => operation.revision.authority.ownerId === authority.ownerId &&
         operation.revision.manifest.documentId === documentId);
@@ -114,18 +119,18 @@ export class DesignDocuments {
       if (verified.readSetDigest !== source.readSetDigest || verified.files.some((file, index) => file.stamp !== source.files[index]?.stamp))
         throw new DesignDocumentError("SOURCE_CHANGED", "Source changed during capture; nothing was committed");
       signal.throwIfAborted(); this.assertAuthority(authority);
-      return this.publish(authority, backend, input, source, manifest, key, parameterDigest);
+      return this.publish(authority, backend, input, source, manifest, key, parameterDigest, undefined, () => { signal.throwIfAborted(); assertExecution(); });
 
     });
   }
   edit(input: WorkspaceCommand, version: DesignRevision,
-    transform: (source: DesignReadSet) => Promise<readonly { path: string; data: Uint8Array }[]>, assertExecution: () => void = () => undefined) {
+    transform: (source: DesignReadSet) => Promise<readonly { path: string; data: Uint8Array }[]>, assertExecution: () => void) {
     this.ports.assertAdmission();
     if (this.closed) throw new DesignDocumentError("NOT_READY", "Document storage is closed. Reopen the application before saving.");
     if (!input.requestId || input.expectedRevision === undefined || !input.readSetDigest) throw new DesignDocumentError("INVALID_DOCUMENT", "Edit requires a request ID, revision and digest");
-    const authority = this.authority(input.chatId, input.incarnationId);
+    const authority = this.authority(input.chatId, input.incarnationId), admission = this.admissionGuard();
     return this.queue.enqueue(async () => {
-      assertExecution();
+      assertExecution(); admission();
       this.assertAuthority(authority);
       const parameters = [authority, "workspace-edit", input];
       const key = requestKey(authority, input.requestId!), parameterDigest = designDigest(input.action === "canvas" ? canonicalJson(parameters) : JSON.stringify(parameters));
@@ -156,10 +161,28 @@ export class DesignDocuments {
         if (issues.length) throw new DesignDocumentError("INVALID_DOCUMENT", "System bindings do not match their exact frozen revisions", issues); }
       const current = await readDesignSet(authority.workspace, previous.path);
       if (current.readSetDigest !== baseline.readSetDigest) throw new DesignDocumentError("SOURCE_CHANGED", "Source changed during editing. Nothing was saved.");
-      assertExecution();
+      assertExecution(); admission();
       this.assertAuthority(authority);
       return this.publish(authority, previous.backend, { path: previous.path, requestId: input.requestId!, expectedRevision: previous.revision, readSetDigest: baseline.readSetDigest },
-        source, manifest, key, parameterDigest, { input, baseline: baseline.files.map(file => ({ path: file.path, digest: file.digest })), writes: [], applied: false });
+        source, manifest, key, parameterDigest, { input, baseline: baseline.files.map(file => ({ path: file.path, digest: file.digest })), writes: [], applied: false }, () => { assertExecution(); admission(); });
+    });
+  }
+  initializeSource(input: WorkspaceCommand, backend: string, files: readonly { path: string; data: Uint8Array }[], assertExecution: () => void) {
+    const authority = this.authority(input.chatId, input.incarnationId), admission = this.admissionGuard();
+    return this.queue.enqueue(async () => {
+      const key = requestKey(authority, input.requestId!), existing = this.store.operation(key);
+      if (existing) return this.resume(existing);
+      const pending = this.store.blocking().find(operation => operation.revision.authority.ownerId === authority.ownerId && operation.revision.manifest.documentId === input.systemId);
+      if (pending) {
+        const recovery = this.recoveryDetails(pending);
+        throw new DesignDocumentError("NOT_READY", `Earlier operation ${recovery.requestId} is ${recovery.status}. ${recovery.action}`);
+      }
+      admission(); assertExecution(); this.assertAuthority(authority);
+      const path = `design-systems/${input.systemId}`, source = transformedDesignSet(path, files), manifest = await requireValidDesignSet(source);
+      if (this.store.latest(authority.ownerId, manifest.documentId, authority)) throw new DesignDocumentError("REVISION_CONFLICT", "System already exists");
+      return this.publish(authority, backend, { path, requestId: input.requestId!, expectedRevision: 0, readSetDigest: source.readSetDigest }, source, manifest,
+        key, designDigest(JSON.stringify([authority, path, input.requestId, 0, source.readSetDigest])),
+        { initial: true, input, baseline: [], writes: [], applied: false }, () => { admission(); assertExecution(); });
     });
   }
   operationStatus(input: WorkspaceCommand, retry = false) {
@@ -187,7 +210,7 @@ export class DesignDocuments {
     });
   }
   private async publish(authority: DesignAuthority, backend: string, input: DesignCommitInput, source: DesignReadSet,
-    manifest: DesignManifest, key: string, parameterDigest: string, sourceEdit?: DesignOperation["sourceEdit"]) {
+    manifest: DesignManifest, key: string, parameterDigest: string, sourceEdit: DesignOperation["sourceEdit"] | undefined, assertExecution: () => void) {
       const archive = packArtifactArchive(source.files.map(file => ({ path: file.path, data: file.data })));
       if (archive.length > DESIGN_LIMITS.archive) throw new DesignDocumentError("BUDGET_EXCEEDED", "Complete archive exceeds the transfer budget");
       const snapshotRef = designDigest(archive), artifactId = randomUUID(), createdAt = Date.now();
@@ -204,7 +227,7 @@ export class DesignDocuments {
           design: { documentId: manifest.documentId, revision: input.expectedRevision + 1, readSetDigest: source.readSetDigest,
             snapshotRef, format: manifest.format, launchBoard: manifest.launchBoard, boards: summarizeDesignBoards(manifest) } } };
       await this.store.archive(snapshotRef, archive);
-      this.assertAuthority(authority);
+      assertExecution(); this.assertAuthority(authority);
       const operation: DesignOperation = { key, parameterDigest, state: "prepared", revision, ...(sourceEdit ? { sourceEdit } : {}) };
       await this.store.prepare(operation);
       // Cancellation after prepare cannot turn an admitted durable commit into a second operation.
@@ -376,7 +399,7 @@ export class DesignDocuments {
       for (const artifactId of new Set(artifactIds)) {
         const source = this.store.operations().find(operation => operation.revision.authority.chatId === sourceChatId &&
           operation.revision.authority.incarnationId === sourceIncarnationId && operation.revision.artifactId === artifactId);
-        if (!source) continue;
+        if (!source) throw new Error("artifact-fork-design-incomplete: Original document alias is unavailable");
         const key = requestKey(authority, "fork_" + designDigest(source.key).slice(7, 39));
         await this.store.alias({ key, parameterDigest: designDigest(JSON.stringify([authority, source.key, source.revision.snapshotRef])),
           state: "complete", revision: { ...source.revision, authority }, aliasOf: source.key });

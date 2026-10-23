@@ -23,7 +23,7 @@ export function ConversationElapsed({ startedAt, endedAt, label }: {
 export function ConversationDraft({ children, elapsed, label, active = true, editingPlan = false }: {
   children?: ReactNode; elapsed?: ReactNode; label: string; active?: boolean; editingPlan?: boolean;
 }) {
-  return <Message from="assistant">{elapsed}{children}
+  return <Message from="assistant" data-turn-active={active}>{elapsed}{children}
     {active && !editingPlan && <ThinkingShimmer>{label}</ThinkingShimmer>}
   </Message>;
 }

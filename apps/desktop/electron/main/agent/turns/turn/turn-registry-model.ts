@@ -147,7 +147,9 @@ export type TurnEntry<TTurn extends RegistryTurn = RegistryTurn> = InteractionSt
   effectiveTerminal?: SourceTerminal;
   postProcess?: Promise<SourceTerminal>;
   finalizeInFlight?: Promise<void>;
+  settlementInFlight?: Promise<void>;
   cleanupInFlight?: Promise<void>;
+  cleanupTask?: () => Promise<void>;
   prepared?: TurnCommitInput;
   projectionTail: Promise<void>;
   retry: RetryState;

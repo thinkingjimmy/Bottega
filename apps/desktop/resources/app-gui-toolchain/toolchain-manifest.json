@@ -29,7 +29,7 @@
     "typescript": "5.9.3",
     "zod": "4.6.4"
   },
-  "lockfileDigest": "sha256:1c6b40e9d2fd2d1c5a50b43a54cc93dec41b6c19deb9a301a6b8594cc3790cf9",
+  "lockfileDigest": "sha256:be6661aee048cac51cdae2e8840942c6ba39829fc875e0bd2df2de8afdc39009",
   "formalReleaseTrust": {
     "schema": "bottega.formal-release-trust/v1",
     "status": "provisioned-macos",
@@ -78,14 +78,14 @@
     "gate-3"
   ],
   "sliceDigests": {
-    "gate-1": "sha256:5e824559b43abfd39ffa1c17c62332d6773699168dc4432907f5a947bcc31cbc",
-    "gate-2": "sha256:7ac17df8cc3f9ef041316b1f90b156d7e5d6518b1015731a5e1837f0a72e842c",
-    "gate-3": "sha256:f4d08070884ece5c1bede680b8b9558a1b2722356550ba43590bcd5ec5205d73"
+    "gate-1": "sha256:6da9825d7ca404e3b768d8c0f43e0e7a795dba34befdc7b8c932001703782242",
+    "gate-2": "sha256:badf822ddfd45e5cb80679593aae2329a8830ef312a5c02393c5068a0b027dba",
+    "gate-3": "sha256:95194d7e0ca8c6075a25939e2ce7676103c70b8bca23ca0a841fc7e791b1fe97"
   },
   "authoringCatalogDigest": "sha256:7f09b176b96cca667c74a2e90bfb9b1fb10b13475530b4312c29ab40ce5c408f",
   "compatibilitySupportDigest": "sha256:5a876d99d1fef6e30040d49ea6283feabaecd97a871ee4955b98610a9cbbdba7",
   "performanceBaselineDigest": "sha256:7db09a5cf0a49845dae21dfe3902e0670125101a1afc423832910492e65f61e0",
-  "runtimeSbomDigest": "sha256:cb2cac43b5edd2dc911b777ac6496aded199966e655dd407415ef53a7528dae6",
+  "runtimeSbomDigest": "sha256:df79f505091f36ba4d95404c4129281d9f2fbb8137835f49d2fac84ae25ea36e",
   "noticesDigest": "sha256:6df76f9d823ebe833f5a30bf73a99b41d6dd18815983e3b892796dfbc2b55923",
   "artifactPaths": {
     "slices": "slices/",

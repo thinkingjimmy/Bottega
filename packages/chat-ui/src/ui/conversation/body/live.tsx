@@ -3,6 +3,7 @@
  * [OUTPUT]: Native-equivalent live content retained until its matching durable body arrives; interactions belong to the composer.
  * [POS]: Remote transcript adapter for the same draft/parts/Plan presentation used by native turns.
  */
+import { turnPresentation } from "@ai-chat/cloud-protocol/turns/presentation/state";
 import { MessageContent, MessageResponse } from "@ai-chat/ui/components/ai-elements/message";
 import { formatConversationDuration } from "@ai-chat/ui/components/conversation/activity/format";
 import { hydrateDraft, projectDraftPlan, shimmerLabel } from "@ai-chat/cloud-protocol/turns/reducer";
@@ -29,7 +30,7 @@ export function LiveReply({ value, copy, canonicalReady, active: activeOverride,
   const streaming = [...(draft?.streaming ?? [])].filter(([id, text]) => text && id !== plan?.itemId && !parts.some(part => part.itemId === id));
   const capped = capPartMarkdown(parts, [...streaming.map(([id, markdown]) => ({ id, markdown })), ...(plan ? [{ id: plan.itemId, markdown: plan.content }] : [])]);
   const text = (id: string, fallback: string) => capped.fragments.find(fragment => fragment.id === id)?.markdown ?? fallback;
-  const active = activeOverride !== false && state.receipt.settlementState !== "settled" && !projection?.terminal;
+  const active = activeOverride !== false && state.receipt.settlementState !== "settled" && turnPresentation(undefined, projection?.terminal).active;
   const hasContent = Boolean(parts.length || streaming.length || plan), planId = state.receipt.assistantMessageId;
   const render = (values: typeof parts) => values.length > 0 && <ConversationParts parts={values} streamingIds={new Set(draft?.streaming.keys())}
     subagent={part => {

@@ -4,7 +4,7 @@
  * [POS]: Frozen Canvas export adapter; neither live source nor the editor camera enters exported bytes.
  */
 import { canvasObjectMarkup, escapeCanvasText } from "@ai-chat/cloud-protocol/artifacts/design/canvas/markup";
-import { readCanvas } from "@ai-chat/cloud-protocol/artifacts/design/canvas/view";
+import { readCanvas, canvasImageUrl } from "@ai-chat/cloud-protocol/artifacts/design/canvas/view";
 import { prepareDesignSnapshot } from "../documents/rendering";
 import { captureDesignCanvas } from "../tooling/render-check";
 import { DesignDocumentError, DESIGN_LIMITS } from "../documents/model";
@@ -28,7 +28,8 @@ export async function prepareCanvasPage(snapshot: Snapshot, pageId: string, sign
   for (const object of objects) {
     const item = canvasObjectMarkup(object, path => {
       const image = objects.find(object => object.kind === "image" && object.asset.path === path);
-      return image ? canvas.objectImages[image.id] ?? null : null;
+      const file = image && snapshot.files.find(file => file.path === path);
+      return file ? canvasImageUrl(file.data) : null;
     }); bytes += Buffer.byteLength(item); if (bytes > DESIGN_LIMITS.archive) throw new DesignDocumentError("BUDGET_EXCEEDED", "Canvas object resources exceed the export budget"); markup.push(item);
   }
   const fonts: string[] = [];

@@ -136,8 +136,8 @@ export const chatSurfacesJa: typeof chatSurfacesEn = {
     abandonFatal: "このターンの結果を破棄",
     cleanupFailedTitle: "プロセスの後始末が完了していません",
     cleanupFailed:
-      "{{backend}} のプロセスグループを終了できませんでした。関連プロセスの終了を確認してから、この Chat の安全ロックを解除してください。",
-    acknowledgeCleanup: "プロセスの終了を確認しました",
+      "{{backend}} のプロセス終了はまだ検証されていません。クリーンアップを再試行すると、システムが元のプロセスを確認して、この Chat のロックを安全に解除します。",
+    acknowledgeCleanup: "クリーンアップを再試行",
     loadedEarlier: "以前のメッセージを {{count}} 件読み込みました",
     subagentDetailsCleared: "この Subagent の詳細は消去されました",
     subagentDetailsLimited: "リアルタイム詳細が上限に達しました",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on exact-item native background controls, original Agent runtime handlers, trusted renderer residency, exact interaction stamps and durable control receipts.
- * [OUTPUT]: Provides local/remote first-writer approval, user-input and cancel handlers plus original Steer routing; abandoning a fatal turn wakes the dispatchers so queued messages run.
+ * [OUTPUT]: Runs evidence-based single-flight cleanup retries and releases only the matching Provider safety latch.
  * [POS]: apps/desktop/electron/main/agent/bridge; Agent IPC and main control adapter; backend behavior remains owned by the original runtime.
  */
 
@@ -41,7 +41,7 @@ export type AgentBridgeIpcHandlers = {
     window: BrowserWindow
   ): unknown;
   abandonFatalTurn(conversationId: string): void;
-  acknowledgeCleanupFailure(conversationId: string): void;
+  acknowledgeCleanupFailure(conversationId: string): Promise<void>;
   listActivity(): ChatActivitySnapshot[];
   conversationForRequest(requestId: string): string | undefined;
   conversationForOutboxRef(outboxRef: string): string | undefined;
@@ -106,12 +106,13 @@ export function createAgentBridgeIpcHandlers(
       // Messages queued behind the abandoned turn run now, not at the next unrelated send (F-32).
       taskStartFence.wake();
     },
-    acknowledgeCleanupFailure: (conversationId) => {
-      const entry = runtime.turns.acknowledgeCleanupFailure(conversationId);
-      if (!runtime.turns.hasCleanupFailure(entry.backend)) {
+    acknowledgeCleanupFailure: async (conversationId) => {
+      const entry = await runtime.turns.acknowledgeCleanupFailure(conversationId);
+      if (!runtime.turns.hasUnverifiedCleanup(entry.backend)) {
         runtime.clearSafetyLock(entry.backend);
       }
       runtime.publishState(entry);
+      taskStartFence.wake();
     },
     listActivity: runtime.listActivity,
     conversationForRequest: (requestId) =>

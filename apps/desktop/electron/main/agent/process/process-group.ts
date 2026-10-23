@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the process group signal capacity of Node process.kill, `ps` (live, non-zombie group members), custody's observeProcessBirth (only a read that proved the leader absent permits leaderless cleanup) and asError of main/errors
- * [OUTPUT]: Provides groupExists (a group of unreaped zombies has ended), wait, stopProcessGroup, cleanProcessGroup, CleanupResult, and the birth-verified cleanOwnedProcessGroup/OwnedProcessGroup and signalOwnedGroup (one SIGKILL, only to the group a launch identity names; a reused or gone one is ended) used before signalling any group a registry recorded earlier
+ * [OUTPUT]: Bounds process probes and supports ownership revalidation immediately before each termination signal.
  * [POS]: apps/desktop/electron/main/agent/process; Electron main's sole POSIX process-group lifecycle helper; pure functions consumed by agent-bridge, the auxiliary registry and the utility host's descendant registry
  */
 
@@ -15,20 +15,20 @@ export type CleanupResult = { ok: true } | { ok: false; error: Error };
 
 /* A group whose members have all exited while its leader is not yet reaped answers kill(-pgid) with EPERM on macOS. Such a group
    runs nothing: only members that are not zombies count. */
-function liveGroupMembers(pgid: number) {
-  return execFileSync("ps", ["-axo", "pid=,pgid=,stat="], { encoding: "utf8" }).split("\n")
+function liveGroupMembers(pgid: number, timeout = 5_000) {
+  return execFileSync("ps", ["-axo", "pid=,pgid=,stat="], { encoding: "utf8", timeout }).split("\n")
     .map((line) => line.trim().split(/\s+/))
     .filter(([pid, group, stat]) => pid && Number(group) === pgid && !stat?.startsWith("Z")).length;
 }
 
-export function groupExists(pid: number) {
+export function groupExists(pid: number, deadline = Infinity) {
   try {
     process.kill(-pid, 0);
     return true;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ESRCH") return false;
-    return code === "EPERM" ? liveGroupMembers(pid) > 0 : true;
+    return code === "EPERM" ? liveGroupMembers(pid, Math.max(1, Math.min(5_000, deadline - Date.now()))) > 0 : true;
   }
 }
 
@@ -48,34 +48,43 @@ export const wait = (milliseconds: number) =>
 // SIGTERM 宽限 → SIGKILL 确认，任何一步存活超时即抛错
 // ============================================================
 
-export async function stopProcessGroup(pid: number) {
-  signalGroup(pid, "SIGTERM");
+export async function stopProcessGroup(pid: number, canSignal: () => boolean = () => true, deadline = Date.now() + 20_000) {
+  const remaining = () => {
+    const value = deadline - Date.now();
+    if (value <= 0) throw Object.assign(new Error("Process cleanup deadline exceeded"), { code: "CLEANUP_DEADLINE" });
+    return value;
+  };
+  remaining();
+  if (!canSignal()) throw Object.assign(new Error("Process identity is unconfirmed before SIGTERM"), { code: "PROCESS_IDENTITY_UNCONFIRMED" });
+  remaining(); signalGroup(pid, "SIGTERM");
   for (let elapsed = 0; elapsed < 3_000; elapsed += 500) {
-    if (!groupExists(pid)) return;
-    await wait(500);
+    if (!groupExists(pid, deadline)) return;
+    await wait(Math.min(500, remaining()));
   }
-  signalGroup(pid, "SIGKILL");
+  if (!canSignal()) throw Object.assign(new Error("Process identity is unconfirmed before SIGKILL"), { code: "PROCESS_IDENTITY_UNCONFIRMED" });
+  remaining(); signalGroup(pid, "SIGKILL");
   for (
     let elapsed = 0;
     elapsed < KILL_CONFIRM_TIMEOUT_MS;
     elapsed += 500
   ) {
-    if (!groupExists(pid)) return;
-    await wait(500);
+    if (!groupExists(pid, deadline)) return;
+    await wait(Math.min(500, remaining()));
   }
   throw new Error(`进程组 ${pid} 在 SIGKILL 后仍未退出`);
 }
 
 /** 带重试的清理；只报告结果，安全锁等策略由调用方决定。 */
-export async function cleanProcessGroup(pid: number): Promise<CleanupResult> {
+export async function cleanProcessGroup(pid: number, canSignal?: () => boolean, deadline = Date.now() + 20_000): Promise<CleanupResult> {
   let lastError = new Error("未知进程组清理错误");
   for (let attempt = 0; attempt < CLEANUP_RETRY_COUNT; attempt += 1) {
     try {
-      await stopProcessGroup(pid);
+      await stopProcessGroup(pid, canSignal, deadline);
       return { ok: true };
     } catch (cause) {
       lastError = asError(cause);
-      if (attempt + 1 < CLEANUP_RETRY_COUNT) await wait(250);
+      if (Date.now() >= deadline) break;
+      if (attempt + 1 < CLEANUP_RETRY_COUNT) await wait(Math.min(250, deadline - Date.now()));
     }
   }
   return { ok: false, error: lastError };

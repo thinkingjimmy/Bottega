@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron, the console-stream guard, the production-source identity bootstrap, the pre-lock profile wipe, the V8 compile-cache enabler and, in non-production builds only, the private entry built beside main.
+ * [INPUT]: Depends on Electron, the console-stream guard, renderer retirement policy, the production-source identity bootstrap, the pre-lock profile wipe, the V8 compile-cache enabler and, in non-production builds only, the private entry built beside main.
  * [OUTPUT]: Starts the desktop composition root once identity is final, a requested profile erase has run, the compile cache is on and (non-production only) a private entry beside main has been loaded.
  * [POS]: Stable/production main entry; the staging flavour enters through cloud-dev-entry.ts instead.
  */
@@ -10,10 +10,12 @@ import { app } from "electron";
 import { configureSourceDevelopment } from "./cloud/bootstrap/source-profile";
 import { enableStartupCompileCache } from "./startup/boot/compile-cache";
 import { guardConsoleStreams } from "./startup/boot/console-streams";
+import { configureRendererRetirement } from "./startup/boot/browser-policy";
 import { wipeRequestedProfile } from "./profile-maintenance/erase";
 declare const __BOTTEGA_CLOUD_CONFIG__: import("@ai-chat/cloud-protocol").CloudBuildConfig | null;
 declare const __BOTTEGA_PRIVATE_ENTRIES__: boolean;
 guardConsoleStreams();
+configureRendererRetirement();
 // Identity must be frozen before the single-instance lock, which index.ts takes as it evaluates.
 if (__BOTTEGA_CLOUD_CONFIG__?.environmentId === "cloud-production") configureSourceDevelopment(app);
 // An erase asked for by the previous run happens before anything below can open a file in userData.

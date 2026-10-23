@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Complete fixed bytes, closed manifests, canonical Canvas layers, raster decoder and local resource rules.
- * [OUTPUT]: Bounded format/structure/font/raster/closure issues and explicit untested behavior; no publication effects.
+ * [OUTPUT]: Checks the same loaded dependency graph and render budgets used by preview preparation.
  * [POS]: Document validation; it cannot write registry, history, Chat or files.
  */
 import { assertHtmlDocument } from "../../workspace/access";
@@ -46,6 +46,13 @@ export async function validateDesignSet(readSet: DesignReadSet): Promise<{ manif
   }
   if (manifest?.format === "bottega-design-system") {
     for (const value of (await import("../../systems/validation")).validateDesignSystem(readSet)) issue(value.file, value.message);
+  }
+  if (manifest && !issues.length) {
+    const { prepareDesignSnapshot } = await import("../rendering");
+    for (const board of manifest.boards) {
+      try { await prepareDesignSnapshot({ version: { manifest, revision: 1, readSetDigest: readSet.readSetDigest, snapshotRef: readSet.readSetDigest } as import("../store").DesignRevision, files: [...readSet.files] }, board.id); }
+      catch (cause) { issue(board.file, cause instanceof Error ? cause.message : "Unsupported render dependency graph"); }
+    }
   }
   return { manifest, issues };
 }

@@ -8,7 +8,7 @@ import { anchorSchema, checkpointSchema, designReferenceSchema, designPropertySc
 import { designId, digestSchema, sourcePath, designSystemParametersSchema } from "./core/parameters";
 import { boardSummarySchema } from "./core/summary";
 import type { ArtifactFence } from "../../turns/text/artifact-reference";
-import { canvasPageSchema, canvasPositionSchema, canvasObjectSchema, CANVAS_LIMITS, implicitCanvasPageId } from "./canvas/model";
+import { canvasImageIdentitySchema, canvasPageSchema, canvasPositionSchema, canvasObjectSchema, CANVAS_LIMITS, implicitCanvasPageId } from "./canvas/model";
 import { canvasOperationsSchema, utf8JsonBytes } from "./canvas/commands";
 export { designId, digestSchema, sourcePath } from "./core/parameters";
 export { boardSummarySchema, summarizeDesignBoards, designSummarySchema, type DesignSummary } from "./core/summary";
@@ -42,8 +42,9 @@ export type DesignManifest = z.infer<typeof manifestSchema>;
 export const designFrameViewSchema = z.object({ id: z.string().uuid(), nonce: z.string().uuid(), selectionNonce: z.string().uuid(), generation: z.string().min(1).max(128), boardId: designId, boardDigest: digestSchema,
   navigation: z.record(z.string().max(1024), designId).optional() }).strict();
 export const workspaceCommandSchema = z.object({ chatId: z.string().min(1).max(128), incarnationId: z.string().min(1).max(128),
-  action: z.enum(["list", "read", "preview", "thumbnail", "checkpoint", "review", "reference-check", "operation-status", "resume-edit", "resolve-edit", "ack-disable", "acquire-view", "release-view", "archive", "patch", "restore", "export", "system-extract", "system-diff", "system-update", "system-bind", "system-compile", "canvas", "canvas-target"]),
+  action: z.enum(["capture-status", "retry-capture", "list", "read", "preview", "thumbnail", "cancel-thumbnail", "image", "checkpoint", "review", "reference-check", "operation-status", "resume-edit", "resolve-edit", "ack-disable", "acquire-view", "release-view", "archive", "patch", "restore", "export", "system-extract", "system-diff", "system-update", "system-bind", "system-compile", "canvas", "canvas-target"]),
   artifactId: systemParameters.artifactId, documentId: designId.optional(), boardId: designId.optional(),
+  image: canvasImageIdentitySchema.optional(),
   revision: z.number().int().positive().optional(), generation: z.string().min(1).max(128).optional(),
   requestId: systemParameters.requestId, expectedRevision: systemParameters.expectedRevision, readSetDigest: systemParameters.readSetDigest,
   checkpoint: checkpointSchema.optional(), nonce: z.string().uuid().optional(), viewId: z.string().uuid().optional(), anchor: anchorSchema.optional(),
@@ -58,6 +59,8 @@ export const workspaceCommandSchema = z.object({ chatId: z.string().min(1).max(1
   sourceDigest: systemParameters.sourceDigest, entry: systemParameters.entry,
   operations: canvasOperationsSchema.optional(), pageId: designId.optional(), scope: z.enum(["document", "page", "board"]).optional(),
 }).strict().superRefine((value, context) => {
+  if (value.action === "cancel-thumbnail" && (!value.requestId || !value.artifactId)) context.addIssue({ code: "custom", message: "Thumbnail cancellation requires the original request and Artifact" });
+  if (value.action === "image" && (!value.image || !value.artifactId)) context.addIssue({ code: "custom", message: "Image reads require an immutable snapshot resource" });
   if (["acquire-view", "release-view", "ack-disable"].includes(value.action) && (!value.viewId || !value.documentId))
     context.addIssue({ code: "custom", message: "Workspace lifetime requires the original view and document" });
   if ((value.action === "acquire-view" && !value.artifactId) || (value.action === "ack-disable" && !value.nonce))
@@ -70,7 +73,7 @@ export const workspaceCommandSchema = z.object({ chatId: z.string().min(1).max(1
 export type WorkspaceCommand = z.infer<typeof workspaceCommandSchema>;
 export type WorkspaceRead = { fence?: ArtifactFence; documentId: string; title: string; revision: number; latestRevision: number; readSetDigest: string;
   undoRevision: number | null; redoRevision: number | null;
-  editable?: boolean;
+  editable?: boolean; checkpointConflicts?: z.infer<typeof checkpointSchema>[]; statusComplete?: boolean; historyComplete?: boolean;
   snapshotRef: string; manifest: DesignManifest; generation: string; enabled: boolean; previewEnabled?: boolean; dirty: boolean;
   checkpoint: z.infer<typeof checkpointSchema> | null; versions: { revision: number; artifactId: string; createdAt: number }[];
   system?: unknown; canvas?: import("./canvas/view").CanvasRead };

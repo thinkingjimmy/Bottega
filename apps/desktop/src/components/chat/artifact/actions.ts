@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Original Chat controller, trusted reference/workspace bridge, composer append/submission owner and durable flush acknowledgement.
- * [OUTPUT]: Lazy native file/Base actions and exact-reference draft/send handoff that preserves unrelated drafts and failed/unknown input.
+ * [OUTPUT]: Lazy native file/Base actions and exact-reference draft/send handoff with one target chip, comment text and preserved unrelated drafts or failed/unknown input.
  * [POS]: Deferred desktop artifact capability implementation behind the lightweight host registry.
  */
 import type { RefObject } from "react";
@@ -29,7 +29,7 @@ export function desktopArtifactActions(chatId: string, incarnationId: string, lo
         if (value.design) await bridge().workspace({ action: "reference-check", chatId, incarnationId, reference: value.design });
         if (current().transcript.chatId !== chatId || current().transcript.incarnationId !== incarnationId) throw new Error("Original Chat draft changed");
         const draft = richInputDisplayText(readComposer(chatId).draft.richValue);
-        const block = artifactFollowUpBlock(draft, value);
+        const block = artifactFollowUpBlock(draft, value.design ? { prompt: value.prompt } : value);
         if (appendComposerText(chatId, block ?? "", value.design ? { name: value.title ?? value.design.documentId, reference: value.design } : undefined)) {
           if (!(await flushDurableDrafts()).saved) throw new Error("Original draft checkpoint could not be saved");
           requestAnimationFrame(() => root.current?.querySelector<HTMLElement>('[contenteditable="true"][role="textbox"]')?.focus());

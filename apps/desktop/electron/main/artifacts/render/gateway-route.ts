@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Authorized immutable snapshots, exact caller windows/generation, prepared design HTML and existing loopback origin factory.
- * [OUTPUT]: Revocable bounded leases, ordinary read-only resources and opaque offline prepared design origins with strict navigation policy.
+ * [OUTPUT]: Revalidates prepared-preview metadata without rereading source bytes, pins generation/window lifetime and budgets unique backing stores with bounded release diagnostics.
  * [POS]: Artifact HTTP boundary; never resolves request paths against a workspace or filesystem root.
  */
 import { randomUUID } from "node:crypto";
@@ -12,49 +12,66 @@ import { artifactMime } from "../admission/files";
 import type { ArtifactService } from "../core/service";
 import { assertArtifactAdmission, artifactGeneration } from "../admission/state";
 import { DESIGN_FRAME_CSP } from "@ai-chat/cloud-protocol/artifacts/design/frame";
-type Lease = { lease: ArtifactLease; ref: ArtifactRef; windowId: number; source: Awaited<ReturnType<ArtifactService["resolve"]>>;
+type Lease = { lease: ArtifactLease; ref: ArtifactRef; windowId: number; source: { record: Awaited<ReturnType<ArtifactService["resolve"]>>["record"]; data?: Uint8Array };
   files: Map<string, Uint8Array>; entry: string; generation?: string; prepared?: boolean };
 export class ArtifactGateway {
   private readonly leases = new Map<string, Lease>();
+  private readonly lifetimes = new Map<number, number>();
+  private epoch = 0;
+  private released = { caller: 0, window: 0, expired: 0, revoked: 0, invalid: 0 };
+  private remove(id: string, reason: keyof ArtifactGateway["released"]) { if (this.leases.delete(id)) this.released[reason]++; }
   private origin: ((id: string) => string) | null = null;
   constructor(private readonly service: ArtifactService) {}
   configure(origin: (id: string) => string) { this.origin = origin; }
-  revokeAll() { this.leases.clear(); }
-  facts() { this.purge(); return { count: this.leases.size, leases: [...this.leases.values()].map(value => ({ id: value.lease.id,
-    windowId: value.windowId, chatId: value.ref.chatId, artifactId: value.ref.artifactId, generation: value.generation })) }; }
+  revokeAll() { this.epoch++; for (const id of this.leases.keys()) this.remove(id, "revoked"); }
+  guard(windowId: number) {
+    const life = this.lifetimes.get(windowId), epoch = this.epoch, generation = artifactGeneration();
+    return () => { assertArtifactAdmission(); if (this.lifetimes.get(windowId) !== life || this.epoch !== epoch || artifactGeneration() !== generation) throw new Error("Artifact view expired"); };
+  }
+  private retainedBytes(extra?: Lease) {
+    const stores = new Set<ArrayBufferLike>(); let bytes = 0;
+    for (const lease of [...this.leases.values(), ...(extra ? [extra] : [])]) for (const data of [...lease.files.values(), ...(lease.source.data ? [lease.source.data] : [])]) {
+      if (stores.has(data.buffer)) continue; stores.add(data.buffer); bytes += data.buffer.byteLength;
+    }
+    return bytes;
+  }
+  private admit(candidate: Lease) {
+    if (this.leases.size >= 8 || this.retainedBytes(candidate) > 256 * 1024 * 1024) throw new Error("artifact-lease-budget");
+    this.leases.set(candidate.lease.id, candidate);
+  }
+  facts() { this.purge(); return { count: this.leases.size, released: { ...this.released }, bytes: this.retainedBytes(), leases: [...this.leases.values()].map(value => ({ id: value.lease.id,
+    windowId: value.windowId, chatId: value.ref.chatId, artifactId: value.ref.artifactId, generation: value.generation,
+    archiveBytes: value.source.data?.byteLength ?? 0, fileBytes: [...value.files.values()].reduce((sum, bytes) => sum + bytes.byteLength, 0), prepared: Boolean(value.prepared) })) }; }
   async issuePrepared(ref: ArtifactRef, windowId: number, id: string, html: string) {
     assertArtifactAdmission(); this.purge();
-    const generation = artifactGeneration();
+    const generation = artifactGeneration(), check = this.guard(windowId);
     if (!this.origin || this.leases.size >= 8) throw new Error("artifact-lease-budget");
-    const source = await this.service.resolve(ref), bytes = new TextEncoder().encode(html);
-    const retained = [...this.leases.values()].reduce((total, value) => total + [...value.files.values()].reduce((sum, data) => sum + data.length, 0), 0);
-    assertArtifactAdmission();
+    const record = await this.service.metadata(ref), bytes = new TextEncoder().encode(html);
+    check(); this.service.assert(ref);
     if (generation !== artifactGeneration()) throw new Error("Artifact generation expired");
-    if (this.leases.size >= 8 || retained + bytes.length > 256 * 1024 * 1024) throw new Error("artifact-lease-budget");
     const origin = this.origin("art-" + id), entry = "board.html";
     const lease: ArtifactLease = { id, origin, expiresAt: Date.now() + 30 * 60_000, url: `${origin}/_artifact/${id}/${entry}`, sandbox: "allow-scripts" };
-    this.leases.set(id, { lease, ref, windowId, source, files: new Map([[entry, bytes]]), entry, generation, prepared: true });
+    this.admit({ lease, ref, windowId, source: { record }, files: new Map([[entry, bytes]]), entry, generation, prepared: true });
     return lease;
   }
-  private purge() { for (const [id, value] of this.leases) if (value.lease.expiresAt <= Date.now()) this.leases.delete(id); }
+  private purge() { for (const [id, value] of this.leases) if (value.lease.expiresAt <= Date.now()) this.remove(id, "expired"); }
   async issue(ref: ArtifactRef, windowId: number) {
     assertArtifactAdmission();
     this.purge();
     if (!this.origin || this.leases.size >= 8) throw new Error("artifact-lease-budget");
+    const check = this.guard(windowId), generation = artifactGeneration();
     const source = await this.service.resolve(ref);
-    this.service.assert(ref);
-    const retained = [...this.leases.values()].reduce((total, value) => total + value.source.data.length, 0);
-    if (this.leases.size >= 8 || retained + source.data.length > 256 * 1024 * 1024) throw new Error("artifact-lease-budget");
+    check(); this.service.assert(ref);
     const id = randomUUID(), origin = this.origin("art-" + id), fence = source.record.fence;
     const entry = fence.kind === "static-site" ? fence.entry! : "snapshot" + (({ "html-fragment": ".html", "html-document": ".html", svg: ".svg", markdown: ".md", pdf: ".pdf" } as Record<string, string>)[fence.kind] ?? "");
     const lease: ArtifactLease = { id, origin, expiresAt: Date.now() + 30 * 60_000,
       url: `${origin}/_artifact/${id}/${entry}`, sandbox: fence.kind === "static-site" ? "allow-scripts allow-same-origin" : "allow-scripts" };
     const files = new Map(fence.kind === "static-site" ? unpackArtifactArchive(source.data).map(file => [file.path, file.data]) : [[entry, source.data]]);
     if (!files.has(entry)) throw new Error("artifact-entry-missing");
-    this.leases.set(id, { lease, ref, source, files, entry, windowId }); return lease;
+    this.admit({ lease, ref, source, files, entry, windowId, generation }); return lease;
   }
-  release(id: string, windowId: number) { if (this.leases.get(id)?.windowId === windowId) this.leases.delete(id); }
-  releaseWindow(windowId: number) { for (const [id, value] of this.leases) if (value.windowId === windowId) this.leases.delete(id); }
+  release(id: string, windowId: number) { if (this.leases.get(id)?.windowId === windowId) this.remove(id, "caller"); }
+  releaseWindow(windowId: number) { this.lifetimes.set(windowId, (this.lifetimes.get(windowId) ?? 0) + 1); for (const [id, value] of this.leases) if (value.windowId === windowId) this.remove(id, "window"); }
   allowsDocument(value: string, windowId?: number) {
     try {
       const url = new URL(value), id = url.pathname.split("/")[2], lease = id ? this.leases.get(id) : null;
@@ -75,7 +92,9 @@ export class ArtifactGateway {
     try { url = new URL(request.url ?? "/", "http://" + request.headers.host); path = decodeURIComponent(url.pathname); } catch { return deny(400); }
     const [, prefix, id, ...segments] = path.split("/"), lease = id ? this.leases.get(id) : undefined;
     if (prefix !== "_artifact" || !lease || url.origin !== lease.lease.origin || path.includes("\\") || segments.some(value => !value || value === "." || value === "..")) return deny(404);
-    try { await this.service.validate(lease.ref); } catch { this.leases.delete(id!); return deny(410); }
+    try { await this.service.validate(lease.ref); } catch { this.remove(id!, "invalid"); return deny(410); }
+    const valid = () => this.leases.get(id!) === lease && lease.lease.expiresAt > Date.now() && lease.generation === artifactGeneration();
+    if (!valid()) return deny(410);
     const filename = segments.join("/"), bytes = lease.files.get(filename);
     if (!bytes) return deny(404);
     const fence = lease.source.record.fence, directory = fence.kind === "static-site";
@@ -92,6 +111,7 @@ export class ArtifactGateway {
       mime = "text/html";
     }
     /* Lease IDs are per-lease UUIDs over immutable snapshot bytes, so only the generated shells must stay uncached. */
+    if (!valid()) return deny(410);
     const headers: Record<string, string> = { "Content-Type": mime + (mime.startsWith("text/") ? "; charset=utf-8" : ""),
       "Cache-Control": directory && !shell ? "private, max-age=1800, immutable" : "no-store",
       "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes",

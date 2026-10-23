@@ -25,6 +25,7 @@ export const systemCheckpointSchema = z.object({ token: z.string().max(64), them
   sourceConflict: sourceConflictSchema.optional() }).strict();
 export const noteSchema = z.object({ id: z.string().min(1).max(128), text: z.string().max(4096), anchor: anchorSchema.nullable() }).strict();
 export const checkpointSchema = z.object({ documentId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/),
+  save: z.object({ viewId: z.string().uuid(), sequence: z.number().int().nonnegative(), version: z.number().int().nonnegative() }).strict().optional(),
   revision: z.number().int().positive(), boardId: z.string().min(1).max(64), notes: z.array(noteSchema).max(32),
   handoff: z.object({ id: z.string().uuid(), createdAt: z.number().int().nonnegative(), action: z.enum(["draft", "send"]), status: z.enum(["pending", "transferred"]) }).strict().optional(),
   edit: editCheckpointSchema.optional(),

@@ -27,6 +27,7 @@ export function useDesktopArtifactHost(controller: ChatSessionController, root: 
     type Action = "acquire" | "release" | "action" | "open" | "followUp" | "sendReview" | "workbook" | "importBase";
     const call = <K extends Action>(key: K) => (...args: Parameters<Required<ArtifactHost>[K]>) => load().then(host => Reflect.apply(host[key]!, host, args));
     return { scope: `${chatId}:${incarnationId}`, locale: i18n.language, desktop: true, sidePanel: enableSidePanel,
+      recover: async (fence, retry) => { if (!window.artifacts) throw new Error("artifact-unavailable"); return (await window.artifacts.workspace({ action: retry ? "retry-capture" : "capture-status", artifactId: fence.id, chatId, incarnationId }) as { fence: typeof fence | null }).fence; },
       workspace: input => { if (!window.artifacts) throw new Error("artifact-unavailable"); return window.artifacts.workspace({ ...input, chatId, incarnationId }); },
       workspaceEvents: listener => window.artifacts?.onWorkspaceEvent(listener) ?? (() => {}),
       preview: (fence, action) => { if (!window.artifacts) throw new Error("preview-service-unavailable"); return window.artifacts.preview({ chatId, incarnationId, artifactId: fence.service!.sessionId }, action); },

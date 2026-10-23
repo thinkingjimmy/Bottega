@@ -15,9 +15,9 @@ This file records product milestones, not internal implementation iterations. Da
 - **Recover replies and Artifacts.** Retry saving a finished reply or loading its original Artifact without sending the prompt again. Preserve unsaved edits after a save conflict or failed refresh, and wait for saving before closing. Improve preview cleanup, version handling and recovery for forks and initial design-system saves.
 - **A more readable Dock.** Dock panels use solid backgrounds in light and dark appearances. The Bottega icon follows the sizing of native App artwork while keeping its full click target.
 
-This release uses **protocol 21**. Update the desktop computers that run your Agents to 0.2.9 and reload Bottega Web. Desktop, Web and Cloud must use the matching protocol. Existing content, sync passwords and account keys remain; no data reset is required.
+- **Upgrade together.** This release uses **protocol 21**. Update the desktop computers that run your Agents to 0.2.9 and reload Bottega Web. Desktop, Web and Cloud must use the matching protocol. Existing content, sync passwords and account keys remain; no data reset is required.
 
-**Canvas validation limits.** Common-operation checks passed. Six controlled idle observations measured about 83.6% less CPU in the host renderer, compared with the retained baseline; this is not a whole-app or energy claim. Final memory comparison remains incomplete, a measured handoff response difference remains open, and strict latency, extreme cases, physical trackpad, native IME and physical 120 Hz checks remain deferred. Bottega Dock stays **Alpha**, requires macOS 27.x with Apple silicon, and retains separate replacement-recovery and physical display/fullscreen validation.
+- **Canvas validation limits.** Common-operation checks passed. Six controlled idle observations measured about 83.6% less CPU in the host renderer, compared with the retained baseline; this is not a whole-app or energy claim. Final memory comparison remains incomplete, a measured handoff response difference remains open, and strict latency, extreme cases, physical trackpad, native IME and physical 120 Hz checks remain deferred. Bottega Dock stays **Alpha**, requires macOS 27.x with Apple silicon, and retains separate replacement-recovery and physical display/fullscreen validation.
 
 ## 2026-10-19 — v0.2.8
 

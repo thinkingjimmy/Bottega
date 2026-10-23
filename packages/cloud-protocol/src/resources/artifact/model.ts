@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Closed Artifact capability, finite command parameters and reference-only anchors.
+ * [INPUT]: Closed Artifact capability, finite command parameters and reference-only anchors and scoped thumbnail cancellation.
  * [OUTPUT]: Bounded catalog/Canvas capability replies and UTF-8-limited remote design commands.
  * [POS]: Existing encrypted resource transport; archives use private file transfer.
  */
@@ -20,14 +20,14 @@ export const artifactOperationInput = z.object({ ...remoteScope,
   action: z.literal("operation-status"),
 }).strict();
 export const artifactRemoteInput = z.object({ ...remoteScope,
-  action: z.enum(["patch", "restore", "export", "thumbnail", "operation-status", "resume-edit", "resolve-edit", "system-diff", "system-bind", "system-update", "system-compile", "canvas", "canvas-target"]),
+  action: z.enum(["capture-status", "retry-capture", "patch", "restore", "export", "thumbnail", "cancel-thumbnail", "operation-status", "resume-edit", "resolve-edit", "system-diff", "system-bind", "system-update", "system-compile", "canvas", "canvas-target"]),
   ...designSystemParametersSchema.omit({ save: true }).shape,
   historyAction: z.enum(["undo", "redo"]).optional(),
   boardId: designId.optional(), generation: z.string().min(1).max(128).optional(),
   anchor: anchorSchema.optional(), property: designPropertySchema.optional(),
   format: z.enum(["html", "png", "pdf-fixed", "pdf-flow"]).optional(), paper: z.enum(["a4", "letter"]).optional(),
   operations: canvasOperationsSchema.optional(), pageId: designId.optional(), scope: z.enum(["document", "page", "board"]).optional(),
-}).strict().refine(value => Boolean(value.artifactId) && (["system-diff", "canvas-target"].includes(value.action) || Boolean(value.requestId)),
+}).strict().refine(value => Boolean(value.artifactId) && (["capture-status", "system-diff", "canvas-target"].includes(value.action) || Boolean(value.requestId)),
   "Use a version-bound design action; save on the reading device").superRefine((value, context) => {
   if (value.action === "canvas" && (!value.operations || !value.generation || !value.expectedRevision || !value.readSetDigest)) context.addIssue({ code: "custom", message: "Canvas requires its complete original request" });
   if (utf8JsonBytes({ contract: "bottega.resource/v1", action: "artifact-workspace", input: value }) > CANVAS_LIMITS.commandBytes) context.addIssue({ code: "custom", message: "Complete resource command exceeds 8 KiB" });
@@ -44,6 +44,7 @@ export const artifactOperationSchema = z.object({ status: z.enum(["committed", "
   recovery: z.object({ status: z.enum(["retrying", "paused", "authority-blocked"]), attempts: z.number().int().nonnegative(),
     nextRetryAt: z.number().nonnegative().optional(), code: z.string().max(128), message: z.string().max(500), action: z.string().max(500) }).strict().optional() }).strict()
   .refine(value => value.status === "conflict" ? value.code === "SOURCE_CHANGED" && Boolean(value.sourceConflict) : !value.code && !value.sourceConflict, "Source conflicts require their bounded result");
+export const artifactCancellationSchema = z.object({ cancelled: z.boolean() }).strict();
 export const artifactExportSchema = z.object({ fence: artifactFenceSchema, filename: z.string().min(1).max(128),
   revision: z.number().int().positive(), snapshotRef: digestSchema, readSetDigest: digestSchema,
   published: z.boolean() }).strict();

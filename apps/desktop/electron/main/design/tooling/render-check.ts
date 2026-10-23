@@ -1,11 +1,10 @@
 /**
  * [INPUT]: Depends on parse5 source spans, Electron BrowserWindow/CDP, an already authorized complete HTML canvas, a fixed viewport, AbortSignal, and an image byte target, and statusError from main/errors
- * [OUTPUT]: Hermetic live/static opaque srcdoc captures with optional hidden scrollbars, script-free static mode, bounded lifetime, teardown and exact-size PNG exports.
+ * [OUTPUT]: Hermetic live/static opaque srcdoc captures in two bounded in-memory profiles with optional hidden scrollbars, script-free static mode, bounded lifetime, teardown and exact-size PNG exports.
  * [POS]: Design's screenshot renderer; workspace authorization stays in the toolset and no renderer/user identity enters this process-owned window
  */
 
 import { compositionOverrides } from "../../startup/boot/composition-hooks";
-import { randomUUID } from "node:crypto";
 import { BrowserWindow } from "electron";
 import { statusError } from "../../ipc/errors";
 import { parse } from "parse5";
@@ -64,7 +63,7 @@ export async function captureDesignCanvasWithRuntime(
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
-      partition: `design-render-${randomUUID()}`,
+      partition: input.static ? "design-render-static" : "design-render-scripted",
     },
   });
   const contents = window.webContents;

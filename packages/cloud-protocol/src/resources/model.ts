@@ -2,8 +2,8 @@
  * [INPUT]: Depends on Zod, the encryption scalars and purpose limits, the encrypted-space schema, REMOTE_LIMITS, the workflow confirm input and bridge refusal codes.
  * Closed Artifact status/history/difference/action/export-reference schemas share the existing encrypted resource registry.
  * [OUTPUT]: Provides RESOURCE_LIMITS, the closed resource kinds and classes, the action registry (resourceActionDescriptor: class and criticality per action), the sealed command body and result body, the refusal codes, the encrypted command (plaintext header + packet), the encrypted result and the receipt. Registers bounded Project Git operations, App impact/enablement, requester-bound plugin installation and bounded encrypted record/result pages.
- * Artifact actions/results remain bounded metadata and private-file references with original-operation recovery.
- * [POS]: Protocol-18 resource domain over purposes 10/11; headers reveal no action/input/path and owners rederive exact class/criticality.
+ * Artifact actions, request cancellation and results remain bounded metadata and private-file references with original-operation recovery.
+ * [POS]: Protocol-21 resource domain over purposes 10/11; headers reveal no action/input/path and owners rederive exact class/criticality.
  */
 import { appDisableImpactSchema, setAppEnabledInputSchema } from "../apps/build-status/enablement";
 import { z } from "zod";
@@ -17,7 +17,8 @@ import { WORKFLOW_BRIDGE_ERRORS } from "../contracts/workflow/bridge";
 import { previewViewSchema } from "./preview";
 import { pluginInstallSourceSchema, pluginInstallReceiptSchema } from "./plugin-install";
 import { pluginRecordReadSchema, pluginRecordReportSchema, pluginRecordResultsSchema, pluginRecordPageSchema } from "./plugin-records";
-import { artifactStatusInput, artifactHistoryInput, artifactOperationInput, artifactRemoteInput, artifactStatusSchema, artifactOperationSchema, artifactExportSchema, artifactHistorySchema, artifactDifferenceSchema, artifactCanvasTargetSchema } from "./artifact/model";
+import { artifactFenceSchema } from "../turns/text/artifact-reference";
+import { artifactStatusInput, artifactHistoryInput, artifactOperationInput, artifactRemoteInput, artifactStatusSchema, artifactOperationSchema, artifactExportSchema, artifactHistorySchema, artifactDifferenceSchema, artifactCanvasTargetSchema, artifactCancellationSchema } from "./artifact/model";
 
 const packet = (plaintextBytes: number) => { const envelopeBytes = Math.ceil(plaintextBytes * 4 / 3) + 8_192; return { envelopeBytes, packetChars: Math.ceil(envelopeBytes * 4 / 3) }; };
 const command = packet(PLAINTEXT_LIMITS[10]), result = packet(PLAINTEXT_LIMITS[11]);
@@ -103,7 +104,7 @@ export const RESOURCE_REFUSALS = [...WORKFLOW_BRIDGE_ERRORS, ...PROJECT_GIT_REFU
   "plugin-setup-required", "plugin-unsupported", "plugin-not-found", "plugin-not-switchable", "tunnel-platform-unsupported", "tunnel-plugin-disabled",
   "tunnel-download-consent-required", "preview-service-unavailable", "preview-service-changed", "preview-chat-changed", "preview-session-closed",
   "preview-tunnel-unavailable", "preview-session-limit", "preview-account-required", "plugin-request-unavailable", "plugin-request-limit",
-  "plugin-record-unavailable", "plugin-record-changed", "plugin-record-budget", "artifact-disabled", "artifact-generation-expired", "artifact-conflict", "artifact-invalid", "artifact-budget", "artifact-path", "artifact-unavailable", "failed"] as const;
+  "plugin-record-unavailable", "plugin-record-changed", "plugin-record-budget", "artifact-disabled", "artifact-generation-expired", "artifact-conflict", "artifact-invalid", "artifact-budget", "artifact-path", "artifact-thumbnail-busy", "artifact-unavailable", "failed"] as const;
 export type ResourceRefusal = (typeof RESOURCE_REFUSALS)[number];
 /** `runId` for an action that creates a run (start, start-rework); `revision` is the run projection's revision after the action; `chatId` for the Chat an App action opened (none from open-editor while the App has no Edit Chat yet: the sender starts one). */
 export const resourceResultBodySchema = z.union([
@@ -112,8 +113,9 @@ export const resourceResultBodySchema = z.union([
     appImpact: appDisableImpactSchema.optional(),
     pluginInstall: pluginInstallReceiptSchema.optional(),
     pluginRecord: pluginRecordPageSchema.optional(),
+    artifactRecovery: z.object({ fence: artifactFenceSchema.nullable() }).strict().optional(),
     artifactStatus: artifactStatusSchema.optional(), artifactOperation: artifactOperationSchema.optional(),
-    artifactExport: artifactExportSchema.optional(), artifactHistory: artifactHistorySchema.optional(),
+    artifactCancellation: artifactCancellationSchema.optional(), artifactExport: artifactExportSchema.optional(), artifactHistory: artifactHistorySchema.optional(),
     artifactDifference: artifactDifferenceSchema.optional(),
     artifactCanvasTarget: artifactCanvasTargetSchema.optional(),
     preview: previewViewSchema.optional(),

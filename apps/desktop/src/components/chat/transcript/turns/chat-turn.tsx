@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared ConversationParts, ConversationDraft, ConversationElapsed, ConversationSubagent and conversation Agent/process headings, tool rows and grouping, Message, Thinking, Terminal, Plan, image source custody, subagent, structured Agent failure notices, RegularChatTurn, fork actions, cold-turn projection, and Chat formatting components
- * [OUTPUT]: Plan and process rendering (the replying Agent named from the Provider catalog: a package Provider's declared name, never its id) with consistent interrupted-state disclosure, copy annotation, media and Subagent projections.
+ * [OUTPUT]: Renders terminal partial replies without Thinking, animation or a running elapsed timer.
  * [POS]: apps/desktop/src/components/chat/transcript/turns; Assistant-turn process renderer for chat/transcript; delegates non-plan terminal presentation to chat-regular-turn
  */
 
@@ -259,6 +259,7 @@ export function ChatTurn(props: {
 // ─── 流式草稿：活动分组强制展开实时渲染，末尾按决策 9 渲染 shimmer ───
 
 export function ChatTurnDraft({
+  active = true,
   draft,
   hasPendingApproval,
   queued = false,
@@ -273,6 +274,7 @@ export function ChatTurnDraft({
   backendDisplayName = "Agent",
   backendId,
 }: {
+  active?: boolean;
   draft: TurnDraft;
   hasPendingApproval: boolean;
   queued?: boolean;
@@ -318,8 +320,8 @@ export function ChatTurnDraft({
     );
 
   return (
-    <ConversationDraft label={label} editingPlan={Boolean(plan?.editing)}
-      elapsed={(projection.visibleCount > 0 || projection.streamingTexts.length > 0 || plan) && <ElapsedLabel startedAt={draft.startedAt} />}>
+    <ConversationDraft active={active} label={label} editingPlan={Boolean(plan?.editing)}
+      elapsed={active && (projection.visibleCount > 0 || projection.streamingTexts.length > 0 || plan) && <ElapsedLabel startedAt={draft.startedAt} />}>
       {renderParts(projection.beforePlan)}
       {plan && (
         <PlanCard
@@ -333,7 +335,7 @@ export function ChatTurnDraft({
       {renderParts(projection.afterPlan)}
       {projection.streamingTexts.map(([itemId, text]) => (
         <MessageContent key={itemId}>
-          <MessageResponse isAnimating={draft.streaming.has(itemId)}>
+          <MessageResponse isAnimating={active && draft.streaming.has(itemId)}>
             {projection.cappedStreaming.get(itemId) ?? text}
           </MessageResponse>
         </MessageContent>

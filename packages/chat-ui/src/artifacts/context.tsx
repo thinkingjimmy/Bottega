@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Authenticated artifact fences and host-provided lifecycle, file and composer capabilities.
- * [OUTPUT]: Owner-bound workspace/file/lease ports, separate presentation/close hooks and original-composer callbacks.
+ * [OUTPUT]: Owner-bound workspace/file/lease ports with cancellable immutable resource reads, separate presentation/close hooks and original-composer callbacks.
  * [POS]: Shared artifact UI dependency boundary for desktop and cloud reading.
  */
 import { createContext, useContext } from "react";
@@ -11,13 +11,14 @@ export type ArtifactHost = {
   scope: string; locale: string; desktop?: boolean; directoryTopLevel?: boolean; sidePanel?: boolean;
   executionDeviceId?: string;
   remoteReader?: boolean;
+  recover?(fence: ArtifactFence, retry: boolean): Promise<ArtifactFence | null>;
   remember?(fence: ArtifactFence): void;
   acquire(fence: ArtifactFence): Promise<ArtifactLease>; release(lease: ArtifactLease): void;
   action(fence: ArtifactFence, action: "quick-look" | "reveal" | "open" | "save", followUp?: ArtifactHost["followUp"]): Promise<void>;
   open(fence: ArtifactFence, followUp?: ArtifactHost["followUp"]): void | Promise<void>;
   followUp?(value: { prompt: string; title?: string; design?: import("@ai-chat/cloud-protocol/artifacts/design/review").DesignReference }): void | Promise<void>;
   sendReview?(value: { prompt: string; title?: string; design: import("@ai-chat/cloud-protocol/artifacts/design/review").DesignReference; requestId: string; createdAt: number }): Promise<void>;
-  workspace?(input: Omit<import("@ai-chat/cloud-protocol/artifacts/design/model").WorkspaceCommand, "chatId" | "incarnationId">): Promise<unknown>;
+  workspace?(input: Omit<import("@ai-chat/cloud-protocol/artifacts/design/model").WorkspaceCommand, "chatId" | "incarnationId">, signal?: AbortSignal): Promise<unknown>;
   workspaceEvents?(listener: (event: { type: "before-disable" | "changed"; nonce?: string; generation: string; enabled?: boolean; scope?: string }) => void | Promise<void>): () => void;
   preview?(fence: ArtifactFence, action: "preview-status" | "preview-start" | "preview-stop" | "preview-issue-code"): Promise<import("@ai-chat/cloud-protocol/resources/preview").PreviewView>;
   keepPreview?(fence: ArtifactFence): Promise<import("@ai-chat/cloud-protocol/resources/preview").PreviewView>;
@@ -35,3 +36,4 @@ const Presentation = createContext<ArtifactPresentation | null>(null);
 export const ArtifactPresentationProvider = Presentation.Provider;
 export const useArtifactPresentation = () => useContext(Presentation);
 export { artifactCopy } from "./copy";
+export { useArtifactCloseGuard } from "./lifecycle/close";

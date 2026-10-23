@@ -6,6 +6,7 @@
 import { constants, openSync, closeSync, fstatSync, readFileSync, realpathSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { realpath } from "node:fs/promises";
+import { mkdir, lstat } from "node:fs/promises";
 import { unpackArtifactArchive } from "@ai-chat/cloud-protocol/artifacts/archive";
 import { durableReplaceBytes } from "../../persistence/durable-json";
 import { readDesignSet } from "./read-set";
@@ -30,6 +31,16 @@ export async function applyPreparedDesignEdit(operation: DesignOperation, archiv
   const desired = transformedDesignSet(operation.revision.path, unpackArtifactArchive(archive));
   const baseline = new Map(edit.baseline.map(file => [file.path, file.digest]));
   const desiredMap = new Map(desired.files.map(file => [file.path, file]));
+  if (edit.initial) {
+    let directory = await realpath(authority.workspace);
+    for (const segment of operation.revision.path.split("/")) {
+      directory = join(directory, segment);
+      await mkdir(directory, { mode: 0o700 }).catch(cause => { if ((cause as NodeJS.ErrnoException).code !== "EEXIST") throw cause; });
+      const info = await lstat(directory);
+      if (!info.isDirectory() || info.isSymbolicLink() || await realpath(directory) !== directory) throw new DesignDocumentError("PATH_DENIED", "Initial source directory changed");
+      assertAuthority();
+    }
+  }
   const current = await readDesignSet(authority.workspace, operation.revision.path);
   const changed = [...current.files.filter(file => !desiredMap.has(file.path) || file.digest !== baseline.get(file.path) && file.digest !== desiredMap.get(file.path)!.digest).map(file => file.path),
     ...edit.baseline.filter(file => !current.files.some(value => value.path === file.path)).map(file => file.path)];

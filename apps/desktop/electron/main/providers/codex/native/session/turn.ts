@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses canonical built-in Provider identity, a custody-backed AgentProcessHost, main-frozen NativeTurnConfig, live main-owned MCP consent queries, native RPC and product callbacks.
- * [OUTPUT]: Exports CodexNativeTurn, implementing native Thread/Turn methods and exact-terminal background termination with list readback.
+ * [OUTPUT]: Status-only notification-silence probes; Exports CodexNativeTurn, implementing native Thread/Turn methods and exact-terminal background termination with list readback.
  * Native Skill-budget warnings remain durable turn facts on success and failure.
  * [POS]: Native lifecycle owner; no ACP methods, launcher fallback or client-side automatic approval.
  */
@@ -52,6 +52,9 @@ export class CodexNativeTurn implements AgentTurn {
   private readonly retainedTerminals = new Map<string, NativeTerminal>();
   private backgroundTimer?: ReturnType<typeof setInterval>;
   private polling = false;
+  private lastNotificationAt = Date.now();
+  private livenessTimer?: ReturnType<typeof setInterval>;
+  private checkingLiveness = false;
   private readonly stoppingTerminals = new Set<string>();
   private skillDescriptionsTruncated = false;
 
@@ -160,6 +163,7 @@ export class CodexNativeTurn implements AgentTurn {
       if (typeof turn.id !== "string" || !turn.id || turn.id.length > 4096) throw new Error("Native turn/start returned no valid turn id");
       if (this.turnId && this.turnId !== turn.id) throw new Error("Native turn/start identity mismatch");
       this.turnId = turn.id; this.accepted = true;
+      this.watchLiveness();
       for (const message of this.earlyEvents.splice(0)) await this.message(message);
       return "started";
     } catch (cause) { this.fail(cause); throw new Error(this.redact(cause instanceof Error ? cause.message : String(cause))); }
@@ -197,7 +201,7 @@ export class CodexNativeTurn implements AgentTurn {
   pendingUserInput(id: string) { return this.interactions.pendingUserInput(id); }
   respondUserInput(id: string, answers: AgentUserInputAnswers) { this.interactions.respondUserInput(id, answers); }
   interrupt() { this.interactions.close(); if (this.threadId && this.turnId && !this.done) void this.rpc.request("turn/interrupt", { threadId: this.threadId, turnId: this.turnId }, { timeoutMs: 5000 }).catch(cause => this.fail(cause)); }
-  markStopped() { this.done = true; clearInterval(this.backgroundTimer); this.interactions.close(); this.rpc.close(); for (const resolve of this.handoffWaiters) resolve(this.handoff); this.handoffWaiters.clear(); }
+  markStopped() { clearInterval(this.livenessTimer); this.done = true; clearInterval(this.backgroundTimer); this.interactions.close(); this.rpc.close(); for (const resolve of this.handoffWaiters) resolve(this.handoff); this.handoffWaiters.clear(); }
 
   async stopBackground() {
     clearInterval(this.backgroundTimer);
@@ -305,6 +309,7 @@ export class CodexNativeTurn implements AgentTurn {
       if (message.id !== undefined) this.rpc.reject(message.id, "Native turn mismatch"); return;
     }
     if (message.id !== undefined) { await this.interactions.receive(message); return; }
+    if (p.threadId === this.threadId) this.lastNotificationAt = Date.now();
     const child = p.threadId !== this.threadId ? String(p.threadId) : undefined;
     switch (message.method) {
       case "item/started": case "item/completed": this.events.update(p.item as ThreadItem, message.method === "item/completed", child); break;
@@ -336,6 +341,7 @@ export class CodexNativeTurn implements AgentTurn {
             this.backgroundActive = true;
           }
         }
+        clearInterval(this.livenessTimer);
         this.events.finish(status === "failed"); this.done = true;
         const failure = status === "failed" ? nativeFailure(turn.error, value => this.redact(value)) : null;
         this.options.callbacks.onTerminal({ type: status === "completed" ? "done" : status === "interrupted" ? "cancelled" : "error",
@@ -347,7 +353,31 @@ export class CodexNativeTurn implements AgentTurn {
     }
   }
 
+  private watchLiveness() {
+    this.lastNotificationAt = Date.now();
+    this.livenessTimer = setInterval(() => {
+      if (this.done || this.checkingLiveness || Date.now() - this.lastNotificationAt < 120_000) return;
+      this.checkingLiveness = true;
+      const threadId = this.threadId, turnId = this.turnId;
+      void this.rpc.request("thread/turns/list", { threadId, cursor: null, limit: 1, sortDirection: "desc", itemsView: "notLoaded" }, { timeoutMs: 5_000 }).then(response => {
+        this.chain = this.chain.then(async () => {
+          if (this.done || this.threadId !== threadId || this.turnId !== turnId) return;
+          const data = nativeRecord(response).data;
+          const turn = Array.isArray(data) ? data.map(nativeRecord).find(value => value.id === turnId) : undefined;
+          if (!turn) throw new Error("Native turn status is unavailable. Stop or reopen this Chat to recover. Input was not resent.");
+          this.lastNotificationAt = Date.now();
+          if (turn.status === "inProgress") return;
+          if (!["completed", "interrupted", "failed"].includes(String(turn.status))) throw new Error("Native turn status is unconfirmed");
+          await this.message({ method: "turn/completed", params: { threadId, turn } });
+        }).catch(cause => this.fail(cause));
+        return this.chain;
+      }).catch(cause => this.fail(cause)).finally(() => { this.checkingLiveness = false; });
+    }, 5_000);
+    this.livenessTimer.unref();
+  }
+
   private fail(cause: unknown) {
+    clearInterval(this.livenessTimer);
     if (this.done) { if (this.backgroundActive) { this.backgroundActive = false; clearInterval(this.backgroundTimer); this.background?.ended(); } return; }
     this.done = true; this.interactions.close(); this.events.finish(true);
     const error = cause instanceof Error ? cause : new Error(String(cause));

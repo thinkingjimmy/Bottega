@@ -42,6 +42,7 @@ export async function artifactResourceAction(resourceId: string, raw: ResourceCo
               artifactId: version.artifactId, revision: version.revision, snapshotRef: version.snapshotRef, readSetDigest: version.readSetDigest,
               bytes: version.fence.bytes!, format: version.manifest.format, dirty: false, undoRevision: null, redoRevision: null })) } };
         }
+        if (input.action === "cancel-thumbnail") { const value = await artifactWorkspace().dispatch(input); current(); return { ok: true, artifactCancellation: value as { cancelled: boolean } }; }
         if (input.action === "export" || input.action === "thumbnail") {
           if (input.action === "thumbnail") {
             const { transferDesignThumbnail } = await import("../../../artifacts/workspace/thumbnails");
@@ -53,6 +54,7 @@ export async function artifactResourceAction(resourceId: string, raw: ResourceCo
           return { ok: true, artifactExport: result };
         }
         const value = await artifactWorkspace().dispatch(input);
+        if (["capture-status", "retry-capture"].includes(String(input.action))) { current(); return { ok: true, artifactRecovery: value as { fence: import("@ai-chat/cloud-protocol/turns/text/artifact-reference").ArtifactFence | null } }; }
         current();
         if (input.action === "canvas-target") return { ok: true, artifactCanvasTarget: artifactCanvasTargetSchema.parse(value) };
         if (input.action === "system-diff") return { ok: true, artifactDifference: artifactDifferenceSchema.parse(value) };
@@ -67,7 +69,7 @@ export async function artifactResourceAction(resourceId: string, raw: ResourceCo
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         const code = error && typeof error === "object" && "code" in error ? String(error.code) : message;
-        throw new Error(code.includes("ARTIFACT_DISABLED") ? "artifact-disabled" : code.includes("GENERATION") ? "artifact-generation-expired" :
+        throw new Error(code === "artifact-thumbnail-busy" ? code : code.includes("ARTIFACT_DISABLED") ? "artifact-disabled" : code.includes("GENERATION") ? "artifact-generation-expired" :
           ["REVISION_CONFLICT", "SOURCE_CHANGED", "REQUEST_MISMATCH"].includes(code) ? "artifact-conflict" :
           code === "INVALID_DOCUMENT" ? "artifact-invalid" : code === "BUDGET_EXCEEDED" ? "artifact-budget" : code === "PATH_DENIED" ? "artifact-path" : "artifact-unavailable");
       }

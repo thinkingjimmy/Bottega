@@ -16,7 +16,7 @@ export type DesignReadSet = Readonly<{ path: string; files: readonly DesignSourc
   readSetDigest: string; bytes: number }>;
 export type DesignIssue = Readonly<{ file: string; message: string }>;
 export type DesignErrorCode = "NOT_READY" | "SOURCE_CHANGED" | "REVISION_CONFLICT" | "REQUEST_MISMATCH" |
-  "INVALID_DOCUMENT" | "PATH_DENIED" | "BUDGET_EXCEEDED" | "ARTIFACT_DISABLED";
+  "UNREADABLE" | "STORAGE_FAILED" | "INVALID_DOCUMENT" | "PATH_DENIED" | "BUDGET_EXCEEDED" | "ARTIFACT_DISABLED";
 export class DesignDocumentError extends Error {
   constructor(readonly code: DesignErrorCode, message: string, readonly issues: readonly DesignIssue[] = []) {
     super(message); this.name = "DesignDocumentError";

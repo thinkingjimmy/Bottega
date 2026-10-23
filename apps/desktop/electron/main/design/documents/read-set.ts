@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Main-authorized workspace roots, source limits and no-follow Node filesystem handles.
- * [OUTPUT]: Complete no-follow design/design-system byte sets and a 1s quiet check sampled at 500ms, bounded to 10s.
+ * [OUTPUT]: Captures stable no-follow source sets and preserves missing, permission, storage and authority distinctions.
  * [POS]: Document source capture; filesystem quiet never substitutes for writer completion or commit CAS.
  */
 import { constants, type Stats } from "node:fs";
@@ -69,7 +69,8 @@ export async function readDesignSet(workspace: string, path: string): Promise<De
   } catch (cause) {
     if (cause instanceof DesignDocumentError) throw cause;
     const code = (cause as NodeJS.ErrnoException).code;
-    throw new DesignDocumentError(code === "ENOENT" ? "NOT_READY" : "PATH_DENIED",
+    console.warn("[design] source capture failed", { stage: "read-set", errno: typeof code === "string" && /^[A-Z0-9_]{1,40}$/.test(code) ? code : "UNKNOWN", retryable: !["EACCES", "EPERM", "ELOOP"].includes(code ?? "") });
+    throw new DesignDocumentError(code === "ENOENT" ? "NOT_READY" : ["EACCES", "EPERM"].includes(code ?? "") ? "UNREADABLE" : "STORAGE_FAILED",
       code === "ENOENT" ? "Document files are not ready" : "Document source cannot be read safely");
   }
 }

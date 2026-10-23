@@ -130,8 +130,8 @@ export const chatSurfacesZhCN: typeof chatSurfacesEn = {
     abandonFatal: "放弃本轮结果",
     cleanupFailedTitle: "进程清理未完成",
     cleanupFailed:
-      "{{backend}} 进程组清理失败。请先确认相关进程已经结束，再解除本 Chat 的安全锁。",
-    acknowledgeCleanup: "已确认进程结束",
+      "{{backend}} 进程清理尚未通过验证。请重试清理，由系统检查原属进程后安全解锁此 Chat。",
+    acknowledgeCleanup: "重试清理",
     loadedEarlier: "已加载 {{count}} 条更早消息",
     subagentDetailsCleared: "该 Subagent 的详情已被清理",
     subagentDetailsLimited: "实时详情已达上限",

@@ -3,7 +3,8 @@
  * [OUTPUT]: Immutable admitted snapshot bytes and relative, path-free card metadata.
  * [POS]: Artifact security admission before any renderer or synchronization publication.
  */
-import { homedir } from "node:os";
+import { ArtifactFailure } from "../storage/failure";
+import { codexHomePath } from "../../providers/codex/environment";
 import { createHash } from "node:crypto";
 import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -26,40 +27,40 @@ export function artifactMime(path: string): string {
 const within = (root: string, path: string) => { const name = relative(root, path); return name === "" || (!isAbsolute(name) && name !== ".." && !name.startsWith(".." + sep)); };
 function decode(data: Uint8Array) {
   try { const value = new TextDecoder("utf-8", { fatal: true }).decode(data); if (value.includes("\uFFFD")) throw new Error(); return value; }
-  catch { throw new Error("not-utf8"); }
+  catch { throw new ArtifactFailure("not-utf8", "read"); }
 }
 export async function admitArtifact(roots: ArtifactRoots, reference: ArtifactReference, id: string): Promise<AdmittedArtifact> {
   const target = resolve(roots.workspace, reference.path);
-  if (designDocumentSource(roots.workspace, target)) throw new Error("path-denied");
-  const visualizationRoot = join(homedir(), ".codex", "visualizations");
+  if (designDocumentSource(roots.workspace, target)) throw new ArtifactFailure("path-denied", "read");
+  const visualizationRoot = join(codexHomePath(), "visualizations");
   const sessionParts = relative(visualizationRoot, target).split(sep);
   const boundSessionRoot = roots.sessionId && sessionParts[3] === roots.sessionId && /^\d{4}$/.test(sessionParts[0] ?? "") &&
     sessionParts.slice(1, 3).every(value => /^\d{2}$/.test(value)) ? join(visualizationRoot, ...sessionParts.slice(0, 4)) : roots.session;
   const candidates = [["artifacts", roots.artifacts], ["workspace", roots.workspace], ["session", boundSessionRoot]] as const;
   const selected = candidates.find(([, root]) => root && within(root, target));
-  if (!selected?.[1]) throw new Error("path-denied");
+  if (!selected?.[1]) throw new ArtifactFailure("path-denied", "read");
   const [location, root] = selected;
   const cleanRoot = await realpath(root);
-  if (location === "session" && cleanRoot !== root) throw new Error("symlink");
+  if (location === "session" && cleanRoot !== root) throw new ArtifactFailure("symlink", "read");
   const name = relative(root, target);
-  if (name.split(sep).some(ignoredArtifactName)) throw new Error("path-denied");
+  if (name.split(sep).some(ignoredArtifactName)) throw new ArtifactFailure("path-denied", "read");
   const path = resolve(cleanRoot, name);
-  const info = await lstat(path).catch(() => { throw new Error("path-denied"); });
-  if (info.isSymbolicLink() || await realpath(path) !== path) throw new Error("symlink");
-  if (info.isDirectory() && location !== "artifacts") throw new Error("path-denied");
+  const info = await lstat(path);
+  if (info.isSymbolicLink() || await realpath(path) !== path) throw new ArtifactFailure("symlink", "read");
+  if (info.isDirectory() && location !== "artifacts") throw new ArtifactFailure("path-denied", "read");
   const entryPath = info.isDirectory() ? join(path, "index.html") : path;
   const ext = extname(entryPath).toLowerCase();
   let mime = artifactMime(entryPath), data = await readArtifactSource(entryPath, MAX_BLOB_BYTES);
   let kind: ArtifactKind = ({ ".html": "html-document", ".htm": "html-document", ".md": "markdown", ".svg": "svg", ".pdf": "pdf", ".xlsx": "xlsx", ".docx": "docx", ".pptx": "pptx", ".csv": "csv" } as Record<string, ArtifactKind>)[ext] ?? (mime.startsWith("image/") ? "image" : "file");
   let text: string | undefined, collection: ArtifactFence["collection"], entry: string | undefined, files: number | undefined;
   if (["html-document", "markdown", "svg", "csv"].includes(kind)) text = decode(data);
-  if (kind === "pdf" && !Buffer.from(data.subarray(0, 5)).equals(Buffer.from("%PDF-"))) throw new Error("unsupported");
+  if (kind === "pdf" && !Buffer.from(data.subarray(0, 5)).equals(Buffer.from("%PDF-"))) throw new ArtifactFailure("unsupported", "read");
   // OPT-42: a raster image is what its bytes say; a renamed executable or a mismatched extension is refused. SVG is text, not sniffed.
-  if (kind === "image" && sniffImageMime(data) !== mime) throw new Error("unsupported");
-  if (["xlsx", "docx", "pptx"].includes(kind) && (data[0] !== 80 || data[1] !== 75)) throw new Error("unsupported");
+  if (kind === "image" && sniffImageMime(data) !== mime) throw new ArtifactFailure("unsupported", "read");
+  if (["xlsx", "docx", "pptx"].includes(kind) && (data[0] !== 80 || data[1] !== 75)) throw new ArtifactFailure("unsupported", "read");
   if (kind === "html-document") {
     kind = /<!doctype|<(?:html|head|body)\b/i.test(text!) ? "html-document" : "html-fragment";
-    if (data.length > (kind === "html-fragment" ? ARTIFACT_BUDGET.fragment : ARTIFACT_BUDGET.document)) throw new Error("too-large");
+    if (data.length > (kind === "html-fragment" ? ARTIFACT_BUDGET.fragment : ARTIFACT_BUDGET.document)) throw new ArtifactFailure("too-large", "read");
     if (info.isDirectory() || (kind === "html-document" && resourceReferences(text!).length > 0)) {
       const directory = info.isDirectory() ? path : dirname(path);
       try {

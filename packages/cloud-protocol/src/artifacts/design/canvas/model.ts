@@ -51,6 +51,8 @@ export function validDesignProperty(property: string, value: string) {
 // Links remain document-local because the offline frame cannot navigate to remote origins.
 export const canvasLinkSchema = z.string().min(1).max(240).refine(value => /^#[a-z\d_-]+$/i.test(value) ||
   !/^(?:[a-z][a-z0-9+.-]*:|\/|\\)/i.test(value) && !/[<>"'\s]/.test(value) && sourcePath.safeParse(value.split("#")[0]!.replace(/^(?:\.\.\/){1,3}/, "")).success);
+export const canvasImageIdentitySchema = z.object({ snapshotRef: digestSchema, path: sourcePath, digest: digestSchema, mime: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]), bytes: z.number().int().positive().max(CANVAS_LIMITS.imageBytes) }).strict();
+export type CanvasImageIdentity = z.infer<typeof canvasImageIdentitySchema>;
 export const canvasAssetSchema = z.object({ path: sourcePath, digest: digestSchema }).strict();
 export const canvasImageSourceSchema = z.discriminatedUnion("kind", [
   canvasAssetSchema.extend({ kind: z.literal("document") }).strict(),

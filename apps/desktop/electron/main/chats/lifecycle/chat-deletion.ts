@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the Chat store, the durable ConversationDeletionCoordinator, Memory Space intents, deletion admission, and named pre/post resource releasers
- * [OUTPUT]: Provides ChatDeletionDriver: advisory admission, local-only and cleanup-and-rebuild prepare/drive phases, restart recovery with frozen App transcript disposition, the conversation fence, and a coordinator-free synchronous fallback
+ * [OUTPUT]: Provides ChatDeletionDriver: pending-Fork source protection before any deletion effect, advisory admission, local-only and cleanup-and-rebuild prepare/drive phases, restart recovery with frozen App transcript disposition, the conversation fence, and a coordinator-free synchronous fallback
  * [POS]: apps/desktop/electron/main/chats/lifecycle; Deletion adapter of the chats module; ChatsService only admits and cancels, while the durable journal and resource details stay behind this seam
  */
 
@@ -75,7 +75,12 @@ export class ChatDeletionDriver {
     return this.options.deletionCoordinator?.hasActive(chatId) ?? false;
   }
 
+  private assertForkRetention(record: DeletionRecord) {
+    if (artifactRuntime()?.forks.held(record.id, record.incarnationId)) throw new Error("artifact-fork-incomplete: Finish the retained child before deleting its source Chat");
+  }
+
   admit(records: readonly DeletionRecord[]) {
+    for (const record of records) this.assertForkRetention(record);
     return this.options.admitDeletion?.(records) ?? Promise.resolve();
   }
 
@@ -91,6 +96,7 @@ export class ChatDeletionDriver {
     mode: ConversationDeletionMode = "local-only",
     preparedMemory?: DeletionMemoryIntent
   ) {
+    this.assertForkRetention(record);
     const coordinator = this.options.deletionCoordinator;
     if (coordinator) {
       return coordinator.prepare(record, this.callbacks(), mode, preparedMemory);
@@ -106,6 +112,7 @@ export class ChatDeletionDriver {
     record: NativeDeletionRecord,
     mode: ConversationDeletionMode = "local-only"
   ) {
+    this.assertForkRetention(record);
     const coordinator = this.options.deletionCoordinator;
     if (coordinator) {
       return coordinator.drive(record, this.callbacks());
@@ -135,6 +142,7 @@ export class ChatDeletionDriver {
       snapshot: (record: DeletionRecord, operationId: string) =>
         memory.snapshot(record, operationId),
       fence: async (record: DeletionRecord) => {
+        this.assertForkRetention(record);
         await this.options.fenceConversation?.(record);
       },
       applyPolicy: (intent: DeletionMemoryIntent) => memory.applyPolicy(intent),
@@ -153,6 +161,7 @@ export class ChatDeletionDriver {
         mode
       ),
       removeChat: async (record: DeletionRecord) => {
+        this.assertForkRetention(record);
         if (!this.store.has(record.id)) return;
         await this.store.remove(record.id, record.incarnationId, record.retainedAppId);
       },
@@ -164,17 +173,16 @@ export class ChatDeletionDriver {
         this.store.pushWarning(message);
         this.emit({ type: "warning", message });
       },
-      preResources: this.options.deletionPreResources ?? [],
+      preResources: [{ id: "artifact-fork-retention", release: async (record: DeletionRecord) => { this.assertForkRetention(record); } }, ...this.options.deletionPreResources ?? []],
       resources: this.resources(),
     };
   }
 
   private resources(): ConversationDeletionResource[] {
     return [
-      ...(this.options.deletionResources ?? []),
-      /* Attachment bytes live inside the Chat directory the Home release moves to trash;
-         there is nothing left to collect once the directory is gone. */
+      // Artifact retention must settle before Chat Home can move its immutable bytes to trash.
       { id: "artifacts", release: async record => { await artifactRuntime()?.releaseChat(record.id, record.incarnationId); } },
+      ...(this.options.deletionResources ?? []),
     ];
   }
 

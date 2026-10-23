@@ -79,7 +79,11 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
     setPreview(null); setSlots(previous => ({ tabs: previous.tabs.includes(id) ? previous.tabs : [...previous.tabs, id], active: id, touched: true }));
   }, []);
   const openShell = () => { if (!history.open) setCycle(value => value + 1); setPreview(null); history.openShell(); };
-  const close = () => { history.close(); requestAnimationFrame(() => triggerRef.current?.focus()); };
+  const closeHandlers = useRef(new Set<() => Promise<unknown>>()), [closeFailed, setCloseFailed] = useState(false);
+  const beforeClose = useCallback((handler: () => Promise<unknown>) => { closeHandlers.current.add(handler); return () => { closeHandlers.current.delete(handler); }; }, []);
+  const close = () => { void Promise.all([...closeHandlers.current].map(handler => handler())).then(() => {
+    setCloseFailed(false); history.close(); requestAnimationFrame(() => triggerRef.current?.focus());
+  }).catch(() => setCloseFailed(true)); };
   const onOpenImage = (identity: ImageIdentity) => {
     const message = identity.kind === "generated" ? model.bodies.find(body => body.message.id === identity.messageId) : null;
     const region = encodeImageIdentity(message && identity.kind === "generated" ? { ...identity, messageId: `seq:${message.message.seq}` } : identity); if (!eligible || !imageAllowed(region)) return;
@@ -135,6 +139,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
       </div> })),
   ];
   const element = (eligible || baseEngaged) && <SidePanelShell open={visible} takeover={history.takeover || artifactFull} {...geometry} onWidthChange={widthChange} onClose={close} resizeLabel={copy.resize} resizeHint={copy.resizeHint}>
+    {closeFailed && <p role="alert" className="p-3 text-sm">{remote.requestFailed}</p>}
     <PanelHost hideHeader={Boolean(preview && "fence" in preview && preview.fence.design)} close={close} backRef={backRef} takeover={history.takeover} copy={copy}
       extraActions={!preview && slots.active === "base" ? <span ref={setBaseHeaderActions} className="flex items-center empty:hidden" /> : undefined}
       title={preview || history.takeover ? (preview ? "fence" in preview ? preview.fence.title : "workspace" in preview ? preview.workspace.title : turnCopy(locale).plan.title : null) ?? items.find(item => item.selected)?.label ?? copy.tabs : undefined}
@@ -146,7 +151,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
     </>)}
     {!preview && creating && <p role="status" className="px-4 py-2 text-sm">{copy.loadingBase}</p>}
     {!preview && creationError && <p role="alert" className="px-4 py-2 text-sm">{creationError === "base-identity-mismatch" ? copy.basePromoted : copy.createFailed}{promotedPath && <a className="ml-2 underline" href={promotedPath} onClick={event => { event.preventDefault(); services.navigate(promotedPath); }}>{copy.openFull}</a>}</p>}
-    {preview && visible && ("workspace" in preview ? <WorkspacePreview request={preview.workspace} copy={{ loading: remote.readingFile, failed: remote.requestFailed, retry: copy.retry }} /> : "planId" in preview ? <div className="min-h-0 flex-1 overflow-auto px-6 py-5 text-sm"><MessageResponse isAnimating={Boolean(livePlan?.editing)}>{capMarkdown(planContent)}</MessageResponse></div> : <ArtifactPresentationProvider value={{ full: history.takeover || artifactFull, canExpand: !narrow, setFull: setArtifactFull, close: history.close }}><ExpandedArtifact preview={preview} close={history.close} /></ArtifactPresentationProvider>)}
+    {preview && visible && ("workspace" in preview ? <WorkspacePreview request={preview.workspace} copy={{ loading: remote.readingFile, failed: remote.requestFailed, retry: copy.retry }} /> : "planId" in preview ? <div className="min-h-0 flex-1 overflow-auto px-6 py-5 text-sm"><MessageResponse isAnimating={Boolean(livePlan?.editing)}>{capMarkdown(planContent)}</MessageResponse></div> : <ArtifactPresentationProvider value={{ full: history.takeover || artifactFull, canExpand: !narrow, setFull: setArtifactFull, close, beforeClose }}><ExpandedArtifact preview={preview} close={close} /></ArtifactPresentationProvider>)}
     </>} />
   </SidePanelShell>;
   return { eligible, containerRef, triggerRef, takeover: history.takeover, openShell, onOpenImage, onOpenArtifact,

@@ -21,7 +21,7 @@ const revisionSchema = z.object({ authority: authoritySchema, path: z.string(), 
 }).strict();
 const operationSchema = z.object({ key: z.string(), parameterDigest: z.string(),
   state: z.enum(["prepared", "complete", "source-conflict", "rejected"]), revision: revisionSchema,
-  sourceEdit: z.object({ input: workspaceCommandSchema, baseline: z.array(z.object({ path: sourcePath, digest: digestSchema }).strict()).max(64), applied: z.boolean(),
+  sourceEdit: z.object({ initial: z.literal(true).optional(), input: workspaceCommandSchema, baseline: z.array(z.object({ path: sourcePath, digest: digestSchema }).strict()).max(64), applied: z.boolean(),
     writes: z.array(z.object({ path: sourcePath, state: z.enum(["started", "applied"]) }).strict()).max(64).default([]) }).strict().optional(),
   conflict: z.object({ paths: z.array(sourcePath).max(128), message: z.string().max(500), resolvedAt: z.number().optional() }).strict().optional(),
   aliasOf: z.string().max(512).optional(),

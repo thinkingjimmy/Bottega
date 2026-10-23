@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Current editor mode, genuine action availability, actual desktop-tool visibility and tool callbacks.
- * [OUTPUT]: Capability-bound tools with aligned menu rows, portalled overflow tools and per-action disabled reasons.
+ * [OUTPUT]: Responsive capability-bound toolset with aligned menu rows, portalled overflow tools and per-action disabled reasons.
  * [POS]: Left Canvas tool group; the workspace supplies verified capability and mutation ports.
  */
 import { useLayoutEffect, useRef, useState } from "react";
@@ -28,7 +28,7 @@ export function CanvasTools({ tool, availability, onTool }: { tool: CanvasTool; 
     const Icon = glyphs[item], capability = availability[item], disabled = capability?.available !== true, label = copy[item];
     return <Button key={item} type="button" variant={tool === item ? "secondary" : "ghost"} size={menu ? "default" : "icon"} className={menu ? "min-h-[44px] w-full justify-start text-left" : "min-h-[44px] min-w-[44px] shrink-0"} aria-label={label} title={disabled ? capability?.reason ?? copy.unavailable : `${label}${shortcuts[item] ? ` (${shortcuts[item]})` : ""}`} aria-pressed={tool === item} aria-keyshortcuts={shortcuts[item]} disabled={disabled} data-canvas-tool={item} onClick={() => { setOpen(false); onTool(item); }}><Icon className="size-4 shrink-0" />{menu && <><span className="min-w-0 flex-1 truncate text-left">{label}</span>{shortcuts[item] && <span className="shrink-0 text-right text-xs text-muted-foreground">{shortcuts[item]}</span>}</>}</Button>;
   };
-  return <div className="flex shrink-0 items-center" role="group" aria-label={copy.tools}>
+  return <div data-canvas-toolset="" className="flex shrink-0 items-center" role="group" aria-label={copy.tools}>
     {action("select")}{action("hand")}
     <span ref={desktop} className="artifact-canvas-desktop-tools">{tools.slice(2, 6).map(item => action(item))}</span>
     <Popover open={open} onOpenChange={setOpen}><PopoverTrigger asChild><Button type="button" variant={tools.slice(6).includes(tool as typeof tools[number]) ? "secondary" : "ghost"} className="min-h-[44px] min-w-[44px] gap-0 px-2" aria-label={copy.shapes} title={copy.shapes}><Shapes className="size-4" /><ChevronDown className="size-3" /></Button></PopoverTrigger><PopoverContent align="start" className="w-60 max-w-[calc(100vw-24px)] p-1" data-canvas-chrome="" data-canvas-tools-menu="">

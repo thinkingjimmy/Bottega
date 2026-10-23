@@ -135,8 +135,8 @@ export const chatSurfacesEn = {
     abandonFatal: "Discard this turn’s result",
     cleanupFailedTitle: "Process cleanup did not finish",
     cleanupFailed:
-      "{{backend}} process-group cleanup failed. Confirm that the related processes have ended before unlocking this Chat.",
-    acknowledgeCleanup: "I confirmed the processes ended",
+      "{{backend}} process cleanup is not yet verified. Retry cleanup so the system can check the original processes and safely unlock this Chat.",
+    acknowledgeCleanup: "Retry cleanup",
     loadedEarlier: "Loaded {{count}} earlier messages",
     subagentDetailsCleared: "This Subagent’s details have been cleared",
     subagentDetailsLimited: "Realtime detail reached its limit",

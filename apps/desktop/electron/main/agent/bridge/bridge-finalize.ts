@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on TurnRegistry projection lane, bridge, stabilization/Steer durable finalizer, port, canonical commit, projection and process group clearance only by the turn's custody launch identity or, for a bridged turn, its host-custody owner (a reused PID is never signalled; no identity, no signal; a reported PID with no identity is unverified, B2-01)
- * [OUTPUT]: Turn cleanup, resume settlement, lease release, artifact settlement, a bounded ID/port-only preview recovery projection before cleanup, ordered terminal commit and persistence sequencing.
+ * [OUTPUT]: Keeps uncommitted persistence failures retryable beyond the automatic budget; verifies cleanup owners and retries effects/ACKs separately.
  * [POS]: apps/desktop/electron/main/agent/bridge; The agent module's terminal transaction owner; agent-bridge is only responsible for launching, event routing and lifecycle
  * Workflow recall receipts use settled handoff facts without granting capture.
  */
@@ -14,7 +14,6 @@ import {
   clearAgentSafetyLockWhenIdle,
   reportAgentCleanupFailure,
 } from "../../agent-process-supervisor";
-import { providerDisplayName } from "../../backends";
 import type { AgentTurn } from "../../backends/contracts/types";
 import { asError } from "../../ipc/errors";
 import type { CleanupResult } from "../process/process-group";
@@ -54,6 +53,35 @@ export async function cleanupAgentTurn(turn: AgentTurn): Promise<CleanupResult> 
 
 export function createBridgeFinalizer(ports: FinalizerPorts) {
   const { turns, publish, publishState, observe } = ports;
+  type Receipt = { run(): Promise<void>; done: boolean; attempts: number; flight?: Promise<void>; timer?: ReturnType<typeof setTimeout> };
+  const receipts = new WeakMap<BridgeEntry, { artifact: Receipt; business: Receipt }>();
+  const receipt = (effect: () => Promise<void>, acknowledge: () => Promise<void>): Receipt => {
+    let applied = false;
+    return { done: false, attempts: 0, run: async () => {
+      if (!applied) { await effect(); applied = true; }
+      await acknowledge();
+    } };
+  };
+  const replay = (receipt: Receipt, requestId: string) => {
+    if (receipt.done) return Promise.resolve();
+    if (receipt.flight) return receipt.flight;
+    const flight = Promise.resolve().then(receipt.run).then(() => { receipt.done = true; }).catch(cause => {
+      if (++receipt.attempts < 6) {
+        receipt.timer = setTimeout(() => observe(replay(receipt, requestId), `settlement retry requestId=${requestId}`), 250 * 2 ** (receipt.attempts - 1));
+        receipt.timer.unref();
+      }
+      throw cause;
+    }).finally(() => { if (receipt.flight === flight) receipt.flight = undefined; });
+    receipt.flight = flight; return flight;
+  };
+  const settleReceipts = (entry: BridgeEntry) => {
+    const pair = receipts.get(entry);
+    if (pair) {
+      entry.settlementInFlight = replay(pair.business, entry.requestId);
+      observe(entry.settlementInFlight, `business settlement requestId=${entry.requestId}`);
+      observe(replay(pair.artifact, entry.requestId), `artifact settlement requestId=${entry.requestId}`);
+    }
+  };
 
   async function handleResumeFailed(
     entry: BridgeEntry,
@@ -83,7 +111,11 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
     options: AgentBridgeOptions,
     force = false
   ) {
-    if (["stored", "empty", "missing"].includes(entry.persist)) return;
+    if (["stored", "empty", "missing"].includes(entry.persist)) {
+      settleReceipts(entry);
+      if (!receipts.has(entry) && options.onTurnSettled) await artifactRuntime()?.recoverSettlements(options.onTurnSettled);
+      return;
+    }
     if (entry.retry.inFlight) return entry.retry.inFlight;
     if (!entry.prepared) return;
     turns.markPersist(entry, "pending");
@@ -104,6 +136,16 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
             : {}),
           commit: entry.prepared!,
         });
+        const journal = artifactRuntime()?.settlements;
+        const intent = entry.incarnationId ? { conversationId: entry.conversationId, incarnationId: entry.incarnationId,
+          requestId: entry.requestId, assistantMessageId: entry.messageId, planRequested: entry.planRequested,
+          terminal: entry.sourceTerminal?.type ?? entry.effectiveTerminal?.type ?? "error", cleanup: entry.cleanup, business: false, artifact: false } : undefined;
+        let journalPrepared = false;
+        const prepareJournal = async () => {
+          if (!journalPrepared && intent && journal) { await journal.prepare(intent); journalPrepared = true; }
+        };
+        // Persist the recovery intent before append; exceptions enter the same automatic persistence retry path.
+        await prepareJournal();
         const result = options.appendTurnResult
           ? await options.appendTurnResult(entry.conversationId, entry.prepared!)
           : ({
@@ -151,23 +193,33 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
             result.error ?? new Error("turn 持久化发生不可恢复错误");
         }
         if (["stored", "empty", "missing", "fatal"].includes(result.outcome)) {
-          await artifactRuntime()?.settled(entry, result.outcome === "stored");
-          await options.onTurnSettled?.({
-            conversationId: entry.conversationId,
-            requestId: entry.requestId,
-            assistantMessageId: entry.messageId,
-            planRequested: entry.planRequested,
-            origin: entry.origin,
-            context: entry.context,
-            terminal: entry.effectiveTerminal?.type ?? "error",
-            outcome: result.outcome,
-            assistantMessage: result.storedMessage,
-            cleanup: entry.cleanup,
+          const acknowledge = async (channel: "business" | "artifact") => {
+            await prepareJournal();
+            await journal?.patch(entry.requestId, { outcome: result.outcome as "stored" | "empty" | "missing" | "fatal", cleanup: entry.cleanup, [channel]: true });
+          };
+          receipts.set(entry, {
+            artifact: receipt(async () => { await artifactRuntime()?.settled(entry, result.outcome === "stored"); }, () => acknowledge("artifact")),
+            business: receipt(async () => {
+              await options.onTurnSettled?.({ conversationId: entry.conversationId, requestId: entry.requestId,
+                assistantMessageId: entry.messageId, planRequested: entry.planRequested, origin: entry.origin,
+                context: entry.context, terminal: entry.effectiveTerminal?.type ?? "error", outcome: result.outcome,
+                assistantMessage: result.storedMessage, cleanup: entry.cleanup });
+            }, () => acknowledge("business")),
           });
+          settleReceipts(entry);
           entry.trace?.close("complete");
         }
       } catch (cause) {
         entry.trace?.close("truncated");
+        if (!["stored", "empty", "missing"].includes(entry.persist)) {
+          turns.markPersist(entry, "retryable");
+          publishState(entry);
+        }
+        if (!force && entry.retry.attempt < 6) {
+          const delay = 250 * 2 ** entry.retry.attempt++;
+          entry.retry.timer = setTimeout(() => { entry.retry.timer = undefined; observe(persistEntry(entry, options), `settlement receipt recovery requestId=${entry.requestId}`); }, delay);
+          entry.retry.timer.unref();
+        }
         throw cause;
       }
       if (forcedFailure) {
@@ -199,13 +251,14 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
     ) {
       return;
     }
+    turns.lockSourceTerminal(entry, source);
+    publishState(entry);
     /* Bounded like the steer fence and the children: a projection lane that never drains must not keep a cancel "cancelling"
        forever. Past the ceiling the turn finalizes anyway and says why. */
     let ceiling: NodeJS.Timeout | undefined;
     const drained = await Promise.race([turns.drainProjections(entry).then(() => true),
       new Promise<boolean>((resolve) => { ceiling = setTimeout(() => resolve(false), PROJECTION_DRAIN_MS); })]).finally(() => clearTimeout(ceiling));
     if (!drained) console.warn(`[agent] projection drain exceeded ${PROJECTION_DRAIN_MS / 1000}s; finalizing requestId=${entry.requestId} without it`);
-    turns.lockSourceTerminal(entry, source);
     const finalizing = turns.runFinalize(entry, async () => {
       for (const [agentThreadId, projection] of entry.artifacts?.children ?? []) {
         const agent = entry.subagents.get(agentThreadId);
@@ -249,11 +302,11 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
         entry.resolvedInput = undefined;
       }
       let cleanupError: Error | undefined;
-      let backgroundTransferred = false;
       try {
         try {
           await turns.runCleanup(entry, async () => {
             /* Never spawned: nothing to settle (a launch still on its way is refused once the turn's ref dies with it). */
+            if (childCleanupError) await turns.drainChildren(entry);
             if (!entry.turn) return;
             const resolved = entry.resolvedInput, sessionConfig = entry.backendSessionConfig, context = entry.context;
             if (source.type === "done" && await entry.turn.transferBackground?.(async () => {
@@ -261,7 +314,6 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
               await sessionConfig?.releaseClaudePluginProjection?.();
               if (context) await options.releaseContext?.(context);
             })) {
-              backgroundTransferred = true;
               entry.resolvedInput = undefined;
               return;
             }
@@ -270,18 +322,15 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
             if (!result.ok) throw result.error;
             await entry.resolvedInput?.release();
             entry.resolvedInput = undefined;
+            await entry.backendSessionConfig?.releaseClaudePluginProjection?.();
+            entry.backendSessionConfig = undefined;
+            if (entry.context) await options.releaseContext?.(entry.context);
           });
-          if (!backgroundTransferred) await entry.backendSessionConfig?.releaseClaudePluginProjection?.();
-          entry.backendSessionConfig = undefined;
-          /* dependency 只能在 custody 收口之后释放，而且必须在同一条路径上：
-             上面任何一步抛出，这一行就不会执行，generation 于是继续被账本
-             钉住，交给下次启动的 reconcile 收敛——这正是 D33 要的顺序。 */
-          if (!backgroundTransferred && entry.context) await options.releaseContext?.(entry.context);
         } finally {
           entry.processLease?.release();
           entry.processLease = undefined;
         }
-        if (!turns.hasCleanupFailure(entry.backend)) {
+        if (!turns.hasUnverifiedCleanup(entry.backend)) {
           clearAgentSafetyLockWhenIdle(entry.backend);
         }
       } catch (cause) {
@@ -289,11 +338,10 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
         reportAgentCleanupFailure(entry.backend, cleanupError);
       }
       await turns.runPostProcess(entry, async (terminal) => {
+        // Source completion remains true while dependent consumers wait for verified cleanup.
         if (childCleanupError || cleanupError) {
-          const error = childCleanupError ?? cleanupError!;
-          throw new Error(
-            `${providerDisplayName(entry.backend)} 进程组清理失败：${error.message}`
-          );
+          if (entry.appId) await options.onAppTurnFailed?.(entry.appId, entry.conversationId, entry.requestId);
+          return;
         }
         if (terminal.type === "done" && entry.appId) {
           await options.onAppTurnCompleted(
@@ -328,6 +376,19 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
         entry.effectiveTerminal?.type ?? "error"
       );
       await persistEntry(entry, options);
+      if (entry.cleanup === "failed") observe((async () => {
+        const started = Date.now();
+        for (let attempt = 1; attempt <= 3 && Date.now() - started < 20_000; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, attempt * 500));
+          if (turns.byRequest(entry.requestId) !== entry || entry.cleanup !== "failed") return;
+          try {
+            await turns.acknowledgeCleanupFailure(entry.conversationId);
+            if (!turns.hasUnverifiedCleanup(entry.backend)) clearAgentSafetyLockWhenIdle(entry.backend);
+            publishState(entry);
+            return;
+          } catch { publishState(entry); }
+        }
+      })(), `cleanup recovery requestId=${entry.requestId}`);
     });
     return finalizing.catch((cause) => {
       entry.trace?.close("truncated");

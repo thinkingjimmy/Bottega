@@ -3,7 +3,7 @@
  * [OUTPUT]: Initialized document owner, canonical Artifact delivery and exact Chat retention/Fork wiring under main workspace authority.
  * [POS]: Startup document composition; no renderer-supplied owner or automatic old ledger loading.
  */
-import { join } from "node:path";
+import { join, relative, resolve as resolvePath, sep } from "node:path";
 import { encodeArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import type { ChatAgentId } from "../../../../shared/chat-agent/options";
 import type { ChatStore } from "../../chats/chat-store";
@@ -45,6 +45,13 @@ export async function initializeDesignDocuments(userData: string, chats: ChatSto
   const documents = current;
   artifactRuntime()?.configureDesignRetention((chatId, incarnationId) => documents.releaseChat(chatId, incarnationId));
   artifactRuntime()?.configureDesignFork((sourceChatId, sourceIncarnationId, child, artifactIds) => documents.fork(sourceChatId, sourceIncarnationId, child.id, child.incarnationId, artifactIds));
+  artifactRuntime()?.configureDesignDelivery((chatId, incarnationId, path) => {
+    documents.authority(chatId, incarnationId);
+    const source = resolvePath(path);
+    return documents.store.operations().filter(operation => operation.state === "complete" && operation.revision.authority.chatId === chatId && operation.revision.authority.incarnationId === incarnationId)
+      .map(operation => operation.revision).sort((a, b) => b.revision - a.revision)
+      .find(version => { const name = relative(resolvePath(version.authority.workspace, version.path), source); return name !== "" && !name.startsWith(".." + sep) && name !== ".." && !name.startsWith(sep); })?.fence;
+  });
   return current;
 }
 export async function closeDesignDocuments() { const owner = current; current = undefined; await owner?.close(); }

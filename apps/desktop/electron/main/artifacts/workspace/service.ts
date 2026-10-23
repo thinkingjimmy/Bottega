@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Main document/Artifact custody, current Chat/workspace facts, the canonical Provider default, plugin lifecycle and trusted top-frame requests.
- * [OUTPUT]: Fixed Canvas reads/capabilities/batches, semantic history, source conflicts, mounted-view checkpoint custody and immutable exports.
+ * [OUTPUT]: Fixed Canvas reads and exact-length native image bytes, semantic history, source conflicts, mounted-view custody, request-start preview lifetime guards and immutable exports.
  * [POS]: Workspace authority; renderer input cannot select a filesystem root or App installation.
  */
 import { randomUUID } from "node:crypto";
@@ -20,7 +20,7 @@ import { ArtifactCheckpoints } from "./checkpoints";
 import { artifactExecutionState } from "@ai-chat/cloud-protocol/artifacts/design/capability";
 import { PROTOCOL_VERSION } from "@ai-chat/cloud-protocol/config";
 import type { RemoteArtifactWorkspace } from "./remote";
-import { readCanvas, validateCanvasCheckpoint } from "@ai-chat/cloud-protocol/artifacts/design/canvas/view";
+import { readCanvas, readCanvasImage, validateCanvasCheckpoint } from "@ai-chat/cloud-protocol/artifacts/design/canvas/view";
 export class ArtifactWorkspace {
   readonly checkpoints: ArtifactCheckpoints;
   remote: RemoteArtifactWorkspace | undefined;
@@ -31,6 +31,14 @@ export class ArtifactWorkspace {
     const snapshot = await this.version({ action: "read", chatId, incarnationId, artifactId: reference.artifactId });
     if (snapshot.version.manifest.documentId !== reference.documentId || snapshot.version.revision !== reference.revision || snapshot.version.readSetDigest !== reference.readSetDigest) throw new Error("Design reference changed");
     await this.assertExecution({ action: "reference-check", chatId, incarnationId, artifactId: reference.artifactId, generation: reference.generation }, snapshot.remote); return snapshot;
+  }
+  async identity(input: WorkspaceCommand) {
+    if (!input.artifactId) throw new Error("A committed Artifact reference is required");
+    const ref = { chatId: input.chatId, incarnationId: input.incarnationId, artifactId: input.artifactId };
+    const artifacts = artifactRuntime()!;
+    const record = await artifacts.metadata(ref);
+    if (!record?.fence.design) throw new Error("Artifact snapshot is unavailable");
+    return { summary: record.fence.design, remote: Boolean(record.remote) };
   }
   async version(input: WorkspaceCommand) {
     const documents = designDocuments();
@@ -69,6 +77,18 @@ export class ArtifactWorkspace {
   }
   async dispatch(raw: unknown, windowId = 0, backend: string = DEFAULT_PROVIDER_ID): Promise<unknown> {
     const input = workspaceCommandSchema.parse(raw), documents = designDocuments();
+    const previewGuard = input.action === "preview" ? artifactRuntime()!.gateway.guard(windowId) : undefined;
+    if (["capture-status", "retry-capture"].includes(input.action)) {
+      const ref = { chatId: input.chatId, incarnationId: input.incarnationId, artifactId: input.artifactId! };
+      if (!artifactRuntime()!.ownsChat(ref)) {
+        if (!this.remote) throw new Error("artifact-offline");
+        const answer = await this.remote.execute(input, "artifact-workspace", input);
+        if (!answer.ok || !answer.artifactRecovery) throw new Error("artifact-unavailable");
+        if (answer.artifactRecovery.fence?.sha256) artifactRuntime()!.remote!.rememberRecovery(ref, answer.artifactRecovery.fence);
+        return answer.artifactRecovery;
+      }
+      return { fence: input.action === "capture-status" ? artifactRuntime()!.captureStatus(ref) : await artifactRuntime()!.retryCapture(ref) };
+    }
     if (input.action === "reference-check") { await this.authorizeReference(input.chatId, input.incarnationId, designReferenceSchema.parse(input.reference)); return { available: true }; }
     if (input.action === "ack-disable") { this.checkpoints.ack(windowId, input.nonce!, input.viewId!, this.checkpoints.key(input.chatId, input.incarnationId, input.documentId!)); return { acknowledged: true }; }
     if (input.action === "release-view") { this.checkpoints.releaseView(windowId, input.viewId!, this.checkpoints.key(input.chatId, input.incarnationId, input.documentId!)); return { released: true }; }
@@ -78,14 +98,49 @@ export class ArtifactWorkspace {
         if (!this.remote) throw cause;
         const answer = await this.remote.execute(input, "artifact-status", { chatId: input.chatId, incarnationId: input.incarnationId, cursor: null });
         if (!answer.ok || !answer.artifactStatus) throw cause;
-        return { ...answer.artifactStatus, documents: answer.artifactStatus.documents.map(value => ({ ...value, artifactRef: { artifactId: value.artifactId } })) };
+        let page = answer.artifactStatus;
+        const documents = [...page.documents], generation = page.capability.generation, cursors = new Set<string>();
+        for (let count = 1; page.cursor && count < 512; count++) {
+          if (cursors.has(page.cursor)) throw new Error("artifact-status-cursor-repeated");
+          cursors.add(page.cursor);
+          const next = await this.remote.execute(input, "artifact-status", { chatId: input.chatId, incarnationId: input.incarnationId, cursor: page.cursor });
+          if (!next.ok || !next.artifactStatus || next.artifactStatus.capability.generation !== generation) throw new Error("artifact-status-incomplete");
+          page = next.artifactStatus; documents.push(...page.documents);
+        }
+        return { generation, enabled: page.capability.enabled, statusComplete: !page.cursor,
+          documents: documents.map(value => ({ ...value, artifactRef: { artifactId: value.artifactId } })) };
       }
     }
     if (input.action === "system-extract") {
       assertArtifactGeneration(input.generation);
       return (await import("../../design/systems/service")).extractDesignSystem(input, backend);
     }
+    if (input.action === "cancel-thumbnail") return (await import("./thumbnails")).cancelThumbnailRequest(input, windowId);
+    if (input.action === "thumbnail") {
+      const thumbnails = await import("./thumbnails");
+      return thumbnails.withThumbnailRequest(input, windowId, async signal => {
+        const identity = await this.identity(input);
+        signal.throwIfAborted();
+        if (!identity.remote) return thumbnails.designThumbnail(input, this, signal);
+        if (!this.remote) throw new Error("artifact-offline");
+        const remote = this.remote, cancel = () => { void remote.execute({ ...input, action: "cancel-thumbnail" }, "artifact-workspace", { ...input, action: "cancel-thumbnail" }).catch(() => {}); };
+        signal.addEventListener("abort", cancel, { once: true });
+        try {
+          const answer = await remote.execute(input, "artifact-workspace", input); signal.throwIfAborted();
+          if (!answer.ok) throw new Error(answer.code);
+          if (!answer.artifactExport) throw new Error("artifact-unavailable");
+          const data = await artifactRuntime()!.publisher.download({ chatId: input.chatId, incarnationId: input.incarnationId, artifactId: answer.artifactExport.fence.id }, answer.artifactExport.fence, AbortSignal.any([signal, AbortSignal.timeout(60_000)]));
+          await this.identity(input); signal.throwIfAborted();
+          return { ...answer.artifactExport, mime: answer.artifactExport.fence.mime, data: Buffer.from(data).toString("base64") };
+        } finally { signal.removeEventListener("abort", cancel); }
+      });
+    }
     const snapshot = await this.version(input), version = snapshot.version;
+    if (input.action === "image") {
+      if (input.image!.snapshotRef !== version.snapshotRef) throw new Error("Canvas image belongs to another snapshot");
+      const bytes = readCanvasImage(snapshot.files, input.image!);
+      return { bytes: new Uint8Array(bytes), mime: input.image!.mime };
+    }
     if (input.action === "acquire-view") {
       assertArtifactAdmission();
       if (input.documentId !== version.manifest.documentId) throw new Error("Workspace view belongs to another document");
@@ -97,11 +152,12 @@ export class ArtifactWorkspace {
       if (!input.checkpoint || input.checkpoint.documentId !== version.manifest.documentId || input.checkpoint.revision !== version.revision ||
         !version.manifest.boards.some(board => board.id === input.checkpoint!.boardId)) throw new Error("Checkpoint belongs to another version");
       validateCanvasCheckpoint(version.manifest, input.checkpoint);
-      await this.checkpoints.save(input.chatId, input.incarnationId, input.checkpoint); return { saved: true };
+      const checkpointVersion = await this.checkpoints.save(input.chatId, input.incarnationId, input.checkpoint); return { saved: true, checkpointVersion };
     }
     if (input.action === "read") {
       const versions = documents.store.versions(version.authority, version.manifest.documentId);
       let live: { revision: number; dirty: boolean; undoRevision: number | null; redoRevision: number | null } | undefined, generation = artifactGeneration(), enabled = artifactEnabled();
+      let statusComplete = !snapshot.remote, historyComplete = !snapshot.remote;
       let history = versions.map(value => ({ revision: value.revision, artifactId: value.artifactId, createdAt: value.createdAt }));
       if (snapshot.remote && this.remote) {
         enabled = false; generation = "unknown";
@@ -109,13 +165,25 @@ export class ArtifactWorkspace {
           const target = await this.remote.capability(input), answer = await this.remote.execute(input, "artifact-status", { chatId: input.chatId, incarnationId: input.incarnationId, cursor: null });
           if (answer.ok && answer.artifactStatus) { generation = answer.artifactStatus.capability.generation;
             enabled = artifactEnabled() && artifactExecutionState({ online: target.online, protocolVersion: target.protocolVersion, capability: answer.artifactStatus.capability, now: Date.now(), requiredProtocol: PROTOCOL_VERSION }) === "ready";
-            live = answer.artifactStatus.documents.find(value => value.documentId === version.manifest.documentId);
+            let page = answer.artifactStatus, pages = 0;
+            const cursors = new Set<string>();
+            while (true) {
+              live ??= page.documents.find(value => value.documentId === version.manifest.documentId);
+              if (!page.cursor) { statusComplete = true; break; }
+              if (++pages >= 512 || cursors.has(page.cursor)) break;
+              cursors.add(page.cursor);
+              const next = await this.remote.execute(input, "artifact-status", { chatId: input.chatId, incarnationId: input.incarnationId, cursor: page.cursor });
+              if (!next.ok || !next.artifactStatus || next.artifactStatus.capability.generation !== generation) break;
+              page = next.artifactStatus;
+            }
           }
           let cursor = 0; history = [];
-          for (let page = 0; page < 8; page++) { const answer = await this.remote.execute(input, "artifact-history", { chatId: input.chatId, incarnationId: input.incarnationId, artifactId: input.artifactId, cursor });
+          const cursors = new Set<number>();
+          for (let page = 0; page < 512; page++) { const answer = await this.remote.execute(input, "artifact-history", { chatId: input.chatId, incarnationId: input.incarnationId, artifactId: input.artifactId, cursor });
             if (!answer.ok || !answer.artifactHistory) break;
             history.push(...answer.artifactHistory.versions.map(value => ({ revision: value.revision, artifactId: value.artifactId, createdAt: 0 })));
-            if (!answer.artifactHistory.cursor) break; cursor = answer.artifactHistory.cursor;
+            if (!answer.artifactHistory.cursor) { historyComplete = true; break; }
+            if (cursors.has(answer.artifactHistory.cursor)) break; cursor = answer.artifactHistory.cursor; cursors.add(cursor);
           }
         } catch { /* Offline reading preserves frozen snapshots and recovery input. */ }
       } else { try { live = (await documents.status(input.chatId, input.incarnationId)).documents.find(value => value.documentId === version.manifest.documentId); } catch { enabled = false; } }
@@ -123,9 +191,10 @@ export class ArtifactWorkspace {
         canvas: readCanvas(version.manifest, snapshot.files),
         fence: version.fence,
         revision: version.revision, latestRevision: Math.max(live?.revision ?? 0, history.at(-1)?.revision ?? 0, version.revision), readSetDigest: version.readSetDigest, snapshotRef: version.snapshotRef,
-        generation, enabled, previewEnabled: artifactEnabled(), dirty: live?.dirty ?? false,
+        generation, enabled: enabled && statusComplete && historyComplete, statusComplete, historyComplete, previewEnabled: artifactEnabled(), dirty: live?.dirty ?? true,
         undoRevision: live?.undoRevision ?? null, redoRevision: live?.redoRevision ?? null,
-        checkpoint: this.checkpoints.read(input.chatId, input.incarnationId, version.manifest.documentId),
+        checkpoint: this.checkpoints.read(input.chatId, input.incarnationId, version.manifest.documentId, version.revision),
+        checkpointConflicts: this.checkpoints.conflicts(input.chatId, input.incarnationId, version.manifest.documentId, version.revision),
         versions: history.length ? history : [{ revision: version.revision, artifactId: version.artifactId, createdAt: version.createdAt }],
         ...(version.manifest.system ? { system: Object.fromEntries(snapshot.files.filter(file => Object.values(version.manifest.system!).includes(file.path)).map(file =>
           [Object.entries(version.manifest.system!).find(([, path]) => path === file.path)![0], JSON.parse(new TextDecoder("utf-8", { ignoreBOM: true }).decode(file.data))])) } : {}) };
@@ -145,7 +214,6 @@ export class ArtifactWorkspace {
       return answer.artifactCanvasTarget ?? answer.artifactDifference ?? answer.artifactOperation;
     }
     if (input.action === "operation-status") return documents.operationStatus({ ...input, documentId: version.manifest.documentId });
-    if (input.action === "thumbnail") return (await import("./thumbnails")).designThumbnail(input, this);
     if (input.action === "export") {
       assertArtifactGeneration(input.generation);
       const result = await (await import("../../design/editing/export")).exportDesignRevision(input, snapshot);
@@ -165,7 +233,8 @@ export class ArtifactWorkspace {
         if (!file) throw new Error("Review target is missing");
         return { ...note, anchor: { ...resolveDesignAnchor(new TextDecoder("utf-8", { ignoreBOM: true }).decode(file.data), note.anchor, true).anchor, file: board!.file } };
       });
-      const checkpoint = { ...input.checkpoint, notes }; await this.checkpoints.save(input.chatId, input.incarnationId, checkpoint);
+      const value = { ...input.checkpoint, notes }, checkpointVersion = await this.checkpoints.save(input.chatId, input.incarnationId, value);
+      const checkpoint = { ...value, ...(value.save ? { save: { ...value.save, version: checkpointVersion! } } : {}) };
       return { prompt: formatDesignReview(checkpoint, version.readSetDigest), checkpoint, title: version.manifest.title,
         design: { artifactId: version.artifactId, documentId: version.manifest.documentId, revision: version.revision, readSetDigest: version.readSetDigest, generation: input.generation,
           anchors: Object.fromEntries(notes.map((note, index) => [String(index + 1), note.anchor])) } };
@@ -179,15 +248,19 @@ export class ArtifactWorkspace {
         const files = new Map(source.files.map(file => [file.path, file.data]));
         for (const file of target.files) files.set(file.path, Buffer.from(file.data));
         return [...files].map(([path, data]) => ({ path, data }));
-      });
+      }, () => assertArtifactGeneration(input.generation));
     }
     if (input.action === "preview") {
+      previewGuard!();
       const prepared = await prepareDesignSnapshot(snapshot, input.boardId);
+      previewGuard!();
       if (snapshot.remote) assertArtifactAdmission(); else assertArtifactGeneration(input.generation);
       const nonce = randomUUID(), selectionNonce = randomUUID(), id = randomUUID();
       const html = designFrameHtml(prepared.html.toString("utf8"), { id, nonce, selectionNonce, generation: input.generation!, boardId: prepared.metadata.boardId, boardDigest: prepared.metadata.boardDigest, navigation: prepared.metadata.navigation });
-      return { ...await artifactRuntime()!.gateway.issuePrepared({ chatId: input.chatId, incarnationId: input.incarnationId, artifactId: version.artifactId }, windowId, id, html),
-        nonce, selectionNonce, generation: input.generation, ...prepared.metadata };
+      const gateway = artifactRuntime()!.gateway;
+      const lease = await gateway.issuePrepared({ chatId: input.chatId, incarnationId: input.incarnationId, artifactId: version.artifactId }, windowId, id, html);
+      try { previewGuard!(); return { ...lease, nonce, selectionNonce, generation: input.generation, ...prepared.metadata }; }
+      catch (cause) { gateway.release(lease.id, windowId); throw cause; }
     }
     throw new Error("This workspace action is not available");
   }

@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Validated artifact fences and current host capabilities, including the active draft callback.
- * [OUTPUT]: Preview-first design cards, unified expanded-workspace chrome and ordinary file/full-view actions.
+ * [OUTPUT]: Scope-bound capture recovery, preview-first design cards, expanded workspace chrome and file actions.
  * [POS]: Shared artifact presentation; native file paths and account keys stay outside the renderer.
  */
 import { File, Expand, Minimize2 } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { decodeArtifactFence, type ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import { useArtifactHost, useArtifactPresentation } from "./context";
 import { artifactCopy } from "./copy";
@@ -16,16 +16,24 @@ import { DesignArtifactCard } from "./presentation/design-card";
 import { ArtifactHeader, ArtifactLoading, fullLabel } from "./presentation/header";
 const inlineKinds = new Set(["html-fragment", "html-document", "static-site", "svg", "markdown"]);
 const Workspace = lazy(() => import("./workspace/view").then(module => ({ default: module.ArtifactWorkspaceView })));
-export function ArtifactCard({ fence, expanded = false }: { fence: ArtifactFence; expanded?: boolean }) {
+export function ArtifactCard({ fence: original, expanded = false }: { fence: ArtifactFence; expanded?: boolean }) {
+  const [recovered, setRecovered] = useState<{ scope: string; fence: ArtifactFence } | null>(null);
   const presentation = useArtifactPresentation(), host = useArtifactHost(), copy = artifactCopy(host?.locale ?? "en"), [error, setError] = useState(false), [busy, setBusy] = useState(false), [copied, setCopied] = useState(false);
+  const fence = recovered?.scope === host?.scope && recovered?.fence.id === original.id ? recovered.fence : original;
   const design = Boolean(fence.design);
+  useEffect(() => { let current = true; if (original.rejected && host?.recover) void host.recover(original, false).then(value => { if (current) setRecovered(value ? { scope: host.scope, fence: value } : null); }).catch(() => {}); return () => { current = false; }; }, [original, host]);
+  const recoveryEpoch = useRef(0);
+  useLayoutEffect(() => { const epoch = ++recoveryEpoch.current; queueMicrotask(() => { if (epoch === recoveryEpoch.current) { setBusy(false); setError(false); } }); return () => { recoveryEpoch.current = epoch + 1; }; }, [original.id, host?.scope]);
+  const retryCapture = async () => { if (!host?.recover || busy) return; const epoch = recoveryEpoch.current; setBusy(true); setError(false);
+    try { const value = await host.recover(original, true); if (epoch === recoveryEpoch.current) { if (value) setRecovered({ scope: host.scope, fence: value }); else setError(true); } }
+    catch { if (epoch === recoveryEpoch.current) setError(true); } finally { if (epoch === recoveryEpoch.current) setBusy(false); } };
   useEffect(() => { host?.remember?.(fence); }, [host, fence]);
   const run = async (action: "quick-look" | "reveal" | "open" | "save") => {
     if (!host || busy) return; setBusy(true); setError(false);
     try { await host.action(fence, action, host.followUp); } catch { setError(true); } finally { setBusy(false); }
   };
   useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 2000); return () => clearTimeout(timer); }, [copied]);
-  if (fence.rejected || !host) return <>{design && expanded && <ArtifactHeader title={fence.title} />}<div role="status" className="my-3 rounded-lg border p-4 text-sm">{fence.rejected === "interrupted" ? copy.interrupted : fence.rejected === "budget" ? copy.budget : fence.rejected === "too-large" ? copy.tooLarge : fence.rejected === "not-utf8" ? copy.encoding : fence.rejected === "symlink" || fence.rejected === "path-denied" ? copy.pathDenied : copy.unavailable}</div></>;
+  if (fence.rejected || !host) return <>{design && expanded && <ArtifactHeader title={fence.title} />}<div role="status" className="my-3 rounded-lg border p-4 text-sm">{fence.rejected && ["missing", "unreadable", "changed", "storage", "publish"].includes(fence.rejected) ? copy[fence.rejected as "missing" | "unreadable" | "changed" | "storage" | "publish"] : fence.rejected === "interrupted" ? copy.interrupted : fence.rejected === "budget" ? copy.budget : fence.rejected === "too-large" ? copy.tooLarge : fence.rejected === "not-utf8" ? copy.encoding : fence.rejected === "symlink" || fence.rejected === "path-denied" ? copy.pathDenied : copy.unavailable}{host?.recover && fence.rejected && ["missing", "changed", "storage", "publish", "unavailable"].includes(fence.rejected) && <Button disabled={busy} onClick={() => void retryCapture()}>{copy.retry}</Button>}{error && <p role="alert">{copy.failed}</p>}</div></>;
   if (design && expanded) return host.workspace ? <Suspense fallback={<ArtifactLoading title={fence.title} />}><Workspace fence={fence} /></Suspense> : <div className="flex min-h-0 flex-1 flex-col"><ArtifactHeader title={fence.title} /><p role="status" className="p-4 text-sm">{copy.unavailable}</p></div>;
   const open = () => { setError(false); void Promise.resolve().then(() => host.open(fence, host.followUp)).catch(() => setError(true)); };
   if (design) return <DesignArtifactCard fence={fence} busy={busy} error={error} open={open} save={() => void run("save")} />;

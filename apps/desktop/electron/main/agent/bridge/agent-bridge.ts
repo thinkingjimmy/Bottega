@@ -264,7 +264,7 @@ async function spawnAgent(
       isolateSkills: entry.origin?.kind === "workflow",
     }) : undefined;
     const artifactContext = artifactDirectory
-      ? `When the user asks to see a chart, page or other visualization, write it as a standalone HTML or SVG file under ${artifactDirectory} and reply with one standalone line visualize{"path":"absolute file path","title":"Short title"}; the HTML may use relative local resources and must not be inlined in the reply. Deliverable documents (pdf, docx, xlsx, pptx) that are not part of the project source also belong in that directory. Project files stay in the project.`
+      ? `When the user asks to see a chart, page or other visualization, write it as a standalone HTML or SVG file under ${artifactDirectory} and reply with one standalone line visualize{"path":"absolute file path","title":"Short title"}; documents delivered by design_commit already have their Artifact reference and must not also use visualize; ordinary HTML may use relative local resources and must not be inlined in the reply. Deliverable documents (pdf, docx, xlsx, pptx) that are not part of the project source also belong in that directory. Project files stay in the project.`
       : "";
     const backgroundProviderId = backend.id;
     const turn = backend.createTurn({
@@ -587,6 +587,7 @@ export function registerAgentBridge(
   options: AgentBridgeOptions
 ) {
   lastOptions = options;
+  if (options.onTurnSettled) observe(artifactRuntime()?.recoverSettlements(options.onTurnSettled, requestId => !turns.byRequest(requestId)) ?? Promise.resolve(), "durable settlement recovery");
   activity.bind(window);
   const retry = (
     mode: typeof retryAgentSameSession,

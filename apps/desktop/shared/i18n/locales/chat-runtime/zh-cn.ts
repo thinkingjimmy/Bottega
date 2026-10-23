@@ -61,6 +61,6 @@ export const chatRuntimeZhCN: typeof chatRuntimeEn = {
   relayStopFailed: "停止整条 Section 接力链失败，已尝试停止当前请求：{{message}}。你可以重试。",
   actionFailed: "**{{action}}失败：** {{message}}",
   abandonTurn: "放弃轮次",
-  acknowledgeCleanup: "确认清理",
+  acknowledgeCleanup: "重试清理",
   unnamed: "未命名",
 };

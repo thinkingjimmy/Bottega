@@ -61,6 +61,6 @@ export const chatRuntimeFr: typeof chatRuntimeEn = {
   relayStopFailed: "Impossible d’arrêter toute la chaîne de relais Section ; la requête actuelle a été arrêtée à la place : {{message}}. Vous pouvez réessayer.",
   actionFailed: "**Échec de {{action}} :** {{message}}",
   abandonTurn: "Abandonner le turn",
-  acknowledgeCleanup: "Confirmer le nettoyage",
+  acknowledgeCleanup: "Réessayer le nettoyage",
   unnamed: "Sans titre",
 };

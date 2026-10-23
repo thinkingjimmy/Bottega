@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React, shared UI primitives and host-owned presentation slots.
- * [OUTPUT]: Shared Chat empty state and composer layout without platform effects.
+ * [OUTPUT]: Shared Chat empty state and composer layout with wrapping narrow-column toolbars, without platform effects.
  * [POS]: Common Chat presentation for local desktop, remote desktop and browser.
  */
 import type { ComponentProps } from "react";
@@ -21,7 +21,7 @@ export function ComposerForm({ className, children, ...props }: ComponentProps<"
   return <form className={cn(inputClass, className)} {...props}><InputGroup>{children}</InputGroup></form>;
 }
 export function ComposerToolbar({ className, ...props }: ComponentProps<typeof PromptInputFooter>) {
-  return <PromptInputFooter className={cn("@container/composer", className)} {...props} />;
+  return <PromptInputFooter className={cn("@container/composer flex-wrap", className)} {...props} />;
 }
 export function ComposerActions({ className, ...props }: ComponentProps<"div">) {
   return <div className={cn("ml-auto flex min-w-0 items-center gap-1", className)} {...props} />;

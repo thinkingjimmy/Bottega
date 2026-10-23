@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Trusted top-frame IPC, Artifact authority/domain errors, native dialogs, Base imports and preview lifecycle.
- * [OUTPUT]: ID-scoped file/import/preview actions, workspace requests with preserved refusal codes and exact-window release.
+ * [OUTPUT]: ID-scoped file/import/preview actions, workspace requests with preserved refusal codes and shared exact-window lifetime binding and release.
  * [POS]: Artifact renderer boundary; every operation revalidates the Chat incarnation.
  */
 import { basename, extname } from "node:path";
@@ -73,6 +73,9 @@ export function registerArtifactIpc(window: BrowserWindow, rendererUrl: string, 
     if (snapshot.record.fence.kind !== "xlsx") throw new Error("artifact-not-workbook");
     return importer.import(ref, snapshot.record.fence.sha256!, snapshot.data, sheet, confirmed, () => service.assert(ref));
   });
+  observeArtifactWindow(window, service, () => { void importer.close(); });
+}
+export function observeArtifactWindow(window: BrowserWindow, service: ArtifactService, close: () => void) {
   const windowId = window.webContents.id;
-  window.once("closed", () => { service.gateway.releaseWindow(windowId); releaseArtifactWindow(windowId); void importer.close(); });
+  window.once("closed", () => { service.gateway.releaseWindow(windowId); releaseArtifactWindow(windowId); void import("../workspace/thumbnails").then(module => module.cancelThumbnailWindow(windowId)); close(); });
 }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: DurableJson, trusted window/view/document lifetimes and bounded review checkpoints.
- * [OUTPUT]: Scoped input, bounded original command custody, terminal packet retirement and exact-view disable acknowledgements.
+ * [OUTPUT]: Stores revision-bound checkpoint CAS versions and preserves conflicting view input.
  * [POS]: Recovery input custody; not a second permanent comment store.
  */
 import { z } from "zod";
@@ -12,20 +12,36 @@ import { ARTIFACT_IPC } from "../../../../shared/ipc-channels/apps";
 import { BrowserWindow } from "electron";
 import { encryptedResourceCommandSchema, type EncryptedResourceCommand } from "@ai-chat/cloud-protocol/resources/model";
 const schema = z.object({ schemaVersion: z.literal(1), inputs: z.record(z.string(), checkpointSchema),
+  conflicts: z.record(z.string(), z.array(checkpointSchema).max(16)).default({}),
   commands: z.record(z.string(), z.object({ digest: z.string(), sealed: encryptedResourceCommandSchema }).strict()).default({}) }).strict();
 export class ArtifactCheckpoints {
   private readonly file: DurableJson<z.infer<typeof schema>>;
   private readonly windows = new Map<number, Map<string, string>>();
   private readonly waits = new Map<string, { windowId: number; viewId: string; scope: string; resolve(): void }>();
   fault = false;
-  constructor(root: string) { this.file = new DurableJson(join(root, "review-checkpoints.json"), schema, () => ({ schemaVersion: 1, inputs: {}, commands: {} })); }
+  constructor(root: string) { this.file = new DurableJson(join(root, "review-checkpoints.json"), schema, () => ({ schemaVersion: 1, inputs: {}, conflicts: {}, commands: {} })); }
   initialize() { return this.file.initialize(); }
   key(chatId: string, incarnationId: string, documentId: string) { return JSON.stringify([chatId, incarnationId, documentId]); }
-  read(chatId: string, incarnationId: string, documentId: string) { return this.file.read(state => state.inputs[this.key(chatId, incarnationId, documentId)] ?? null); }
+  read(chatId: string, incarnationId: string, documentId: string, revision?: number) { return this.file.read(state => state.inputs[this.key(chatId, incarnationId, documentId) + ":" + revision] ?? null); }
+  conflicts(chatId: string, incarnationId: string, documentId: string, revision: number) { return this.file.read(state => state.conflicts[this.key(chatId, incarnationId, documentId) + ":" + revision] ?? []); }
   async save(chatId: string, incarnationId: string, input: DesignCheckpoint) {
     if (this.fault) throw new Error("Artifact checkpoint could not be saved. Retry before closing.");
     const value = checkpointSchema.parse(input);
-    await this.file.mutate(state => { state.inputs[this.key(chatId, incarnationId, input.documentId)] = value; });
+    const key = this.key(chatId, incarnationId, input.documentId) + ":" + input.revision;
+    const result = await this.file.mutate(state => {
+      const previous = state.inputs[key];
+      if (previous?.save && (!value.save || previous.save.version !== value.save.version || previous.save.viewId === value.save.viewId && previous.save.sequence >= value.save.sequence)) {
+        const conflicts = state.conflicts[key] ?? [];
+        if (conflicts.length >= 16) return { conflict: true, full: true };
+        state.conflicts[key] = [...conflicts.filter(row => row.save?.viewId !== value.save?.viewId), value];
+        return { conflict: true };
+      }
+      const version = (previous?.save?.version ?? 0) + 1;
+      state.inputs[key] = { ...value, ...(value.save ? { save: { ...value.save, version } } : {}) };
+      return { version };
+    });
+    if (result.conflict) throw new Error(result.full ? "Checkpoint conflicts are full. Keep this view open." : "Checkpoint conflict. Both drafts are retained. Reload before saving.");
+    return result.version;
   }
   command(key: string) { return this.file.read(state => state.commands[key] ?? null); }
   async retainCommand(key: string, digest: string, sealed: EncryptedResourceCommand) {
@@ -47,8 +63,9 @@ export class ArtifactCheckpoints {
   }
   releaseChat(chatId: string, incarnationId: string) {
     return this.file.mutate(state => {
-      for (const key of Object.keys(state.inputs)) { const value = JSON.parse(key) as string[]; if (value[0] === chatId && value[1] === incarnationId) delete state.inputs[key]; }
-      for (const key of Object.keys(state.commands)) { const value = JSON.parse(key) as string[]; if (value[0] === chatId && value[1] === incarnationId) delete state.commands[key]; }
+      for (const key of Object.keys(state.inputs)) { const value = JSON.parse(key.slice(0, key.lastIndexOf("]") + 1)) as string[]; if (value[0] === chatId && value[1] === incarnationId) delete state.inputs[key]; }
+      for (const key of Object.keys(state.conflicts)) { const value = JSON.parse(key.slice(0, key.lastIndexOf("]") + 1)) as string[]; if (value[0] === chatId && value[1] === incarnationId) delete state.conflicts[key]; }
+      for (const key of Object.keys(state.commands)) { const value = JSON.parse(key.slice(0, key.lastIndexOf("]") + 1)) as string[]; if (value[0] === chatId && value[1] === incarnationId) delete state.commands[key]; }
     });
   }
   observe(windowId: number, viewId: string, scope: string) {

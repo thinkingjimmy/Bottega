@@ -192,6 +192,8 @@ export class ChatForkService {
       }
       await this.dependencies.homes!.markPrepared(value.childChatId);
       await authority?.validate(); authority?.current();
+      const prefix = materializeForkPrefix(source, value);
+      await artifactRuntime()?.prepareFork(value.sourceChatId, source.incarnationId, value.childChatId, home.incarnationId, prefix.messages, source.subagents);
       const child = await this.dependencies.store.forkFromRecord({
         ...value,
         childIncarnationId: home.incarnationId,
@@ -207,6 +209,7 @@ export class ChatForkService {
     } catch (cause) {
       if (!childCommitted && !isChatMutationOutcomeUnknown(cause)) {
         await this.dependencies.homes!.rollbackCreation(value.childChatId);
+        await artifactRuntime()?.forks.cancel(value.childChatId, home.incarnationId);
       }
       throw cause;
     }

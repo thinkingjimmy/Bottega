@@ -50,12 +50,14 @@ export function TurnErrorCard({
 
 // Transcript-level failures share the neutral surface used by usage-limit cards.
 export function FailureCard({
+  pending = false,
   action,
   body,
   icon,
   onAct,
   title,
 }: {
+  pending?: boolean;
   action: string;
   body: string;
   icon?: ReactNode;
@@ -75,7 +77,7 @@ export function FailureCard({
         {body}
       </p>
       <div className="mt-4 flex justify-end">
-        <Button onClick={onAct} size="sm" type="button" variant="outline">
+        <Button disabled={pending} aria-busy={pending} onClick={onAct} size="sm" type="button" variant="outline">
           {icon}
           {action}
         </Button>

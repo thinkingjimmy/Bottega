@@ -622,15 +622,14 @@ export function useChatSession({
         : Promise.resolve(),
     [canAbandonFatal, chatId, locale, reportActionFailure]
   );
-  const acknowledgeCleanup = useCallback(
-    () =>
-      canAcknowledgeCleanup
-        ? acknowledgeCleanupFailure(chatId).catch((cause) =>
-            reportActionFailure(translate(locale, "chat.runtime.acknowledgeCleanup"), cause)
-          )
-        : Promise.resolve(),
-    [canAcknowledgeCleanup, chatId, locale, reportActionFailure]
-  );
+  const [cleanupRetrying, setCleanupRetrying] = useState(false);
+  const acknowledgeCleanup = useCallback(async () => {
+    if (!canAcknowledgeCleanup || cleanupRetrying) return;
+    setCleanupRetrying(true);
+    try { await acknowledgeCleanupFailure(chatId); }
+    catch (cause) { reportActionFailure(translate(locale, "chat.runtime.acknowledgeCleanup"), cause); }
+    finally { setCleanupRetrying(false); }
+  }, [canAcknowledgeCleanup, cleanupRetrying, chatId, locale, reportActionFailure]);
   const createProject = useCallback(async () => {
     const next = await addProject();
     if (next) setComposerProject(chatId, next.id);
@@ -664,6 +663,7 @@ export function useChatSession({
       backendDisplayName: selectedBackend?.displayName ?? "Agent",
       messages,
       draft,
+      draftActive: !projectionStatus.terminal,
       assistantSeq: projectionStatus.assistantSeq,
       livePreviews,
       hasPendingApproval: approvals.length > 0,
@@ -678,6 +678,7 @@ export function useChatSession({
       canAbandonFatal,
       abandonFatal,
       canAcknowledgeCleanup,
+      cleanupRetrying,
       acknowledgeCleanup,
       canRevise,
       revisionUnavailableReason,

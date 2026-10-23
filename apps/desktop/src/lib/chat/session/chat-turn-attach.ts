@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared chat-turn-reducer, shared Agent/Codex snapshot and event types, chat message/runtime-context contracts, and displaySubagentName
- * [OUTPUT]: Provides mergeChatMessages and the ChatTurnProjection/ProjectedSubagent/ChatProjectionStatus types, merging live turn snapshots into a stable segment-then-seq message order via an id-to-index overlay that appends unordered updates without reordering the ledger
+ * [OUTPUT]: Projects draft visibility from persistence and activity from the source terminal, independently of the input lock.
  * [POS]: apps/desktop/src/lib/chat/session; Renderer's read-only projection core over the main-owned turn state; pure and detached from React
  */
 
@@ -29,6 +29,7 @@ import type {
 } from "../../../../shared/ipc/content/chats-ipc";
 import { displaySubagentName } from "../../../../shared/tools/subagent-name";
 
+import { turnPresentation } from "@ai-chat/cloud-protocol/turns/presentation/state";
 import { resolvedInteractions } from "@ai-chat/cloud-protocol/turns/interactions/reducer";
 import { type InteractionResult } from "@ai-chat/cloud-protocol/turns/live";
 
@@ -74,6 +75,7 @@ export type ProjectedSubagent = {
 export type ChatProjectionStatus = Partial<
   Pick<
     ChatTurnProjection,
+    | "terminal"
     | "interactionResults"
     | "cleanup"
     | "persist"
@@ -91,6 +93,7 @@ export type ChatProjectionStatus = Partial<
 export const projectionStatusOf = (
   projection: ChatTurnProjection
 ): ChatProjectionStatus => ({
+  terminal: projection.terminal,
   interactionResults: projection.interactionResults,
   cleanup: projection.cleanup,
   persist: projection.persist,
@@ -108,6 +111,7 @@ export const sameProjectionStatus = (
   left: ChatProjectionStatus,
   right: ChatProjectionStatus
 ) =>
+  left.terminal === right.terminal &&
   JSON.stringify(left.interactionResults) === JSON.stringify(right.interactionResults) &&
   left.cleanup === right.cleanup &&
   left.persist === right.persist &&
@@ -276,7 +280,7 @@ export function projectionFromSnapshot(
     session: turn.session ?? record?.session ?? undefined,
     serviceTierEffective: turn.serviceTierEffective,
     requestId: turn.requestId,
-    draft: turn.blocksNewTurn ? hydrateDraft(turn.draft) : null,
+    draft: turnPresentation(turn.persist, turn.terminal).visible ? hydrateDraft(turn.draft) : null,
     interactionResults: turn.interactionResults,
     approvals: turn.approvals,
     userInputs: turn.userInputs,
@@ -307,7 +311,7 @@ export function applyTurnEvent(
       requestId: event.turn.requestId,
       session: event.turn.session ?? projection.session,
       serviceTierEffective: event.turn.serviceTierEffective,
-      draft: event.turn.blocksNewTurn
+      draft: turnPresentation(event.turn.persist, event.turn.terminal).visible
         ? hydrateDraft(event.turn.draft)
         : null,
       interactionResults: event.turn.interactionResults,
@@ -450,7 +454,7 @@ export function applyTurnEvent(
       persist: event.outcome,
       cleanup: event.cleanup,
       blocksNewTurn: event.blocksNewTurn,
-      draft: event.blocksNewTurn ? projection.draft : null,
+      draft: turnPresentation(event.outcome, event.terminal).visible ? projection.draft : null,
     };
   }
   return projection;
