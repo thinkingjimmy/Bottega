@@ -117,7 +117,7 @@
     {"path":"shared/app-gui/file-export.ts","bytes":4064,"sha256":"sha256:5b074e3001f0ada5147b8181b4ba217a00290801fad669dbd3fe23f2dcd763e6"},
     {"path":"src/components/apps/detail/app-workbench.tsx","bytes":20152,"sha256":"sha256:ba4f990afafb5f09f47bddee6e7051cb55090d3970bb9eee8a55fd00a01eb673"}
   ],
-  "runtimeSbomDigest": "sha256:233dba1f2c35837f4d0193716ecbcacfd0e9ad091d1cc9cc9ded0814253c3f4f",
+  "runtimeSbomDigest": "sha256:657b38414e0f0363b4ff9aa9a1ec1f66284df61d6152e9a446b2b391bb1410bf",
   "noticesDigest": "sha256:41fcad5a6836f21fdb522501b0c499d4d9de7353732f4548b8b2a17e1cd4811b",
   "authoringContracts": [
     "bottega-ui-blocks-v1",
