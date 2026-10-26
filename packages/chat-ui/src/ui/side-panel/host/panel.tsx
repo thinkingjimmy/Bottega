@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Chat identity, Router takeover history, shared Artifact session tabs, ConversationModel and authority-checked Base resolution.
+ * [INPUT]: Chat identity, localized shared panel copy, Router takeover history, shared Artifact session tabs, ConversationModel and authority-checked Base resolution.
  * [OUTPUT]: Shared tabbed Artifacts with guarded navigation, active-only previews, explicit full view, composer handoff and retained Base/Plan/subagent state.
  * [POS]: Shared panel composition with host-owned Base authority, navigation, draft guards and artifact callbacks.
  */
@@ -158,7 +158,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   const visible = history.open && (narrow ? history.takeover : geometry.maxWidth >= SIDE_PANEL_MIN_WIDTH);
   const items: SidePanelTab[] = slots.tabs.map(id => {
     const identity = decodeImageIdentity(id), image = identity && resolveImage(identity, model.bodies, copy.catalog.image.label);
-    const label = isArtifactTab(id) ? artifacts.get(id)?.fence.title ?? "Artifact" : id === "base" ? copy.catalog.base.label : id === "subagents" ? copy.catalog.subagents.label : id === "browser" ? copy.catalog.browser.label : id.startsWith("app:") ? copy.catalog.app.label : image?.label ?? copy.catalog.image.label;
+    const label = isArtifactTab(id) ? artifacts.get(id)?.fence.title ?? copy.artifactFallback : id === "base" ? copy.catalog.base.label : id === "subagents" ? copy.catalog.subagents.label : id === "browser" ? copy.catalog.browser.label : id.startsWith("app:") ? copy.catalog.app.label : image?.label ?? copy.catalog.image.label;
     const Icon = isArtifactTab(id) ? FileIcon : id === "base" ? DatabaseIcon : id === "subagents" ? BotIcon : id === "browser" ? GlobeIcon : id.startsWith("app:") ? BlocksIcon : ImageIcon;
     const unavailable = id === "browser" && !services.capabilities.browser || id.startsWith("app:") && !services.capabilities.apps;
     return { key: id, label, ...(unavailable ? { dim: true, hint: remote.onComputer.replace("{name}", ownerName ?? remote.computer) } : {}), icon: <Icon className="size-3.5 shrink-0" />, selected: slots.active === id, panelId: `panel-tab-${id}`,

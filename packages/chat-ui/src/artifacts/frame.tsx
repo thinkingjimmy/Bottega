@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Authorized leases, host workspace lifecycle events, theme tokens, exact frame messages and host activation.
- * [OUTPUT]: Owns bounded ordinary preview acquisition/readiness/expiry and releases failed quota slots and late leases.
+ * [OUTPUT]: Owns bounded ordinary preview acquisition/readiness/expiry, fresh iframe contexts on lease-source changes, and releases failed quota slots and late leases.
  * [POS]: Shared artifact frame host; never reads or trusts child DOM or child activation claims.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -120,7 +120,7 @@ export function ArtifactFrame({ fence, expanded = false }: { fence: ArtifactFenc
       title={failure === "sync" ? copy.syncRequired : undefined} /> :
       fence.kind === "markdown" && markdown !== null ? <div style={{ maxHeight: expanded ? undefined : viewport * 2, overflow: "hidden" }}><MessageResponse>{markdown}</MessageResponse></div> :
       admitted && lease && fence.kind === "image" ? <img onLoad={() => lifetime.current?.ready()} src={source} alt={fence.title} style={{ display: "block", width: "100%", height: expanded ? "100%" : undefined, maxHeight: expanded ? undefined : viewport * 2, objectFit: "contain" }} onError={() => lifetime.current?.fail()} /> :
-      admitted && lease && fence.kind !== "markdown" ? <iframe ref={frame} onError={() => lifetime.current?.fail()} src={source} title={fence.title} sandbox={fence.kind === "pdf" ? undefined : lease.sandbox} referrerPolicy="no-referrer"
+      admitted && lease && fence.kind !== "markdown" ? <iframe key={source} ref={frame} onError={() => lifetime.current?.fail()} src={source} title={fence.title} sandbox={fence.kind === "pdf" ? undefined : lease.sandbox} referrerPolicy="no-referrer"
         allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'" scrolling={fence.kind === "pdf" ? "auto" : "no"}
         style={{ display: "block", border: 0, width: "100%", height: expanded ? "100%" : fence.kind === "pdf" ? "75vh" : fullHeight, background: "transparent" }} /> :
       <div style={{ height: fullHeight }} className="flex"><LoadingState locale={host?.locale ?? "en"} /></div>}

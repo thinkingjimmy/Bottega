@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain ja copy.
- * [OUTPUT]: Provides systemDockLazyJa, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes grouped Downloads, previews and named Finder actions.
+ * [OUTPUT]: Provides systemDockLazyJa, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes sync decisions, grouped Downloads, previews and named Finder actions.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../ja.ts.
  */
 
@@ -378,17 +378,6 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
   },
   sync: {
     title: "同期",
-    description: "サインインしていると、Dock のレイアウトはお使いの Mac 間で同期されます。モード、許可、システムの Dock への変更はこの Mac にのみ保存されます。",
-    status: "レイアウトの同期",
-    synced: "同期済み",
-    pending: "同期待ち",
-    offline: "オフライン",
-    localOnly: "この Mac のみ",
-    conflict: "選択が必要",
-    blocked: "ブロック中",
-    error: "エラー",
-    offlineDetail: "変更はこの Mac に保存され、オンラインに戻ると同期されます。",
-    localOnlyDetail: "このレイアウトはこの Mac にのみ保存されています。",
     firstSyncTitle: "アカウントにはすでに Dock レイアウトがあります",
     firstSyncBody: "この Mac のレイアウトとの組み合わせ方を選んでください。決めるまでの間も Dock は使えます。",
     mergeBoth: "両方を統合",

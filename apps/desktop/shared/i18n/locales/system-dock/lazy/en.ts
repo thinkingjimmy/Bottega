@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain en copy.
- * [OUTPUT]: Provides systemDockLazyEn, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes grouped Downloads, previews and named Finder actions.
+ * [OUTPUT]: Provides systemDockLazyEn, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes sync decisions, grouped Downloads, previews and named Finder actions.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../en.ts.
  */
 
@@ -376,17 +376,6 @@ export const systemDockLazyEn = {
   },
   sync: {
     title: "Sync",
-    description: "When you’re signed in, your Dock layout syncs across your Macs. The mode, permissions and system Dock changes stay on this Mac.",
-    status: "Layout sync",
-    synced: "Synced",
-    pending: "Waiting to sync",
-    offline: "Offline",
-    localOnly: "Local only",
-    conflict: "Needs your choice",
-    blocked: "Blocked",
-    error: "Error",
-    offlineDetail: "Changes are saved on this Mac and sync when you’re back online.",
-    localOnlyDetail: "This layout is saved on this Mac only.",
     firstSyncTitle: "Your account already has a Dock layout",
     firstSyncBody: "Choose how to combine it with this Mac’s layout. You can keep using the Dock while you decide.",
     mergeBoth: "Merge both",

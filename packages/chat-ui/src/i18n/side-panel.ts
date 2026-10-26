@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Five-language desktop panel vocabulary and browser-specific capability states.
- * [OUTPUT]: Typed sidePanelCopy for shells, catalogs, Base retargeting, subagents and image previews.
+ * [OUTPUT]: Typed sidePanelCopy for shells, localized Artifact fallback labels, catalogs, Base retargeting, subagents and image previews.
  * [POS]: Shared panel presentation vocabulary for desktop and Web hosts.
  */
 const en = {
@@ -37,6 +37,7 @@ const en = {
   "discard": "Discard edits",
   "keep": "Keep viewing the previous Base",
   "generatingTitle": "Generating title",
+  "artifactFallback": "Artifact",
   "catalog": {
     "base": {
       "label": "Base",
@@ -108,6 +109,7 @@ const zh: SidePanelCopy = {
   "discard": "放弃编辑",
   "keep": "继续查看旧库",
   "generatingTitle": "正在生成标题",
+  "artifactFallback": "产物",
   "catalog": {
     "base": {
       "label": "Base",
@@ -178,6 +180,7 @@ const ja: SidePanelCopy = {
   "discard": "編集を破棄",
   "keep": "以前の Base を表示し続ける",
   "generatingTitle": "タイトルを生成中",
+  "artifactFallback": "成果物",
   "catalog": {
     "base": {
       "label": "Base",
@@ -248,6 +251,7 @@ const fr: SidePanelCopy = {
   "discard": "Abandonner les modifications",
   "keep": "Continuer à voir l’ancienne Base",
   "generatingTitle": "Génération du titre",
+  "artifactFallback": "Artefact",
   "catalog": {
     "base": {
       "label": "Base",
@@ -318,6 +322,7 @@ const es: SidePanelCopy = {
   "discard": "Descartar cambios",
   "keep": "Seguir viendo la Base anterior",
   "generatingTitle": "Generando título",
+  "artifactFallback": "Artefacto",
   "catalog": {
     "base": {
       "label": "Base",

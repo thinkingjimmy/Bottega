@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain zh-cn copy.
- * [OUTPUT]: Provides systemDockLazyZhCN, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes grouped Downloads, previews and named Finder actions.
+ * [OUTPUT]: Provides systemDockLazyZhCN, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes sync decisions, grouped Downloads, previews and named Finder actions.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../zh-cn.ts.
  */
 
@@ -378,17 +378,6 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
   },
   sync: {
     title: "同步",
-    description: "登录后，你的程序坞布局会在你的各台 Mac 之间同步。模式、权限和对系统程序坞的更改只保留在这台 Mac 上。",
-    status: "布局同步",
-    synced: "已同步",
-    pending: "等待同步",
-    offline: "离线",
-    localOnly: "仅本机",
-    conflict: "需要你的选择",
-    blocked: "已阻止",
-    error: "出错",
-    offlineDetail: "更改已保存在这台 Mac 上，联网后会同步。",
-    localOnlyDetail: "此布局仅保存在这台 Mac 上。",
     firstSyncTitle: "你的账号中已有程序坞布局",
     firstSyncBody: "请选择如何与这台 Mac 的布局合并。做出选择前，你可以继续使用程序坞。",
     mergeBoth: "合并两者",

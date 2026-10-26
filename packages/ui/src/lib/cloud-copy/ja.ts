@@ -312,7 +312,7 @@ export const cloudCopy = {
   "signOutFailed": "サインアウトできませんでした。接続を確認して再試行してください。",
   "conflictsLoadFailed": "確認が必要な変更を読み込めませんでした。接続を確認して再試行してください。",
   "openBaseFailed": "この Project の Base を開けませんでした。接続を確認して再試行してください。",
-  "secureStorageDescription": "Bottega は macOS のパスワードを求めずに、このコンピュータのログイン情報を保護します。",
+  "secureStorageDescription": "Bottega は macOS のパスワードを求めずに、このコンピューターのログイン情報を保護します。",
   "secureStorageRestart": "Bottega を再起動してから、もう一度ログインしてください。",
   "retrySecureSave": "安全な保存を再試行",
   "discardSavedLogin": "保存済みログイン情報を破棄…",

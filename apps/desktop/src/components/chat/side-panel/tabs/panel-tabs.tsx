@@ -1,5 +1,5 @@
 /**
- * [INPUT]: React tabs, session eligibility, session-only Artifact tabs and close guards, durable slots, Browser tabs, App authorization, Base projections and image pins
+ * [INPUT]: React tabs, shared localized panel copy, session eligibility, session-only Artifact tabs and close guards, durable slots, Browser tabs, App authorization, Base projections and image pins
  * [OUTPUT]: One Base/App/Browser/Image/Subagent/Artifact tablist with guarded Artifact navigation, active-only preview leases, explicit full view and localized recovery
  * [POS]: apps/desktop/src/components/chat/side-panel/tabs; Native panel data/effect adapter; shared PanelHost owns tab chrome and retained regions
  */
@@ -17,6 +17,7 @@ import {
 import { PanelHost, type PanelLeaf } from "@ai-chat/chat-ui/side-panel/frame";
 import { ArtifactTab, isArtifactTab, rememberArtifactTab, useArtifactTabs, useArtifactTabGuard } from "@ai-chat/chat-ui/artifact-tabs";
 import { artifactCopy, useArtifactHost } from "@ai-chat/chat-ui/artifacts";
+import { sidePanelCopy } from "@ai-chat/chat-ui/side-panel-copy";
 const BaseWorkbench = lazy(() => import("@/components/bases/base-workbench").then(module => ({ default: module.BaseWorkbench })));
 import {
   useBaseSnapshots,
@@ -108,7 +109,8 @@ export function PanelTabs({
   onFullChange?: (full: boolean) => void;
   registerClose?: (handler: () => void) => () => void;
 }) {
-  const { t } = useAppTranslation();
+  const { t, i18n } = useAppTranslation();
+  const panelCopy = sidePanelCopy(i18n.language);
   const { movedOwners, resolveForSection } = useBasesNavigation();
   const { snapshots } = useBaseSnapshots();
   const productRef = context.kind === "product" || context.kind === "adopted"
@@ -401,7 +403,7 @@ export function PanelTabs({
         : undefined;
       const label = isAppRegion(id)
         ? attachedApp?.name ?? catalogLabel
-        : isArtifactTab(id) ? artifacts.get(id)?.fence.title ?? "Artifact" : isImageRegion(id)
+        : isArtifactTab(id) ? artifacts.get(id)?.fence.title ?? panelCopy.artifactFallback : isImageRegion(id)
           ? resolvedImages.get(id)?.label ?? catalogLabel
           : catalogLabel;
       return {

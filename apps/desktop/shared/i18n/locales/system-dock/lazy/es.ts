@@ -1,6 +1,6 @@
 /**
  * [INPUT]: None; plain es copy.
- * [OUTPUT]: Provides systemDockLazyEs, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes grouped Downloads, previews and named Finder actions.
+ * [OUTPUT]: Provides systemDockLazyEs, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes sync decisions, grouped Downloads, previews and named Finder actions.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../es.ts.
  */
 
@@ -378,17 +378,6 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
   },
   sync: {
     title: "Sincronización",
-    description: "Cuando inicias sesión, la disposición de tu Dock se sincroniza entre tus Mac. El modo, los permisos y los cambios en el Dock del sistema se quedan en este Mac.",
-    status: "Sincronización de la disposición",
-    synced: "Sincronizado",
-    pending: "Pendiente de sincronizar",
-    offline: "Sin conexión",
-    localOnly: "Solo local",
-    conflict: "Requiere tu elección",
-    blocked: "Bloqueado",
-    error: "Error",
-    offlineDetail: "Los cambios se guardan en este Mac y se sincronizarán cuando vuelvas a tener conexión.",
-    localOnlyDetail: "Esta disposición solo se guarda en este Mac.",
     firstSyncTitle: "Tu cuenta ya tiene una disposición del Dock",
     firstSyncBody: "Elige cómo combinarla con la disposición de este Mac. Puedes seguir usando el Dock mientras decides.",
     mergeBoth: "Combinar ambas",
