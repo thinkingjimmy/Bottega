@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on nothing.
- * [OUTPUT]: Provides the window-surface launch arguments and listener-readiness channels, personalization channels and the Dock settings channel.
+ * [OUTPUT]: Provides the window-surface launch arguments and listener-readiness channels, personalization channels and the Dock settings channel. Includes the main-window App pin command.
  * [POS]: Zod-free IPC channel names (OPT-34): preload imports these so no schema module enters its bundle; the owning contract modules re-export them unchanged.
  */
 export const WINDOW_ROLE_ARGUMENT = "--bottega-window-role=";
@@ -41,6 +41,7 @@ export const SYSTEM_DOCK_SETTINGS_CHANNEL = {
   cancelSetup: "system-dock-settings:cancel-setup",
   importCandidates: "system-dock-settings:import-candidates",
   confirmImport: "system-dock-settings:confirm-import",
+  setAppPinned: "system-dock-settings:set-app-pinned",
   setPreference: "system-dock-settings:set-preference",
   setMode: "system-dock-settings:set-mode",
   disable: "system-dock-settings:disable",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Type-only App lifecycle, grant, package and generic surface DTOs.
- * [OUTPUT]: Defines App lifecycle/package bridges, compatibility and tool inspection, plus main-owned Studio and cloud-management facts. Adds owner-controlled disableImpact and setEnabled commands.
+ * [OUTPUT]: Defines Independent preset update and App lifecycle/package bridges, compatibility and tool inspection, plus main-owned Studio, publisher readiness and cloud-management facts. Adds owner-controlled disableImpact and setEnabled commands.
  * [POS]: apps/desktop/shared/ipc/apps; Shared Apps wire boundary; keeps channel routing and preload shape separate from durable domain records
  */
 
@@ -33,6 +33,8 @@ import type {
   InstallPresetInput,
   PresetAppSummary,
   PresetProbeResult,
+  PresetUpdateStatus,
+  PresetUpdateDecision,
   RemoveAppMode,
   RenameAppInput,
   SaveAsAppInput,
@@ -79,7 +81,7 @@ export { APPS_CHANNEL } from "../../ipc-channels/apps";
  * 必填之后，谁要读投影就得先拿到投影。
  * ============================================================ */
 export type AppRecordProjection = AppRecord &
-  Readonly<{ studioSurfaceReady: boolean; cloudManaged?: true }>;
+  Readonly<{ studioSurfaceReady: boolean; cloudManaged?: true; presetUpdatesEnabled?: boolean }>;
 
 export type AppsProjectionSnapshot = Readonly<{
   apps: AppRecordProjection[];
@@ -147,6 +149,10 @@ export type AppsBridgeApi = {
   probePreset: (presetId: string) => Promise<PresetProbeResult>;
   discardPresetProbe: (preflightId: string) => Promise<void>;
   installPreset: (input: InstallPresetInput) => Promise<AppRecord | AppCompatibilityBlocked>;
+  presetUpdateStatus: (appId: string) => Promise<PresetUpdateStatus | null>;
+  preparePresetUpdate: (appId: string) => Promise<PresetUpdateStatus | null>;
+  decidePresetUpdate: (input: PresetUpdateDecision) => Promise<PresetUpdateStatus | null>;
+  retryPresetUpdate: (appId: string) => Promise<PresetUpdateStatus | null>;
   ghStatus: () => Promise<GhStatus>;
   readConfig: (appId: string) => Promise<AppConfigValue>;
   writeConfig: (appId: string, config: AppConfigValue) => Promise<AppConfigValue>;

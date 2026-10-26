@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on shared appDisplayName, AppStore, App edit-slot lookup, the shared source-mutation lane, source reconciliation, Project-scoped Extension integration, grant authority, lifecycle/usage gates, reference/plan ledgers, and delivery materializer
- * [OUTPUT]: Provides AppTurnCoordinator for source-fenced edit admission, exact Project-aware reference acquisition, Extension delivery/health, Agent visibility, custody, terminal settlement, and release. Refuses disabled App turns before and after source admission and excludes disabled references.
+ * [OUTPUT]: Provides AppTurnCoordinator for source-fenced edit admission, exact Project-aware reference acquisition, Extension delivery/health, Agent visibility, custody, terminal settlement, and release. Fences independent updates and refuses disabled App turns before and after source admission and excludes disabled references.
  * [POS]: App service turn authority; mutable edit work holds the same per-App lane as install/repair/publish while frozen App generation bindings are projected once and never re-resolved against live Extension precedence
  */
 
+import { assertUpdateIdle } from "../updates/guard";
 import { assertAppEnabled, isAppEnabled } from "./availability/guard";
 import { appDisplayName } from "../../../../shared/ipc/apps/apps-ipc";
 import { join } from "node:path";
@@ -321,8 +322,10 @@ export class AppTurnCoordinator {
     }
     const appId = this.deps.editAppId(input.conversationId);
     if (!appId) return;
+    assertUpdateIdle(this.deps.store.get(appId));
     const release = await this.deps.sourceMutations.acquire(appId);
     try {
+      assertUpdateIdle(this.deps.store.get(appId));
       await this.deps.reconcileEditSource(appId);
       this.sourceMutationLeases.set(input.requestId, { appId, release });
     } catch (cause) {

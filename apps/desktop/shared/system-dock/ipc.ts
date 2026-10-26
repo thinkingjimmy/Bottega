@@ -1,15 +1,16 @@
 /**
- * [INPUT]: Depends on zod, the Dock layout/local-state models, Agent/usage identities, and the shared locale type.
- * [OUTPUT]: Provides least-privilege Dock channels, pathless download visual requests, snapshots, validated intents, isolated bridges and the main-window Settings contract.
+ * [INPUT]: Depends on zod, the Dock layout/local-state models, task identities/activity, Agent/usage identities, and the shared locale type.
+ * [OUTPUT]: Provides least-privilege Dock channels, pathless download visuals, task face/detail snapshots and identity-fenced Chat opening, validated intents including placement-fenced drag removal, isolated bridges and the main-window Settings contract. Includes strict App pin intents, pinned App IDs and live App emoji.
  * [POS]: shared/system-dock transport contract; auxiliary renderers receive projections and opaque short-lived references only, never paths, accounts, shell, AX or Apple Event senders (INV-13).
  */
 
 import { z } from "zod";
 import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import type { AgentBackendId } from "../ipc/agent/agent-ipc";
+import type { TaskActivitySnapshot, PresenceTask } from "../ipc/agent/presence-ipc";
 import type { UsageSourceId } from "../ipc/settings/usage-ipc";
 import type { AgentUsageLimits } from "../usage-limits/types";
-import { aiActivityWidgetSchema, aiLimitsWidgetSchema, type AiLimitsWidget, type DockLayout, type DockWidget, type SystemEntryId } from "./layout";
+import { aiActivityWidgetSchema, aiLimitsWidgetSchema, tasksWidgetSchema, type AiLimitsWidget, type DockLayout, type DockWidget, type SystemEntryId } from "./layout";
 import { dockPreferencePatchSchema, type DockLocalState, type DockMode, type RecoveryRegistration, type ReplacementPhase, type SuspendReason } from "./local-state";
 import type { MergeConflict } from "./merge";
 import type { DockDisplay, DockPlacementStatus } from "./displays";
@@ -27,7 +28,10 @@ export const SYSTEM_DOCK_CHANNEL = {
 export type TrashState = "empty" | "full" | "unknown";
 export type LimitsFaceSource = Readonly<{ backend: AgentBackendId; remaining: number | null; windowMins: number | null; calendar: boolean;
   resetsAt: number | null; state: "ok" | "stale" | "loading" | "needs-auth" | "not-installed" | "unavailable" | "error" | "unknown" }>;
+export type DockTaskReference = Pick<PresenceTask, "chatId" | "incarnationId" | "requestId" | "generation">;
+export type DockTasksDetail = Readonly<{ activity: TaskActivitySnapshot; workflowLabels?: Partial<Record<"plan" | "develop" | "review", string>> }>;
 export type WidgetFace =
+  | Readonly<{ type: "builtin.tasks"; running: number | null; waiting: number | null; result: TaskActivitySnapshot["result"] }>
   | Readonly<{ type: "builtin.ai-limits"; configured: boolean; sources: readonly LimitsFaceSource[]; more: number }>
   | Readonly<{ type: "builtin.ai-activity"; state: "ok" | "partial" | "loading" | "no-data" | "error"; tokens: number | null;
       costUsd: number | null; unpricedTokens: number; todayKey: string | null; timeZone: string | null }>;
@@ -39,6 +43,7 @@ export type DockBarItem = Readonly<{
   host?: boolean;
   label: string;
   iconKey: string | null;
+  appIcon?: string | null;
   running: boolean;
   status: "ok" | "missing" | "unavailable" | "needs-repair";
   entry?: SystemEntryId;
@@ -85,7 +90,7 @@ export type DownloadVisualRequest = z.infer<typeof downloadVisualRequestSchema>;
 export type TrashDetail = Readonly<{ state: TrashState; emptying: boolean; automation: "unknown" | "granted" | "needs-prompt" | "denied" | "unavailable";
   lastResult: "none" | "emptied" | "partial" | "failed" | "unknown" | "denied" | "cancelled" }>;
 export type AddCandidate = Readonly<{ key: string; kind: "native-app" | "bottega-app" | "system" | "widget"; label: string; iconKey: string | null;
-  pinned: boolean; group: "native" | "bottega" | "system" | "widget"; note?: "unavailable" | "needs-repair" }>;
+  appIcon?: string | null; pinned: boolean; group: "native" | "bottega" | "system" | "widget"; note?: "unavailable" | "needs-repair" }>;
 export type PanelSnapshot = Readonly<{
   revision: number;
   locale: AppLocale;
@@ -95,6 +100,7 @@ export type PanelSnapshot = Readonly<{
   solidBackground?: boolean;
   privacyMask: boolean;
   items: readonly DockBarItem[];
+  tasks?: DockTasksDetail | null;
   downloads: DownloadsDetail | null;
   trash: TrashDetail | null;
   /** Limits detail in selection order; `configurable` is what the Bottega service confirms it can read (3.4). */
@@ -132,19 +138,22 @@ export const dockIntentSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("request-automation") }).strict(),
   z.object({ kind: z.literal("add"), key: z.string().min(1).max(600) }).strict(),
   z.object({ kind: z.literal("add-app-file") }).strict(),
-  z.object({ kind: z.literal("remove"), itemId }).strict(),
+  z.object({ kind: z.literal("remove"), itemId, placementRevision: placementRevision.optional() }).strict(),
   z.object({ kind: z.literal("undo") }).strict(),
   z.object({ kind: z.literal("move"), itemId, placementRevision: placementRevision.optional(), index: z.number().int().min(0).max(200) }).strict(),
   z.object({ kind: z.literal("pin-running"), itemId, placementRevision: placementRevision.optional() }).strict(),
   /* `base` is the applied Widget the editor opened with; conflicts are judged against it, not against whatever main holds
      when the first change arrives (a remote edit can land in between). */
-  z.object({ kind: z.literal("widget-draft"), itemId, widget: z.union([aiLimitsWidgetSchema, aiActivityWidgetSchema]),
-    base: z.union([aiLimitsWidgetSchema, aiActivityWidgetSchema]).optional() }).strict(),
+  z.object({ kind: z.literal("widget-draft"), itemId, widget: z.union([aiLimitsWidgetSchema, aiActivityWidgetSchema, tasksWidgetSchema]),
+    base: z.union([aiLimitsWidgetSchema, aiActivityWidgetSchema, tasksWidgetSchema]).optional() }).strict(),
   z.object({ kind: z.literal("widget-apply"), itemId, force: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal("widget-cancel"), itemId }).strict(),
   z.object({ kind: z.literal("refresh-usage"), itemId }).strict(),
   z.object({ kind: z.literal("open-full-usage"), backend: z.string().max(32).nullable() }).strict(),
   z.object({ kind: z.literal("open-settings") }).strict(),
+  z.object({ kind: z.literal("open-main") }).strict(),
+  z.object({ kind: z.literal("open-task"), task: z.object({ chatId: z.string().min(1).max(128), incarnationId: z.string().min(1).max(128),
+    requestId: z.string().min(1).max(256), generation: z.number().int().nonnegative() }).strict() }).strict(),
   z.object({ kind: z.literal("restore-system-dock") }).strict(),
   z.object({ kind: z.literal("search"), query: z.string().max(200) }).strict(),
 ]);
@@ -198,10 +207,13 @@ export type DockSettingsSnapshot = Readonly<{
   recovery: Readonly<{ pending: boolean; lastResult: "none" | "restored" | "kept-external" | "failed" }>;
   layoutInitialized: boolean;
   itemCount: number;
+  pinnedAppIds: readonly string[];
   sync: DockSyncStatus;
   accessibility: "granted" | "not-granted" | "unsupported";
   automation: TrashDetail["automation"];
 }>;
+export const setAppPinnedSchema = z.object({ appId: z.string().min(1).max(256), pinned: z.boolean() }).strict();
+export type SetAppPinned = z.infer<typeof setAppPinnedSchema>;
 export const setupConfirmSchema = z.object({ sessionId: z.string().min(8).max(64), mode: z.enum(["replace", "coexist"]),
   selected: z.array(z.string().min(1).max(600)).max(100), acknowledged: z.boolean() }).strict();
 export const importConfirmSchema = z.object({ sessionId: z.string().min(8).max(64), selected: z.array(z.string().min(1).max(600)).max(100) }).strict();
@@ -217,6 +229,7 @@ export type SystemDockSettingsBridge = {
   cancelSetup(sessionId: string): Promise<void>;
   importCandidates(): Promise<DockSetupPreview>;
   confirmImport(input: z.infer<typeof importConfirmSchema>): Promise<DockSettingsSnapshot>;
+  setAppPinned(input: SetAppPinned): Promise<DockSettingsSnapshot>;
   setPreference(patch: z.infer<typeof dockPreferencePatchSchema>): Promise<DockSettingsSnapshot>;
   setMode(mode: DockMode): Promise<DockSettingsSnapshot>;
   disable(): Promise<DockSettingsSnapshot>;

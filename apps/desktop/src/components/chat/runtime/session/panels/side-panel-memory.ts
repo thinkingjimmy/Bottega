@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on PanelSessionContext identity helpers and SidePanelState
- * [OUTPUT]: Provides bounded generation-fenced recall/remember operations for self-attesting panel state
+ * [OUTPUT]: Bounded generation-fenced panel recall without replaying consumed tab commands after Chat navigation
  * [POS]: apps/desktop/src/components/chat/runtime/session/panels; Cross-mount side-panel memory for chat/runtime/session; empty draft generations never enter global storage
  */
 
@@ -56,7 +56,7 @@ export function rememberSidePanel(
     opened.delete(conversationKey);
     return;
   }
-  touch(conversationKey, { generationKey, state });
+  touch(conversationKey, { generationKey, state: state.kind === "tabs" ? { kind: "tabs", context: state.context } : state });
   evictOldest();
 }
 

@@ -1,15 +1,15 @@
 /**
  * [INPUT]: Depends on the guarded `window.systemDockSettings` bridge and revisioned Settings → Dock snapshots.
- * [OUTPUT]: Provides `dockSettingsStore` (revision-ordered snapshot, one pending command, the failed command for retry, optimistic preference patch), `effectivePreferences`, and the setup/import session calls the page drives.
+ * [OUTPUT]: Provides `dockSettingsStore` (revision-ordered snapshot, one pending command, the failed command for retry, optimistic preference patch), `effectivePreferences`, and the setup/import session calls the page drives. Serializes App pin commands and publishes authoritative pin state.
  * [POS]: apps/desktop/src/lib/platform; Renderer owner of Settings → Dock state; main applies every command and answers with the authoritative snapshot, so the renderer never claims a result main has not reported.
  */
 
-import type { DockSettingsSnapshot, DockSetupPreview, ConflictChoice, SetupConfirm, SystemDockSettingsBridge } from "../../../shared/system-dock/ipc";
+import type { DockSettingsSnapshot, DockSetupPreview, ConflictChoice, SetupConfirm, SystemDockSettingsBridge, SetAppPinned } from "../../../shared/system-dock/ipc";
 import type { DockLocalState, DockMode, DockPreferencePatch } from "../../../shared/system-dock/local-state";
 
 declare global { interface Window { systemDockSettings?: SystemDockSettingsBridge } }
 
-export type DockSettingsCommand = "setup" | "preference" | "mode" | "disable" | "restore" | "resume" | "reset" | "resolve" | "import";
+export type DockSettingsCommand = "setup" | "preference" | "mode" | "disable" | "restore" | "resume" | "reset" | "resolve" | "import" | "app-pin";
 export type DockSettingsState = Readonly<{
   snapshot: DockSettingsSnapshot | null;
   loadFailed: boolean;
@@ -78,6 +78,7 @@ export const dockSettingsStore = {
     void api.snapshot().then(publish, () => set({ loadFailed: true }));
   },
   dismissFailure() { set({ failed: null }); },
+  setAppPinned: (input: SetAppPinned) => run("app-pin", (api) => api.setAppPinned(input)),
   setPreference: (patch: DockPreferencePatch) => run("preference", (api) => api.setPreference(patch), patch),
   setMode: (mode: DockMode) => run("mode", (api) => api.setMode(mode)),
   disable: () => run("disable", (api) => api.disable()),

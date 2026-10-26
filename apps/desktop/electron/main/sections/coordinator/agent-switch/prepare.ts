@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on prepared input custody, stable IDs, and the Chat store command freezer
+ * [INPUT]: Depends on prepared input custody and its canonical attachment metadata, stable IDs, and the Chat store command freezer
  * [OUTPUT]: Freezes Agent notices, original ownership identity and two/three-slot sequences into prepared custody A switch target is a built-in's options only..
  * [POS]: Switch preparation; bytes stay in existing staging and only bounded commands enter the ledger
  */
 
 import { builtinOptions } from "../../../../../shared/chat-agent/options";
 import type { PreparedManualTurn } from "../admission/prepared-manual-turn";
+import { preparedAttachmentMetas } from "../admission/prepared/messages";
 import type { CoordinatorDependencies } from "../coordinator-runtime";
 import { canonicalHash, stableId } from "../coordinator-values";
 import { noticeMessageContent } from "../../../../../shared/ipc/content/chats-ipc";
@@ -34,9 +35,7 @@ export function freezeSwitch(prepared: PreparedManualTurn, dependencies: Pick<Co
     at: source.createdAt, agentRevision: intent.expectedAgentRevision + 1,
     context: prepared.turn.handoff?.coverage ?? { mode: "none", historyIncluded: false, notInjected: true,
       storageTrimmed: Boolean(current.trimmedThroughSeq), lookup: "unavailable" } } as const;
-  const attachments = (prepared.persistence.input.attachmentPayloads ?? []).map(blob => ({
-    id: blob.remote?.attachmentId ?? blob.blobId.replaceAll("-", ""), filename: blob.filename, mediaType: blob.mediaType, byteSize: blob.byteSize,
-  }));
+  const attachments = preparedAttachmentMetas(prepared);
   /* A switch never names a package Provider (parseAgentSwitchIntent refuses it first); this keeps the switch format built-in. */
   const targetOptions = builtinOptions(prepared.turn.turnOptions);
   if (!targetOptions) throw new Error("PROVIDER_UNAVAILABLE");

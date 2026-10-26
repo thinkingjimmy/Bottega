@@ -1,4 +1,4 @@
-# [INPUT]: Depends on electron-vite output, the electronFuses flip (RunAsNode, NODE_OPTIONS and inspect off, ad-hoc re-sign; TASK-35 slice 6), the afterPack bundled-Node step (scripts/node-runtime/after-pack.mjs), the out/system-dock native helpers and recovery LaunchAgent plist, test-receipt exclusion, the keep-node-module-types hook, root LICENSE, original sumo ISC notice, system skills, immutable Design factory payload, Base GUI SDK/toolchain/component/Starter resources, compiler native payloads, icons and the checked macOS system icon catalog, entitlements, and pinned react-grab assets
+# [INPUT]: Depends on electron-vite output including the unpacked native Keychain policy, the electronFuses flip (RunAsNode, NODE_OPTIONS and inspect off, ad-hoc re-sign; TASK-35 slice 6), the afterPack bundled-Node step (scripts/node-runtime/after-pack.mjs), the out/system-dock native helpers and recovery LaunchAgent plist, test-receipt exclusion, the keep-node-module-types hook, root LICENSE, original sumo ISC notice, system skills, immutable Design factory payload, Base GUI SDK/toolchain/component/Starter resources, compiler native payloads, icons and the checked macOS system icon catalog, entitlements, and pinned react-grab assets
 # [OUTPUT]: Produces, without npm sourcemaps (OPT-33 A) and with only the UI languages' Chromium locale packs (OPT-33 B), Bottega macOS arm64 DMG (UDBZ) / ZIP (deflate -9), Windows x64 NSIS, and Linux x64 AppImage (gzip squashfs) artifacts whose packaged app.name is Bottega (own userData, never the dev directory), with the pinned Node at Resources/runtime/node/<platform>-<arch> signed with its own entitlements and the runtime manifest beside it (TASK-34), an offline fail-closed App GUI compiler, the seven self-contained runtime entries and their runtime-entries.json unpacked beside the ASAR so a plain Node can run them (TASK-35; non-production builds also unpack the private connectivity smoke), no test-only receipt, TypeScript declaration files kept and the whole node_modules tree unpacked next to the ASAR for the packaged compiler, and no vendored Codex/Claude CLI platform packages (the product only spawns the user's own CLI), and on macOS the signed Bottega Dock helpers under Resources/system-dock/bin, the recovery agent plist under Contents/Library/LaunchAgents, and Apple Events/Downloads usage descriptions
 # [POS]: The shared desktop packaging configuration; macOS uses a checked native ICNS and named system icon catalog. Release signing stays fail-closed in release scripts. The public workflow's build-only mode remains unsigned; its signed and draft modes use this Developer ID and notarization configuration.
 
@@ -66,6 +66,7 @@ electronFuses:
 # Node 侧读取透明，只是文件真身放在 app.asar.unpacked 下，esbuild/Oxide 原生载荷随之覆盖。
 asarUnpack:
   - node_modules/**
+  - "out/main/keychain-policy.node"
   # TASK-35: the entries a plain Node runs cannot live inside the asar; each is self-contained and digest-checked (runtime-entries.json).
   - "out/main/{package-host-entry,package-provider-entry,custody-guardian-entry,builtin-tools-server,codec-host-entry,app-gui-compiler-entry,process-watchdog-entry,seatbelt-measurement-entry,repair-supervisor-entry}.js"
   # TASK-35 slice 6: the digests beside them, so a plain Node can compose the packaged port; and the private connectivity smoke, which
@@ -75,9 +76,6 @@ extraResources:
   - from: resources/presence
     to: presence
     filter: ["*.png"]
-  - from: out/presence
-    to: presence
-    filter: ["bin/screen-bridge"]
   - from: ../../LICENSE
     to: LICENSE
   - from: ../../packages/cloud-crypto/NOTICE.txt
@@ -103,7 +101,6 @@ extraResources:
     to: react-grab/styles.css
 mac:
   binaries:
-    - Contents/Resources/presence/bin/screen-bridge
     - Contents/Resources/tunnel/bin/preview-capture
     - Contents/Resources/system-dock/bin/system-dock-bridge
     - Contents/Resources/system-dock/bin/bottega-dock-recovery

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared axis metrics and logical display facts in DIP, including negative coordinates.
- * [OUTPUT]: Provides deterministic display/edge geometry and inward panel placement with view-specific preferred dimensions and a fixed usable minimum.
+ * [OUTPUT]: Provides deterministic display/edge geometry, inward panels and item-anchored native menu bounds with unscaled menu dimensions and display-safe clamping.
  * [POS]: system-dock/window geometry kernel; never measures DOM, multiplies display scale factors or mutates the requested preference.
  */
 
@@ -170,6 +170,23 @@ export function placePanel(bar: BarPlacement, visible: readonly MetricItem[], pi
   const y = vertical ? clamp(center - height / 2, area.y, area.y + area.height - height) : area.y + area.height - height;
   const bounds = roundInside({ x, y, width, height }, area);
   return bounds && bounds.width >= minWidth && bounds.height >= minHeight ? bounds : null;
+}
+
+/** Native menu size is already in DIP; only the shared item offset takes the Dock scale. */
+export function placeContextMenu(bar: BarPlacement, visible: readonly MetricItem[], pinnedCount: number, anchorIndex: number | null,
+  scale: number, overflow: boolean, size: Pick<Rect, "width" | "height">): { x: number; y: number } {
+  const vertical = bar.edge !== "bottom", gap = 8;
+  const center = anchorIndex === null ? (vertical ? bar.bounds.height : bar.bounds.width) / 2
+    : itemCenter(visible, anchorIndex, pinnedCount, bar.edge, overflow) * scale;
+  const { width, height } = size;
+  const x = bar.edge === "left" ? bar.bounds.x + bar.bounds.width + gap
+    : bar.edge === "right" ? bar.bounds.x - width - gap : bar.bounds.x + center - width / 2;
+  const y = vertical ? bar.bounds.y + center - height / 2 : bar.bounds.y - height - gap;
+  const safe = bar.safeArea;
+  const localX = Math.round(clamp(x, safe.x + gap, Math.max(safe.x + gap, safe.x + safe.width - width - gap)) - bar.bounds.x);
+  const localY = Math.round(clamp(y, safe.y + gap, Math.max(safe.y + gap, safe.y + safe.height - height - gap)) - bar.bounds.y);
+  // Electron reserves -1 for the cursor and rejects negative zero as a native integer.
+  return { x: localX === -1 ? -2 : localX === 0 ? 0 : localX, y: localY === -1 ? -2 : localY === 0 ? 0 : localY };
 }
 
 function clamp(value: number, minimum: number, maximum: number): number { return Math.min(Math.max(value, minimum), maximum); }

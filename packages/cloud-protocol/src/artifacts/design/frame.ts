@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Prepared board HTML, owner-issued frame identity, transient UI edit sessions and an optional measurement observer.
- * [OUTPUT]: Opaque preview with trusted editor wheel panning, native Preview scrolling, session-owned text and authenticated display metadata.
+ * [OUTPUT]: Opaque preview with trusted editor wheel panning, native Preview scrolling, session-owned text and authenticated one-use deferred element selection.
  * [POS]: Canvas frame interaction bridge; source authority and shared schemas remain with the owner service.
  */
 import { DESIGN_PROPERTIES } from "./canvas/model";
@@ -12,7 +12,7 @@ export function designFrameHtml(html: string, identity: DesignFrameIdentity) {
     let messageSequence=0;const identity=${seed};document.currentScript?.remove();const send=parent.postMessage.bind(parent);
     const cssKeys=${JSON.stringify(DESIGN_PROPERTIES.filter(property=>property!=='text'))};
     const hintKeys=[...new Set([...cssKeys,'font-family','font-weight','font-style','text-decoration','text-align','line-height','letter-spacing','position','left','top','border-radius','box-sizing'])];
-    let tool='preview',selecting=false,regionMode=false,start=null,overlay=null,touch=null,blockClick=false,targets=[],selected=null,lastGeometry=0,lastHover=0,lastReselect='',lastFocus=0,pan=null,space=false,shadow=null,editor=null,editorSession=-1,wheelEnd;
+    let tool='preview',selecting=false,regionMode=false,start=null,overlay=null,touch=null,blockClick=false,targets=[],selected=null,lastGeometry=0,lastHover=0,lastReselect='',lastFocus=0,lastPick=0,pan=null,space=false,shadow=null,editor=null,editorSession=-1,wheelEnd;
     const stamp=type=>({type,seq:++messageSequence,id:identity.id,nonce:identity.nonce,generation:identity.generation,boardId:identity.boardId,boardDigest:identity.boardDigest});
     const viewport=()=>({width:Math.max(40,Math.min(8000,innerWidth)),height:Math.max(40,Math.min(8000,innerHeight)),scrollX:Math.max(0,Math.min(1000000,scrollX)),scrollY:Math.max(0,Math.min(1000000,scrollY))});
     const point=event=>({x:Math.max(0,Math.min(innerWidth,event.clientX)),y:Math.max(0,Math.min(innerHeight,event.clientY))});
@@ -56,6 +56,7 @@ export function designFrameHtml(html: string, identity: DesignFrameIdentity) {
         if(target){const el=target.selector?resolve(target):null;if(el)el.scrollIntoView({block:'center',inline:'center'});else if(target.region&&target.viewport)scrollTo(target.region.x*target.viewport.width+target.viewport.scrollX,target.region.y*target.viewport.height+target.viewport.scrollY);}
         if(Number.isSafeInteger(data.focusSelection)&&data.focusSelection>lastFocus&&selected?.selector){lastFocus=data.focusSelection;const el=shadow?.el??resolve(selected);el?.scrollIntoView({block:'center',inline:'center'});}
         if(typeof data.reselect==='string'&&data.reselect.startsWith('#')&&data.reselect.length<=500&&data.reselect!==lastReselect){lastReselect=data.reselect;try{const nodes=document.querySelectorAll(data.reselect);if(nodes.length===1)pick(nodes[0],null);}catch{}}
+        const click=data.pick;if(selecting&&!regionMode&&click&&Number.isSafeInteger(click.sequence)&&click.sequence>lastPick&&Number.isFinite(click.x)&&Number.isFinite(click.y)&&click.x>=0&&click.x<=1&&click.y>=0&&click.y<=1){lastPick=click.sequence;pick(document.elementFromPoint(Math.min(innerWidth-1,click.x*innerWidth),Math.min(innerHeight-1,click.y*innerHeight)),{shiftKey:click.extend===true},tool==='text'?'edit-text':'select');}
         lastGeometry=0;geometry();
       }
       if(data.type==='bottega:design:editor'){

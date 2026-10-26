@@ -47,6 +47,7 @@
     "./artifacts": "./src/artifacts/context.tsx",
     "./artifact-card": "./src/artifacts/card.tsx",
     "./artifact-renderer": "./src/artifacts/renderer.tsx",
+    "./artifact-tabs": "./src/artifacts/presentation/tabs.tsx",
     "./artifact-copy": "./src/artifacts/copy.ts",
     "./links": "./src/links/port.tsx",
     "./link-router": "./src/links/router.ts",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared i18n runtime, the renderer Intl locale, Usage token/cost formatting, Agent display names, and the Dock bar item/face projections.
- * [OUTPUT]: Provides the Dock translator, the privacy mask glyph, quota percent/clock/window labels, per-source limits readings, today's token/cost reading, relative file times, detail availability, and the single accessible name/tooltip of a Dock item.
+ * [OUTPUT]: Provides the Dock translator, the privacy mask glyph, quota percent/clock/window labels, per-source limits readings, today's token/cost reading, Tasks counts/results, relative file times, detail availability, and the single accessible name/tooltip of a Dock item.
  * [POS]: system-dock/common presentation policy; bar faces, tooltips, VoiceOver names and panel rows all read values through here so the mask and "never a fake number" rules exist once (INV-06, INV-12).
  */
 
@@ -106,7 +106,21 @@ export function dockItemName(item: DockBarItem, t: DockT, mask: boolean, now: nu
     else states.push(...face.sources.map((source) => limitsReading(source, t, mask, now).spoken),
       ...(face.more > 0 ? [t("systemDock.limits.more", { count: face.more })] : []));
   }
+  if (face?.type === "builtin.tasks") states.push(tasksReading(face, t, mask));
   if (face?.type === "builtin.ai-activity") states.push(activityReading(face, t, mask).spoken);
   if (mask && face) states.push(t("systemDock.item.masked"));
   return states.length ? t("systemDock.item.nameWithState", { name: item.label, state: states.join(t("systemDock.item.stateSeparator")) }) : item.label;
+}
+
+export function taskResultLabel(result: Extract<WidgetFace, { type: "builtin.tasks" }>["result"], t: DockT) {
+  if (result === "completed") return t("settings.presence.completed");
+  if (result === "cancelled") return t("settings.presence.cancelled");
+  if (result === "failed") return t("settings.presence.failureResult");
+  if (result === "ended") return t("settings.presence.ended");
+  return t("settings.presence.empty");
+}
+export function tasksReading(face: Extract<WidgetFace, { type: "builtin.tasks" }>, t: DockT, mask: boolean) {
+  if (mask) return MASK;
+  if (!face.running && !face.waiting) return taskResultLabel(face.result, t);
+  return [t("settings.presence.running", { tasks: face.running ?? 0 }), t("settings.presence.waiting", { tasks: face.waiting ?? 0 })].join(" · ");
 }

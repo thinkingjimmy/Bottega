@@ -74,8 +74,8 @@ export type AppSettings = {
   chatHomeState: ChatHomeState;
   launchAtLogin: boolean;
   keepRunningInBackground: boolean;
-  /** Remembered notch preference; effective only while background retention is enabled. */
-  showTaskStatusAtTop: boolean;
+  /** Native menu bar/tray visibility, independent of background retention. */
+  showInMenuBar: boolean;
   allowCrossChatRead: boolean;
   /** Publish this computer's Memory state (only its state, never content) to the account's phone and Web (TASK-28, R-33); off by default. */
   memoryPhoneFacade: boolean;
@@ -174,7 +174,7 @@ export type RendererSettingsPatch = Partial<
     | "memoryWorkflowRoles"
     | "launchAtLogin"
     | "keepRunningInBackground"
-    | "showTaskStatusAtTop"
+    | "showInMenuBar"
     | "titleAgent"
     | "defaultBackend"
   >

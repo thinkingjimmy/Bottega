@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the pinned Convex SDK/socket factory, Zod validation, public registry and main-only session token provider.
- * [OUTPUT]: Provides bounded socket-first calls, JWT-refreshing HTTP fallback and authenticated subscriptions that are re-attached to each new socket within one account/device scope (a scope change fails them), a socket token retry on a 1/2/5/15/30/60 s ladder that networkOnline cuts short and invalid-session ends (T20-2), a separately authenticated bulk socket with the same token retry and bounded readiness, one call at a time, closed with the primary, a queued one settling unsent once close() moves the generation (T20-4, review 0929 R05), per-command hop traces with queue and execution time (traceCommand/commandTrace, T20-5), a server-time offset from HTTP Date headers (T20-9b), including the account's computer list, the account-config revision, per-computer Memory control intent and the Agent-configuration directory.
+ * [OUTPUT]: Provides bounded socket-first calls, JWT-refreshing HTTP fallback and authenticated subscriptions that are re-attached to each new socket within one account/device scope (a scope change fails them), immediate cancellation of all in-flight socket/HTTP/token calls when the connection closes and terminal stop admission, a socket token retry on a 1/2/5/15/30/60 s ladder that networkOnline cuts short and invalid-session ends (T20-2), a separately authenticated bulk socket with the same token retry and bounded readiness, one call at a time, closed with the primary, a queued one settling unsent once close() moves the generation (T20-4, review 0929 R05), per-command hop traces with queue and execution time (traceCommand/commandTrace, T20-5), a server-time offset from HTTP Date headers (T20-9b), including the account's computer list, the account-config revision, per-computer Memory control intent and the Agent-configuration directory.
  * [POS]: apps/desktop/electron/main/cloud/runtime/transport; Main cloud transport; private generated code and credentials never cross IPC.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -84,10 +84,12 @@ export class CloudTransport implements AccountTransport {
   private verifiedConfig: CloudFunctionResult<"config:get"> | null = null;
   configuration() { return this.verifiedConfig; }
   private generation = 0;
+  private stopped = false;
   private socket: ConvexClient | null = null;
   private authenticated = false;
   private connected = false;
   private pending = new Map<() => void, ConvexClient>();
+  private readonly pendingCalls = new Set<() => void>();
   private live = new Set<LiveSubscription>();
   private scopeKey: string | null = null;
   private primaryAuth: SocketAuthentication | null = null;
@@ -233,8 +235,21 @@ export class CloudTransport implements AccountTransport {
     return cloudFunctions[name].result.parse(result) as CloudFunctionResult<N>;
   }
   private async fenced<T>(generation: number, operation: () => Promise<T>): Promise<T> {
-    try { return await operation(); }
-    catch (error) { if (generation !== this.generation) throw new Error("cloud-request-superseded"); throw error; }
+    let cancel!: () => void;
+    const cancelled = new Promise<never>((_resolve, reject) => {
+      cancel = () => reject(new Error("cloud-request-superseded"));
+    });
+    this.pendingCalls.add(cancel);
+    try {
+      const work = Promise.resolve().then(() => {
+        if (this.stopped || generation !== this.generation) throw new Error("cloud-request-superseded");
+        return operation();
+      });
+      return await Promise.race([work, cancelled]);
+    } catch (error) {
+      if (generation !== this.generation) throw new Error("cloud-request-superseded");
+      throw error;
+    } finally { this.pendingCalls.delete(cancel); }
   }
   /* A parsed subscription: a value that fails its contract is reported through failure, like a transport error. */
   private parsed<N extends CloudFunctionName>(name: N, input: CloudFunctionArgs<N>, changed: (value: CloudFunctionResult<N>) => void, failure: (error: unknown) => void) {
@@ -314,6 +329,7 @@ export class CloudTransport implements AccountTransport {
     for (const entry of ended) { this.detach(entry); entry.failed(new Error("cloud-account-changed")); }
   }
   watch(changed: (access: AccountAccess) => void, connected: (value: boolean) => void, failure: (error: unknown) => void) {
+    if (this.stopped) throw new Error("cloud-request-superseded");
     if (this.socket) return;
     const generation = this.generation;
     const current = () => generation === this.generation;
@@ -348,9 +364,13 @@ export class CloudTransport implements AccountTransport {
       if (current() && state.isWebSocketConnected !== previous) { previous = state.isWebSocketConnected; this.connected = previous; reportConnection(); }
     });
   }
+  /** Terminal application shutdown refuses new work; close() alone still permits a later reconnect. */
+  stop() { this.stopped = true; this.close(); }
   close() {
     this.verifiedConfig = null;
     this.generation++; this.authenticated = false; this.connected = false;
+    for (const cancel of this.pendingCalls) cancel();
+    this.pendingCalls.clear();
     for (const cancel of this.pending.keys()) cancel();
     this.primaryAuth?.close(); this.primaryAuth = null; this.primaryFailure = null;
     this.closeBulk(); this.bulkUnready = false; this.bulkTail = Promise.resolve();

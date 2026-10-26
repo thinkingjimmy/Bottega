@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron Menu, localized catalog strings, and the DockService actions.
- * [OUTPUT]: Provides the placement-fenced bar context menu (per item: open, keep/remove, normal Quit for running native Apps, same-process host Open and safe Quit, show in Finder for Downloads; always: edit, settings, restore) and the Presence "Dock ▸" submenu (show/hide, restore, add, edit, settings).
+ * [OUTPUT]: Provides the placement-fenced bar context menu (Open, Downloads reveal, Dock Settings, optional restore, then normal native or managed host Quit last) and the Presence Dock submenu (show/hide, restore, settings). Layout changes use drag gestures instead of menu entries.
  * [POS]: system-dock native menus; restore stays reachable from both the Dock itself and the menu bar (3.1), independent of the bar renderer's health.
  */
 
@@ -20,31 +20,22 @@ export function itemMenu(service: DockService, itemId: string | null): Menu | nu
   if (host) {
     template.push({ label: translate(service.ports.locale(), "systemDock.menu.open"),
       click: perform(() => service.ports.host?.open()) });
-    const kind = item ? "remove" as const : "pin-running" as const;
-    if (item || service.apps?.hostApp()?.bundleIdentifier) template.push({ label: translate(service.ports.locale(), item ? "systemDock.menu.remove" : "systemDock.menu.keep"),
-      click: perform(() => import("../intents").then(({ handleIntent }) => current() ? handleIntent(service, "bar", { kind, itemId: host.id }) : undefined)) });
-    template.push({ type: "separator" }, { id: "dock-quit", label: translate(service.ports.locale(), "systemDock.menu.quit"),
-      click: perform(() => service.ports.host?.quit()) });
   } else if (running) {
-    template.push({ label: translate(service.ports.locale(), "systemDock.menu.open"), click: perform(() => import("../intents").then(({ handleIntent }) => current() ? handleIntent(service, "bar", { kind: "activate", itemId: running.id }) : undefined)) },
-      { label: translate(service.ports.locale(), "systemDock.menu.keep"), click: perform(() => import("../intents").then(({ handleIntent }) => current() ? handleIntent(service, "bar", { kind: "pin-running", itemId: running.id }) : undefined)) });
+    template.push({ label: translate(service.ports.locale(), "systemDock.menu.open"), click: perform(() => import("../intents").then(({ handleIntent }) => current() ? handleIntent(service, "bar", { kind: "activate", itemId: running.id }) : undefined)) });
   } else if (item) {
     template.push({ label: translate(service.ports.locale(), "systemDock.menu.open"), click: perform(() => import("../intents").then(({ handleIntent }) => current() ? handleIntent(service, "bar", { kind: "activate", itemId: item.id }) : undefined)) });
     if (item.kind === "system" && item.entry === "system.downloads")
       template.push({ label: translate(service.ports.locale(), "systemDock.menu.reveal"), click: perform(() => service.downloads.reveal()) });
-    template.push({ label: translate(service.ports.locale(), "systemDock.menu.remove"), click: perform(() => import("../intents").then(({ handleIntent }) => current() ? handleIntent(service, "bar", { kind: "remove", itemId: item.id }) : undefined)) });
   }
   const nativeTarget = running
     ? service.apps?.runningRegular().find((app) => `running-${app.pid}` === running.id)
     : item?.kind === "native-app" ? service.resolution.get(item.id) ?? { path: null, bundleIdentifier: item.bundleIdentifier } : null;
   const quitTarget = nativeTarget ? service.apps?.quitTarget(nativeTarget) : null;
-  if (quitTarget && !host) template.push({ type: "separator" }, { id: "dock-quit", label: translate(service.ports.locale(), "systemDock.menu.quit"),
-    click: perform(() => service.apps?.quit(quitTarget, current)) });
   if (template.length) template.push({ type: "separator" });
-  template.push({ label: translate(service.ports.locale(), "systemDock.menu.add"), click: perform(() => service.openPanel({ view: { kind: "add" }, focus: true, anchor: null })) },
-    { label: translate(service.ports.locale(), "systemDock.menu.edit"), click: perform(() => service.openPanel({ view: { kind: "edit" }, focus: true, anchor: null })) },
-    { label: translate(service.ports.locale(), "systemDock.menu.settings"), click: perform(() => service.ports.destination({ kind: "dock" })) });
+  template.push({ label: translate(service.ports.locale(), "systemDock.menu.settings"), click: perform(() => service.ports.destination({ kind: "dock" })) });
   if (service.actualMode() === "replace") template.push({ type: "separator" }, { label: translate(service.ports.locale(), "systemDock.menu.restore"), click: perform(() => service.replacement?.suspend("user-restored")) });
+  const quit = host ? () => service.ports.host?.quit() : quitTarget ? () => service.apps?.quit(quitTarget, current) : null;
+  if (quit) template.push({ type: "separator" }, { id: "dock-quit", label: translate(service.ports.locale(), "systemDock.menu.quit"), click: perform(quit) });
   return Menu.buildFromTemplate(template);
 }
 /** Presence submenu; `null` hides it entirely when the Dock is unsupported or off. */
@@ -60,8 +51,6 @@ export function presenceSubmenu(service: DockService): MenuItemConstructorOption
   if (service.actualMode() === "replace" || phase === "suspended") submenu.push({ label: translate(service.ports.locale(), "systemDock.menu.restore"), enabled: phase === "active" || phase === "preparing" || restoreFailed,
     click: run(() => service.replacement?.suspend("user-restored")) });
   submenu.push({ type: "separator" },
-    { label: translate(service.ports.locale(), "systemDock.menu.add"), enabled: service.started, click: run(() => service.openPanel({ view: { kind: "add" }, focus: true, anchor: null })) },
-    { label: translate(service.ports.locale(), "systemDock.menu.edit"), enabled: service.started, click: run(() => service.openPanel({ view: { kind: "edit" }, focus: true, anchor: null })) },
     { label: translate(service.ports.locale(), "systemDock.menu.settings"), click: run(() => service.ports.destination({ kind: "dock" })) });
   return { label: translate(service.ports.locale(), "systemDock.menu.dock"), submenu };
 }

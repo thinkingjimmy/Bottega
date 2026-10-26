@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on localized surface migration failure projection; Depends on shared appDisplayName, react-router, Apps i18n/provider, the main-owned AppRecordProjection, Base detail, README/settings surfaces, the shared useAppEditor command, Apps client, and Web App frame/edit/repair components
+ * [INPUT]: Depends on localized surface migration failure projection; Depends on shared appDisplayName, react-router, Apps i18n/provider, the main-owned AppRecordProjection, Base detail, README/settings surfaces, the shared useAppEditor command, Apps client, and Web App frame/edit/repair components and independent update Settings consent routing
  * [OUTPUT]: Provides AppDetailView with residence-gated Base Studio, App-window handoff, Editor navigation and lifecycle controls; closed routes retain Base editing without mounting GUI or Use/Edit surfaces.
  * [POS]: apps/desktop/src/views/apps; App detail route; web runtime start is gated by the positive servesWebRuntime predicate, and a nonresident main route renders a transfer card before any Base Studio hook or mutation surface mounts
  */
@@ -282,7 +282,7 @@ export function AppDetailView() {
           <div className="relative min-w-0 flex-1">
             {/* pending 代是 App 的一个真实状态：没有这张卡，含 extensionRequirements
                 的 App 装完就永远停在 consent-required，没有任何出口。 */}
-            {record.generationBinding.pending && (
+            {record.generationBinding.pending && !record.presetUpdate && (
               <AppExtensionConsentCard record={record} />
             )}
 

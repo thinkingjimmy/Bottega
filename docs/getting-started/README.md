@@ -47,6 +47,10 @@ Setup has one path and never mentions an account: choose your Bottega folder, th
 
 See the [features guide](../features/README.md) for the product model and its four core capability areas.
 
+### Upgrading to 0.2.10
+
+0.2.10 keeps protocol 21. Update the desktop computers that run your Agents to receive the desktop fixes, then reload Bottega Web. Existing content, sync passwords and account keys remain; no data reset is required. Stable macOS Apple silicon builds use the stable update channel. Version 0.2.5 personal requires a manual installation. Dock remains Alpha and requires macOS 27.x with Apple silicon. The Android test app uses a separate test environment.
+
 ### Upgrading to 0.2.9
 
 0.2.9 uses protocol 21. Update the desktop computers that run your Agents and reload Bottega Web after the coordinated service update. Earlier desktop versions cannot use the new protocol. Existing content, sync passwords and account keys remain; no data reset is required. Stable macOS Apple silicon builds use the stable update channel. Version 0.2.5 personal requires a manual installation.
@@ -113,27 +117,29 @@ Cloud Sync now uses protocol 15. Update all computers that use cloud features to
 
 ## Download and install
 
-[Download 0.2.8](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8), the official stable release for **macOS on Apple silicon (ARM64) only**. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
+[Download 0.2.10](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.10), the official stable release for **macOS on Apple silicon (ARM64) only**. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8) | Official stable release. |
+| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.10) | Official stable release. |
 
-Use the official **Developer ID signed and Apple notarized** installers. Versions 0.2.6, 0.2.7 and 0.2.8 use the stable automatic-update channel; the shipped 0.2.5 personal build requires a manual update.
+Use the official **Developer ID signed and Apple notarized** installers. Versions 0.2.6 through 0.2.9 use the stable automatic-update channel; the shipped 0.2.5 personal build requires a manual update.
 
 1. Quit Bottega completely and back up both your Bottega folder and application data.
-2. Download the DMG or ZIP and `Bottega-0.2.8-release-evidence.tar.gz` from the same release. Read `release-manifest.json` at the archive's root. Run `shasum -a 256` followed by the installer's path, then compare the output with that installer's `sha256` in the manifest.
+2. Download the DMG or ZIP and `Bottega-0.2.10-release-evidence.tar.gz` from the same release. Read `release-manifest.json` at the archive's root. Run `shasum -a 256` followed by the installer's path, then compare the output with that installer's `sha256` in the manifest.
 3. Open the DMG and drag Bottega into `Applications`, or extract the ZIP and copy the app there.
 4. Open Bottega from `Applications` and confirm the normal macOS first-launch prompt. If macOS reports a signature or notarization problem, keep the error details and report the bug before opening that package.
 
 To read the manifest and check the DMG without extracting the full archive:
 
 ```bash
-tar -xOf Bottega-0.2.8-release-evidence.tar.gz release-manifest.json
-shasum -a 256 Bottega-0.2.8-arm64.dmg
+tar -xOf Bottega-0.2.10-release-evidence.tar.gz release-manifest.json
+shasum -a 256 Bottega-0.2.10-arm64.dmg
 ```
 
-For the ZIP, use `Bottega-0.2.8-arm64-mac.zip` in the checksum command. The archive groups release and acceptance evidence; inspect its records for the exact validated scope. It does not imply complete physical-device qualification.
+For the ZIP, use `Bottega-0.2.10-arm64-mac.zip` in the checksum command. The archive groups release and acceptance evidence; inspect its records for the exact validated scope. It does not imply complete physical-device qualification.
+
+Automatic updates use `latest-mac.yml`, `Bottega-0.2.10-arm64.dmg.blockmap` and `Bottega-0.2.10-arm64-mac.zip.blockmap`. The App compatibility files are `app-gui-compatibility-support.json` and `app-gui-compatibility-support.json.sig`.
 
 Version 0.2.7 was published by owner decision before complete local and final-package GUI acceptance. It has no complete acceptance evidence archive, and a real installed upgrade was not verified. Do not use 0.2.8's archive to claim acceptance of 0.2.7.
 

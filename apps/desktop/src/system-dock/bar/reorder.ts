@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React state/refs and DOM geometry of `[data-item-id]` bar slots, excluding anchored Downloads/Trash.
- * [OUTPUT]: Provides `useBarReorder`: edge-aware pointer-driven drag of pinned items (and running items into the pinned area) with a live placeholder, per-slot shift offsets, click suppression, immediate placement cancellation and cancel on Escape/pointercancel, and exactly one commit per drop.
- * [POS]: system-dock/bar interaction kernel; it never writes the layout — the drop hands one final pinned index to the caller, which turns it into move / pin-running intents (3.2 "commit once on drop").
+ * [OUTPUT]: Provides `useBarReorder`: edge-aware drag reorder, running-to-pinned drops and pinned-item drag-out removal, with a removal preview, click suppression, placement cancellation, Escape/pointercancel cancellation, and one commit on release.
+ * [POS]: system-dock/bar interaction kernel; it never writes the layout — the caller turns each completed gesture into move, pin-running or remove intents.
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
@@ -9,13 +9,14 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Pointer
 import type { DockEdge } from "../../../shared/system-dock/local-state";
 
 const DRAG_THRESHOLD = 4;
-export type ReorderDrop = Readonly<{ itemId: string; source: "pinned" | "running"; index: number }>;
+const REMOVE_DISTANCE = 32;
+export type ReorderDrop = Readonly<{ itemId: string; source: "pinned" | "running" } & ({ kind: "move"; index: number } | { kind: "remove" })>;
 type Slot = { id: string; left: number; width: number };
 type Session = {
   id: string; source: "pinned" | "running"; pointerId: number; startX: number; startY: number;
-  vertical: boolean; element: HTMLElement; slots: Slot[]; origin: number; boundary: number; zoom: number; active: boolean;
+  vertical: boolean; element: HTMLElement; slots: Slot[]; bounds: DOMRect; origin: number; boundary: number; zoom: number; active: boolean;
 };
-export type ReorderView = Readonly<{ id: string; dx: number; target: number | null; shift: number; source: "pinned" | "running"; origin: number }>;
+export type ReorderView = Readonly<{ id: string; dx: number; target: number | null; shift: number; source: "pinned" | "running"; origin: number; removing: boolean }>;
 
 /** Final index in the pinned order for a pointer at `x`, ignoring the dragged item itself. */
 export function dropIndex(slots: readonly Slot[], draggedId: string, x: number) {
@@ -57,10 +58,15 @@ export function useBarReorder({ gap, edge, resetKey, onDrop }: { gap: number; ed
   }, [reset]);
 
   const target = (current: Session, x: number) => current.source === "pinned" || x < current.boundary ? dropIndex(current.slots, current.id, x) : null;
-  const project = (current: Session, x: number): ReorderView => {
+  const outside = (current: Session, x: number, y: number) => Math.max(current.bounds.left - x, x - current.bounds.right,
+    current.bounds.top - y, y - current.bounds.bottom) > REMOVE_DISTANCE * current.zoom;
+  const project = (current: Session, x: number, y: number): ReorderView => {
     const dragged = current.element.getBoundingClientRect();
-    return { id: current.id, source: current.source, origin: current.origin, dx: (x - (current.vertical ? current.startY : current.startX)) / current.zoom,
-      target: target(current, x), shift: (current.vertical ? dragged.height : dragged.width) / current.zoom + gap };
+    const axis = current.vertical ? y : x;
+    const detached = outside(current, x, y);
+    return { id: current.id, source: current.source, origin: current.origin, dx: (axis - (current.vertical ? current.startY : current.startX)) / current.zoom,
+      removing: current.source === "pinned" && detached, target: detached ? null : target(current, axis),
+      shift: (current.vertical ? dragged.height : dragged.width) / current.zoom + gap };
   };
 
   return {
@@ -82,7 +88,7 @@ export function useBarReorder({ gap, edge, resetKey, onDrop }: { gap: number; ed
       const last = slots.at(-1);
       const zoom = Number(getComputedStyle(strip).zoom) || 1;
       session.current = { id, source, vertical, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, element: event.currentTarget,
-        slots, origin: source === "pinned" ? slots.findIndex((slot) => slot.id === id) : -1,
+        slots, bounds: strip.getBoundingClientRect(), origin: source === "pinned" ? slots.findIndex((slot) => slot.id === id) : -1,
         // A running item joins the pinned area only when dropped before the separator's midpoint.
         boundary: last ? last.left + last.width + gap * zoom : Number.POSITIVE_INFINITY, zoom, active: false };
     },
@@ -94,17 +100,22 @@ export function useBarReorder({ gap, edge, resetKey, onDrop }: { gap: number; ed
         current.active = true;
         try { current.element.setPointerCapture?.(current.pointerId); } catch { /* synthetic pointer */ }
       }
-      setRendered({ key, view: project(current, current.vertical ? event.clientY : event.clientX) });
+      setRendered({ key, view: project(current, event.clientX, event.clientY) });
     },
     onPointerUp(event: ReactPointerEvent<HTMLElement>) {
       const current = session.current;
       if (!current || event.pointerId !== current.pointerId) return;
       if (!current.active) { session.current = null; return; }
       suppressClick.current = true;
+      const detached = outside(current, event.clientX, event.clientY);
       const index = target(current, current.vertical ? event.clientY : event.clientX);
       reset();
+      if (detached) {
+        if (current.source === "pinned") onDropRef.current({ kind: "remove", itemId: current.id, source: current.source });
+        return;
+      }
       if (index === null || (current.source === "pinned" && index === current.origin)) return;
-      onDropRef.current({ itemId: current.id, source: current.source, index });
+      onDropRef.current({ kind: "move", itemId: current.id, source: current.source, index });
     },
     onPointerCancel() { if (session.current?.active) suppressClick.current = true; reset(); },
   };

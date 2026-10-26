@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps French catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
+ * [OUTPUT]: Provides the Apps French catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: French copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,6 +8,13 @@
 import type { appsEn } from "./en";
 
 export const appsFr: typeof appsEn = {
+  dock: {
+    pin: "Épingler au Dock",
+    unpin: "Retirer du Dock",
+    pinFailed: "Impossible d’enregistrer le raccourci du Dock. Réessayez.",
+    openFailed: "Impossible d’ouvrir {{name}}",
+    openFailedDetail: "Cliquez sur l’App dans le Dock pour réessayer.",
+  },
   provider: {
     listFailed: "Échec du chargement des Apps : {{message}}",
   },

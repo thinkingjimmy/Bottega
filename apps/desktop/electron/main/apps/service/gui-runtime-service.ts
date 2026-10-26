@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AppStore, AppGateway, lifecycle serialization, trusted renderer identity, Base GUI grants/data ports, attachment surface leases, query worker, preferences storage, file-export custody, renderer transition publication, and the current product window
- * [OUTPUT]: Emits explicit data-migration failure codes. Provides the cohesive Base GUI runtime boundary for projection, staged cohort acquisition/readiness keyed by the renderer's logical lease, SDK routes, cutover barriers, preferences, exports, signed-update quarantine, renderer-owned surface release, initialization, non-fatal startup cutover recovery reporting, and shutdown
+ * [OUTPUT]: Emits explicit data-migration failure codes. Provides the cohesive Base GUI runtime boundary for projection, staged cohort acquisition/readiness keyed by the renderer's logical lease, SDK routes, cutover barriers, preferences, exports, signed-update quarantine, renderer-owned surface release, non-revoking update reconciliation, initialization, non-fatal startup cutover recovery reporting, and shutdown
  * [POS]: apps/service GUI facade; keeps AppsService as a composition root while GUI runtime ownership remains explicit and testable
  */
 
@@ -158,6 +158,8 @@ export class AppGuiRuntimeService {
   liveBinding(input: AppGuiInfoInput | string) {
     return this.projection.liveBinding(input);
   }
+
+  reconcileUpdate(appId: string) { return this.projection.sync(appId); }
 
   async sync(appId: string, reconcileData: () => Promise<void>) {
     let migrationFailure: unknown;

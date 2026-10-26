@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on typed Apps IPC, main-owned services and explicit author-manifest or Agent-analysis install intents
- * [OUTPUT]: Registers strict residence-fenced operations and publishes main-owned Studio and cloud-management projections; `apps:open` goes through lifecycle/open-runtime.ts. Adds main-window-only impact and enablement operations.
+ * [OUTPUT]: Registers strict residence-fenced operations and publishes main-owned Studio, independent update readiness and cloud-management projections; `apps:open` goes through lifecycle/open-runtime.ts. Adds main-window-only impact and enablement operations.
  * [POS]: Trusted residence-fenced Apps renderer adapter; Artifact design requests use the separate Artifact IPC owner.
  */
 
@@ -357,6 +357,7 @@ export function registerAppsIpc(
     ...record,
     ...(deps.store.portable.isCloudManaged(record.id) ? { cloudManaged: true as const } : {}),
     studioSurfaceReady: deps.studioSurfaceReady(record),
+    presetUpdatesEnabled: record.origin === "preset" && deps.packages.independentUpdatesConfigured(),
   });
 
   mainIpc.handle(APPS_CHANNEL.disableImpact, (value) => deps.enablement.impact(assertAppId(value)))

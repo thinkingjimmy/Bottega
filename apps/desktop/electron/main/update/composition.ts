@@ -1,12 +1,12 @@
 /**
- * [INPUT]: Depends on Electron app packaging facts and ASAR release-profile metadata, build-time cloud update isolation, formal release trust, the adapter selection matrix, a durable App compatibility preflight, a safe-quit port and the E2E receipt environment
+ * [INPUT]: Depends on Electron app packaging facts and ASAR release-profile metadata, build-time cloud update isolation, formal release trust, the adapter selection matrix, a durable App compatibility preflight, a safe-quit port
  * [OUTPUT]: Provides createDesktopUpdateService: the one UpdateService this product ships, gating candidate compatibility on provisioned trust and owning platform and personal manual-update policy
  * [POS]: main/update assembly; the composition root owns lifecycle order while this file owns what "the updater for this app" means
  */
 
 import type { AppCompatibilityFailure } from "../../../shared/app-host/contract";
 import type { SafeQuitResult } from "../startup/shutdown/safe-quit";
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { App } from "electron";
 import type { AppGuiCompatibilitySupport } from "../../../shared/app-gui/support";
@@ -20,18 +20,15 @@ import {
 
 declare const __BOTTEGA_CLOUD_UPDATES_ENABLED__: boolean;
 
-const E2E_FALLBACK_VERSION = "0.1.1";
 
 export type DesktopUpdateServiceOptions = Readonly<{
   resolveAppRequirement?(requestId: string): Promise<AppCompatibilityFailure>;
   prepareSafeQuit(reason: "update", interactive?: boolean): Promise<SafeQuitResult>;
-  env?: NodeJS.ProcessEnv;
+  
   applyCandidateCompatibility?: (
     matrix: AppGuiCompatibilitySupport
   ) => Promise<void>;
-  /* 唯一的测试缝。打包态选中的永远是真 updater，而 electron-updater 只
-     活在 Electron 进程里——装配自己的判断（信任决定闸门）就再没有地方
-     可被观察。给一个现成 adapter，让测试观察装配，而不是观察 Electron。 */
+  
   adapter?: UpdateAdapter;
 }>;
 
@@ -39,7 +36,6 @@ export function createDesktopUpdateService(
   app: App,
   options: DesktopUpdateServiceOptions
 ) {
-  const env = options.env ?? process.env;
   const metadataPath = join(app.getAppPath(), "package.json");
   const manualOnly = app.isPackaged && existsSync(metadataPath) &&
     JSON.parse(readFileSync(metadataPath, "utf8")).bottegaReleaseProfile === "personal";
@@ -49,14 +45,7 @@ export function createDesktopUpdateService(
   return new UpdateService({
     adapter: manualOnly ? null :
       options.adapter ??
-      (typeof __BOTTEGA_CLOUD_UPDATES_ENABLED__ !== "undefined" && !__BOTTEGA_CLOUD_UPDATES_ENABLED__ ? null : createSelectedUpdateAdapter({
-        isPackaged: app.isPackaged,
-        /* 打包产物永远走真 updater：注入开关只在未打包时被看一眼。 */
-        e2eEnabled: !app.isPackaged && env.BOTTEGA_UPDATE_E2E === "1",
-        fakeVersion: env.BOTTEGA_UPDATE_E2E_VERSION,
-        fakeCorrupt: env.BOTTEGA_UPDATE_E2E_CORRUPT === "1",
-        onFakeInstall: (version) => publishE2eInstallReceipt(env, version),
-      })),
+      (typeof __BOTTEGA_CLOUD_UPDATES_ENABLED__ !== "undefined" && !__BOTTEGA_CLOUD_UPDATES_ENABLED__ ? null : createSelectedUpdateAdapter({ isPackaged: app.isPackaged })),
     currentVersion: app.getVersion(),
     resolveAppRequirement: options.resolveAppRequirement,
     electronVersion: process.versions.electron,
@@ -99,23 +88,4 @@ function candidateCompatibility(
   };
 }
 
-/**
- * 安装交接是不可返回的，E2E 里没有第二次机会去问「装了没有」。落一份
- * 磁盘 receipt，让断言观察的是主进程真的走到了那一步，而不是界面文案。
- */
-function publishE2eInstallReceipt(env: NodeJS.ProcessEnv, version: string) {
-  const target = globalThis as typeof globalThis & {
-    __bottegaUpdateE2eInstalled?: boolean;
-  };
-  target.__bottegaUpdateE2eInstalled = true;
-  const receipt = env.BOTTEGA_UPDATE_E2E_RECEIPT;
-  if (!receipt) return;
-  const installed = {
-    installed: true,
-    version: version || E2E_FALLBACK_VERSION,
-  };
-  writeFileSync(receipt, `${JSON.stringify(installed)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-}
+

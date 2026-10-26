@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared RichInput wire projection, shared Agent/Chat/Project/Submission contracts, and PromptInput
- * [OUTPUT]: Defines Chat gates, panel contracts including message-owned workspace previews, and Subagent-aware image intents; transcript segments own immutable-prefix eligibility.
+ * [OUTPUT]: Defines Chat gates, tabbed Artifact commands, message-owned workspace previews and Subagent-aware image intents; transcript segments own immutable-prefix eligibility.
  * [POS]: The canonical type and pure-policy layer for chat/runtime
  */
 
@@ -97,6 +97,7 @@ export type PanelCapability =
   | "app"
   | "subagents"
   | "browser"
+  | "artifact"
   | "image";
 
 export type PanelEligibilityReason = "app-context-base-unavailable";
@@ -118,7 +119,6 @@ export function panelEligibility(
 
 export type SidePanelState =
   | { kind: "none" }
-  | { kind: "artifact-preview"; fence: import("../../../../shared/ipc/apps/artifact-ipc").ArtifactFence }
   | {
       kind: "tabs";
       context: PanelSessionContext;
@@ -171,6 +171,7 @@ export type ConversationImageSource =
 export type SidePanelTabCommand =
   | { target: "openShell" | "base" | "browser"; nonce: number }
   | { target: "app"; appId: string; nonce: number }
+  | { target: "artifact"; fence: import("../../../../shared/ipc/apps/artifact-ipc").ArtifactFence; nonce: number }
   | { target: "subagents"; agentThreadId?: string; nonce: number }
   | { target: "image"; source: ConversationImageSource; nonce: number };
 

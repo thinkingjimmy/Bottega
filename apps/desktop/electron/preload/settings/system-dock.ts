@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron IPC, the Settings → Dock channel contract, and the top-frame subscription adapter.
- * [OUTPUT]: Installs `window.systemDockSettings`: snapshot/change subscription plus fixed-purpose setup, import, preference, mode, recovery, layout-reset, conflict-resolution and login-item-settings commands.
+ * [OUTPUT]: Installs `window.systemDockSettings`: snapshot/change subscription plus fixed-purpose setup, import, preference, mode, recovery, layout-reset, conflict-resolution and login-item-settings commands. Includes main-window App pin/unpin requests.
  * [POS]: Settings preload leaf beside bridge.ts; the composition root only calls it for the main window on macOS, so other platforms never show a Dock page.
  */
 import { contextBridge, ipcRenderer } from "electron";
@@ -16,6 +16,7 @@ export function installSystemDockSettingsBridge(subscribe: <T>(channel: string) 
     cancelSetup: (sessionId) => ipcRenderer.invoke(CHANNEL.cancelSetup, sessionId),
     importCandidates: () => ipcRenderer.invoke(CHANNEL.importCandidates),
     confirmImport: (input) => ipcRenderer.invoke(CHANNEL.confirmImport, input),
+    setAppPinned: (input) => ipcRenderer.invoke(CHANNEL.setAppPinned, input),
     setPreference: (patch) => ipcRenderer.invoke(CHANNEL.setPreference, patch),
     setMode: (mode) => ipcRenderer.invoke(CHANNEL.setMode, mode),
     disable: () => ipcRenderer.invoke(CHANNEL.disable),

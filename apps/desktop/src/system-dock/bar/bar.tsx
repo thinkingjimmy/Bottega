@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the isolated Dock bridge adapter, shared bar metrics, on-demand side styles, the common translator/glyph cache, BarItem, and the reorder gesture.
- * [OUTPUT]: Provides `DockBar`: the handle-only state, the three-edge translucent strip (Apps/Widgets, running Apps, Downloads/Trash with group dividers, overflow), committed-layout ACKs, revision-fenced interaction and geometry-fenced dragging, the just-added highlight, the empty-layout CTA, hover/activate/context-menu/move/pin-running intents, and the refusal of external file drops.
+ * [OUTPUT]: Provides `DockBar`: the three-edge strip, committed-layout ACKs, revision-fenced interaction and drag reorder/pinning/removal, the just-added highlight, the empty-layout CTA, and refusal of external file drops.
  * [POS]: system-dock/bar root composed by main.tsx; main owns window bounds from the same DOCK_METRICS, every reveal delay, and what an activation means (launch, open detail, or close the served detail).
  */
 
@@ -18,6 +18,10 @@ import { useBarReorder, type ReorderDrop } from "./reorder";
 export const EMPTY_CTA_WIDTH = DOCK_METRICS.emptyCta;
 
 async function commitDrop(drop: ReorderDrop, placementRevision: number) {
+  if (drop.kind === "remove") {
+    await sendIntent({ kind: "remove", itemId: drop.itemId, placementRevision });
+    return;
+  }
   // Pinning a running App is its own command; the move only follows once main accepted the pin.
   if (drop.source === "running" && !(await sendIntent({ kind: "pin-running", itemId: drop.itemId, placementRevision }))) return;
   await sendIntent({ kind: "move", itemId: drop.itemId, index: drop.index, placementRevision });

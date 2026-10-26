@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on existing ledger v7 manual intent and frozen cloud mutation custody
+ * [INPUT]: Depends on ledger manual intents, the pure prepared-user attachment projection and frozen cloud mutation custody.
  * [OUTPUT]: Freezes a handoff command, records its verified SQLite publication proof, and settles a persisted, confirmed handoff to its proof alone (C-03)
  * [POS]: Pure ledger mutations; RelayLedger remains the only durable writer
  */
@@ -8,6 +8,8 @@ import { createHash } from "node:crypto";
 import { canonicalJson } from "../../../../../../shared/local-storage/contracts";
 import { cloudMutationSchema, handoffIdentity, type CloudMutation } from "../../../../chats/sqlite/cloud/protocol";
 import type { LedgerState } from "../ledger-schema";
+import type { PreparedManualTurn } from "../../admission/prepared-manual-turn";
+import { preparedUserMessage } from "../../admission/prepared/messages";
 export function retainCloudEvidence(state: LedgerState, enabled: boolean) {
   if (!enabled) return;
   for (const intent of Object.values(state.manualIntents)) {
@@ -32,7 +34,9 @@ export function freezeCloudHandoff(state: LedgerState, intentId: string, raw: Cl
   const dispatch = attempt && ["dispatched", "result-prepared", "persisted"].includes(attempt.phase) ? "dispatched" :
     !attempt || attempt.phase === "claimed" ? "not-started" : "outcome-unknown";
   if (canonicalJson(attempt ?? null) !== canonicalJson(evidence.attempt) || dispatch !== evidence.dispatch) throw new Error("LEDGER_HANDOFF_DISPATCH_CONFLICT");
-  const user = messageSchema.parse({ ...(intent.userMessage as Record<string, unknown>), seq: intent.userSeq });
+  const originalUser = messageSchema.parse({ ...(intent.userMessage as Record<string, unknown>), seq: intent.userSeq });
+  const user = originalUser.role === "user" ? preparedUserMessage(intent.payload as PreparedManualTurn, originalUser, intent.userSeq!,
+    evidence.userMessage.role === "user" ? evidence.userMessage : undefined) : originalUser;
   if (canonicalJson(user) !== canonicalJson(command.action.evidence.userMessage)) throw new Error("LEDGER_HANDOFF_CONTENT_CONFLICT");
   const result = state.manualResultOutbox[intentId];
   const available = result && ["stored", "empty"].includes(result.outcome);

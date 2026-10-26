@@ -191,9 +191,6 @@ importers:
       '@bottega/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk/sdk
-      '@bottega/testing':
-        specifier: workspace:*
-        version: link:../../packages/sdk/testing
       '@modelcontextprotocol/sdk':
         specifier: 1.29.0
         version: 1.29.0(zod@4.6.4)
@@ -473,28 +470,6 @@ importers:
       '@bottega/contracts':
         specifier: workspace:*
         version: link:../contracts
-    devDependencies:
-      '@types/node':
-        specifier: 22.18.6
-        version: 22.18.6
-      esbuild:
-        specifier: 0.28.1
-        version: 0.28.1
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-      zod:
-        specifier: 4.6.4
-        version: 4.6.4
-
-  packages/sdk/testing:
-    dependencies:
-      '@bottega/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@bottega/sdk':
-        specifier: workspace:*
-        version: link:../sdk
     devDependencies:
       '@types/node':
         specifier: 22.18.6

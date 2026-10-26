@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on process-global renderer IPC, trusted WindowRegistry identities, exact App Studio route helpers, residence/migration state machines with exact hydrated-target confirmation, durable App Use switch fences, canonical/durable-draft App-chat identity, and main-owned attachment/capability cleanup ports
- * [OUTPUT]: Provides surfaceWindowController for navigation-generation-fenced show, create/focus/reclaim/use-chat sync (a new App window loads only after its move has made it resident), assertStudioRead for App-window reads, exact App-window chat projections, capsule transfer with its image side channel, crash cleanup, a listener-ready, incarnation-bound pre-quit draft flush of every window, and quit reconciliation Guards App focus/open and closes its window through draft-preserving migration.
+ * [INPUT]: Depends on AppWindowOpener/AppWindowCloser, process-global renderer IPC, trusted WindowRegistry identities, exact App Studio route helpers, residence/migration state machines with exact hydrated-target confirmation, durable App Use switch fences, canonical/durable-draft App-chat identity, and main-owned attachment/capability cleanup ports
+ * [OUTPUT]: Provides surfaceWindowController for navigation-generation-fenced show, create/focus/reclaim/use-chat sync (a new App window loads only after its move has made it resident), assertStudioRead for App-window reads, exact App-window chat projections, capsule transfer with its image side channel, crash cleanup, a listener-ready, incarnation-bound pre-quit draft flush of every window, and quit reconciliation Guards App focus/open and closes its window through draft-preserving migration. Exposes main-owned standalone App activation and coalesced native closes with bounded fresh-source retries.
  * Broadcasts resume-drafts when quit is cancelled so every renderer can edit again.
  * [POS]: Window-surfaces policy root; quit stops before reclamation when a window has not confirmed its drafts, naming that window for recovery.
  */
@@ -60,6 +60,8 @@ import {
   showSurfaceInput,
 } from "./policy/surface-input";
 import { SurfaceNavigationIntents } from "./policy/surface-navigation-intents";
+import { AppWindowOpener } from "./opening/app-window-opener";
+import { AppWindowCloser } from "./opening/app-window-closer";
 
 /** A created App window that has not loaded its route yet: it loads only once the move has made it resident. */
 export type PendingAppWindow = Readonly<{ record: ProductWindowRecord; load(): Promise<void> }>;
@@ -79,6 +81,8 @@ export class SurfaceWindowController {
   private readonly appUseResidence: AppUseResidenceController;
   private readonly navigationIntents = new SurfaceNavigationIntents();
   private createAppWindow: AppWindowFactory | null = null;
+  private readonly appWindowOpener: AppWindowOpener;
+  private readonly appWindowCloser: AppWindowCloser;
   /** New App windows waiting for their move's claim before loading (a renderer that loads earlier queries while still nonresident). */
   private readonly pendingLoads = new Map<string, () => Promise<void>>();
   private resolveChatIdentity: ((chatId: string) => ChatSurfaceIdentity | undefined) | null = null;
@@ -142,6 +146,21 @@ export class SurfaceWindowController {
         }, "restored");
         if (rebindFailure) throw rebindFailure;
       },
+    });
+    this.appWindowOpener = new AppWindowOpener({
+      registry, residence: this.residence, migration: this.migration, pendingLoads: this.pendingLoads,
+      assertOpen: (appId) => { this.assertAdmission(); this.assertAppEnabled(appId); },
+      create: (appId, windowId, route) => {
+        if (!this.createAppWindow) throw new Error("App window factory is unavailable");
+        return this.createAppWindow(appId, windowId, route);
+      },
+      track: (record) => this.trackAppWindow(record), close: (record) => this.closeNow(record),
+      chatSurface: (chatId, incarnationId) => this.validatedChatSurface(chatId, incarnationId),
+      publish: (residence) => this.publishResidence(residence, "intent"),
+    });
+    this.appWindowCloser = new AppWindowCloser({
+      reclaim: (record) => this.reclaimOwnedWindow(record, "close"),
+      current: (record) => this.admissionOpen && this.registry.get(record.windowId) === record && !this.intentionalClose.has(record.windowId),
     });
     this.appUseResidence = new AppUseResidenceController(
       this.residence,
@@ -232,8 +251,8 @@ export class SurfaceWindowController {
       if (this.intentionalClose.has(record.windowId)) return;
       const event = args[0] as { preventDefault?(): void } | undefined;
       event?.preventDefault?.();
-      if (this.closePolicy?.(record)) return;
-      void this.reclaimOwnedWindow(record, "close").catch((cause) => {
+      if (this.appWindowCloser.pending(record) || this.closePolicy?.(record)) return;
+      void this.appWindowCloser.close(record).catch((cause) => {
         /* 迁移失败不许留下一扇关不掉的窗：降级为 crash 语义收回并明示丢草稿。 */
         console.error("[window-surfaces] normal close migration failed", cause);
         this.registry.focus(record.windowId);
@@ -429,69 +448,23 @@ export class SurfaceWindowController {
     return { action: "focused", residence: current };
   }
 
-  private async openInWindow(
-    context: TrustedRendererContext,
-    input: OpenSurfaceInWindowInput
-  ): Promise<SurfaceIntentResult> {
+  /** Main-owned activation does not impersonate a renderer or reveal the retained main window. */
+  async openAppWindow(rawAppId: string): Promise<SurfaceIntentResult> {
+    this.assertAdmission();
+    const appId = parseAppId(rawAppId);
+    this.assertAppEnabled(appId);
+    if (!this.registry.main()) await this.ensureMain?.();
+    const chatId = this.resolveActiveUseChat?.(appId);
+    const chat = chatId ? this.resolveChatIdentity?.(chatId) : undefined;
+    return this.appWindowOpener.open({ appId, surface: appStudioSurface(appId), route: canonicalAppSurfaceRoute(appId),
+      ...(chatId && chat?.incarnationId && chat.appId === appId && chat.appRole === "use"
+        ? { useChat: { chatId, incarnationId: chat.incarnationId } } : {}) });
+  }
+
+  private async openInWindow(context: TrustedRendererContext, input: OpenSurfaceInWindowInput): Promise<SurfaceIntentResult> {
     this.assertAdmission();
     this.assertStudioIntent(context, input.appId, input.surface);
-    const route = assertAppSurfaceRoute(input.route, input.appId);
-    const current = this.residence.get(input.surface);
-    if (current.windowId) {
-      this.registry.focus(current.windowId);
-      return { action: "focused", residence: current };
-    }
-    const existing = this.registry.app(input.appId);
-    if (existing) {
-      this.registry.focus(existing.windowId);
-      return { action: "focused", residence: current };
-    }
-    const create = this.createAppWindow;
-    if (!create) throw new Error("App window factory is unavailable");
-    const main = this.registry.main();
-    if (!main) throw new Error("Main window is unavailable");
-    const windowId = `app:${input.appId}:${randomUUID()}`;
-    const pending = await create(input.appId, windowId, route);
-    const target = pending.record;
-    this.trackAppWindow(target);
-    this.pendingLoads.set(target.windowId, pending.load);
-    try {
-      const companion = input.useChat
-        ? this.validatedChatSurface(input.useChat.chatId, input.useChat.incarnationId)
-        : null;
-      const companionResidence = companion ? this.residence.get(companion) : null;
-      if (companionResidence?.windowId) {
-        this.closeNow(target);
-        this.registry.focus(companionResidence.windowId);
-        return { action: "focused", residence: current };
-      }
-      const migrated = await this.migration.migrate({
-        surface: input.surface,
-        targetRoute: route,
-        expectedRevision: input.expectedRevision ?? current.claimRevision,
-        sourceWindowId: main.windowId,
-        sourceResidenceWindowId: null,
-        targetWindowId: target.windowId,
-        targetResidenceWindowId: target.windowId,
-        ...(companionResidence
-          ? {
-              companions: [{
-                surface: companionResidence.surface,
-                expectedRevision: companionResidence.claimRevision,
-              }],
-            }
-          : {}),
-        onClaimed: (residences) => { for (const residence of residences) this.publishResidence(residence, "intent"); },
-      });
-      target.window.show();
-      target.window.focus();
-      return { action: "migrated", residence: migrated.primary };
-    } catch (cause) {
-      this.closeNow(target);
-      throw cause;
-    } finally {
-      this.pendingLoads.delete(target.windowId);
-    }
+    return this.appWindowOpener.open(input);
   }
 
   private async reclaim(

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on TurnRegistry state, synchronous coordinator identities, Agent activity, and ChatsService.onEvent.
  * [OUTPUT]: Provides bounded revisioned task snapshots, accurate phases/subtask counts for every turn origin (manual, relay, workflow — a workflow step's task is marked with its run, step and role, and a run counts once: its finished steps' rows leave while another of its steps runs), row expiry, and independent failure-prioritized batch results.
- * [POS]: Main task projection shared by tray and the independent top panel.
+ * [POS]: Main task projection shared by the optional tray and Dock Tasks widget.
  */
 
 import type { StopOperation } from "./lifecycle/start-fence";

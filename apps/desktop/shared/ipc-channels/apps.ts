@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on nothing.
- * [OUTPUT]: Zod-free App/file/workspace channel names and Artifact lifecycle events; main owns effect/authority validation.
+ * [OUTPUT]: Zod-free independent preset update and App/file/workspace channel names and Artifact lifecycle events; main owns effect/authority validation.
  * [POS]: Zod-free IPC channel names (OPT-34): preload imports these so no schema module enters its bundle; the owning contract modules re-export them unchanged.
  */
 export const APPS_CHANNEL = {
@@ -64,6 +64,10 @@ export const APPS_CHANNEL = {
   probePreset: "apps:probe-preset",
   discardPresetProbe: "apps:discard-preset-probe",
   installPreset: "apps:install-preset",
+  presetUpdateStatus: "apps:preset-update:status",
+  preparePresetUpdate: "apps:preset-update:prepare",
+  decidePresetUpdate: "apps:preset-update:decide",
+  retryPresetUpdate: "apps:preset-update:retry",
   ghStatus: "apps:gh-status",
   readConfig: "apps:read-config",
   writeConfig: "apps:write-config",

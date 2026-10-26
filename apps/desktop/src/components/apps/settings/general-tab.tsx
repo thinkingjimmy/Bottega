@@ -2,10 +2,11 @@
 
 /**
  * [INPUT]: Apps provider, App config IPC, requirements/rename controls, shared generation history and Settings primitives.
- * [OUTPUT]: App identity, pending configuration and shared App/plugin generation history; Chat owns Agent selection.
+ * [OUTPUT]: App identity, independent update consent/recovery, pending configuration and shared App/plugin generation history; Chat owns Agent selection.
  * [POS]: First App settings body; configuration and version reads mount only with this tab.
  */
 
+import { PresetUpdateSection } from "./updates/preset-update";
 import { useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
 import {
@@ -49,6 +50,7 @@ export function GeneralTab({ record, busy, fail, run }: AppSettingsTabProps) {
   return (
     <SettingsCanvas>
       <div className="space-y-8">
+        {record.origin === "preset" && !record.cloudManaged && <PresetUpdateSection record={record} busy={busy} fail={fail} run={run} />}
         <GuiHistoryList owner={{kind:'app',id:record.id}} locale={i18n.language}/>
         <SettingsSection title={t("apps.settingsBasics")}>
           <SettingsList>

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, the canonical Agent backend schema, and the local usage source identities.
- * [OUTPUT]: Provides the portable DockLayout schema (native/Bottega App, system entry, two built-in Widget kinds), budgets, identity helpers, the item category projection, anchored Downloads/Trash ordering, and the first-run default layout builder.
+ * [OUTPUT]: Provides the portable DockLayout schema (native/Bottega App, system entry, three built-in Widget kinds), budgets, identity helpers, the item category projection, anchored Downloads/Trash ordering, and the first-run default layout builder.
  * [POS]: shared/system-dock data model; the only shape that may enter the account-config dock-layout ciphertext. Machine facts (paths, PIDs, permissions, mode, displays) never live here.
  */
 
@@ -30,7 +30,8 @@ export const aiLimitsWidgetSchema = z.object({ type: z.literal("builtin.ai-limit
   .refine((value) => new Set(value.selectedBackends).size === value.selectedBackends.length, { message: "duplicate backend" });
 export const aiActivityWidgetSchema = z.object({ type: z.literal("builtin.ai-activity"), configVersion: z.literal(1), standard: z.literal("compact"),
   source: z.enum(USAGE_QUERY_TARGETS), period: z.literal("today") }).strict();
-const widgetSchema = z.object({ id, kind: z.literal("widget"), widget: z.union([aiLimitsWidgetSchema, aiActivityWidgetSchema]) }).strict();
+export const tasksWidgetSchema = z.object({ type: z.literal("builtin.tasks"), configVersion: z.literal(1), standard: z.literal("compact") }).strict();
+const widgetSchema = z.object({ id, kind: z.literal("widget"), widget: z.union([aiLimitsWidgetSchema, aiActivityWidgetSchema, tasksWidgetSchema]) }).strict();
 export const dockItemSchema = z.union([nativeAppSchema, bottegaAppSchema, systemEntrySchema, widgetSchema]);
 export const dockLayoutSchema = z.object({ schemaVersion: z.literal(DOCK_LAYOUT_SCHEMA_VERSION), initialized: z.boolean(),
   items: z.array(dockItemSchema).max(DOCK_LAYOUT_BUDGET.items), order: z.array(id).max(DOCK_LAYOUT_BUDGET.items) }).strict()
@@ -50,7 +51,8 @@ export type DockItem = z.infer<typeof dockItemSchema>;
 export type DockLayout = z.infer<typeof dockLayoutSchema>;
 export type AiLimitsWidget = z.infer<typeof aiLimitsWidgetSchema>;
 export type AiActivityWidget = z.infer<typeof aiActivityWidgetSchema>;
-export type DockWidget = AiLimitsWidget | AiActivityWidget;
+export type TasksWidget = z.infer<typeof tasksWidgetSchema>;
+export type DockWidget = AiLimitsWidget | AiActivityWidget | TasksWidget;
 export type DockItemCategory = "finder" | "app" | "trailing";
 /** Draft item before an identity is minted. */
 export type DockItemDraft = DockItem extends infer T ? T extends { id: string } ? Omit<T, "id"> : never : never;
@@ -78,6 +80,9 @@ export function semanticKey(item: DockItem | DockItemDraft): string | null {
 }
 export function defaultLimitsWidget(backends: readonly z.infer<typeof agentBackendIdSchema>[]): AiLimitsWidget {
   return { type: "builtin.ai-limits", configVersion: 1, standard: "compact", selectedBackends: [...backends], selectionByBackend: {} };
+}
+export function defaultTasksWidget(): TasksWidget {
+  return { type: "builtin.tasks", configVersion: 1, standard: "compact" };
 }
 export function defaultActivityWidget(): AiActivityWidget {
   return { type: "builtin.ai-activity", configVersion: 1, standard: "compact", source: "all", period: "today" };

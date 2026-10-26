@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on formal bounded native reads, verified private bodies and existing mirror/receipt transactions.
- * [OUTPUT]: Hydrates native/imported mirrors with explicit complete, owner-wait and stale-head outcomes; reconciles settled receipts after the durable per-Chat prefix.
+ * [OUTPUT]: Hydrates native/imported mirrors with complete, owner-wait and stale-head outcomes; reconciles settled receipts after the durable prefix and requests original recovery before retrying deferred settlement.
  * [POS]: Main downlink lifetime; incomplete bodies remain explicitly pending and local authority is never synthesized.
  */
 import { protocolHeader, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
@@ -26,7 +26,8 @@ export class DesktopChatDownlink {
   private readonly consumer: TurnReceiptConsumer;
   constructor(private readonly ports: { crypto(): FileCipherPort; config: CloudBuildConfig; scope: SyncScope; store: ChatSyncStore; files: Pick<EncryptedBlobTransfer, "readFile">;
     transport: Pick<AccountTransport, "query">; cache?: Pick<DesktopBlobStore, "read">; current(): void; changed(): void;
-    beforeReceipts?(head: CloudChatHead): Promise<void>; afterBody?(head: CloudChatHead): Promise<void>; skipReceipts?: boolean }) {
+    beforeReceipts?(head: CloudChatHead): Promise<void>; deferredReceipt?(head: CloudChatHead): Promise<void>;
+    afterBody?(head: CloudChatHead): Promise<void>; skipReceipts?: boolean }) {
     this.consumer = new TurnReceiptConsumer({ ...ports, signal: this.controller.signal });
   }
   private current() { this.controller.signal.throwIfAborted(); this.ports.current(); }
@@ -94,7 +95,12 @@ export class DesktopChatDownlink {
       this.current(); const page = await transport.query("turns/reads:receipts", { ...this.header, chatId: head.chat.id, afterSeq, throughSeq: head.reservedThroughSeq });
       for (const receipt of page.items) {
         this.current();
-        if (await this.consumer.consume(receipt) && contiguous) prefix = receipt.assistantSeq; else contiguous = false;
+        let installed = await this.consumer.consume(receipt);
+        if (!installed && receipt.settlementState === "settled" && !head.openTurnId && this.ports.deferredReceipt) {
+          await this.ports.deferredReceipt(head); this.current();
+          installed = await this.consumer.consume(receipt);
+        }
+        if (installed && contiguous) prefix = receipt.assistantSeq; else contiguous = false;
       }
       if (prefix > written) { await this.mutate({ type: "advance-receipt-cursor", chatId: head.chat.id, incarnationId: head.chat.incarnationId, throughSeq: prefix }); written = prefix; }
       if (page.complete) return "complete";

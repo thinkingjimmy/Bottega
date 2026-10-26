@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React, explicit local-file failure translation keys, localized panel copy, session identity, Browser/Plan/Subagent projections and scoped workspace/file-link readers
- * [OUTPUT]: Stable panel commands and generation-fenced previews shared by composer references and message file links
+ * [OUTPUT]: Stable panel commands including Artifact tabs and generation-fenced previews shared by composer references and message file links
  * [POS]: apps/desktop/src/components/chat/runtime/session/panels; The sole side-panel state owner in chat/runtime/session
  */
 
@@ -302,7 +302,7 @@ export function useSessionSidePanel({
     },
     [context, setState]
   );
-  const openArtifact = useCallback((fence: import("../../../../../../shared/ipc/apps/artifact-ipc").ArtifactFence) => setState({ kind: "artifact-preview", fence }), [setState]);
+  const openArtifact = useCallback((fence: import("../../../../../../shared/ipc/apps/artifact-ipc").ArtifactFence) => openTabs({ target: "artifact", fence }), [openTabs]);
   const openPlan = useCallback((message: ChatMessage) => {
     if (message.role !== "assistant" || message.kind !== "plan") return;
     setState({

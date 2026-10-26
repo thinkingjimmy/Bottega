@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on AppStore, task-frozen automatic maintenance selection, no-link manifest reads, source/compatibility receipts, joined commands, publication and generation consent.
- * [OUTPUT]: Executes authorized App install/update/repair work with target-specific maintenance eligibility and the existing source, publication and permission fences. Fences disabled rebuild/repair and auto-start without rolling back enablement.
+ * [OUTPUT]: Executes authorized App install/update/repair work with target-specific maintenance eligibility and independent update custody and the existing source, publication and permission fences. Fences disabled rebuild/repair and auto-start without rolling back enablement.
  * [POS]: Apps supply-chain coordinator; it turns mutable source trees into validated runtime generations while AppSourceMonitor owns observation inside the same mutation lane
  */
 
+import { assertUpdateIdle } from "../updates/guard";
 import { validateStaticArtifact } from "./static-artifact";
 import { assertAppEnabled, isAppEnabled } from "../service/availability/guard";
 import { AppCompatibilityError, readCompatibility, revalidateCompatibility, recordCandidate, revalidateCompatibility as verifyDeclaration } from "../compatibility/read";
@@ -173,6 +174,7 @@ export class AppInstaller {
 
   async enqueueRepair(appId: string) {
     assertAppEnabled(this.store.get(appId));
+    assertUpdateIdle(this.store.get(appId));
     if (this.tasks.has(appId)) throw new Error("该 App 已在任务队列中");
     await this.assertCompatibility(appId);
     await this.repairs.assertCanEnqueue(appId);
@@ -251,6 +253,7 @@ export class AppInstaller {
 
   async retryInstall(appId: string) {
     assertAppEnabled(this.store.get(appId));
+    assertUpdateIdle(this.store.get(appId));
     const record = this.store.get(appId);
     if (!record || record.state !== "install-failed") {
       throw new Error("当前状态不能干净重装");
@@ -271,6 +274,7 @@ export class AppInstaller {
 
   async retryUpdate(appId: string) {
     assertAppEnabled(this.store.get(appId));
+    assertUpdateIdle(this.store.get(appId));
     const record = this.store.get(appId);
     if (!record || record.state !== "update-failed") {
       throw new Error("当前状态不能重试更新");
@@ -288,12 +292,20 @@ export class AppInstaller {
     return this.rebuildAfterEditLocked(appId, force);
   }
 
+  async acceptSourceUpdateHeld(appId: string) {
+    const record = this.store.get(appId);
+    if (!record) throw new Error("App does not exist");
+    const observed = await this.sourceMonitor.inspect(record, this.localTask());
+    await this.sourceMonitor.writeBaseline(appId, observed.fingerprint);
+  }
+
   async reconcileSourceHeld(appId: string) {
     await this.sourceMonitor.reconcileHeld(appId);
   }
 
   private async rebuildAfterEditLocked(appId: string, force = false, expectedDigest?: string) {
     assertAppEnabled(this.store.get(appId));
+    assertUpdateIdle(this.store.get(appId));
     if (this.maintenanceGate.isLocked(appId)) throw new Error("App 修复中");
     const record = this.store.get(appId);
     if (!record || !["ready", "update-failed"].includes(record.state)) {

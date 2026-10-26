@@ -1,7 +1,7 @@
 /**
  * Native command titles feed the shared composer service controls without remounting the Chat.
  * [INPUT]: Depends on React layout measurement, ChatSessionController, window role, canonical transcript and its hydration skeleton, lib/idle-prefetch, composer, optional side panel, Gallery, and main-window Memory state
- * [OUTPUT]: Native/imported Chat layout, scoped local message-file links, non-visual command execution context, Artifact panel resizing and paged transcript states.
+ * [OUTPUT]: Native/imported Chat layout, scoped local message-file links, non-visual command execution context, shared third-column sizing and paged transcript states.
  * [POS]: The single horizontal chat layout for draft and canonical native/imported sessions
  */
 
@@ -161,10 +161,7 @@ export function ChatViewFrame({
     memoryStore.getSnapshot,
     memoryStore.getSnapshot
   );
-  const panel = controller.sidePanel.state;
-  const wideKey = enableSidePanel && panel.kind === "artifact-preview" && panel.fence.mode === "wide"
-    ? `${controller.transcript.chatId}:${controller.transcript.incarnationId}:${panel.fence.id}` : null;
-  const { containerRef: layoutRootRef, geometry: panelGeometry, widthChange: commitPanelWidth } = usePanelLayout(nativePanelWidths, wideKey);
+  const { containerRef: layoutRootRef, geometry: panelGeometry, widthChange: commitPanelWidth } = usePanelLayout(nativePanelWidths);
   const artifactHost = useDesktopArtifactHost(controller, layoutRootRef, enableSidePanel);
   const conversationId = controller.transcript.chatId;
   const panelContext = controller.sidePanel.context;

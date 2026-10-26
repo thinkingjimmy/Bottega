@@ -175,7 +175,7 @@
     {"path":"shared/app-gui/support.ts","bytes":4637,"sha256":"sha256:a2e61eeedc47034a3b796315f9abac6dc689386f1c5795e57954a96d876ac5e1"},
     {"path":"shared/apps/model/apps-execution.ts","bytes":980,"sha256":"sha256:890560f494e0b36ab6277dfb22d5b9e157c1cff3724fa3fe25ac3200b5d60631"}
   ],
-  "runtimeSbomDigest": "sha256:3e66e972f8374b6c882a57af967ccf30bd973ee08cd424064810a06a72fb3dd2",
+  "runtimeSbomDigest": "sha256:36a069a31af6be4652650338e733d2cb389228a09d16ca85fb4183240ed010f2",
   "noticesDigest": "sha256:dde2c417b5eaaf39421765603f3329983f6a52d0b9e1a4ab90ece17186187e46",
   "authoringContracts": [
     "bottega-react-v1",

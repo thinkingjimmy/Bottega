@@ -311,7 +311,7 @@ export const cloudCopy = {
   "signOutFailed": "Could not sign out. Check your connection and try again.",
   "conflictsLoadFailed": "Could not load the changes to review. Check your connection and try again.",
   "openBaseFailed": "Could not open this Project’s Base. Check your connection and try again.",
-  "secureStorageDescription": "macOS may request Keychain access to protect your sign-in on this computer.",
+  "secureStorageDescription": "Bottega protects your sign-in on this computer without asking for your macOS password.",
   "secureStorageRestart": "Restart Bottega, then sign in again.",
   "retrySecureSave": "Retry secure save",
   "discardSavedLogin": "Discard saved sign-in…",

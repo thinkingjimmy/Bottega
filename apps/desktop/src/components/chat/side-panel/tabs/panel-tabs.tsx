@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React tabs, PanelSessionContext/eligibility, slot store, Browser tabs, the shared App authorization dialog/badge, the Base navigation/snapshot provider slices, product-only Base/App/Image/Subagent panels, and image-pins for open Image tabs
- * [OUTPUT]: Provides one tablist with a unified installed-App add flow, independent App tabs, per-App authorization triggers, dimmed sleeping web tabs, localized fallbacks, restore sanitization, Image tabs that keep resolving when the transcript window moves, and product-query short circuits
+ * [INPUT]: React tabs, session eligibility, session-only Artifact tabs and close guards, durable slots, Browser tabs, App authorization, Base projections and image pins
+ * [OUTPUT]: One Base/App/Browser/Image/Subagent/Artifact tablist with guarded Artifact navigation, active-only preview leases, explicit full view and localized recovery
  * [POS]: apps/desktop/src/components/chat/side-panel/tabs; Native panel data/effect adapter; shared PanelHost owns tab chrome and retained regions
  */
 
@@ -9,11 +9,14 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { PanelHost, type PanelLeaf } from "@ai-chat/chat-ui/side-panel/frame";
+import { ArtifactTab, isArtifactTab, rememberArtifactTab, useArtifactTabs, useArtifactTabGuard } from "@ai-chat/chat-ui/artifact-tabs";
+import { artifactCopy, useArtifactHost } from "@ai-chat/chat-ui/artifacts";
 const BaseWorkbench = lazy(() => import("@/components/bases/base-workbench").then(module => ({ default: module.BaseWorkbench })));
 import {
   useBaseSnapshots,
@@ -67,7 +70,7 @@ const SubagentPanel = lazy(() =>
 );
 
 const regionCapability = (id: PanelRegion): PanelCapability =>
-  id === "browser"
+  isArtifactTab(id) ? "artifact" : id === "browser"
     ? "browser"
     : isImageRegion(id)
       ? "image"
@@ -92,12 +95,18 @@ export function PanelTabs({
   command,
   onClose,
   galleryProjection,
+  full = false,
+  onFullChange = () => {},
+  registerClose,
 }: {
   context: PanelSessionContext;
   subagents: Record<string, ProjectedSubagent>;
   command?: SidePanelTabCommand;
   onClose: () => void;
   galleryProjection?: ConversationImageProjection;
+  full?: boolean;
+  onFullChange?: (full: boolean) => void;
+  registerClose?: (handler: () => void) => () => void;
 }) {
   const { t } = useAppTranslation();
   const { movedOwners, resolveForSection } = useBasesNavigation();
@@ -111,6 +120,14 @@ export function PanelTabs({
   const slots = usePanelSlots(context);
   const tabs = useMemo(() => [...slots.tabs], [slots.tabs]);
   const activeTabId = slots.active;
+  const artifactHost = useArtifactHost(), artifactScope = artifactHost?.scope ?? `${chatId}:${incarnationId}`;
+  const artifacts = useArtifactTabs(artifactScope);
+  const navigationOwner = useMemo(() => ({ artifactScope, activeTabId }), [artifactScope, activeTabId]);
+  const { beforeClose, close: guardClose, failed: closeFailed } = useArtifactTabGuard(navigationOwner);
+  const navigate = useCallback((action: () => void) => {
+    void guardClose(() => { onFullChange(false); action(); });
+  }, [guardClose, onFullChange]);
+  useLayoutEffect(() => registerClose?.(() => navigate(onClose)), [navigate, onClose, registerClose]);
   const [availableApps, setAvailableApps] = useState<AvailableAttachedApp[]>([]);
   const [addAppOpen, setAddAppOpen] = useState(false);
   const refreshApps = useCallback(async () => {
@@ -207,15 +224,14 @@ export function PanelTabs({
 
   const openPanel = (id: PanelTabId) => {
     if (!panelEligibility(context, regionCapability(id)).allowed) return;
-    panelSlotStore.open(slotKey, id);
+    navigate(() => panelSlotStore.open(slotKey, id));
     if (id === "subagents") setSelectedAgentThreadId("");
   };
   // 目录里唯一的分叉，只此一处：面板是单例，Browser 是工厂。
   const openFromCatalog = (id: PanelRegion) => {
     if (!panelEligibility(context, regionCapability(id)).allowed) return;
     if (id !== "browser") return openPanel(id);
-    browser.createTab();
-    panelSlotStore.activate(slotKey, "browser");
+    navigate(() => { browser.createTab(); panelSlotStore.activate(slotKey, "browser"); });
   };
   const catalogDisabled = (id: PanelRegion) => {
     if (!panelEligibility(context, regionCapability(id)).allowed) return true;
@@ -255,6 +271,15 @@ export function PanelTabs({
       handledNonce.current = command.nonce;
       return;
     }
+    if (target === "artifact") {
+      handledNonce.current = command.nonce;
+      navigate(() => {
+        const region = rememberArtifactTab(artifactScope, command.fence);
+        panelSlotStore.open(slotKey, region);
+        requestAnimationFrame(() => tabRefs.current.get(region)?.focus());
+      });
+      return;
+    }
     if (target === "image") {
       if (!panelEligibility(context, "image").allowed) {
         handledNonce.current = command.nonce;
@@ -282,7 +307,7 @@ export function PanelTabs({
       ) {
         return;
       }
-      panelSlotStore.open(slotKey, region);
+      navigate(() => panelSlotStore.open(slotKey, region));
       requestAnimationFrame(() => tabRefs.current.get(region)?.focus());
       return;
     }
@@ -297,7 +322,7 @@ export function PanelTabs({
       }
       if (!baseResolved) return;
       handledNonce.current = command.nonce;
-      if (baseExists) panelSlotStore.open(slotKey, "base");
+      if (baseExists) navigate(() => panelSlotStore.open(slotKey, "base"));
       return;
     }
     if (target === "app") {
@@ -306,14 +331,14 @@ export function PanelTabs({
          这个 effect 的同步职责，不是用 effect 派生本地 render state。 */
       // eslint-disable-next-line react-hooks/set-state-in-effect
       refreshApps();
-      panelSlotStore.open(slotKey, `app:${command.appId}`);
+      navigate(() => panelSlotStore.open(slotKey, `app:${command.appId}`));
       return;
     }
     handledNonce.current = command.nonce;
     // browser 不占面板席位——它是区域不是面板，命令只把激活态挪过去。
-    if (target === "browser") panelSlotStore.activate(slotKey, target);
+    if (target === "browser") navigate(() => panelSlotStore.activate(slotKey, target));
     else if (panelEligibility(context, "subagents").allowed) {
-      panelSlotStore.open(slotKey, target);
+      navigate(() => panelSlotStore.open(slotKey, target));
     }
     if (target === "subagents") {
       // command 是父级递增 nonce 表达的外部事件；此处与 ensure/activate 同批落地。
@@ -322,11 +347,13 @@ export function PanelTabs({
   }, [
     baseExists,
     baseResolved,
+    artifactScope,
     chatId,
     command,
     context,
     galleryProjection,
     incarnationId,
+    navigate,
     productRef,
     refreshApps,
     slotKey,
@@ -374,7 +401,7 @@ export function PanelTabs({
         : undefined;
       const label = isAppRegion(id)
         ? attachedApp?.name ?? catalogLabel
-        : isImageRegion(id)
+        : isArtifactTab(id) ? artifacts.get(id)?.fence.title ?? "Artifact" : isImageRegion(id)
           ? resolvedImages.get(id)?.label ?? catalogLabel
           : catalogLabel;
       return {
@@ -404,7 +431,7 @@ export function PanelTabs({
           : effectiveBaseOwnerKey && productRef
             ? spec.renderTabActions?.(effectiveBaseOwnerKey, productRef.chatId)
             : undefined,
-        select: () => panelSlotStore.activate(slotKey, id),
+        select: () => navigate(() => panelSlotStore.activate(slotKey, id)),
         close: () => {
           panelSlotStore.close(slotKey, id);
           if (id === "subagents") setSelectedAgentThreadId("");
@@ -428,6 +455,7 @@ export function PanelTabs({
       dim: tab.sleeping,
       ...(tab.sleeping ? { hint: t("chat.sidePanel.sleepingTab") } : {}),
       select: () => {
+        navigate(() => {
         panelSlotStore.activate(slotKey, "browser");
         // 已选中就别再喊一遍：activateTab 会让 main 重挂 WebContentsView，
         // 而方向键连按会把这条路径踩成一串无谓的 re-parent。An Agent's fallback may have selected it, though: the person's own click
@@ -435,6 +463,7 @@ export function PanelTabs({
         if (tab.tabId !== browser.snapshot.selectedTabId || tab.tabId !== browser.snapshot.personSelectedTabId) {
           browser.activateTab(tab.tabId);
         }
+        });
       },
       close: () => browser.closeTab(tab.tabId),
     })),
@@ -445,6 +474,7 @@ export function PanelTabs({
   const closeAt = (index: number) => {
     const item = items[index]!;
     const rest = items.filter((_, position) => position !== index);
+    const commit = () => {
     item.close();
     if (!item.selected) return;
     // 只交接「哪片区域」。网页之间的接任归 main 的 closeTab 邻居规则，
@@ -453,10 +483,15 @@ export function PanelTabs({
       slotKey,
       rest[Math.min(index, rest.length - 1)]?.region ?? ""
     );
+    };
+    if (item.selected) navigate(commit); else commit();
   };
 
 
   const leaves: PanelLeaf[] = [
+    ...(isArtifactTab(activeTabId) ? [{ id: activeTabId, view: artifacts.has(activeTabId) ? <ArtifactTab key={activeTabId} value={artifacts.get(activeTabId)!}
+      presentation={{ full, canExpand: true, setFull: onFullChange, beforeClose, close: () => closeAt(items.findIndex(item => item.key === activeTabId)) }} />
+      : <p role="status" className="p-4 text-sm">{artifactCopy(artifactHost?.locale ?? "en").unavailable}</p> }] : []),
     ...(productRef && tabs.includes("base") ? [{ id: "base", view: effectiveBaseOwnerKey ? (
             <Suspense fallback={null}><BaseWorkbench
               key={effectiveBaseOwnerKey}
@@ -512,13 +547,13 @@ export function PanelTabs({
       labelledBy: browser.snapshot.selectedTabId ? `panel-tab-${browser.snapshot.selectedTabId}-trigger` : undefined,
       view: <BrowserPanel controller={browser} visible={activeTabId === "browser"} /> }] : []),
   ];
-  return <PanelHost native close={onClose} copy={{ close: t("chat.sidePanel.closePanel") }} actions={activeHeaderActions}
+  return <PanelHost native close={() => navigate(onClose)} copy={{ close: t("chat.sidePanel.closePanel") }} actions={activeHeaderActions}
     items={items} refs={tabRefs} onCloseTab={closeAt} tabsLabel={t("chat.sidePanel.tabsAriaLabel")} closeTabLabel={t("chat.sidePanel.closeTab")}
     active={activeTabId} leaves={leaves}
     add={<AddPanelMenu appsDisabled={!productRef} disabledFor={catalogDisabled} disabledReasonFor={catalogDisabledReason}
       onOpen={openFromCatalog} onOpenApp={() => setAddAppOpen(true)} />}
     empty={baseResolved && <PanelTabsEmpty disabledFor={catalogDisabled} disabledReasonFor={catalogDisabledReason} onOpen={openFromCatalog} onOpenApp={() => setAddAppOpen(true)} />}
-    footer={productRef && (
+    footer={<>{closeFailed && <p role="alert" className="p-3 text-sm text-destructive">{artifactCopy(artifactHost?.locale ?? "en").failed}</p>}{productRef && (
         <AppAuthorizationDialog
           mode="add"
           onCommitted={async (appId) => {
@@ -537,5 +572,5 @@ export function PanelTabs({
             expectedConversationIncarnationId: productRef.incarnationId,
           }}
         />
-    )} />;
+    )}</>} />;
 }

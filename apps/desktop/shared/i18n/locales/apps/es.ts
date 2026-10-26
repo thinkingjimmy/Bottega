@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Spanish catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
+ * [OUTPUT]: Provides the Apps Spanish catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Spanish copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,6 +8,13 @@
 import type { appsEn } from "./en";
 
 export const appsEs: typeof appsEn = {
+  dock: {
+    pin: "Fijar en el Dock",
+    unpin: "Quitar del Dock",
+    pinFailed: "No se pudo guardar el acceso del Dock. Inténtalo de nuevo.",
+    openFailed: "No se pudo abrir {{name}}",
+    openFailedDetail: "Haz clic en la App del Dock para volver a intentarlo.",
+  },
   provider: {
     listFailed: "No se pudieron cargar las Apps: {{message}}",
   },

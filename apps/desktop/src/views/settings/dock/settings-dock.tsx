@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, the i18n provider, SettingsPage and Settings primitives, the Dock settings store, and the settings/dock sections.
- * [OUTPUT]: Provides DockSettingsView, reusable DockSettingsContent for the plugin detail, and DockPluginSetupDialog; all use the original owner, sections and setup confirmation. Focus return refreshes registration; sync and recovery remain visible while off.
+ * [OUTPUT]: Provides DockSettingsView, reusable DockSettingsContent for the plugin detail, and DockPluginSetupDialog; all use the original owner, sections and setup confirmation. Focus return refreshes registration; sync decisions and recovery remain available while off, with routine sync status hidden. Includes localized App shortcut failures.
  * [POS]: apps/desktop/src/views/settings/dock; Settings layer's legacy Dock page and the Dock plugin's settings content; main applies every command and reports the authoritative outcome.
  */
 
@@ -19,6 +19,7 @@ import { DockSync } from "@/components/settings/dock/sync";
 import { DOCK_CONSENT_VERSION } from "../../../../shared/system-dock/local-state";
 
 const FAILURE_KEYS: Record<DockSettingsCommand, string> = {
+  "app-pin": "apps.dock.pinFailed",
   setup: "systemDock.settings.confirmFailed", preference: "systemDock.settings.failedPreference", mode: "systemDock.settings.failedMode",
   disable: "systemDock.settings.failedDisable", restore: "systemDock.settings.failedRestore", resume: "systemDock.settings.failedResume",
   reset: "systemDock.settings.failedReset", resolve: "systemDock.settings.failedResolve", import: "systemDock.settings.failedImport",

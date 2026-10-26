@@ -1,11 +1,18 @@
 /**
  * [INPUT]: Depends only on i18next interpolation syntax
- * [OUTPUT]: Provides the Apps English catalog, first-party preset copy, contextual authorization copy, operation-specific progress copy, and the structural reference for translated Apps catalogs; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
+ * [OUTPUT]: Provides the Apps English catalog, first-party preset copy, contextual authorization copy, operation-specific progress copy, and the structural reference for translated Apps catalogs; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: English copy for Apps discovery, install, lifecycle, authorization, Studio, sharing, and non-cancellable deletion surfaces; assembled by the matching top-level locale
  */
 
 export const appsEn = {
+  dock: {
+    pin: "Pin to Dock",
+    unpin: "Remove from Dock",
+    pinFailed: "Could not save the Dock shortcut. Try again.",
+    openFailed: "Could not open {{name}}",
+    openFailedDetail: "Click the App in the Dock to try again.",
+  },
   provider: {
     listFailed: "Failed to load Apps: {{message}}",
   },

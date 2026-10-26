@@ -33,9 +33,7 @@ export function KeyboardShortcutsSection() {
       error={snapshot.error}
       capture={captureBinding}
       hasOverrides={Object.keys(overrides ?? {}).length > 0}
-      rows={SHORTCUT_IDS.filter(
-        (id) => id !== "taskPanel" || isApplePlatform(),
-      ).map((id) => ({
+      rows={SHORTCUT_IDS.map((id) => ({
         id,
         label: copy.labels[id],
         hint:

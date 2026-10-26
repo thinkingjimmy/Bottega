@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on React, the isolated bridge's icon lookup, the canonical product mark, lucide glyphs, and Dock item/candidate projections.
- * [OUTPUT]: Provides `useDockIcons` (process-lifetime cache, one in-flight request per key) and `DockGlyph`, which draws the host product mark with native artwork sizing, a native icon when main supplied one and a neutral glyph otherwise, including a shaded frosted-glass Trash bin whose empty/full/unknown variants differ in shape.
+ * [OUTPUT]: Provides `useDockIcons` (process-lifetime cache, one in-flight request per key) and `DockGlyph`, which draws the host product mark with native artwork sizing, a native icon when main supplied one and a neutral glyph otherwise, including a shaded frosted-glass Trash bin whose empty/full/unknown variants differ in shape. Uses live App emoji for Bottega App shortcuts.
  * [POS]: system-dock/common icon layer shared by bar items, the navigate list and the add picker; never decodes paths itself, only opaque keys main resolved (INV-13).
  */
 
 import { useEffect, useId, useState } from "react";
 import { PRODUCT_MARK_URL } from "@ai-chat/ui/components/workspace/brand";
-import { AppWindow, ChartColumn, FolderDown, Gauge, HardDrive } from "lucide-react";
+import { AppWindow, ChartColumn, FolderDown, Gauge, HardDrive, ListTodo } from "lucide-react";
 import type { DockBarItem, TrashState } from "../../../shared/system-dock/ipc";
 
 /* Icons are immutable per key for the renderer's lifetime; a destroyed panel starts empty again,
@@ -91,15 +91,18 @@ function TrashGlyph({ state }: { state: TrashState | undefined }) {
   </svg>;
 }
 
-type GlyphSubject = Pick<DockBarItem, "kind" | "iconKey" | "host"> & { entry?: DockBarItem["entry"]; trash?: TrashState; widgetType?: string };
+type GlyphSubject = Pick<DockBarItem, "kind" | "iconKey" | "host"> & { appIcon?: string | null; entry?: DockBarItem["entry"]; trash?: TrashState; widgetType?: string };
 export function DockGlyph({ subject, icons, className }: { subject: GlyphSubject; icons: ReadonlyMap<string, string | null>; className?: string }) {
   if (subject.host) return <img className={`glyph native host ${className ?? ""}`} src={PRODUCT_MARK_URL} alt="" draggable={false} />;
+  if (subject.kind === "bottega-app" && subject.appIcon) return <span className={`glyph art app-emoji ${className ?? ""}`} aria-hidden="true">
+    <svg viewBox="0 0 48 48"><text x="24" y="24" textAnchor="middle" dominantBaseline="central" fontSize="36">{subject.appIcon}</text></svg>
+  </span>;
   const url = subject.iconKey ? icons.get(subject.iconKey) : undefined;
   // The Trash always draws its own state glyph so a stale native icon can never claim "empty".
   if (subject.entry === "system.trash") return <span className={`glyph art ${className ?? ""}`}><TrashGlyph state={subject.trash} /></span>;
   if (url) return <img className={`glyph native ${className ?? ""}`} src={url} alt="" draggable={false} />;
   const Fallback = subject.entry === "system.downloads" ? FolderDown : subject.entry === "system.finder" ? HardDrive
-    : subject.widgetType === "builtin.ai-limits" ? Gauge : subject.widgetType === "builtin.ai-activity" ? ChartColumn : AppWindow;
+    : subject.widgetType === "builtin.ai-limits" ? Gauge : subject.widgetType === "builtin.ai-activity" ? ChartColumn : subject.widgetType === "builtin.tasks" ? ListTodo : AppWindow;
   // While a native key is still loading, keep the slot neutral instead of flashing a generic glyph.
   if (subject.iconKey && !icons.has(subject.iconKey) && (subject.kind === "native-app" || subject.kind === "bottega-app" || subject.entry === "system.finder"))
     return <span className={`glyph placeholder ${className ?? ""}`} aria-hidden="true" />;

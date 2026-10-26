@@ -312,7 +312,7 @@ export const cloudCopy = {
   "signOutFailed": "No se pudo cerrar la sesión. Comprueba tu conexión e inténtalo de nuevo.",
   "conflictsLoadFailed": "No se pudieron cargar los cambios por revisar. Comprueba tu conexión e inténtalo de nuevo.",
   "openBaseFailed": "No se pudo abrir la Base de este Project. Comprueba tu conexión e inténtalo de nuevo.",
-  "secureStorageDescription": "macOS puede solicitar acceso al llavero para proteger tu inicio de sesión en este ordenador.",
+  "secureStorageDescription": "Bottega protege tu inicio de sesión en este ordenador sin pedirte la contraseña de macOS.",
   "secureStorageRestart": "Reinicia Bottega y vuelve a iniciar sesión.",
   "retrySecureSave": "Reintentar guardado seguro",
   "discardSavedLogin": "Descartar el inicio de sesión guardado…",

@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on the three frozen adapters (Agent Plugins, skill-repo, Bottega host package), source provenance, and the pinned conformance corpus
+ * [INPUT]: Depends on the three frozen adapters (Agent Plugins, skill-repo, Bottega host package), source provenance and the reviewed validator commitment.
  * [OUTPUT]: Provides admitExtensionPackageWithAdapter with the full evidence triad (admission, schema digest, validator fixture digest), ExtensionAdapterId, and VALIDATOR_FIXTURE_DIGEST
  * [POS]: The only admission dispatch point for extensions; every adapter is selected by explicit id, never guessed from package contents
  */
 
 import type { Sha256Digest } from "../../../shared/ipc/settings/extensions-ipc";
-import { ADMISSION_CONFORMANCE_CORPUS } from "./conformance/fixtures";
+import { VALIDATOR_FIXTURE_DIGEST } from "./conformance/digest";
 import {
   AGENT_PLUGIN_ADAPTER_ID,
   AGENT_PLUGIN_MCP_SCHEMA_1_0_0,
@@ -38,9 +38,7 @@ export type ExtensionAdmission = Readonly<{
   validatorFixtureDigest: Sha256Digest;
 }>;
 
-export const VALIDATOR_FIXTURE_DIGEST = digestCanonical(
-  ADMISSION_CONFORMANCE_CORPUS
-);
+export { VALIDATOR_FIXTURE_DIGEST };
 
 export async function admitExtensionPackageWithAdapter(
   adapterId: ExtensionAdapterId,

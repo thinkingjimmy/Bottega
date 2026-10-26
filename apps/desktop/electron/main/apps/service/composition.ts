@@ -1,9 +1,12 @@
 /**
  * [INPUT]: Runtime storage mode, App store/gateway/installer, generation/reference/data/custody ledgers, Base GUI and turn/delete/edit owners.
- * [OUTPUT]: Generic App collaborators, passive inventory, extension consent/build tracking and shared availability admission independently of Artifact design.
+ * [OUTPUT]: Generic App collaborators, passive inventory, extension consent/build tracking and independent preset update recovery and shared availability admission independently of Artifact design.
  * [POS]: The apps composition factory; AppsService owns policy and lifecycle while the object graph is assembled here
  */
 
+import { announceComposition } from "../../startup/boot/composition-hooks";
+import { PresetUpdateService } from "../updates/service";
+import { PresetUpdateSource } from "../updates/source";
 import { isAppEnabled } from "./availability/guard";
 import { join } from "node:path";
 import type { BrowserWindow } from "electron";
@@ -126,6 +129,17 @@ export function composeAppsRuntime(input: ComposeAppsRuntimeInput) {
   const serverCutover = new AppServerDataCutover(userData, dataCutovers);
   store.configureGenerationLifecycle(buildLedger, serverCutover);
   const packages = new AppPackageController(userData);
+  const presetUpdates = new PresetUpdateService(userData, store, new PresetUpdateSource(userData, packages.presets), {
+    mutations: sourceMutations,
+    sourceSynchronized: appId => installer.acceptSourceUpdateHeld(appId),
+    synchronizeRuntime: async appId => { await guiRuntime.reconcileUpdate(appId); },
+    settleLedger: async (appId, generationId) => {
+      const operation = buildLedger.listNonTerminal(appId).find(item => item.appGenerationId === generationId);
+      if (operation) await buildLedger.advance(operation.generationBuildId, operation.revision, "promoted");
+    },
+  });
+  packages.configureIndependentUpdates(presetUpdates);
+  announceComposition("app-updates", { presetUpdates, store });
   const processCustody = new AppProcessCustodyJournal(userData);
   const serverCustody = new AppServerCustodyRuntime(processCustody, {
     controlRoot: join(userData, "app-custody"),
@@ -315,6 +329,7 @@ export function composeAppsRuntime(input: ComposeAppsRuntimeInput) {
     instructionContributors,
     maintenanceGate,
     packages,
+    presetUpdates,
     processCustody,
     referenceJournal,
     runtime,

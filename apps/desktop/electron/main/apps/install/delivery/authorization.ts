@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AppStore's verified generation and existing consent/Studio grant commands.
- * [OUTPUT]: Validates explicit installation consent and promotes the exact locally built generation.
+ * [OUTPUT]: Separately resolves full Extension/Base GUI/Studio authorization and promotes the exact locally built generation.
  * [POS]: Shared authorization kernel for ordinary import and fixed-identity cloud installation.
  */
 import type { AppInstallAuthorization } from "../../../../../shared/ipc/apps/apps-ipc";
@@ -10,7 +10,7 @@ export function assertStudioAuthorization(value: unknown): AppInstallAuthorizati
   if (input?.scope !== "studio-only" || input.decision !== "approve-requested") throw new Error("APP_INSTALLATION_AUTHORIZATION_REQUIRED");
   return { scope: "studio-only", decision: "approve-requested" };
 }
-export async function authorizeAndPromote(apps: AppStore, appId: string, authorization: AppInstallAuthorization, canApproveExtensions: boolean,
+export async function authorizePendingGeneration(apps: AppStore, appId: string, authorization: AppInstallAuthorization, canApproveExtensions: boolean,
   current: () => Promise<void> = async () => undefined) {
   assertStudioAuthorization(authorization);
   let record = apps.get(appId), pending = record?.generationBinding.pending;
@@ -33,5 +33,13 @@ export async function authorizeAndPromote(apps: AppStore, appId: string, authori
     record = await apps.grantStudioAccess(appId, generation.generationId); pending = record.generationBinding.pending;
   }
   await current();
+  return record;
+}
+
+export async function authorizeAndPromote(apps: AppStore, appId: string, authorization: AppInstallAuthorization, canApproveExtensions: boolean,
+  current: () => Promise<void> = async () => undefined) {
+  const record = await authorizePendingGeneration(apps, appId, authorization, canApproveExtensions, current);
+  await current();
+  const pending = record?.generationBinding.pending;
   return pending ? apps.promotePendingGeneration(appId, pending.expectedConsentRevision) : record;
 }

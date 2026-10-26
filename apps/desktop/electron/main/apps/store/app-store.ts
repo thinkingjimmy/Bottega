@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on durable App records, the required folder root, verified source export, host-version admission, the host locale, generation builder/consent and existing grant, cutover and serialization authorities.
- * [OUTPUT]: AppStore v16 single writer for records, portable identity/source baselines, retained custody, known App IDs, scope-aware status broadcasts a read-only Base GUI grant projection, verified generation history and fresh-consent source restoration.
+ * [OUTPUT]: AppStore v16 single writer for records, portable identity/source baselines, retained custody, independent update publication fences, known App IDs, scope-aware status broadcasts a read-only Base GUI grant projection, verified generation history and fresh-consent source restoration.
  * [POS]: Canonical App record and broadcast authority; the folder catalog holds every record, and this facade serializes mutations and prevents stale projections.
  */
 
+import { assertUpdateIdle } from "../updates/guard";
 import { appGenerationHistory, restoreAppGeneration } from "./history/restore";
 import { AppPortableApi } from "./portable/api";
 import { AppFolderCatalog } from "./folder/catalog";
@@ -366,9 +367,10 @@ export class AppStore {
       generationSourceDir?: string;
     }> = {}
   ) {
+    assertUpdateIdle(this.get(record.id));
     if (record.manifest) await readCompatibility(options.generationSourceDir ?? record.dir, recordCandidate(record), this.hostVersion());
     return this.withGenerationCutover(record.id, () =>
-      this.withServerCutover(record.id, () => record, {
+      this.withServerCutover(record.id, () => { assertUpdateIdle(this.get(record.id)); return record; }, {
         sourceDir: options.generationSourceDir,
       })
     );
@@ -391,9 +393,10 @@ export class AppStore {
   async publishGeneration(
     appId: string,
     updater: (record: AppRecord) => AppRecord,
-    options: Readonly<{ generationSourceDir?: string }> = {}
+    options: Readonly<{ generationSourceDir?: string; updateOperationId?: string }> = {}
   ) {
     const initial = this.get(appId);
+    assertUpdateIdle(initial, options.updateOperationId);
     if (!initial) throw new Error("App does not exist");
     const proposed = updater(initial);
     if (proposed.manifest) await readCompatibility(options.generationSourceDir ?? proposed.dir, recordCandidate(proposed), this.hostVersion());
@@ -403,6 +406,7 @@ export class AppStore {
         () => {
           const current = this.get(appId);
           if (!current) throw new Error("App 不存在");
+          assertUpdateIdle(current, options.updateOperationId);
           return updater(current);
         },
         { sourceDir: options.generationSourceDir }
@@ -412,6 +416,7 @@ export class AppStore {
 
   generationHistory(appId: string) { return appGenerationHistory(this.historyPorts(), appId); }
   async restoreGeneration(appId: string, generationId: string, expectedActiveGenerationId: string | null) {
+    assertUpdateIdle(this.get(appId));
     this.assertWritableAuthority();
     await mkdir(this.stagingRoot, { recursive: true, mode: 0o700 });
     const release = this.retainArtifactRoot(appId, generationId);
@@ -490,6 +495,7 @@ export class AppStore {
    * frozen graph 悄悄漂到用户没批准过的字节上。
    */
   async migrateGeneration(appId: string, migrationId: string) {
+    assertUpdateIdle(this.get(appId));
     const candidate = this.get(appId);
     if (candidate?.manifest) await readCompatibility(candidate.dir, recordCandidate(candidate), this.hostVersion());
     if (!migrationId.trim()) throw new Error("App generation migrationId 无效");
@@ -499,6 +505,7 @@ export class AppStore {
         () => {
           const current = this.get(appId);
           if (!current) throw new Error("App 不存在");
+          assertUpdateIdle(current);
           if (!current.manifest?.extensionRequirements?.length) {
             throw new Error("该 App 没有 extension 声明，无需迁移");
           }
@@ -619,10 +626,12 @@ export class AppStore {
   }
 
   async remove(appId: string) {
+    assertUpdateIdle(this.get(appId));
     this.assertWritableAuthority();
     await this.queue.enqueue(async () => {
       const current = this.records.get(appId);
       if (!current) return;
+      assertUpdateIdle(current);
       await assertCapturedAppSourceRetained(this, appId);
       this.records.delete(appId);
       const previousCatalog = this.portableCatalog;

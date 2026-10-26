@@ -9,7 +9,7 @@ import type { DockEdge } from "./local-state";
 export const DOCK_METRICS = {
   /* Glyphs fill the 48 DIP slot. gap 1 leaves the icon art's own margin as the visible gutter. */
   item: 48, gap: 1, padding: 10, separator: 13, overflowButton: 36, emptyCta: 208,
-  widget: { "builtin.ai-limits": 136, "builtin.ai-activity": 116 } as Record<string, number>,
+  widget: { "builtin.ai-limits": 136, "builtin.ai-activity": 116, "builtin.tasks": 128 } as Record<string, number>,
   sidebarWidget: { setup: 64, single: 68, activity: 60, ring: 36, gap: 6, padding: 8, more: 20, maximum: 148 },
   sidebarEmptyCta: 132,
   barHeight: 68, handleWidth: 132, handleHeight: 10, bottomMargin: 6, sideMargin: 16,
@@ -31,7 +31,7 @@ export function itemExtent(item: MetricItem, edge: DockEdge): number {
   if (item.kind !== "widget" || !item.widgetType) return DOCK_METRICS.item;
   if (edge === "bottom") return DOCK_METRICS.widget[item.widgetType] ?? DOCK_METRICS.item;
   const side = DOCK_METRICS.sidebarWidget;
-  if (item.widgetType === "builtin.ai-activity") return side.activity;
+  if (item.widgetType === "builtin.ai-activity" || item.widgetType === "builtin.tasks") return side.activity;
   if (item.widgetType !== "builtin.ai-limits") return DOCK_METRICS.item;
   if (!item.limits) return side.maximum;
   const { configured, sourceCount, more } = item.limits;

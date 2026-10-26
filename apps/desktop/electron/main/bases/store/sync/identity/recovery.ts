@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on @ai-chat/base-core semantic contracts and the existing Base Store queue ports, complete promotion generations and verified attachment custody.
+ * [INPUT]: Depends on @ai-chat/base-core semantic contracts, the shared gallery owner projection, Base Store queue ports, complete promotion generations and verified attachment custody.
  * [OUTPUT]: Preserves and revalidates an unpublished Base in its recovery Project before adopting a unique canonical remote owner identity.
  * [POS]: Initial identity convergence leaf; complete metadata is the commit point and no source file is deleted.
  */
@@ -10,7 +10,7 @@ import { baseMetaSchema } from "../../../../../../shared/bases/model/bases-schem
 import { readBlobMetadata, verifyBlob } from "../../../../persistence/logical-blob";
 import { storedBase, validateStoredBase, type StoredBase } from "../../../base-store-model";
 import type { BaseAttachmentStore } from "../../attachments";
-import { ownerFileStem, type BaseStoreFiles } from "../../base-files";
+import { galleryOwnerId, ownerFileStem, type BaseStoreFiles } from "../../base-files";
 import { prepareProjectBase } from "../../promotion/generation";
 import { emptyGalleryLedger } from "../../gallery-ledger";
 import { emptyHistoryLedger } from "../../history-ledger";
@@ -67,7 +67,7 @@ export async function recoverInitialIdentity(ports: Ports, source: StoredBase, p
   const encoded = serializeSync(sync), meta = baseMetaSchema.parse({ ...confirmed.meta, revision: source.meta.revision + 1,
     rowsGeneration: source.meta.rowsGeneration + 1, galleryGeneration: source.meta.galleryGeneration + 1,
     historyGeneration: source.meta.historyGeneration + 1, syncGeneration: (source.meta.syncGeneration ?? 0) + 1, syncHash: encoded.hash });
-  const rows = structuredClone(confirmed.rows), gallery = emptyGalleryLedger(ownerFileStem(ownerKey), meta.ownerInstanceId), history = emptyHistoryLedger();
+  const rows = structuredClone(confirmed.rows), gallery = emptyGalleryLedger(galleryOwnerId(meta), meta.ownerInstanceId), history = emptyHistoryLedger();
   validateStoredBase(meta, rows, gallery, { meta: value => files.serializeMeta(value), rows: value => files.serializeRows(value), gallery: value => files.serializeGallery(value) });
   await files.atomicWrite(files.rowsPath(ownerKey, meta.rowsGeneration), files.serializeRows(rows));
   await files.atomicWrite(files.galleryPath(ownerKey, meta.galleryGeneration), files.serializeGallery(gallery));

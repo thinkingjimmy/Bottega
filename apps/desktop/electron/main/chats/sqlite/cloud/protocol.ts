@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on strict portable storage contracts, canonical Chat codecs and outbox checkpoint identities.
- * [OUTPUT]: Defines scoped synchronization/removal commands, the initialization manifest with each entry's message count, exact remote admission fact reads, retained-root outbox Chat identity, the forward-only receipt cursor and bounded recovery queries.
+ * [OUTPUT]: Defines scoped synchronization/removal commands, initialization manifests, exact admission reads, atomic guarded convergence targets, retained-root outbox identity and bounded recovery queries.
  * [POS]: Local synchronization seam; fake transports are test-owned and never bundled here.
  */
 import { z } from "zod";
@@ -119,6 +119,7 @@ export const cloudQuerySchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("outbox-checkpoint"), id: outboxId, key: checkpointKeySchema }).strict(),
   z.object({ type: z.literal("turn-delivery"), id: outboxId }).strict(),
   z.object({ type: z.literal("turn-target"), chatId: id }).strict(),
+  z.object({ type: z.literal("convergence-target"), head: cloudChatHeadSchema }).strict(),
   z.object({ type: z.literal("chat-metadata"), chatId: id }).strict(),
   z.object({ type: z.literal("chat-facts"), chatId: id }).strict(),
   z.object({ type: z.literal("metadata-outbox"), chatId: id, limit: rev.positive().max(100) }).strict(),
@@ -200,6 +201,7 @@ export const cloudResultSchema = z.discriminatedUnion("type", [
   result("capture-home-job", homeJobSchema.nullable()), result("skip-home-job", z.object({ id: outboxId }).strict()),
   result("turn-delivery", z.object({ highSeq: rev }).strict()),
   result("turn-target", z.object({ incarnationId: id, messageRevision: rev, outboxDigest: hash }).strict().nullable()),
+  result("convergence-target", z.object({ incarnationId: id, messageRevision: rev, outboxDigest: hash }).strict().nullable()),
   result("receipt-cursor", z.object({ incarnationId: id, throughSeq: rev }).strict().nullable()),
   result("advance-receipt-cursor", z.object({ throughSeq: rev }).strict()),
   result("save-outbox-checkpoint", retainedSourceRefSchema),

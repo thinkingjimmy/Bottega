@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React state, Project/Chat contracts, the Chats provider and the workflows bridge (workflow Chat and run counts), ProjectsProvider detach mutation, archive client, optional caller-owned archive-success feedback, shared dialogs, and i18n
- * [OUTPUT]: Provides single-flight Project archive/detach confirmations (ordinary Chats counted like the sidebar, workflow Chats and their runs counted apart and named as deleted on removal, the workflow runtime's refusals in the interface language), with success notification immediately after archive resolution and before leaving or closing
+ * [INPUT]: Depends on React state, Project/Chat contracts, the Chats provider and workflows bridge, ProjectsProvider detach mutation, archive client, optional caller-owned archive feedback and menu focus return, shared dialogs, and i18n
+ * [OUTPUT]: Provides single-flight Project archive/detach confirmations (ordinary Chats counted like the sidebar, workflow Chats and their runs counted apart and named as deleted on removal, the workflow runtime's refusals in the interface language), with caller-owned confirmation focus return and success notification immediately after archive resolution and before leaving or closing
  * [POS]: Shared Project lifecycle controller consumed by Sidebar Project rows and Project Settings General
  */
 
@@ -162,8 +162,10 @@ export type ProjectLifecycleController = ReturnType<typeof useProjectLifecycle>;
  * ────────────────────────────────────────────────────────────────── */
 export function ProjectLifecycleDialogs({
   controller,
+  onCloseAutoFocus,
 }: {
   controller: ProjectLifecycleController;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   const { t, i18n } = useAppTranslation();
   // Workflow Chats exist only with the workbench flag; the flag-off build loads no workbench copy for this (E-01).
@@ -200,6 +202,7 @@ export function ProjectLifecycleDialogs({
     <>
       <ConfirmationDialog
         open={archiveOpen}
+        onCloseAutoFocus={onCloseAutoFocus}
         title={t("projects.archiveTitle")}
         description={
           <>
@@ -224,6 +227,7 @@ export function ProjectLifecycleDialogs({
       <ConfirmationDialog
         key={localDetachReasons.length ? "archive-instead" : "remove-local"}
         open={localDetachOpen}
+        onCloseAutoFocus={onCloseAutoFocus}
         title={t(
           localDetachReasons.length
             ? "projects.archiveInsteadTitle"

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Simplified Chinese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
+ * [OUTPUT]: Provides the Apps Simplified Chinese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Simplified Chinese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,6 +8,13 @@
 import type { appsEn } from "./en";
 
 export const appsZhCN: typeof appsEn = {
+  dock: {
+    pin: "固定到 Dock",
+    unpin: "从 Dock 移除",
+    pinFailed: "无法保存 Dock 快捷方式，请重试。",
+    openFailed: "无法打开 {{name}}",
+    openFailedDetail: "请再次点击 Dock 中的 App 重试。",
+  },
   provider: {
     listFailed: "Apps 加载失败：{{message}}",
   },

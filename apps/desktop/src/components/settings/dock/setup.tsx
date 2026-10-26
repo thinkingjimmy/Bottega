@@ -23,7 +23,7 @@ type Step =
   | { kind: "layout" | "impact"; mode: DockMode; preview: DockSetupPreview; selected: Set<string> };
 
 export const ENTRY_KEYS = { "system.finder": "systemDock.entry.finder", "system.downloads": "systemDock.entry.downloads", "system.trash": "systemDock.entry.trash",
-  "builtin.ai-limits": "systemDock.entry.limits", "builtin.ai-activity": "systemDock.entry.activity" } as const;
+  "builtin.ai-limits": "systemDock.entry.limits", "builtin.ai-activity": "systemDock.entry.activity", "builtin.tasks": "systemDock.entry.tasks" } as const;
 
 /* Exactly what replacement changes and how to undo it (3.1); every line is a promise main keeps. */
 const IMPACT_KEYS = ["systemDock.settings.impactAutohide", "systemDock.settings.impactRecoveryItem", "systemDock.settings.impactNoApp",

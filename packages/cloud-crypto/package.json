@@ -4,8 +4,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./tunnel": "./src/tunnel/primitive.ts",
-    "./tunnel/service-worker": "./src/tunnel/service-worker.ts",
     ".": "./src/index.ts",
     "./worker/node": "./src/worker/entries/node.ts",
     "./worker/browser": "./src/worker/entries/browser.ts"

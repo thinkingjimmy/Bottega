@@ -1,11 +1,12 @@
 /**
  * [INPUT]: Depends on DockService facts (layout, drafts, entries, Usage adapter, Bottega Apps, native resolution) and the shared panel DTOs.
- * [OUTPUT]: Provides buildPanel (the single panel projection per view: detail for Downloads/Trash/Widgets, add candidates with four groups and search, edit/navigate item lists, undo and draft) and addCandidates (the key→draft table the add intent resolves against).
+ * [OUTPUT]: Provides buildPanel (the single panel projection per view: detail for Downloads/Trash/Widgets/Tasks, add candidates with four groups and search, edit/navigate item lists, undo and draft) and addCandidates (the key→draft table the add intent resolves against). Bottega App candidates carry live emoji.
  * [POS]: system-dock panel projection; no side effects, privacy mask applied to values and file names (INV-06).
  */
 
 import type { AddCandidate, PanelSnapshot, PanelView } from "../../../shared/system-dock/ipc";
-import { defaultActivityWidget, defaultLimitsWidget, SYSTEM_ENTRIES, semanticKey, type DockItem, type DockItemDraft, type DockWidget } from "../../../shared/system-dock/layout";
+import { defaultActivityWidget, defaultLimitsWidget, defaultTasksWidget, SYSTEM_ENTRIES, semanticKey, type DockItem, type DockItemDraft, type DockWidget } from "../../../shared/system-dock/layout";
+import { taskDetail } from "./widgets/tasks";
 import { entryLabel, maskFace } from "./projection";
 import type { DockService } from "./service";
 
@@ -35,7 +36,7 @@ export function addCandidates(service: DockService): CandidateTable {
   }
   for (const app of service.ports.apps.list()) {
     push(`bottega:${app.id}`, { kind: "bottega-app", appId: app.id, localApp: null, label: app.label },
-      { kind: "bottega-app", label: app.label, iconKey: null, group: "bottega", ...(app.ready ? {} : { note: "unavailable" as const }) });
+      { kind: "bottega-app", label: app.label, iconKey: null, appIcon: app.appIcon, group: "bottega", ...(app.ready ? {} : { note: "unavailable" as const }) });
   }
   for (const entry of SYSTEM_ENTRIES) {
     const name = entry === "system.finder" ? "finder" : entry === "system.downloads" ? "downloads" : "trash";
@@ -45,6 +46,8 @@ export function addCandidates(service: DockService): CandidateTable {
     { kind: "widget", label: entryLabel(locale, "limits"), iconKey: null, group: "widget" });
   push("builtin.ai-activity", { kind: "widget", widget: defaultActivityWidget() },
     { kind: "widget", label: entryLabel(locale, "activity"), iconKey: null, group: "widget" });
+  push("builtin.tasks", { kind: "widget", widget: defaultTasksWidget() },
+    { kind: "widget", label: entryLabel(locale, "tasks"), iconKey: null, group: "widget" });
   return table;
 }
 /** The panel's Usage consumer: the Widget detail it shows, as the draft while editing and the applied Widget otherwise. */
@@ -71,12 +74,14 @@ export function buildPanel(service: DockService): PanelSnapshot {
   }
   if (item.kind === "system" && item.entry === "system.trash") return { ...base, trash: service.trash?.snapshot() ?? { state: "unknown", emptying: false, automation: "unavailable", lastResult: "none" } };
   if (item.kind !== "widget") return base;
+  if (item.widget.type === "builtin.tasks") return { ...base, tasks: taskDetail(service.ports.tasks, state.privacyMask) };
   const draft: DockWidget = service.drafts.get(item.id) ?? item.widget;
   const withDraft = { ...base, draft: service.drafts.has(item.id) ? { itemId: item.id, widget: draft, stale: service.staleDrafts.has(item.id) } : null };
   if (draft.type === "builtin.ai-limits") {
     const detail = service.usage.limitsDetail(item.id, draft);
     return { ...withDraft, limits: state.privacyMask ? { ...detail, agents: detail.agents.map((agent) => ({ ...agent, pools: [], planLabel: null })) } : detail };
   }
+  if (draft.type !== "builtin.ai-activity") return base;
   const detail = service.usage.activityDetail(item.id, draft);
   return { ...withDraft, activity: state.privacyMask ? { ...detail, face: maskFace(detail.face) as typeof detail.face } : detail };
 }

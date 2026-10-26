@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on authenticated complete downlink, scoped native transactions and ordinary recovery Forks.
- * [OUTPUT]: Adopts existing identities and reconciles superseded native tails into one divergence-keyed Fork before consuming canonical receipts, once per unchanged head and local content.
+ * [INPUT]: Depends on authenticated complete downlink, atomic closed-owner convergence guards, scoped native transactions and ordinary recovery Forks.
+ * [OUTPUT]: Adopts existing identities and preserves superseded native tails or stranded closed-owner business variants in one divergence-keyed Fork before canonical replacement.
  * [POS]: Shared main convergence owner; it never claims execution or uploads old backup values.
  */
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
@@ -33,14 +33,17 @@ export class DesktopChatConvergence {
     if (head.chat.classification.conversationKind !== "ordinary" || !chats.getMetadata(id) || head.openTurnId) return;
     const local = await chats.sync.read(scope, { type: "local-execution", chatId: id }); this.input.current();
     if (local.type !== "local-execution" || !local.value || local.value.residence === "mirror" || local.value.deleted) return;
-    if (!initial && !force && head.ownerDeviceId === this.input.deviceId) return;
+    const sameOwner = !initial && !force && head.ownerDeviceId === this.input.deviceId;
     if (!initial) {
       const queue = await chats.sync.read(scope, { type: "metadata-outbox", chatId: id, limit: 100 });
       if (queue.type === "metadata-outbox" && queue.value.some(item => item.kind === "initialize")) return;
     }
+    const target = await chats.sync.read(scope, sameOwner ? { type: "convergence-target", head } : { type: "turn-target", chatId: id }); this.input.current();
+    if ((target.type !== "turn-target" && target.type !== "convergence-target") || !target.value) {
+      if (sameOwner) return;
+      throw new Error("CHAT_CONVERGENCE_SOURCE_UNAVAILABLE");
+    }
     this.input.assertIdle(id);
-    const target = await chats.sync.read(scope, { type: "turn-target", chatId: id }); this.input.current();
-    if (target.type !== "turn-target" || !target.value) throw new Error("CHAT_CONVERGENCE_SOURCE_UNAVAILABLE");
     const facts = { head, expectedMessageRevision: target.value.messageRevision, expectedOutboxDigest: target.value.outboxDigest,
       initial: initial ? { id: initial.id, payloadDigest: initial.payload_digest } : null };
     const signature = hashChatContent([head, target.value.messageRevision, target.value.outboxDigest]);

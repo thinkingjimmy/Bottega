@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides en settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut conflict guidance, and task failures, without transient settings loading copy.
+ * [OUTPUT]: Provides en settings, tray, quit, and Dock task translations, including independent menu bar/background switches and Dock task states, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -13,19 +13,13 @@ export const presenceEn = {
   "taskFailed": "Failed",
   "empty": "No active tasks",
   "emptyDescription": "Tasks will appear here when you start working in Bottega.",
-  "shortcutUnavailable": "This shortcut is unavailable. Change it in Keyboard shortcuts.",
-  "displayMode": "Display mode",
-  "iconMode": "Menu bar icon",
-  "notchMode": "Notch task panel",
-  "iconDescription": "Open Bottega and view task status from the menu bar icon.",
-  "notchDescription": "See tasks and requests for your input beside the notch while using other apps. Click a task to return to its chat.",
-  "noNotch": "No notched display is currently available. Using the menu bar icon.",
-  "retentionDescriptionTray": "Keep Bottega running after closing the main window. Reopen it from the system tray icon.",
+  "menuBar": "Show in menu bar",
+  "menuBarDescription": "Show the Bottega icon in the menu bar. This does not change background activity.",
   "title": "Background activity",
   "login": "Launch Bottega at login",
   "loginDescription": "Start after signing in to your computer. Stay hidden when background activity is enabled.",
   "retention": "Keep running when the main window closes",
-  "retentionDescription": "Keep Bottega running after closing the main window. Reopen it from the selected background entry.",
+  "retentionDescription": "Keep Bottega running after closing the main window. Reopen Bottega from the Dock or your applications.",
   "notice": "Quitting Bottega stops local tasks. Tasks and remote control may pause while your computer sleeps.",
   "open": "Open Bottega",
   "quitting": "Quitting…",
@@ -47,7 +41,7 @@ export const presenceEn = {
   "more": "{{tasks}} more",
   "unavailable": "Unavailable",
   "recovered": "The window was restored after a problem. Saved chats are available; unsaved drafts may have been lost.",
-  "backgroundNotice": "Bottega will keep running in the background. Quit from the menu bar.",
+  "backgroundNotice": "Bottega will keep running in the background. Reopen it from the Dock or your applications.",
   "closeFailed": "The window could not transfer its draft. Try closing it again.",
   "retry": "Retry",
   "systemSettings": "Open System Settings",
@@ -62,9 +56,6 @@ export const presenceEn = {
   "loginFailed": "The login item could not be verified",
   "saveFailed": "The preference could not be saved",
   "trayUnavailable": "The background icon is unavailable",
-  "panelUnavailable": "Task status could not be displayed",
-  "screenUnavailable": "This screen does not have enough space",
-  "nativeUnavailable": "The screen adapter is unavailable",
   "preparing": "Preparing",
   "active": "Running",
   "approval": "Waiting for approval",
@@ -76,5 +67,4 @@ export const presenceEn = {
   "ended": "Tasks ended",
   "failureResult": "Some tasks failed",
   "openFailed": "This task is no longer available",
-  "collapse": "Collapse task status"
 };

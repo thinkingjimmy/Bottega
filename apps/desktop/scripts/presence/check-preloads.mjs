@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the closed output-root parser and selected stable/production or staging product and auxiliary (task-panel, system-dock, desktop-dialog) preload JavaScript.
+ * [INPUT]: Depends on the closed output-root parser and selected stable/production or staging product and auxiliary (system-dock, desktop-dialog) preload JavaScript.
  * [OUTPUT]: Rejects sibling chunk requires, product bridge leakage into auxiliary preloads, and a bundled validator library (zod) in any preload.
  * [POS]: Build-time sandbox preload oracle; every entry must load independently.
  */
@@ -10,7 +10,7 @@ import process from "node:process";
 import { resolveOutputRoot } from "../assembly/output-root.mjs";
 const output = resolveOutputRoot(process.argv.slice(2));
 const PRODUCT_BRIDGES = /exposeInMainWorld\("(?:agent|chats|settings|app|presence|systemDockSettings|cloud|usage)"/;
-const AUXILIARY = { "task-panel": "taskPanel", "system-dock": "systemDock", "desktop-dialog": "desktopDialog" };
+const AUXILIARY = { "system-dock": "systemDock", "desktop-dialog": "desktopDialog" };
 for (const name of ["index", ...Object.keys(AUXILIARY)]) {
   const source = readFileSync(resolve(import.meta.dirname, `../../${output}/preload/${name}.js`), "utf8");
   for (const [, dependency] of source.matchAll(/require\(["']([^"']+)["']\)/g)) {

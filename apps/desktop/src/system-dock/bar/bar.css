@@ -1,5 +1,5 @@
 /* [INPUT]: Common Dock tokens, the strip's inline metrics (zoom, gap, padding, height) and item data attributes (area, status, open, dragging, shifted).
- * [OUTPUT]: Three-edge handle pill and the strip (a lit edge over the window's native glass, solid when transparency is reduced); fixed-cross-axis item slots with light hover highlight and 2px lift (highlight only under reduced motion), running dots, status badges, busy ring, drag placeholder shifts, Widget faces (limit rings, activity text), separator, overflow and empty CTA.
+ * [OUTPUT]: Three-edge handle and strip; fixed-axis slots, hover/highlight, status/busy/running indicators, drag placeholder shifts and faded drag-out removal preview, Widget faces, separator, overflow and empty CTA.
  * [POS]: system-dock/bar stylesheet; widths come from shared metrics inline, so this file only draws — it never changes a slot's footprint.
  */
 .dock { display: flex; align-items: flex-end; justify-content: center; width: 100vw; height: 100vh; }
@@ -35,6 +35,7 @@
 @media (prefers-reduced-motion: reduce) and (hover: hover) and (pointer: fine) { .strip:not([data-dragging]) .item:hover { transform: none; } }
 .item:active { background: var(--pressed); }
 .item[data-dragging] { z-index: 2; background: var(--pressed); transition: background-color 120ms ease-out; }
+.item[data-removing] { opacity: 0.35; cursor: no-drop; }
 .separator { flex: none; align-self: stretch; margin: 14px 0; position: relative; }
 .separator::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--line); }
 .overflow { display: grid; place-items: center; flex: none; height: 36px; border-radius: 10px; color: var(--muted); }

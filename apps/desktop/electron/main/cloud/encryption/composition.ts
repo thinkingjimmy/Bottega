@@ -1,10 +1,10 @@
 /**
- * [INPUT]: The existing authenticated account, scope lifecycle, original sync review and fixed RPC transport.
+ * [INPUT]: Guarded native encryption, the existing authenticated account, scope lifecycle, original sync review and fixed RPC transport.
  * [OUTPUT]: Wires guarded native key ownership and consent-dependent content admission; stopping content never pauses a binding the same operation just approved.
  * [POS]: Desktop E2EE composition; authentication, business queues and cleanup retain their existing owners.
  */
 import { randomUUID } from "node:crypto";
-import { safeStorage } from "electron";
+import { secureStorage } from "../../security/safe-storage";
 import { protocolHeader, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
 import type { AccountTransport } from "../runtime/transport/transport";
 import type { CloudAccountService } from "../runtime/service";
@@ -19,7 +19,7 @@ export async function composeSyncEncryption(input: { config: CloudBuildConfig; u
   service: CloudAccountService; transport: AccountTransport; binding: SyncBindingStore; scope: AccountScopeLifecycle; sync: InitialSyncController; onSyncEnabled?(initial: boolean): Promise<void> }) {
   const { config, service, transport, scope, sync, binding } = input;
   await scope.allowContent(false);
-  const store = new SyncKeyStore(input.userData, config, input.deviceId, safeStorage);
+  const store = new SyncKeyStore(input.userData, config, input.deviceId, secureStorage);
   const args = (identity: SyncIdentity) => ({ ...protocolHeader(config), expectedUserId: identity.userId,
     expectedSessionId: identity.sessionId, expectedDeviceId: identity.deviceId });
   const owner: SyncEncryptionController = new SyncEncryptionController({ config, installationId: input.deviceId, store,

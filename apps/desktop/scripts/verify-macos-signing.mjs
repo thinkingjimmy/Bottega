@@ -102,18 +102,11 @@ for (const helper of helperApps) {
     throw new Error(`helper inherited entitlements are missing allow-jit: ${helper}`);
   }
 }
-const screenHelper = join(app, "Contents", "Resources", "presence", "bin", "screen-bridge");
 const previewHelper = join(app, "Contents", "Resources", "tunnel", "bin", "preview-capture");
 if (!existsSync(previewHelper)) throw new Error("preview capture helper is missing");
 run("codesign", ["--verify", "--strict", "--verbose=4", previewHelper]);
 const previewSignature = run("codesign", ["-dv", "--verbose=4", previewHelper]);
 if (!previewSignature.includes(`TeamIdentifier=${teamId}`) || !/flags=.*runtime/.test(previewSignature)) throw new Error("preview capture helper signature policy mismatch");
-if (!existsSync(screenHelper)) throw new Error("presence screen helper is missing");
-run("codesign", ["--verify", "--strict", "--verbose=4", screenHelper]);
-const screenSignature = run("codesign", ["-dv", "--verbose=4", screenHelper]);
-if (!screenSignature.includes(`TeamIdentifier=${teamId}`) || !/flags=.*runtime/.test(screenSignature)) {
-  throw new Error("presence screen helper signature policy mismatch");
-}
 const bundledNode = join(app, "Contents", "Resources", "runtime", "node", "darwin-arm64", "bin", "node");
 if (!existsSync(bundledNode)) throw new Error("bundled Node is missing");
 run("codesign", ["--verify", "--strict", "--verbose=4", bundledNode]);

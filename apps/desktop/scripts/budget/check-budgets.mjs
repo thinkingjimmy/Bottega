@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the closed output-root parser, the shared main-closure walker, Node fs/path/zlib and surface-budgets.json
- * [OUTPUT]: Measures every built surface (reading the build's flavour marker; preload and main gate only a production build, renderer surfaces every build; `--production` and `--resample` refuse anything but a production build) (four renderer entries' eager JS and CSS, three preloads, the main eager closure and each worker/host entry closure) as raw / gzip-9 / brotli-11 bytes plus its count of two-byte (non-Latin-1) chunks, fails when any surface exceeds a ceiling on a metric that gates it (renderer: all; preload and Node: raw and two-byte, their gzip / brotli are informational under `measured`), and with `--resample --reason "<why>"` rewrites the ceilings from a fresh measurement
+ * [OUTPUT]: Measures every built surface (reading the build's flavour marker; preload and main gate only a production build, renderer surfaces every build; `--production` and `--resample` refuse anything but a production build) (three renderer entries' eager JS and CSS, two preloads, the main eager closure and each worker/host entry closure) as raw / gzip-9 / brotli-11 bytes plus its count of two-byte (non-Latin-1) chunks, fails when any surface exceeds a ceiling on a metric that gates it (renderer: all; preload and Node: raw and two-byte, their gzip / brotli are informational under `measured`), and with `--resample --reason "<why>"` rewrites the ceilings from a fresh measurement
  * [POS]: The one byte gate for every desktop surface (OPT-30); check-renderer-bundle keeps the lazy boundaries and check-main-bundle keeps the banned-package boundaries, this file owns the numbers
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -12,8 +12,8 @@ import { resolveOutputRoot } from "../assembly/output-root.mjs";
 import { eagerClosure } from "../assembly/main-closure.mjs";
 
 const LEDGER = resolve(import.meta.dirname, "surface-budgets.json");
-const RENDERER_ENTRIES = ["index", "task-panel", "system-dock-bar", "system-dock-panel"];
-const PRELOADS = ["index", "task-panel", "system-dock"];
+const RENDERER_ENTRIES = ["index", "system-dock-bar", "system-dock-panel"];
+const PRELOADS = ["index", "system-dock"];
 /* Every main-process input that starts its own process or worker; each is resident for that process's life. */
 const NODE_ENTRIES = ["index", "sync-crypto-worker-entry", "builtin-tools-server", "codec-host-entry", "custody-guardian-entry",
   "utility-host-entry", "provider-bridge-entry", "app-gui-compiler-entry", "app-gui-query-worker-entry", "chat-database-worker-entry", "history-import-worker-entry",

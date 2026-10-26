@@ -1,6 +1,6 @@
 /**
  * [INPUT]: type-only AgentBackendId from agent-ipc, placement facts, and Extension identity vocabulary
- * [OUTPUT]: Provides appDisplayName for installed Base names and authored Web names, pending install configuration, shared manifests, versioned Web commands, consent, generation, permissions and lifecycle contracts Includes an independent enabled flag and monotonic enabledRevision.
+ * [OUTPUT]: Provides appDisplayName for installed Base names and authored Web names, pending install configuration, shared manifests, versioned Web commands, consent, generation, permissions and lifecycle contracts Includes durable independent update custody and an independent enabled flag and monotonic enabledRevision.
  * [POS]: apps/desktop/shared/ipc/apps; Single shared Apps wire truth and the barrel over its sibling buckets; navigation, surface, acquisition (apps-install-ipc), authorization, generation and Agent custody remain explicitly separate contracts
  */
 
@@ -321,6 +321,7 @@ export type AppRecord = {
   /** preset 安装的发布身份与实际取源 commit；非 preset 缺省。 */
   presetId?: string;
   installedPresetPin?: string;
+  presetUpdate?: { operationId: string; targetVersion: string; state: import("./apps-install-ipc").PresetUpdateState };
   /** Installed Base App name; independent of the immutable package manifest. */
   displayName: string;
   dir: string;

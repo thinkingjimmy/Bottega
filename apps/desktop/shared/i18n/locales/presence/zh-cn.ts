@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides zh-cn settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut conflict guidance, and task failures, without transient settings loading copy.
+ * [OUTPUT]: Provides zh-cn settings, tray, quit, and Dock task translations, including independent menu bar/background switches and Dock task states, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -13,19 +13,13 @@ export const presenceZhCN = {
   "taskFailed": "失败",
   "empty": "暂无运行中的任务",
   "emptyDescription": "在 Bottega 中开始任务后，进度会显示在这里。",
-  "shortcutUnavailable": "快捷键不可用，请在「键盘快捷键」中修改。",
-  "displayMode": "显示方式",
-  "iconMode": "菜单栏图标",
-  "notchMode": "刘海任务面板",
-  "iconDescription": "通过菜单栏图标打开 Bottega 和查看任务状态。",
-  "notchDescription": "使用其他应用时，在刘海区域查看任务和待处理请求。点击任务可返回对应会话。",
-  "noNotch": "当前未检测到刘海屏，使用菜单栏图标。",
-  "retentionDescriptionTray": "关闭主窗口后 Bottega 继续运行，可通过系统托盘图标重新打开。",
+  "menuBar": "在菜单栏显示",
+  "menuBarDescription": "在菜单栏显示 Bottega 图标。关闭后，后台任务和 Dock 仍可继续运行。",
   "title": "后台运行",
   "login": "登录系统时启动 Bottega",
   "loginDescription": "登录系统后自动启动。开启后台运行时不显示窗口。",
   "retention": "关闭主窗口后保持运行",
-  "retentionDescription": "关闭主窗口后 Bottega 继续运行，可通过所选后台入口重新打开。",
+  "retentionDescription": "关闭主窗口后继续运行 Bottega，可从 Dock 或应用程序重新打开。",
   "notice": "退出 Bottega 会停止本机任务。电脑休眠时任务和远程控制可能暂停。",
   "open": "打开 Bottega",
   "quitting": "正在退出…",
@@ -47,7 +41,7 @@ export const presenceZhCN = {
   "more": "还有 {{tasks}} 项",
   "unavailable": "不可用",
   "recovered": "窗口已在异常后恢复。已保存的会话仍可访问，未保存的草稿可能丢失。",
-  "backgroundNotice": "Bottega 会在后台继续运行，可在菜单栏退出。",
+  "backgroundNotice": "Bottega 将继续在后台运行，可从 Dock 或应用程序重新打开。",
   "closeFailed": "未能移交窗口草稿，请重试关闭窗口。",
   "retry": "重试",
   "systemSettings": "打开系统设置",
@@ -62,9 +56,6 @@ export const presenceZhCN = {
   "loginFailed": "无法核验登录项",
   "saveFailed": "无法保存偏好",
   "trayUnavailable": "后台图标不可用",
-  "panelUnavailable": "无法显示任务状态",
-  "screenUnavailable": "当前屏幕空间不足",
-  "nativeUnavailable": "屏幕适配器不可用",
   "preparing": "准备中",
   "active": "运行中",
   "approval": "等待审批",
@@ -76,5 +67,4 @@ export const presenceZhCN = {
   "ended": "任务已结束",
   "failureResult": "有任务失败",
   "openFailed": "此任务已不可访问",
-  "collapse": "收起任务状态"
 };

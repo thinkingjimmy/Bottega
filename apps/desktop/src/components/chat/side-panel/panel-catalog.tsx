@@ -1,12 +1,13 @@
 /**
- * [INPUT]: Depends on i18n, icons, UI menu primitives, Base/App actions, the unified App authorization entry, panel eligibility, image identity, and Browser tab projections
- * [OUTPUT]: Provides canonical panel tab/region types, parsers, i18n-keyed catalog descriptors, and keyboard-readable directory UI with one contextual App entry
+ * [INPUT]: Depends on i18n, icons, UI menu primitives, Base/App actions, panel eligibility, shared image/Artifact identities and Browser tab projections
+ * [OUTPUT]: Canonical panel tab/region types with Artifact tabs, catalog descriptors and keyboard-readable directory UI
  * [POS]: The tab identity and add-menu truth source for chat/side-panel
  */
 
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { SidePanelAddMenu,SidePanelCatalog } from "@ai-chat/ui/components/workspace/side-panel/catalog";
 import {
+FileIcon,
 GlobeIcon,
 ImageIcon,
 LoaderCircleIcon,
@@ -18,6 +19,7 @@ import type { ConversationImageSource } from "../runtime/chat-session-model";
 
 import { encodeImageIdentity, decodeImageIdentity } from "@ai-chat/chat-ui/image/identity";
 import { PANEL_CATALOG } from "@ai-chat/chat-ui/side-panel/catalog";
+import { isArtifactTab, type ArtifactTabId } from "@ai-chat/chat-ui/artifact-tabs";
 const BaseTabMenu = lazy(() => import("./catalog/base-actions"));
 const BaseHeaderActions = lazy(() => import("@/components/bases/chrome/base-header-actions").then(module => ({ default: module.BaseHeaderActions })));
 
@@ -32,7 +34,7 @@ const BaseHeaderActions = lazy(() => import("@/components/bases/chrome/base-head
  * ─────────────────────────────────────────────────────────── */
 export type AppRegionId = `app:${string}`;
 export type ImageRegionId = `image:generated:${string}` | `image:attachment:${string}`;
-export type PanelTabId = "base" | "subagents" | AppRegionId | ImageRegionId;
+export type PanelTabId = "base" | "subagents" | AppRegionId | ImageRegionId | ArtifactTabId;
 export type PanelRegion = PanelTabId | "browser";
 export type PanelCatalogId = "base" | "subagents" | "browser" | "app";
 
@@ -89,6 +91,7 @@ const IMAGE_TAB_SPEC: PanelTabSpec<"image"> = {
 };
 
 export function specForRegion(region: PanelRegion) {
+  if (isArtifactTab(region)) return { ...IMAGE_TAB_SPEC, icon: FileIcon };
   if (isAppRegion(region)) return PANEL_TAB_SPEC.app;
   if (isImageRegion(region)) return IMAGE_TAB_SPEC;
   return PANEL_TAB_SPEC[region];

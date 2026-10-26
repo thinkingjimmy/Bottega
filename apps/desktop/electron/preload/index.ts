@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, role-scoped plugin bridge installers, shared renderer IPC contracts, and the build-gated cloud account lifecycle.
  * Announces surface readiness only after the renderer command listener is installed.
- * [OUTPUT]: Exposes explicit Project history preview/import commands and renderer bridges including pathless native local-package selection, the main-window macOS Settings → Dock bridge, the main-window Agent-configuration, Plugins & Apps, workflow and Provider catalog bridges, nested quota snapshot/demand access, the fire-and-forget Agent connection warm intent, fixed-purpose background display selection and panel/Agent management, explicit manual/adopt retry intents, the main-window-only frozen startup snapshot, scoped plugin surfaces and GUI history in both product window roles, and the launch-flagged startup trace mark channel; rejects extra navigation arguments. Exposes the typed App impact and enablement bridge.
+ * [OUTPUT]: Exposes explicit Project history preview/import commands and renderer bridges including pathless native local-package selection, the main-window macOS Settings → Dock bridge, the main-window Agent-configuration, Plugins & Apps, workflow and Provider catalog bridges, nested quota snapshot/demand access, the fire-and-forget Agent connection warm intent, fixed-purpose background display selection and panel/Agent management, explicit manual/adopt retry intents, the main-window-only frozen startup snapshot, scoped plugin surfaces and GUI history in both product window roles, and the launch-flagged startup trace mark channel; rejects extra navigation arguments. Exposes typed App impact/enablement and independent preset update bridges.
  * Native Stop carries exact Chat/incarnation/owner/item identities; native process IDs remain private.
  * Artifact workspace requests and revocable lifecycle events remain restricted to the trusted main frame.
  * Workspace file links expose scoped resolution and enumerated native actions, never a general path opener.
@@ -326,9 +326,7 @@ contextBridge.exposeInMainWorld("presence", {
   observe: () => ipcRenderer.invoke(PRESENCE_CHANNEL.observe),
   setLaunchAtLogin: (enabled) => ipcRenderer.invoke(PRESENCE_CHANNEL.setLaunchAtLogin, enabled),
   setWindowRetention: (enabled) => ipcRenderer.invoke(PRESENCE_CHANNEL.setWindowRetention, enabled),
-  setDisplayMode: (mode) => ipcRenderer.invoke(PRESENCE_CHANNEL.setDisplayMode, mode),
-  openPanel: () => ipcRenderer.invoke(PRESENCE_CHANNEL.openPanel),
-  togglePanel: () => ipcRenderer.invoke(PRESENCE_CHANNEL.togglePanel),
+  setMenuBar: (enabled) => ipcRenderer.invoke(PRESENCE_CHANNEL.setMenuBar, enabled),
   openSystemSettings: () => ipcRenderer.invoke(PRESENCE_CHANNEL.openSystemSettings),
   presented: (value) => ipcRenderer.invoke(PRESENCE_CHANNEL.presented, value),
   onChanged: subscribe(PRESENCE_CHANNEL.changed), onConsumed: subscribe(PRESENCE_CHANNEL.consumed),
@@ -496,6 +494,10 @@ contextBridge.exposeInMainWorld("apps", {
     ipcRenderer.invoke(APPS_CHANNEL.discardPresetProbe, preflightId),
   installPreset: (input) =>
     ipcRenderer.invoke(APPS_CHANNEL.installPreset, input),
+  presetUpdateStatus: appId => ipcRenderer.invoke(APPS_CHANNEL.presetUpdateStatus, appId),
+  preparePresetUpdate: appId => ipcRenderer.invoke(APPS_CHANNEL.preparePresetUpdate, appId),
+  decidePresetUpdate: input => ipcRenderer.invoke(APPS_CHANNEL.decidePresetUpdate, input),
+  retryPresetUpdate: appId => ipcRenderer.invoke(APPS_CHANNEL.retryPresetUpdate, appId),
   ghStatus: () => ipcRenderer.invoke(APPS_CHANNEL.ghStatus),
   readConfig: (appId) =>
     ipcRenderer.invoke(APPS_CHANNEL.readConfig, appId),

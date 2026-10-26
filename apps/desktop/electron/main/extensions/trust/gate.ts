@@ -37,8 +37,8 @@ export function createExtensionTrustGate(input: {
 }): ExtensionTrustGate {
   if (input.anchor.diagnostic) console.warn(`[extension-trust] ${input.anchor.diagnostic}`);
   const now = input.now ?? (() => Date.now());
-  /* Only the unpackaged test anchor may carry a test root; anchor.ts never returns that source from a packaged build. */
-  const acceptTestRoot = input.anchor.source === "test-override";
+  
+  const acceptTestRoot = false;
   const source = trustMetadataSource({ anchor: input.anchor, userData: input.userData, fetch: input.fetch });
   let state = input.state ?? null;
   const cache = new Map<string, { verdict: TrustVerdict; until: number }>();

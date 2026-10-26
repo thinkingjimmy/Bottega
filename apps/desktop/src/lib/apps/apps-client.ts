@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared/apps-ipc and the preload-exposed window.apps bridge
- * [OUTPUT]: Wraps App lifecycle and scoped events, including passive capabilities and explicit Agent tool inspection, and maps a typed Add App check failure to its copy key (appProbeFailureKey). Wraps typed impact and enablement commands.
+ * [OUTPUT]: Wraps independent preset update commands, App lifecycle and scoped events, including passive capabilities and explicit Agent tool inspection, and maps a typed Add App check failure to its copy key (appProbeFailureKey). Wraps typed impact and enablement commands.
  * [POS]: apps/desktop/src/lib/apps; Renderer Apps transport adapter; structured business rejections become typed errors, transport failures stay untouched, and a missing bridge throws
  */
 
@@ -260,3 +260,8 @@ export const onAppsEvent = (callback: (event: AppsRendererEvent) => void) =>
   bridge().onEvent(callback as (event: AppInstallEvent) => void);
 
 export const checkAppAgentTools = (appId: string) => bridge().checkAgentTools(appId);
+
+export const readPresetUpdate = (appId: string) => bridge().presetUpdateStatus(appId);
+export const preparePresetUpdate = (appId: string) => bridge().preparePresetUpdate(appId);
+export const decidePresetUpdate = (input: import("../../../shared/ipc/apps/apps-ipc").PresetUpdateDecision) => bridge().decidePresetUpdate(input);
+export const retryPresetUpdate = (appId: string) => bridge().retryPresetUpdate(appId);

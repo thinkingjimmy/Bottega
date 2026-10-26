@@ -205,5 +205,4 @@ export function getShell(): ShellBridge | null {
   memo.value = createShellClient(channel as ShellChannel, descriptor);
   return memo.value;
 }
-/** Test and mock seam: forget the memoized bridge so the next getShell() re-reads the globals. */
-export function resetShellForTesting() { memo?.value?.dispose(); memo = null; }
+

@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: React, shared dialog primitives, menu focus arbitration and host copy/mutations.
- * [OUTPUT]: SidebarRenameDialog and useSidebarRenameMenu with draft retention and deterministic focus handoff.
+ * [OUTPUT]: SidebarRenameDialog and useSidebarRenameMenu with draft retention and deferred menu-to-dialog focus handoff for rename and host confirmations.
  * [POS]: Shared Chat/Project rename interaction; hosts own persistence and recoverable errors.
  */
 
@@ -42,10 +42,12 @@ export type SidebarRenameDialogProps = {
   onCloseAutoFocus?(event: Event): void;
 };
 
-export function useSidebarRenameMenu(onOpen: (restoreFocus: (event: Event) => void) => void) {
+type OpenMenuDialog = (restoreFocus: (event: Event) => void) => void;
+
+export function useSidebarRenameMenu(onOpen: OpenMenuDialog) {
   const menu = usePointerOpenedMenu();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const pending = useRef(false);
+  const pending = useRef<OpenMenuDialog | null>(null);
   const keyboard = useRef(false);
 
   const onDialogCloseAutoFocus = (event: Event) => {
@@ -65,16 +67,20 @@ export function useSidebarRenameMenu(onOpen: (restoreFocus: (event: Event) => vo
       },
     },
     requestOpen: () => {
-      pending.current = true;
+      pending.current = onOpen;
+    },
+    requestDialogOpen: (open: OpenMenuDialog) => {
+      pending.current = open;
     },
     onMenuCloseAutoFocus: (event: Event) => {
       if (!pending.current) {
         menu.onCloseAutoFocus(event);
         return;
       }
-      pending.current = false;
+      const open = pending.current;
+      pending.current = null;
       event.preventDefault();
-      onOpen(onDialogCloseAutoFocus);
+      open(onDialogCloseAutoFocus);
     },
     onDialogCloseAutoFocus,
   };

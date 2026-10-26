@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on stable App compatibility failures, type-only Agent/App/authorization primitives and existing Extension disclosure vocabulary.
- * [OUTPUT]: Provides APP_PROBE_FAILURE_CODES (the typed Add App check failures) and App acquisition IPC including explicit author-manifest/Agent-analysis selection, source preflight, configuration and existing import/share contracts
+ * [OUTPUT]: Provides APP_PROBE_FAILURE_CODES (the typed Add App check failures) and App acquisition IPC including explicit author-manifest/Agent-analysis selection, source preflight, configuration independent update projections independent update projections and existing import/share contracts
  * [POS]: apps/desktop/shared/ipc/apps; Shared Apps wire leaf for the acquisition half (install, preset, share, removal); apps-ipc re-exports it while durable lifecycle and grant records stay in that file
  */
 
@@ -180,3 +180,12 @@ export type RemoveAppInput = {
   mode: RemoveAppMode;
   requestId: string;
 };
+
+/** Main-owned independent update projection. Paths and signed bytes are never accepted as input. */
+export type PresetUpdateState = "frozen" | "validated" | "pending-built" | "awaiting-consent" | "consent-resolved" |
+  "committed" | "post-commit" | "pending-source-sync" | "completed" | "failed";
+export type PresetUpdateStatus = {
+  operationId: string; version: string; state: PresetUpdateState; descriptorDigest: string; error: string | null;
+  capabilities: readonly string[]; hostActions: readonly string[]; extensions: readonly string[]; backupPath: string | null;
+};
+export type PresetUpdateDecision = { appId: string; operationId: string; approve: boolean };

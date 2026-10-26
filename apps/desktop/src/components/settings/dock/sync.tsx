@@ -1,20 +1,16 @@
 /**
  * [INPUT]: Depends on React, the desktop i18n provider, Settings primitives, the Dock settings store, and the Dock sync status/merge conflict projections.
- * [OUTPUT]: Provides `DockSync`: the layout sync state in plain words and, when main needs a decision, a non-modal card — first sync (merge both / use cloud / use this Mac), per-conflict This Mac vs Cloud choices for a three-way merge, or the newer-format notice that overwrites nothing.
+ * [OUTPUT]: Provides `DockSync`: a non-modal card only when automatic layout sync needs a decision — first sync, three-way merge conflicts, or a newer-format notice.
  * [POS]: settings/dock sync surface (4.3, INV-15); it only collects the user's choice — main performs the one snapshot merge — and never blocks using the Dock.
  */
 
 import { useState } from "react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { SettingsBadge, SettingsButton, SettingsChoiceRow, SettingsList, SettingsRow, SettingsSection, SettingsSurface } from "../settings-layout";
+import { SettingsButton, SettingsChoiceRow, SettingsSection, SettingsSurface } from "../settings-layout";
 import { dockSettingsStore, type DockSettingsState } from "@/lib/platform/system-dock-settings-client";
 import type { DockSyncStatus } from "../../../../shared/system-dock/ipc";
 import type { MergeConflict } from "../../../../shared/system-dock/merge";
 
-const STATE_KEYS: Record<DockSyncStatus["state"], string> = {
-  synced: "systemDock.sync.synced", pending: "systemDock.sync.pending", offline: "systemDock.sync.offline", "local-only": "systemDock.sync.localOnly",
-  conflict: "systemDock.sync.conflict", blocked: "systemDock.sync.blocked", error: "systemDock.sync.error",
-};
 const FIRST_SYNC = [
   { strategy: "merge", labelKey: "systemDock.sync.mergeBoth", detailKey: "systemDock.sync.mergeBothDetail" },
   { strategy: "remote", labelKey: "systemDock.sync.useCloud", detailKey: "systemDock.sync.useCloudDetail" },
@@ -68,12 +64,8 @@ function ConflictCard({ sync, busy }: { sync: NonNullable<DockSyncStatus["confli
 export function DockSync({ state }: { state: DockSettingsState }) {
   const { t } = useAppTranslation();
   const sync = state.snapshot!.sync;
-  const tone = sync.state === "synced" ? "neutral" : sync.state === "error" || sync.state === "blocked" ? "danger" : sync.state === "conflict" ? "warn" : "muted";
-  return <SettingsSection title={t("systemDock.sync.title")} description={t("systemDock.sync.description")}>
-    <SettingsList>
-      <SettingsRow label={t("systemDock.sync.status")} badge={<SettingsBadge tone={tone}>{t(STATE_KEYS[sync.state])}</SettingsBadge>}
-        description={sync.state === "offline" ? t("systemDock.sync.offlineDetail") : sync.state === "local-only" ? t("systemDock.sync.localOnlyDetail") : undefined} control={null} />
-    </SettingsList>
-    {sync.conflict && <ConflictCard key={JSON.stringify(sync.conflict)} sync={sync.conflict} busy={state.pending !== null} />}
+  if (!sync.conflict) return null;
+  return <SettingsSection title={t("systemDock.sync.title")}>
+    <ConflictCard key={JSON.stringify(sync.conflict)} sync={sync.conflict} busy={state.pending !== null} />
   </SettingsSection>;
 }

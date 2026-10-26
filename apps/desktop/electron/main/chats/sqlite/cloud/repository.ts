@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on the sole worker database, scope mode, canonical readers/writers and lifecycle-specific deletion custody.
- * [OUTPUT]: Routes original synchronization/removal transactions (a local Chat enrolls only through enrollChat, TASK-11 S3-b) and exact worker-owned remote admission snapshots and retained-root outbox Chat identity.
+ * [OUTPUT]: Routes original synchronization/removal transactions, exact worker-owned admission snapshots, atomic guarded convergence targets and retained-root outbox identity.
  * [POS]: Composed ChatRepository collaborator; every mutation shares its existing operation receipt transaction.
  */
 import { isAbsolute } from "node:path";
+import { pendingConvergenceTarget } from "./convergence/pending";
 import { cloudChatHeadSchema } from "@ai-chat/cloud-protocol/chats/model";
 import { readChatDeletion, requestChatDeletion, keepChatDeletion } from "./deletion/intent";
 import { readFileSync, lstatSync, openSync, fstatSync, readSync, closeSync, constants } from "node:fs";
@@ -283,6 +284,7 @@ export class ChatCloudRepository {
         value = row ? { incarnationId: row.incarnation_id, messageRevision: row.native_message_revision, outboxDigest: turnOutboxDigest(this.db, scope!, query.chatId) } : null; break;
       }
       case "chat-metadata": value = readMetadataState(this.db, scope!, query.chatId); break;
+      case "convergence-target": value = pendingConvergenceTarget(this.db, this.reader, scope!, deviceId, query.head); break;
       case "chat-facts": value = readChatFacts(this.db, scope!, query.chatId); break;
       case "metadata-outbox": value = this.db.prepare(`SELECT * FROM cloud_outbox WHERE environment=? AND user_id=?
         AND json_extract(payload_json,'$.chatId')=? AND metadata_status IN ('queued','blocked','conflicted')

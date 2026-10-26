@@ -1,9 +1,9 @@
 /**
  * [INPUT]: Depends on Electron lifecycle, Node filesystem, installation-scoped device identity, on-demand English-plus-active-locale translation (shared and main-only native catalogs), and every main-owned service, including signed-update compatibility, scoped Extensions, Project cleanup/Tools, Agent policy, Chat continuation recovery, coordinator/custody, Apps, Artifact document commit/recovery, browser, local usage history, account quota service seeded from its durable last-known snapshot, presence lifecycle/composition and crash-aware main readiness, and the build-gated cloud account lifecycle with consent restoration, cross-Store cleanup and original-coordinator remote intake.
  * Artifact workspace/checkpoint ownership composes with the existing document journal and plugin lifecycle. App surface leases share the canonical effective-workspace resolver used by files and tools.
- * [OUTPUT]: Provides the desktop composition root with parallel pre-window store initialization, the two-phase Chat store open/adopt that spawns the SQLite worker ahead of custody recovery and adopts it alongside, early CLI-discovery warm-up feeding the persisted Agent runtime snapshot that seeds the window's startup snapshot, a post-window maintenance queue that also finishes a window-first folder mount and remounts the Bases its new Chat identities unblock, pre-Project App authority repair, the trust-gated signed candidate preflight, App Query snapshot wiring, scoped inventory and Project Tools wiring, Chat Home/SQLite continuation reconciliation, post-reconciliation external-history sync, the periodic chat-store maintenance gate, cleanup participants, recovery order, windows, and two-phase shutdown, background retention based on actual entry availability, shared quit authorization, and task status startup. Agent configuration inventory resolves live library Skills and scoped MCP servers; workflow defaults read Provider preferences.
+ * [OUTPUT]: Provides the desktop composition root with parallel pre-window store initialization, the two-phase Chat store open/adopt that spawns the SQLite worker ahead of custody recovery and adopts it alongside, early CLI-discovery warm-up feeding the persisted Agent runtime snapshot that seeds the window's startup snapshot, a post-window maintenance queue that also finishes a window-first folder mount and remounts the Bases its new Chat identities unblock, pre-Project App authority repair, the trust-gated signed candidate preflight, App Query snapshot wiring, scoped inventory and Project Tools wiring, Chat Home/SQLite continuation reconciliation, post-reconciliation external-history sync, the periodic chat-store maintenance gate, cleanup participants, recovery order, windows, and two-phase shutdown, background retention independent of menu bar visibility, shared quit authorization, and task status startup. Agent configuration inventory resolves live library Skills and scoped MCP servers; workflow defaults read Provider preferences.
  * Plugin Surface composition owns source authoring, sealed generations and delivery; Memory exposes its existing owners and remote pause port, and Dock retains its original owner and recovery lifecycle. Managed previews follow committed App conversation availability and drain before App disable returns.
- * Folder ownership shares cloud identity; quit reports live process/task facts and named unconfirmed drafts, cancellation restores editing, and failure dialogs load only when requested by startup/shutdown/runtime.
+ * Folder ownership shares cloud identity; terminal quit disconnects Cloud before preview drainage and reports live process/task facts and named unconfirmed drafts, cancellation restores editing, and failure dialogs load only when requested by startup/shutdown/runtime.
  * [POS]: The root lifecycle owner of the desktop main process; entry files own identity and the V8 compile cache before this module is imported
  */
 import { providerCatalog } from "./providers/host/catalog";
@@ -128,7 +128,7 @@ let presenceRuntime: ReturnType<typeof createPresenceRuntime> | null = null;
 let systemDockRuntime: ReturnType<typeof createSystemDockRuntime> | null = null;
 const stopOperations = () => uniqueStopOperations([...agentStopOperations(), ...(sectionCoordinator?.pendingStopOperations() ?? [])]);
 const presenceLifecycle = createApplicationPresence({ safeQuit: () => safeQuit, locale: () => currentLocale(), snapshot: stopOperations,
-  enabled: () => presenceRuntime?.service.snapshot().effectiveDisplayMode != null,
+  enabled: () => settingsStore?.get().keepRunningInBackground ?? false,
   refresh: () => { void presenceRuntime?.service.refresh(); void cloudRuntime?.refresh(); }, changed: () => presenceRuntime?.service.notifyLifecycle(),
   onProtocolArgs: argv => cloudRuntime?.onProtocolArgs(argv) });
 const { loginItem, openedAtLogin, retention: windowRetention, requestQuit: requestUserQuit } = presenceLifecycle;
@@ -664,6 +664,7 @@ if (!hasSingleInstanceLock) {
       systemDockRuntime = createSystemDockRuntime({ plugins: foundation!.plugins, mainDirectory: __dirname, userData, locale: currentLocale, installation: localDeviceId!,
         limits: usageLimits, history: usageService, apps: () => appsService,
         send: async (command) => { await presenceRuntime?.send(command); },
+        tasks: { snapshot: () => presenceRuntime!.tasks.snapshot(), subscribe: (listener) => presenceRuntime!.tasks.subscribe(listener), open: (task) => presenceRuntime!.tasks.open(task) },
         refreshMenu: () => presenceRuntime?.refreshMenu(),
         ensureBackground: async () => { if (!settingsStore!.get().keepRunningInBackground) await presenceRuntime?.service.setWindowRetention(true); } });
       presenceRuntime = createPresenceRuntime({ mainDirectory: __dirname, settings: settingsStore, chats: chatsService,
@@ -673,7 +674,7 @@ if (!hasSingleInstanceLock) {
       const restartHidden = await presenceLifecycle.consumeRestartPresentation();
       /* A silent start still builds the window, so both branches reach this line with
          main readiness settled — that is the only precondition deferred work has. */
-      await windowRetention.initialize((restartHidden || (openedAtLogin && settingsStore.get().launchAtLogin)) && presenceRuntime.service.snapshot().effectiveDisplayMode !== null);
+      await windowRetention.initialize((restartHidden || (openedAtLogin && settingsStore.get().launchAtLogin)) && settingsStore.get().keepRunningInBackground);
       startupTrace.mark("window:shown");
       /* After the first frame: the Dock restores any takeover a crashed run left behind, then
          starts its bar only when enabled; neither may delay the main window. */
@@ -718,8 +719,8 @@ async function closeTerminalOwners() {
   // Restore the system Dock before anything else stops; the recovery agent is the fallback, not the plan.
   await systemDockRuntime?.restoreForQuit().catch((cause) => console.warn("[system-dock] restore failed", cause));
   presenceRuntime?.close(); presenceLifecycle.close();
-  await previews?.close(); previews = null;
   if (cloudRuntime) await cloudRuntime.close(); else { await cloudPrepared?.scope?.close(); await cloudPrepared?.binding.close(); }
+  await previews?.close(); previews = null;
   await systemDockRuntime?.close().catch((cause) => console.warn("[system-dock] close failed", cause));
   releaseMemoryPlugin?.(); releaseMemoryPlugin = null; await foundation?.close().catch((cause) => console.warn("[host] close failed", cause));
   await pluginSurfaceIntegration()?.close().catch((cause)=>console.warn("[plugins] close failed",cause));
@@ -743,6 +744,3 @@ const { safeQuit, stopChatAdmission, runIrreversible } = composeApplicationQuit(
   locale: currentLocale, stopOperations, startupFlight: () => startupFlight,
   requestUserQuit: presenceLifecycle.requestBeforeQuit, closeOwners: closeTerminalOwners,
 });
-declare const __BOTTEGA_SERVER_TUNNEL__: boolean;
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- Independent entry exists only in explicitly enabled non-production builds.
-if (__BOTTEGA_SERVER_TUNNEL__) require(join(__dirname, "server-tunnel-entry.js"));

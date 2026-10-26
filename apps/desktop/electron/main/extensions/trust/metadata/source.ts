@@ -39,16 +39,6 @@ export function trustMetadataSource(input: { anchor: TrustAnchorRead; userData: 
   let cached: Metadata | null = null, pending: Promise<Metadata> | null = null, loaded = false, last: Metadata = empty, nextFetch = 0;
   let writes = Promise.resolve();
   const read = async (): Promise<Metadata> => {
-    if (input.anchor.source === "test-override" && input.anchor.directory) {
-      try {
-        const value = await json(join(input.anchor.directory, "metadata.json"));
-        return metadataSchema.parse(value);
-      } catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code !== "ENOENT") return { roots: [], snapshot: { invalid: true } };
-        try { return { roots: [], snapshot: await json(join(input.anchor.directory, "snapshot.json")) }; }
-        catch (error) { return (error as NodeJS.ErrnoException).code === "ENOENT" ? empty : { roots: [], snapshot: { invalid: true } }; }
-      }
-    }
     if (invalid) return { roots: [], snapshot: { invalid: true } };
     if (!url) return empty;
     if (!loaded) {
@@ -88,7 +78,7 @@ export function trustMetadataSource(input: { anchor: TrustAnchorRead; userData: 
   return {
     read() { return pending ??= read().finally(() => { pending = null; }); },
     async accept(metadata: Metadata) {
-      if (!url || input.anchor.source === "test-override") return;
+      if (!url) return;
       const parsed = metadataSchema.parse(metadata);
       if (!parsed.snapshot) return;
       if (cached && digestCanonical(cached) === digestCanonical(parsed)) return;

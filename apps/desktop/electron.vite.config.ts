@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on electron-vite, Vite React/Tailwind plugins, esbuild, Node paths, Rollup diagnostics, and cloud assembly configuration
+ * [INPUT]: Depends on electron-vite, Vite React/Tailwind plugins, esbuild, Node paths, Rollup diagnostics, cloud assembly configuration and the native Keychain build plugin
  * [OUTPUT]: Provides the fixed production desktop assembly, out entry selection, CSP, renderer module reports, and utility workers.
  * [POS]: Electron build entry coordinating main/preload rebuilds, process restarts, and renderer output
  */
@@ -12,12 +12,12 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { build, type Plugin, type Rollup } from "vite";
-import { resolveCloudAssembly, workbenchUiFor, serverTunnelFor } from "./config/cloud-assembly";
+import { resolveCloudAssembly, workbenchUiFor } from "./config/cloud-assembly";
 import { NODE_ENTRY_FILES, NODE_PACKAGES, type NodeEntry } from "./electron/main/runtime/model";
+import { keychainPolicy } from "./config/native/keychain-policy";
 const cloudAssembly = resolveCloudAssembly("production");
 /* Keep offline test defaults separate from the default-on development and production UI. */
 const workbenchUi = workbenchUiFor(cloudAssembly, process.env.BOTTEGA_WORKBENCH_UI);
-const serverTunnel = serverTunnelFor(cloudAssembly, process.env.BOTTEGA_SERVER_TUNNEL);
 /* Copied renderer assets retain their license; verify-packaged-payload checks the same list. */
 const RENDERER_LICENSES = [
     ["licenses/phosphor-icons-MIT.txt", "../../packages/ui/src/components/icons/PHOSPHOR-LICENSE.txt"],
@@ -26,7 +26,7 @@ const RENDERER_LICENSES = [
 const outputRoot = "out";
 if (!process.env.ELECTRON_ENTRY)
     process.env.ELECTRON_ENTRY = `${outputRoot}/main/index.js`;
-const cloudDefines = { __BOTTEGA_SERVER_TUNNEL__: JSON.stringify(serverTunnel), __BOTTEGA_CLOUD_CONFIG__: JSON.stringify(cloudAssembly.config), __BOTTEGA_CLOUD_UPDATES_ENABLED__: JSON.stringify(cloudAssembly.updatesEnabled) };
+const cloudDefines = {  __BOTTEGA_CLOUD_CONFIG__: JSON.stringify(cloudAssembly.config), __BOTTEGA_CLOUD_UPDATES_ENABLED__: JSON.stringify(cloudAssembly.updatesEnabled) };
 const PRODUCTION_CSP = [
     "default-src 'self'",
     "frame-src http://*.localhost:*",
@@ -59,7 +59,7 @@ function productionCsp(): Plugin {
 }
 /* Isolated auxiliary surfaces (notch task panel, Bottega Dock bar/panel) each get one
    self-contained preload; none of them may share a chunk with the product preload. */
-const AUXILIARY_PRELOADS = ["task-panel", "system-dock", "desktop-dialog"] as const;
+const AUXILIARY_PRELOADS = ["system-dock", "desktop-dialog"] as const;
 function auxiliaryPreload(): Plugin {
     return {
         name: "self-contained-auxiliary-preloads",
@@ -258,7 +258,7 @@ const onwarn: Rollup.WarningHandlerWithDefault = (warning, defaultHandler) => {
 };
 export default defineConfig({
     main: {
-        plugins: [runtimeEntries(), buildFlavor()],
+        plugins: [keychainPolicy(), runtimeEntries(), buildFlavor()],
         define: { ...cloudDefines,
             /* Non-production mains may load the private entries built beside them; production compiles the loader out. */
             __BOTTEGA_PRIVATE_ENTRIES__: JSON.stringify(cloudAssembly.flavor !== "production"),
@@ -281,7 +281,7 @@ export default defineConfig({
                 // Workers and resource helpers resolve from the main bundle directory.
                 output: { chunkFileNames: "[name]-[hash].js" },
                 input: {
-                    ...(serverTunnel ? { "server-tunnel-entry": resolve(__dirname, "electron/main/apps/gateway/tunnel/entry.ts") } : {}),
+                    
                     index: resolve(__dirname, "electron/main/main-entry.ts"),
                     "sync-crypto-worker-entry": resolve(__dirname, "electron/main/cloud/encryption/worker-entry.ts"),
                     "utility-host-entry": resolve(__dirname, "electron/main/host/entry.ts"),
@@ -331,7 +331,7 @@ export default defineConfig({
             outDir: resolve(__dirname, `${outputRoot}/renderer`),
             rollupOptions: {
                 onwarn,
-                input: { index: resolve(__dirname, "src/index.html"), "task-panel": resolve(__dirname, "src/task-panel.html"),
+                input: { index: resolve(__dirname, "src/index.html"),
                     "system-dock-bar": resolve(__dirname, "src/system-dock-bar.html"), "system-dock-panel": resolve(__dirname, "src/system-dock-panel.html") },
             },
         },

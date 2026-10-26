@@ -154,13 +154,12 @@ export async function verifyPackagedPayload({ desktop, buildManifest, log = (lin
     assert(entries.has(`/${entry}`) && extractFile(archive, entry).equals(readFileSync(join(desktop, source))), `Missing or altered renderer licence: ${fileName}`);
   }
   const presenceResources = ["trayIcon.png", "trayIcon@2x.png"];
-  if (buildManifest.platform === "darwin") presenceResources.push("trayTemplate.png", "trayTemplate@2x.png", "bin/screen-bridge");
+  if (buildManifest.platform === "darwin") presenceResources.push("trayTemplate.png", "trayTemplate@2x.png");
   for (const name of presenceResources) {
     const path = join(resources, "presence", name);
     assert(existsSync(path) && lstatSync(path).isFile() && lstatSync(path).size > 0, `Missing presence resource: ${name}`);
   }
   if (buildManifest.platform === "darwin") {
-    assert(lstatSync(join(resources, "presence/bin/screen-bridge")).mode & 0o111, "The presence helper must be executable");
     const capture = join(resources, "tunnel/bin/preview-capture");
     assert(existsSync(capture) && lstatSync(capture).isFile() && (lstatSync(capture).mode & 0o111), "Missing executable preview capture helper");
     // Bottega Dock ships through mac extraFiles, which a missing source only warns about.

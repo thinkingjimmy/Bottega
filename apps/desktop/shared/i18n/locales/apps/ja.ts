@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Japanese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
+ * [OUTPUT]: Provides the Apps Japanese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Japanese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,6 +8,13 @@
 import type { appsEn } from "./en";
 
 export const appsJa: typeof appsEn = {
+  dock: {
+    pin: "Dock に固定",
+    unpin: "Dock から削除",
+    pinFailed: "Dock のショートカットを保存できませんでした。もう一度お試しください。",
+    openFailed: "{{name}} を開けませんでした",
+    openFailedDetail: "Dock の App をクリックして、もう一度お試しください。",
+  },
   provider: {
     listFailed: "App の読み込みに失敗しました：{{message}}",
   },

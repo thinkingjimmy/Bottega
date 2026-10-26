@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on verified canonical body pages, authenticated file transfer and the selected folder's byte owners.
- * [OUTPUT]: Completes portable attachments and historical artifacts without retaining attachment originals in the private cache.
+ * [INPUT]: Depends on verified canonical body pages, shared retained Artifact descriptors, authenticated file transfer and the selected folder's byte owners.
+ * [OUTPUT]: Completes portable attachments and committed historical artifacts; reference-only or rejected markers without retained bytes do not block Chat synchronization.
  * [POS]: Background mirror materialization; no local execution or workspace grant is created.
  */
 import { encryptedFileDescriptorSchema, type EncryptedFileDescriptor, type FileCipherPort } from "@ai-chat/cloud-protocol/blobs/encrypted";
@@ -13,6 +13,7 @@ import { artifactRuntime } from "../../artifacts/core/runtime";
 import { messageArtifactFences } from "../../artifacts/core/service";
 import { ATTACHMENT_BYTE_LIMIT } from "../../../../shared/ipc/agent/agent-ipc";
 import type { ChatAttachmentMeta } from "../../../../shared/ipc/content/chats-ipc";
+import { retainedArtifactFence } from "./references";
 type Transfer = { root: () => string | null; files: Pick<EncryptedBlobTransfer, "readFile">; crypto(): FileCipherPort; current(): void; signal: AbortSignal };
 
 export async function hydrateLibraryAttachment(input: Transfer, chatId: string, meta: ChatAttachmentMeta, descriptor: EncryptedFileDescriptor) {
@@ -80,7 +81,9 @@ export async function hydrateLibraryFiles(input: { root: () => string | null; st
       const artifacts = artifactRuntime();
       if (artifacts) for (const fence of messageArtifactFences(body.message, body.subagents)) {
         input.current(); input.signal.throwIfAborted();
-        await artifacts.resolve({ chatId: head.chat.id, incarnationId: head.chat.incarnationId, artifactId: fence.id });
+        const ref = { chatId: head.chat.id, incarnationId: head.chat.incarnationId, artifactId: fence.id };
+        if (!retainedArtifactFence(fence, ref)) continue;
+        await artifacts.resolve(ref);
       }
     }
     if (page.value.complete) return;

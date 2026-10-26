@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on type-only Memory runtime/provider/platform ports; production announces to an otherwise empty registry.
- * [OUTPUT]: Provides announceComposition/observeComposition (named composition moments with their live objects), interruptionPoint/handleInterruptions (named places another entry may make throw) and compositionOverrides (values another entry may set before startup: the Browser idle threshold, a Design render trace, a restricted Agent CLI discovery, a scripted quit confirmation).
+ * [OUTPUT]: Provides announceComposition/observeComposition (named composition moments with their live objects, including App update assembly before recovery), interruptionPoint/handleInterruptions (named places another entry may make throw) and compositionOverrides (values another entry may set before startup: the Browser idle threshold, a Design render trace, a restricted Agent CLI discovery, a scripted quit confirmation).
  * [POS]: The one seam through which another entry of the same build reaches live runtime objects. Production registers nothing, so every call is a lookup on an empty map; the private E2E entry (electron/main/e2e, never exported) is the only observer (F-01).
  */
 
@@ -8,7 +8,7 @@ import type { ManagedRuntimeRegistry } from "../../memory/runtime/managed-regist
 import type { MemoryProvider } from "../../memory/core/provider";
 import type { PlatformCapabilities } from "../../../../shared/platform/platform-capabilities";
 
-export type CompositionMoment = "foundation" | "builtin-tools" | "memory";
+export type CompositionMoment = "foundation" | "builtin-tools" | "memory" | "app-updates";
 const observers = new Map<CompositionMoment, Array<(value: unknown) => void>>();
 
 /** Called by composition code once the named objects exist; with no observer it does nothing. */

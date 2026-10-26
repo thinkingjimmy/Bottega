@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Electron userData/safeStorage, the cloud build schema, credential and device identity stores, the durable sync binding and the owners attached before the first window.
+ * [INPUT]: Electron userData, guarded native encryption, the cloud build schema, credential and device identity stores, the durable sync binding and the owners attached before the first window.
  * [OUTPUT]: Provides prepareCloudRuntime and the PreparedCloudRuntime shape consumed by createCloudRuntime, including the late-bound account-config cleanup port.
  * [POS]: Light half of the cloud composition; startup reads the binding here without compiling the transport/session/sync implementation.
  */
-import { app, safeStorage } from "electron";
+import { app } from "electron";
+import { secureStorage } from "../../security/safe-storage";
 import { cloudBuildConfigSchema, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
 import { DeviceIdentityStore } from "../../chats/device-identity/device-identity";
 import { CredentialStore } from "../account/credential-store";
@@ -28,7 +29,7 @@ import type { AppLocalRemovalService } from "../../apps/conversion/removal/servi
 export async function prepareCloudRuntime(input: CloudBuildConfig) {
   const config = cloudBuildConfigSchema.parse(input);
   const userData = app.getPath("userData");
-  const vault = new CredentialStore(userData, config, safeStorage);
+  const vault = new CredentialStore(userData, config, secureStorage);
   const deviceId = await new DeviceIdentityStore(userData).loadOrCreate();
   const binding = await restoreSyncBinding(userData, config, vault, deviceId);
   let scope: AccountScopeLifecycle | null = null;

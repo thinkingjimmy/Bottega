@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Chat identity, Router takeover history, host catalog visibility, shared ConversationModel and authority-checked Base resolution.
- * [OUTPUT]: Shared session-owned panels, Artifact-owned design headers and takeover/presentation, awaited handoff with composer-owned focus, committed close/trigger-focus ownership, and retained Base/Plan/subagent state.
+ * [INPUT]: Chat identity, Router takeover history, shared Artifact session tabs, ConversationModel and authority-checked Base resolution.
+ * [OUTPUT]: Shared tabbed Artifacts with guarded navigation, active-only previews, explicit full view, composer handoff and retained Base/Plan/subagent state.
  * [POS]: Shared panel composition with host-owned Base authority, navigation, draft guards and artifact callbacks.
  */
 import { MessageResponse } from "@ai-chat/ui/components/ai-elements/message";
@@ -11,12 +11,13 @@ import { usePanelLayout, type PanelWidths } from "../layout";
 import { PanelHost, type PanelLeaf } from "../frame";
 import { WorkspacePreview, type WorkspacePreviewRequest } from "../workspace";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { BotIcon, DatabaseIcon, ImageIcon, GlobeIcon, BlocksIcon, LoaderCircle } from "lucide-react";
+import { BotIcon, DatabaseIcon, ImageIcon, GlobeIcon, BlocksIcon, FileIcon, LoaderCircle } from "lucide-react";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import type { TranscriptSource } from "../../../platform/contracts";
-import { ArtifactHostProvider, ArtifactPresentationProvider, useArtifactHost, type ArtifactHost } from "../../../artifacts/context";
-import { ArtifactPreview } from "../../../artifacts/renderer";
+import type { ArtifactHost } from "../../../artifacts/context";
+import { ArtifactTab, isArtifactTab, rememberArtifactTab, useArtifactTabs } from "../../../artifacts/presentation/tabs";
+import { artifactCopy } from "../../../artifacts/copy";
 import { useConversationModel } from "../../conversation/body/model";
 import { decodeImageIdentity, encodeImageIdentity, resolveImage, type ImageIdentity, type ImageRegion } from "../image/identity";
 import { sidePanelCopy } from "../../../i18n/side-panel";
@@ -29,8 +30,7 @@ import { conversationKey, panelWidth, panelMemory, sanitizeSlots, savePanelWidth
 import { remoteCopy } from "../../../i18n/messages/remote";
 import { panelCatalog } from "./catalog";
 import { ImageTab } from "./image-tab";
-type ArtifactPreviewValue = { fence: ArtifactFence; followUp?: ArtifactHost["followUp"] };
-type Preview = ArtifactPreviewValue | { workspace: WorkspacePreviewRequest } | { planId: string };
+type Preview = { workspace: WorkspacePreviewRequest } | { planId: string };
 import type { PanelServices } from "./ports";
 import { useNarrowPanel } from "./viewport";
 const widths: PanelWidths = { read: preview => panelWidth(window.innerWidth, preview), write: savePanelWidth };
@@ -39,21 +39,22 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   const memory = services.memory ?? panelMemory, canInstallApps = services.canInstallApps ?? true;
   const eligible = Boolean(head && head.chat.classification.conversationKind === "ordinary"), chatId = head?.chat.id ?? "", incarnationId = head?.chat.incarnationId ?? "";
   const key = conversationKey(chatId, incarnationId), copy = sidePanelCopy(locale), narrow = useNarrowPanel(), model = useConversationModel();
+  const artifactScope = `${chatId}:${incarnationId}`, artifacts = useArtifactTabs(artifactScope);
   const [cycle, setCycle] = useState(0), base = services.useBase(head, cycle), BaseTab = services.BaseTab;
   const rememberIntent = useCallback((open: boolean) => memory.rememberOpenIntent(conversationKey(chatId, incarnationId), open), [memory, chatId, incarnationId]);
   const history = services.useHistory(eligible, narrow, memory.readOpenIntent(key), rememberIntent);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [fullPreviewKey, setFullPreviewKey] = useState<string | null>(null);
-  const previewKey = preview ? "fence" in preview ? preview.fence.id : "workspace" in preview ? preview.workspace.key : preview.planId : null;
-  const artifactFull = Boolean(previewKey && fullPreviewKey === previewKey);
-  const setArtifactFull = (full: boolean) => setFullPreviewKey(full ? previewKey : null);
+  const previewKey = preview ? "workspace" in preview ? preview.workspace.key : preview.planId : null;
   const planMessage = preview && "planId" in preview ? model.bodies.find(body => body.message.id === preview.planId)?.message : null;
   const livePlan = preview && "planId" in preview && model.live?.state?.receipt.assistantMessageId === preview.planId && model.live.projection ? projectDraftPlan(hydrateDraft(model.live.projection.draft)) : null;
   const planContent = planMessage?.content ?? livePlan?.content ?? "";
   const { containerRef, geometry, widthChange } = usePanelLayout(services.widths ?? widths, previewKey);
   const triggerRef = useRef<HTMLButtonElement>(null), backRef = useRef<HTMLButtonElement>(null);
   const [slots, setSlots] = useState<PanelSlots>(() => memory.readSlots(key, () => true)), [slotKey, setSlotKey] = useState(key);
+  const artifactFull = Boolean(!preview && isArtifactTab(slots.active) && fullPreviewKey === slots.active);
+  const setArtifactFull = (full: boolean) => setFullPreviewKey(full ? slots.active : null);
   const [baseEngaged, setBaseEngaged] = useState(false), [dirty, setDirty] = useState(false), [creating, setCreating] = useState(false), [creationError, setCreationError] = useState("");
   const [baseTabActions, setBaseTabActions] = useState<HTMLSpanElement | null>(null), [baseHeaderActions, setBaseHeaderActions] = useState<HTMLSpanElement | null>(null);
   const createFlight = useRef(false), mounted = useRef(true), tabRefs = useRef(new Map<string, HTMLDivElement>());
@@ -75,10 +76,6 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
     setSlots({ tabs: ["base"], active: "base", touched: true });
   }
   if (!baseEngaged && history.open && slots.tabs.includes("base")) setBaseEngaged(true);
-  const openTab = useCallback((id: PanelTabId) => {
-    setPreview(null); setSlots(previous => ({ tabs: previous.tabs.includes(id) ? previous.tabs : [...previous.tabs, id], active: id, touched: true }));
-  }, []);
-  const openShell = () => { if (!history.open) setCycle(value => value + 1); setPreview(null); history.openShell(); };
   const closeHandlers = useRef(new Set<() => Promise<unknown>>()), [closeFailed, setCloseFailed] = useState(false);
   const beforeClose = useCallback((handler: () => Promise<unknown>) => { closeHandlers.current.add(handler); return () => { closeHandlers.current.delete(handler); }; }, []);
   const closeOwner = useMemo(() => ({ key, preview, slots, cycle }), [key, preview, slots, cycle]);
@@ -87,6 +84,20 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
     activeCloseOwner.current = closeOwner;
     return () => { if (activeCloseOwner.current === closeOwner) activeCloseOwner.current = null; };
   }, [closeOwner]);
+  const navigate = useCallback((action: () => void) => {
+    const current = () => mounted.current && activeCloseOwner.current === closeOwner;
+    void (async () => {
+      try {
+        await Promise.all([...closeHandlers.current].map(handler => handler()));
+        if (!current()) return;
+        setCloseFailed(false); setFullPreviewKey(null); action();
+      } catch { if (current()) setCloseFailed(true); }
+    })();
+  }, [closeOwner]);
+  const openTab = useCallback((id: PanelTabId) => navigate(() => {
+    setPreview(null); setSlots(previous => ({ tabs: previous.tabs.includes(id) ? previous.tabs : [...previous.tabs, id], active: id, touched: true }));
+  }), [navigate]);
+  const openShell = () => navigate(() => { if (!history.open) setCycle(value => value + 1); setPreview(null); history.openShell(); });
   const [triggerFocusRequest, setTriggerFocusRequest] = useState<{ owner: typeof closeOwner } | null>(null);
   const consumedTriggerFocus = useRef<typeof triggerFocusRequest>(null);
   useLayoutEffect(() => {
@@ -112,7 +123,10 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
     })();
   };
   const close = () => closePanel(true);
-  const closeAfterFollowUp = () => closePanel(false);
+  const closeTab = (id: PanelTabId) => {
+    const commit = () => setSlots(previous => { const index = previous.tabs.indexOf(id), tabs = previous.tabs.filter(tab => tab !== id); return { tabs, active: previous.active === id ? tabs[Math.min(index, tabs.length - 1)] ?? null : previous.active, touched: true }; });
+    if (slots.active === id) navigate(commit); else commit();
+  };
   const onOpenImage = (identity: ImageIdentity) => {
     const message = identity.kind === "generated" ? model.bodies.find(body => body.message.id === identity.messageId) : null;
     const region = encodeImageIdentity(message && identity.kind === "generated" ? { ...identity, messageId: `seq:${message.message.seq}` } : identity); if (!eligible || !imageAllowed(region)) return;
@@ -120,8 +134,12 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   };
   const openHistory = history.openShell;
   const onOpenArtifact = useCallback((fence: ArtifactFence, followUp?: ArtifactHost["followUp"]) => {
-    setPreview({ fence, followUp }); openHistory();
-  }, [openHistory]);
+    navigate(() => {
+      const id = rememberArtifactTab(artifactScope, fence, followUp);
+      setPreview(null); setSlots(previous => ({ tabs: previous.tabs.includes(id) ? previous.tabs : [...previous.tabs, id], active: id, touched: true }));
+      openHistory(); requestAnimationFrame(() => tabRefs.current.get(id)?.focus());
+    });
+  }, [artifactScope, navigate, openHistory]);
   const openCatalog = async (id: string) => {
     if (id === "subagents") { openTab(id); return; }
     if (id !== "base" || creating || createFlight.current || !head || !base.resolved || base.error) return;
@@ -140,18 +158,21 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   const visible = history.open && (narrow ? history.takeover : geometry.maxWidth >= SIDE_PANEL_MIN_WIDTH);
   const items: SidePanelTab[] = slots.tabs.map(id => {
     const identity = decodeImageIdentity(id), image = identity && resolveImage(identity, model.bodies, copy.catalog.image.label);
-    const label = id === "base" ? copy.catalog.base.label : id === "subagents" ? copy.catalog.subagents.label : id === "browser" ? copy.catalog.browser.label : id.startsWith("app:") ? copy.catalog.app.label : image?.label ?? copy.catalog.image.label;
-    const Icon = id === "base" ? DatabaseIcon : id === "subagents" ? BotIcon : id === "browser" ? GlobeIcon : id.startsWith("app:") ? BlocksIcon : ImageIcon;
+    const label = isArtifactTab(id) ? artifacts.get(id)?.fence.title ?? "Artifact" : id === "base" ? copy.catalog.base.label : id === "subagents" ? copy.catalog.subagents.label : id === "browser" ? copy.catalog.browser.label : id.startsWith("app:") ? copy.catalog.app.label : image?.label ?? copy.catalog.image.label;
+    const Icon = isArtifactTab(id) ? FileIcon : id === "base" ? DatabaseIcon : id === "subagents" ? BotIcon : id === "browser" ? GlobeIcon : id.startsWith("app:") ? BlocksIcon : ImageIcon;
     const unavailable = id === "browser" && !services.capabilities.browser || id.startsWith("app:") && !services.capabilities.apps;
     return { key: id, label, ...(unavailable ? { dim: true, hint: remote.onComputer.replace("{name}", ownerName ?? remote.computer) } : {}), icon: <Icon className="size-3.5 shrink-0" />, selected: slots.active === id, panelId: `panel-tab-${id}`,
       actions: id === "base" ? <span ref={setBaseTabActions} className="flex items-center empty:hidden" /> : undefined,
       widthClass: id === "base" ? "max-lg:max-w-52" : undefined,
-      closeLabel: copy.closeNamed.replace("{name}", label), select: () => setSlots(previous => ({ ...previous, active: id, touched: true })),
-      close: () => setSlots(previous => { const index = previous.tabs.indexOf(id), tabs = previous.tabs.filter(tab => tab !== id); return { tabs, active: previous.active === id ? tabs[Math.min(index, tabs.length - 1)] ?? null : previous.active, touched: true }; }) };
+      closeLabel: copy.closeNamed.replace("{name}", label), select: () => navigate(() => setSlots(previous => ({ ...previous, active: id, touched: true }))),
+      close: () => closeTab(id) };
   });
   const add = <SidePanelAddMenu {...catalog} label={copy.add} fullLabel={copy.allOpen} />;
   const promotedPath = base.promoted;
   const leaves: PanelLeaf[] = [
+    ...(visible && !preview && isArtifactTab(slots.active) ? [{ id: slots.active, view: artifacts.has(slots.active) ? <ArtifactTab key={slots.active} value={artifacts.get(slots.active)!}
+      onFollowUp={() => closePanel(false)} presentation={{ full: history.takeover || artifactFull, canExpand: !narrow, setFull: setArtifactFull, close: () => closeTab(slots.active!), beforeClose }} />
+      : <p role="status" className="p-4 text-sm">{artifactCopy(locale).unavailable}</p> }] : []),
     { id: "base-authority", managesVisibility: true, view: <>    {baseEngaged && <BaseTab chatId={chatId} incarnationId={incarnationId} targetBaseId={acceptedBase?.baseId ?? null} project={acceptedBase?.project ?? false} locale={locale} onDirtyChange={setDirty} visible={visible && !preview && slots.active === "base"} chrome={{ tabActions: baseTabActions, headerActions: baseHeaderActions, activate: () => openTab("base") }} />}
     {!preview && base.error && <div role="alert" className="p-4 text-sm">{copy.resolveFailed}<Button variant="outline" onClick={base.retry}>{copy.retry}</Button></div>}
     {!preview && slots.active === "base" && !base.error && !acceptedBase && !dirty && <div role="status" className="grid flex-1 place-content-center gap-3 p-4 text-sm">
@@ -169,9 +190,9 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   ];
   const element = (eligible || baseEngaged) && <SidePanelShell open={visible} takeover={history.takeover || artifactFull} {...geometry} onWidthChange={widthChange} onClose={close} resizeLabel={copy.resize} resizeHint={copy.resizeHint}>
     {closeFailed && <p role="alert" className="p-3 text-sm">{remote.requestFailed}</p>}
-    <PanelHost hideHeader={Boolean(preview && "fence" in preview && preview.fence.design)} close={close} backRef={backRef} takeover={history.takeover} copy={copy}
+    <PanelHost close={close} backRef={backRef} takeover={history.takeover} copy={copy}
       extraActions={!preview && slots.active === "base" ? <span ref={setBaseHeaderActions} className="flex items-center empty:hidden" /> : undefined}
-      title={preview || history.takeover ? (preview ? "fence" in preview ? preview.fence.title : "workspace" in preview ? preview.workspace.title : turnCopy(locale).plan.title : null) ?? items.find(item => item.selected)?.label ?? copy.tabs : undefined}
+      title={preview || history.takeover ? (preview ? "workspace" in preview ? preview.workspace.title : turnCopy(locale).plan.title : null) ?? items.find(item => item.selected)?.label ?? copy.tabs : undefined}
       hideTabs={Boolean(preview)} items={items} refs={tabRefs} tabsLabel={copy.tabs} closeTabLabel={copy.closeTab}
       active={preview ? null : slots.active} leaves={leaves} add={!preview ? add : undefined} footer={<>
     {!preview && !slots.tabs.length && (!base.resolved && !base.error ? <div role="status" className="grid flex-1 place-items-center"><span className="sr-only">{copy.loadingBase}</span><LoaderCircle className="size-5 animate-spin text-muted-foreground" /></div> : <>
@@ -180,26 +201,12 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
     </>)}
     {!preview && creating && <p role="status" className="px-4 py-2 text-sm">{copy.loadingBase}</p>}
     {!preview && creationError && <p role="alert" className="px-4 py-2 text-sm">{creationError === "base-identity-mismatch" ? copy.basePromoted : copy.createFailed}{promotedPath && <a className="ml-2 underline" href={promotedPath} onClick={event => { event.preventDefault(); services.navigate(promotedPath); }}>{copy.openFull}</a>}</p>}
-    {preview && visible && ("workspace" in preview ? <WorkspacePreview request={preview.workspace} copy={{ loading: remote.readingFile, failed: remote.requestFailed, retry: copy.retry }} /> : "planId" in preview ? <div className="min-h-0 flex-1 overflow-auto px-6 py-5 text-sm"><MessageResponse isAnimating={Boolean(livePlan?.editing)}>{capMarkdown(planContent)}</MessageResponse></div> : <ArtifactPresentationProvider value={{ full: history.takeover || artifactFull, canExpand: !narrow, setFull: setArtifactFull, close, beforeClose }}><ExpandedArtifact preview={preview} close={closeAfterFollowUp} /></ArtifactPresentationProvider>)}
+    {preview && visible && ("workspace" in preview ? <WorkspacePreview request={preview.workspace} copy={{ loading: remote.readingFile, failed: remote.requestFailed, retry: copy.retry }} /> : <div className="min-h-0 flex-1 overflow-auto px-6 py-5 text-sm"><MessageResponse isAnimating={Boolean(livePlan?.editing)}>{capMarkdown(planContent)}</MessageResponse></div>)}
     </>} />
   </SidePanelShell>;
   return { eligible, containerRef, triggerRef, takeover: history.takeover, openShell, onOpenImage, onOpenArtifact,
     expandedPlanId: history.open && preview && "planId" in preview ? preview.planId : null,
-    onOpenPlan: (planId: string) => { if (history.open && preview && "planId" in preview && preview.planId === planId) { history.close(); return; } setPreview({ planId }); history.openShell(); },
+    onOpenPlan: (planId: string) => navigate(() => { if (history.open && preview && "planId" in preview && preview.planId === planId) { history.close(); return; } setPreview({ planId }); history.openShell(); }),
     onOpenSubagent: (id: string) => { setSelectedAgent(id); openTab("subagents"); history.openShell(); },
-    onOpenWorkspaceFile: (workspace: WorkspacePreviewRequest) => { setPreview({ workspace }); history.openShell(); }, dirty, element };
-}
-function ExpandedArtifact({ preview, close }: { preview: ArtifactPreviewValue; close(): void }) {
-  const host = useArtifactHost();
-  const followUp = preview.followUp ?? host?.followUp, activePreview = useRef<ArtifactPreviewValue | null>(null);
-  useLayoutEffect(() => {
-    activePreview.current = preview;
-    return () => { if (activePreview.current === preview) activePreview.current = null; };
-  }, [preview]);
-  const value = useMemo(() => host ? { ...host, followUp: followUp ? async (request: Parameters<NonNullable<ArtifactHost["followUp"]>>[0]) => {
-    if (activePreview.current !== preview) return;
-    await followUp(request);
-    if (activePreview.current === preview) close();
-  } : undefined } : null, [host, followUp, close, preview]);
-  return <ArtifactHostProvider value={value}><div className="flex min-h-0 flex-1 flex-col overflow-hidden text-sm"><ArtifactPreview key={preview.fence.id} fence={preview.fence} expanded /></div></ArtifactHostProvider>;
+    onOpenWorkspaceFile: (workspace: WorkspacePreviewRequest) => navigate(() => { setPreview({ workspace }); history.openShell(); }), dirty, element };
 }

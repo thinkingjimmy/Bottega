@@ -47,6 +47,10 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 产品模型与四个核心能力域见[功能文档](../features/README.zh-CN.md)。
 
+### 升级到 0.2.10
+
+0.2.10 继续使用协议 21。请更新运行 Agent 的电脑以获得桌面修复，然后重新加载 Bottega Web。已有内容、同步密码与账号密钥保留，无需清空数据。macOS Apple 芯片稳定版使用稳定更新通道；0.2.5 个人版需要手动安装。Dock 仍为 Alpha，要求 macOS 27.x 与 Apple 芯片。Android 内测包使用独立测试环境。
+
 ### 升级到 0.2.9
 
 0.2.9 使用协议 21。服务同批更新后，请将运行 Agent 的桌面更新至 0.2.9，并重新加载 Bottega Web。较早桌面版本不能使用新协议。已有内容、同步密码与账号密钥保留，无需清空数据。macOS Apple 芯片正式版使用稳定更新渠道；0.2.5 personal 需要手动安装。
@@ -113,27 +117,29 @@ Cloud Sync 现使用协议 15。使用云功能的所有电脑都需升级到 0.
 
 ## 下载与安装
 
-[下载 0.2.8](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8)，正式稳定版**仅适用于 macOS Apple 芯片（ARM64）**。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
+[下载 0.2.10](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.10)，正式稳定版**仅适用于 macOS Apple 芯片（ARM64）**。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
 
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
-| macOS（Apple 芯片 / ARM64） | [DMG 或 ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.8) | 正式稳定版。 |
+| macOS（Apple 芯片 / ARM64） | [DMG 或 ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.10) | 正式稳定版。 |
 
-请使用具有 **Developer ID 签名与 Apple 公证**的正式安装包。0.2.6、0.2.7 与 0.2.8 使用稳定版自动更新通道；已发布的 0.2.5 个人版需要手动更新。
+请使用具有 **Developer ID 签名与 Apple 公证**的正式安装包。0.2.6 至 0.2.9 使用稳定版自动更新通道；已发布的 0.2.5 个人版需要手动更新。
 
 1. 完全退出 Bottega，并备份 Bottega 文件夹与应用数据。
-2. 从同一版本页面下载 DMG 或 ZIP，以及 `Bottega-0.2.8-release-evidence.tar.gz`。读取归档根目录的 `release-manifest.json`。运行 `shasum -a 256`，后接安装包路径，将输出与清单中对应安装包的 `sha256` 比较。
+2. 从同一版本页面下载 DMG 或 ZIP，以及 `Bottega-0.2.10-release-evidence.tar.gz`。读取归档根目录的 `release-manifest.json`。运行 `shasum -a 256`，后接安装包路径，将输出与清单中对应安装包的 `sha256` 比较。
 3. 打开 DMG，将 Bottega 拖入「应用程序」；使用 ZIP 时，解压后将应用复制到该目录。
 4. 从「应用程序」打开 Bottega，确认正常的 macOS 首次启动提示。如果 macOS 报告签名或公证问题，请保留错误信息并反馈 bug，暂勿打开该安装包。
 
 无需解压整个归档，即可读取清单并检查 DMG：
 
 ```bash
-tar -xOf Bottega-0.2.8-release-evidence.tar.gz release-manifest.json
-shasum -a 256 Bottega-0.2.8-arm64.dmg
+tar -xOf Bottega-0.2.10-release-evidence.tar.gz release-manifest.json
+shasum -a 256 Bottega-0.2.10-arm64.dmg
 ```
 
-使用 ZIP 时，将校验命令中的文件名改为 `Bottega-0.2.8-arm64-mac.zip`。归档集中保存发布与验收材料；具体通过范围以其中的实际记录为准，不表示全部物理设备验收完成。
+使用 ZIP 时，将校验命令中的文件名改为 `Bottega-0.2.10-arm64-mac.zip`。归档集中保存发布与验收材料；具体通过范围以其中的实际记录为准，不表示全部物理设备验收完成。
+
+自动更新使用 `latest-mac.yml`、`Bottega-0.2.10-arm64.dmg.blockmap` 与 `Bottega-0.2.10-arm64-mac.zip.blockmap`。App 兼容文件为 `app-gui-compatibility-support.json` 与 `app-gui-compatibility-support.json.sig`。
 
 0.2.7 根据维护者决定，在完整本机与最终安装包 GUI 验收完成前发布。该版本没有完整验收证据归档，真实安装升级尚未验证。0.2.8 的归档不能用于宣称 0.2.7 已完成验收。
 

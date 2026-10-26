@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Existing colors, per-editor column container queries, the workspace menu's Radix Popper wrapper and actual owner chrome bounds.
- * [OUTPUT]: Full-body Canvas behind pointer-transparent floating chrome, column-bound responsive tool rows, closed-menu pointer release, inspectors between measured top/history bounds and gesture-scoped shared world/screen compositing.
+ * [OUTPUT]: Full-body Canvas behind floating chrome, one compact toolbar surface with intrinsic group wrapping, wide tool groups, bounded inspectors and gesture-scoped world/screen compositing.
  * [POS]: Canvas presentation; source dimensions and authority remain in host/model contracts.
  */
 .artifact-workspace { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; background: var(--muted); container-type: inline-size; container-name: artifact; }
@@ -24,20 +24,18 @@
 .artifact-canvas-tools [data-canvas-tools-group="draw"] { width: fit-content; }
 @container canvas-editor (max-width: 899px) {
   .artifact-canvas-desktop-tools { display: none; }
-  .artifact-canvas-tools [data-canvas-page] { max-width: 96px; }
-}
-@container canvas-editor (max-width: 599px) {
-  .artifact-canvas-tools { grid-template-columns: minmax(0, 1fr); }
-  .artifact-canvas-tools [data-canvas-tools-group] { width: 100%; margin-left: 0; }
+  .artifact-canvas-tools [data-canvas-page] { width: 64px; max-width: 96px; flex-grow: 1; padding-inline: 4px; }
+  .artifact-canvas-tools [data-canvas-zoom] { min-width: 64px; gap: 0; }
+  .artifact-canvas-tools { display: flex; flex-wrap: wrap; gap: 0; isolation: isolate; }
+  .artifact-canvas-tools::before { content: ""; position: absolute; inset: 12px; z-index: -1; border: 1px solid var(--border); border-radius: 12px; background: var(--background); box-shadow: 0 2px 6px rgb(0 0 0 / .07), 0 1px 2px rgb(0 0 0 / .04); }
+  .artifact-canvas-tools [data-canvas-tools-group] { flex-grow: 1; width: auto; margin-left: 0; border-color: transparent; border-radius: 0; background: transparent; box-shadow: none; }
+  .artifact-canvas-tools [data-canvas-tools-group="draw"] { flex-basis: min-content; }
+  .artifact-canvas-tools [data-canvas-tools-group="view"] { flex-basis: max-content; }
   .artifact-canvas-tools [data-workspace-toolbar] { margin-left: auto; }
   .artifact-canvas-tools [data-canvas-zoom] { margin-left: auto; }
 }
-@container canvas-editor (max-width: 479px) {
-  .artifact-canvas-tools [data-canvas-page] { max-width: 96px; min-width: 80px; }
-  .artifact-canvas-tools [data-canvas-zoom] { min-width: 64px; gap: 0; }
-}
 @container canvas-editor (max-width: 359px) {
-  .artifact-canvas-tools [data-canvas-tools-group="draw"] { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; }
+  .artifact-canvas-tools [data-canvas-tools-group="draw"] { display: grid; grid-template-columns: minmax(44px, 1fr) auto; gap: 4px; }
   .artifact-canvas-tools [data-canvas-page] { grid-column: 1; grid-row: 1; width: 100%; min-width: 44px; max-width: none; margin-right: 0; }
   .artifact-canvas-tools [data-canvas-toolset] { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
   .artifact-canvas-tools [data-workspace-toolbar] { grid-column: 2; grid-row: 1; margin-left: 0; }

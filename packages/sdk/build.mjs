@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on esbuild, the TypeScript compiler, pnpm (for --pack) and the src tree of the package directory it is given (default: the working directory).
- * [POS]: The one build and the one pack for every public SDK package (`node ../build.mjs` from a package, `node build.mjs --pack <dir>` for all three); the monorepo's release audit and the SDK repository both pack through it.
+ * [POS]: The one build and the one pack for every public SDK package (`node ../build.mjs` from a package, `node build.mjs --pack <dir>` for the exported packages); the monorepo's release audit and the SDK repository both pack through it.
  */
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -9,7 +9,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const PACKAGES = ["contracts", "sdk", "testing"];
+const PACKAGES = ["contracts", "sdk"];
 const walk = (directory) => readdirSync(directory, { withFileTypes: true })
   .flatMap((entry) => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)]);
 

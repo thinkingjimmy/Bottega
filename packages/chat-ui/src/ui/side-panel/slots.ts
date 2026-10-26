@@ -1,12 +1,13 @@
 /**
- * [INPUT]: Injected storage, context keys, region validators and capability eligibility.
- * [OUTPUT]: Durable panel slots, append-only migration, invalid-slot removal and cross-window reload.
+ * [INPUT]: Injected storage, context keys, region validators, transient-tab policy and capability eligibility.
+ * [OUTPUT]: Durable panel slots with session-only tab exclusion, append-only migration, invalid-slot removal and cross-window reload.
  * [POS]: Shared side-panel state owner; host identity policy never enters presentation code.
  */
 export type SlotOptions<Context, Tab extends string, Region extends string> = {
   storageKey: string; format?: "rows" | "object"; storage(): Pick<Storage, "getItem" | "setItem"> | null;
   key(context: Context): string; isTab(value: unknown): value is Tab; isRegion(value: unknown): value is Region;
   eligible(context: Context, tab: Tab): boolean; independent?(context: Context, region: Region): boolean;
+  transient?(tab: Tab): boolean;
 };
 export type PanelSlotAggregate<Tab extends string = string, Region extends string = Tab> = Readonly<{
   key: string;
@@ -173,11 +174,17 @@ export class PanelSlotStore<Context, Tab extends string, Region extends string =
 
   private persist() {
     try {
+      const rows = [...this.records().values()].map(slot => {
+        const tabs = slot.tabs.filter(tab => !this.options.transient?.(tab));
+        const active = slot.tabs.includes(slot.active as unknown as Tab) && !tabs.includes(slot.active as unknown as Tab)
+          ? tabs.at(-1) as unknown as Region ?? "" : slot.active;
+        return { ...slot, tabs, active };
+      });
       this.options.storage()?.setItem(
         this.options.storageKey,
         JSON.stringify(this.options.format === "object"
-          ? Object.fromEntries([...this.records()].map(([key, value]) => [key, { ...value, touched: value.revision > 0, active: value.active || null }]))
-          : [...this.records().values()])
+          ? Object.fromEntries(rows.map(value => [value.key, { ...value, touched: value.revision > 0, active: value.active || null }]))
+          : rows)
       );
     } catch {
       // localStorage 配额/安全错误不应击穿面板交互；内存 aggregate 仍是本 renderer 的真相。

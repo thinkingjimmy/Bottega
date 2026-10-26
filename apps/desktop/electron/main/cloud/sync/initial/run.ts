@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on bounded Zod and Convex error-code diagnostics, approved binding, the four Store outboxes, artifact publication and formal entity/file publishers.
+ * [INPUT]: Depends on bounded Zod and Convex diagnostics, approved binding, the four Store outboxes, original recovery Forks for deferred same-owner receipts, artifact publication and formal entity/file publishers.
  * [OUTPUT]: Exposes current-run remote readiness only after the Library ownership receipt and local marker are confirmed, wakes content retry without suspending the account, claims this folder for this computer before offering a byte and stops the run for good when the server says it belongs to another, delivers deletions before uploads, runs the first Chat upload cheapest-first behind the Base-owning identities the Bases phase requires, sums the plaintext this pass delivers and every file transfer it starts into one uploaded figure, publishes a named Chat's metadata on its own fast lane, sends a Base's queued work as soon as a local commit queues it, completes recovered native body/import/Home publication through convergence and isolates entity failures within bounded lanes. U06-d: each App's build status is published as it changes and again after its surface in every pass.
  * [POS]: Main synchronization composition; an entity remains pending until every required content component is confirmed, and the byte figures belong to the initial upload alone. Stale selected heads defer initial convergence without acknowledgement and wake catalog refresh. A pass holds at most one outbox window (2,000 rows, A-14), invalidates it after turn publication even on partial failure, and counts the rest as pending.
  */
@@ -175,6 +175,7 @@ export class DesktopSyncRun {
         scope: this.scope, head, files: this.files, crypto: input.crypto, current: () => this.assertCurrent(), signal: this.signal.signal }),
       current: () => this.assertCurrent(), wake: () => this.wake(), failure: error => { this.fail(error); },
       beforeReceipts: head => this.convergence?.reconcile(head) ?? Promise.resolve(),
+      deferredReceipt: head => this.convergence?.reconcile(head, undefined, true) ?? Promise.resolve(),
       refreshBase: target => { void this.bases.flush(target); } });
   }
   start() {

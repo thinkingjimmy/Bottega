@@ -6,7 +6,7 @@
 
 import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
 import type { LimitsFaceSource, PanelSnapshot, WidgetFace } from "../../../../shared/system-dock/ipc";
-import type { AiActivityWidget, AiLimitsWidget } from "../../../../shared/system-dock/layout";
+import type { AiActivityWidget, AiLimitsWidget, DockWidget } from "../../../../shared/system-dock/layout";
 import type { AgentUsageSummary, UsageQueryTarget } from "../../../../shared/ipc/settings/usage-ipc";
 import type { UsageSourceId } from "../../../../shared/ipc/settings/usage-ipc";
 import { LIMITS_TIMING, type AgentUsageLimits } from "../../../../shared/usage-limits/types";
@@ -40,13 +40,13 @@ export class DockUsage {
    * The only consumer registration: a surface is visible with these Widgets. A hidden surface,
    * a locked screen or a prewarmed panel passes an empty list and releases just its own demand.
    */
-  setVisible(surface: DockSurface, widgets: readonly { itemId: string; widget: AiLimitsWidget | AiActivityWidget }[]) {
+  setVisible(surface: DockSurface, widgets: readonly { itemId: string; widget: DockWidget }[]) {
     const previous = this.visible.get(surface);
     const limits = new Map<string, AgentBackendId[]>();
     const activity = new Set<UsageQueryTarget>();
     for (const { itemId, widget } of widgets) {
       if (widget.type === "builtin.ai-limits") { if (widget.selectedBackends.length) limits.set(itemId, [...widget.selectedBackends]); }
-      else activity.add(widget.source);
+      else if (widget.type === "builtin.ai-activity") activity.add(widget.source);
     }
     if (this.limits) {
       for (const itemId of previous?.limits.keys() ?? []) if (!limits.has(itemId)) this.limits.setDemand({ id: demandId(itemId), active: false, mode: "settings", backends: previous!.limits.get(itemId)! }, surface);
@@ -80,8 +80,9 @@ export class DockUsage {
     this.changed();
     return state.flight;
   }
-  async refresh(widget: AiLimitsWidget | AiActivityWidget) {
+  async refresh(widget: DockWidget) {
     if (widget.type === "builtin.ai-activity") return this.readActivity(widget.source, true);
+    if (widget.type !== "builtin.ai-limits") return;
     await Promise.all(widget.selectedBackends.map((backend) => this.limits?.refresh({ backend }).catch(() => undefined)));
   }
   /** Available sources the Bottega service confirms today; installation later never rewrites a user's choice (3.4). */

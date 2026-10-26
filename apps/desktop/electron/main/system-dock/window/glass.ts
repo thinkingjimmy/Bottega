@@ -1,13 +1,14 @@
 /**
  * [INPUT]: Depends on Node's addon loader and the compiled `dock-glass.node` beside the Dock helper.
- * [OUTPUT]: Provides applyDockGlass / clearDockGlass. A missing or failing addon returns false / no-ops so the bar can keep the vibrancy fallback.
- * [POS]: system-dock/window glass seam used by DockService when the revealed bar should sample the desktop.
+ * [OUTPUT]: Provides applyDockGlass / clearDockGlass and measureDockMenu for native menu dimensions. A missing or failing addon retains the existing glass fallback and a conservative menu-size fallback.
+ * [POS]: system-dock/window native-addon seam for bar glass and item-anchored menus.
  */
 
 import { existsSync } from "node:fs";
-import type { BrowserWindow } from "electron";
+import type { BrowserWindow, Menu } from "electron";
 
-type GlassAddon = { apply(handle: Buffer, radius: number): boolean; clear(handle: Buffer): void };
+type GlassAddon = { apply(handle: Buffer, radius: number): boolean; clear(handle: Buffer): void;
+  measureMenu(labels: readonly (string | null)[]): { width: number; height: number } | null };
 const addons = new Map<string, GlassAddon | null>();
 
 function load(file: string): GlassAddon | null {
@@ -38,4 +39,15 @@ export function clearDockGlass(window: BrowserWindow, file: string): void {
   if (!addon || window.isDestroyed()) return;
   try { addon.clear(window.getNativeWindowHandle()); }
   catch (cause) { console.warn("[system-dock] glass clear failed", cause); }
+}
+
+export function measureDockMenu(menu: Menu, file: string): { width: number; height: number } {
+  const labels = menu.items.filter(item => item.visible).map(item => item.type === "separator" ? null : item.label);
+  try {
+    const size = load(file)?.measureMenu(labels);
+    if (size && Number.isFinite(size.width) && Number.isFinite(size.height) && size.width > 0 && size.height > 0) return size;
+  } catch (cause) { console.warn("[system-dock] menu measurement failed", cause); }
+  // A conservative fallback keeps menus outside the strip if the optional native addon cannot load.
+  return { width: Math.max(240, ...labels.map(label => [...(label ?? "")].length * 18 + 48)),
+    height: 24 + labels.reduce((height, label) => height + (label === null ? 16 : 36), 0) };
 }

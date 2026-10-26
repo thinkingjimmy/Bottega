@@ -1,13 +1,14 @@
 /**
- * [INPUT]: Depends on React/router navigation/progress and rejected-destination state, i18n, AppsProvider, shared App catalog/card presentation, Add AppDialog, PresetShelf/PresetInstallDialog, Sheet and PageShell
- * [OUTPUT]: Provides AppsListView with the Cloud Dev portable catalog, a card-shaped placeholder grid while listApps is in flight, explicit local installation and a single-page entry with rejected App navigation evidence; preset authorization leads directly to canonical App detail while Web installs retain progress UI
+ * [INPUT]: Depends on the shared Dock settings store, React/router navigation/progress and rejected-destination state, i18n, AppsProvider, shared App catalog/card presentation, Add AppDialog, PresetShelf/PresetInstallDialog, Sheet and PageShell
+ * [OUTPUT]: Provides AppsListView with the Cloud Dev portable catalog, a card-shaped placeholder grid while listApps is in flight, explicit local installation and a single-page entry with rejected App navigation evidence; preset authorization leads directly to canonical App detail while Web installs retain progress UI Owns one Dock subscription for independent App shortcut actions.
  * [POS]: apps/desktop/src/views/apps; Apps route composition; local installations, portable cloud entries and first-party acquisition retain their existing domain owners
  */
 
+import { dockSettingsStore } from "@/lib/platform/system-dock-settings-client";
 import { CompatibilityRequests } from "@/components/apps/compatibility/requests";
 import { CloudAppsCatalog } from "@/components/apps/cloud/catalog";
 import type { AppCompatibilityFailure } from "../../../shared/app-host/contract";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { AddAppHint } from "@/components/apps/cards/add-app-hint";
 import { AddAppDialog } from "@/components/apps/install/add-app-dialog";
 import { AppCard } from "@/components/apps/cards/app-card";
@@ -124,6 +125,8 @@ export function EmptyAppsPanel({
 }
 
 export function AppsListView() {
+  const dock = useSyncExternalStore(dockSettingsStore.subscribe, dockSettingsStore.getSnapshot);
+  useEffect(() => { dockSettingsStore.load(); }, []);
   const { t } = useAppTranslation();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -262,6 +265,7 @@ export function AppsListView() {
                 <AppCard
                   key={app.record.id}
                   app={app}
+                  dock={dock}
                   onOpenProgress={openProgress}
                 />
               ))}

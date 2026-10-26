@@ -38,6 +38,8 @@ Command output stays in the original command details. Background services show t
 
 ## Artifacts
 
+- Open multiple Artifacts in the third-column tabs alongside other previews. Reopening activates the existing tab. Switching or closing waits for saving; failed saves keep the current tab and input.
+- Select artboard elements without reloading live previews or losing form input. Compact Canvas controls share one floating toolbar and wrap to the available width.
 - Render Agent visualizations inline in the transcript, expand them, or open them in the Chat side panel.
 - Preview, save, reveal, or Quick Look the files a turn produced, and import a worksheet into a Base with an explicit row-merge confirmation.
 - Open Claude artifacts in the built-in browser, which reuses the existing persistent browser partition.
@@ -112,16 +114,18 @@ Command output stays in the original command details. Background services show t
 ## Background activity
 
 - Enable background operation with one setting; launch at login remains a separate option. Both default to off.
-- On macOS, choose a Bottega Logo icon, a monochrome menu-bar icon, or the notch task panel. The selection is remembered, with an icon available when no notched display is connected. Windows and Linux use their system tray.
-- Follow running tasks and pending requests in the notch panel, navigate with the keyboard, and return to the related chat.
+- Show or hide the menu-bar icon from Settings › General. Background tasks and the Dock have separate settings.
+- Add the Tasks widget to Bottega Dock to follow running work and pending requests, use keyboard navigation and return to the related Chat. Privacy mode hides task content and counts.
 - Reopen or quit Bottega through the available background entry.
 - Download updates from the sidebar without leaving your current page. The sidebar and Settings share progress and a percentage. When a download finishes, choose Restart and update; an idle workspace does not trigger a restart.
 
 ## Bottega Dock
 
+- Pin an available Bottega App from its menu and open or focus it in a separate window with its session and draft. Dock and sidebar pins are independent. Drag to reorder or drag out to unpin; menus open beside the selected icon.
+
 **Alpha · macOS 27 · Apple silicon**
 
-Dock remains **Alpha** in 0.2.8. Replacement, recovery across logout or restart, and display/fullscreen combinations are still being validated. The plugin requires macOS 27.x and Apple silicon; the main application's requirements stay unchanged.
+Dock remains **Alpha**. Replacement, recovery across logout or restart, and display/fullscreen combinations are still being validated. The plugin requires macOS 27.x and Apple silicon; the main application's requirements stay unchanged.
 
 - On macOS 27.x with Apple silicon, keep the Apps you build in Bottega, your other Apps, Finder, Downloads, the Trash, and an AI-limits ring per Agent in one Dock. This requirement applies to the entire Dock plugin; the main application's requirements stay unchanged.
 - Enable it from Settings › Plugins › Dock. Choose coexistence, or replacement after the installed app, native helper, recovery executable and bundled background-service configuration pass verification. Development and unsigned builds offer coexistence.

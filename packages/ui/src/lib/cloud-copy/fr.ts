@@ -312,7 +312,7 @@ export const cloudCopy = {
   "signOutFailed": "Impossible de se déconnecter. Vérifiez votre connexion et réessayez.",
   "conflictsLoadFailed": "Impossible de charger les modifications à vérifier. Vérifiez votre connexion et réessayez.",
   "openBaseFailed": "Impossible d’ouvrir la Base de ce Project. Vérifiez votre connexion et réessayez.",
-  "secureStorageDescription": "macOS peut demander l’accès au trousseau pour protéger votre connexion sur cet ordinateur.",
+  "secureStorageDescription": "Bottega protège votre connexion sur cet ordinateur sans demander votre mot de passe macOS.",
   "secureStorageRestart": "Redémarrez Bottega, puis reconnectez-vous.",
   "retrySecureSave": "Réessayer la sauvegarde sécurisée",
   "discardSavedLogin": "Supprimer la connexion enregistrée…",

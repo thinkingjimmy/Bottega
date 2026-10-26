@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on catalog subscriptions, durable confirmed heads and restartable Chat hydration.
+ * [INPUT]: Depends on catalog subscriptions, durable confirmed heads, restartable Chat hydration and original recovery for deferred settled receipts.
  * [OUTPUT]: Discovers owners and schedules bounded background reads; unpublished bodies keep owner backoff, while stale selected heads refresh the catalog through the existing scheduler.
  * [POS]: Main downlink coordinator; memory only caches work scheduling, while Stores own progress and content.
  */
@@ -33,7 +33,8 @@ export class DesktopDownlink {
   private workspaceIncomplete = true;
   private unsubscribe: (() => void) | null = null;
   constructor(private readonly ports: CatalogPorts & { transport: DownlinkTransport; files: Pick<EncryptedBlobTransfer, "readFile">; cache?: Pick<DesktopBlobStore, "read">;
-    wake(): void; failure(error: unknown): void; beforeReceipts?(head: CloudChatHead): Promise<void>; afterBody?(head: CloudChatHead): Promise<void> }) {
+    wake(): void; failure(error: unknown): void; beforeReceipts?(head: CloudChatHead): Promise<void>;
+    deferredReceipt?(head: CloudChatHead): Promise<void>; afterBody?(head: CloudChatHead): Promise<void> }) {
     this.chats = new DesktopChatDownlink({ ...ports, store: ports.chats });
   }
   start() {

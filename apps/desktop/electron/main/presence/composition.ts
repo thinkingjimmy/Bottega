@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical turns, retained activity receipts, Chat events, coordinator preparations, update state, product windows, and trusted IPC.
- * [OUTPUT]: Provides cross-platform background presence, shared screen observation, transactional display IPC, shared shortcut bindings, manual panel intents, task destinations, a shared native recovery menu (with the optional Dock submenu and refresh hook), the main-window destination sender, and main-authorized unread receipts.
+ * [OUTPUT]: Provides cross-platform background presence, independent menu bar IPC, readonly Dock task publication and validated task destinations, a shared native recovery menu (with the optional Dock submenu and refresh hook), the main-window destination sender, and main-authorized unread receipts.
  * [POS]: Presence composition beneath the desktop root; auxiliary renderers never receive product capabilities.
  */
 
@@ -16,7 +16,7 @@ import { turns, activity } from "../agent/bridge/agent-bridge";
 import { windowRegistry } from "../window/surfaces/window-registry";
 import { surfaceWindowController } from "../window/surfaces/surface-window-controller";
 import { WINDOW_SURFACES_CHANNEL, chatSurface, type SurfaceMigrationCommand } from "../../../shared/ipc/settings/window-surfaces-ipc";
-import { PRESENCE_CHANNEL, type TaskPanelIntent, type TaskReference } from "../../../shared/ipc/agent/presence-ipc";
+import { PRESENCE_CHANNEL, type TaskReference } from "../../../shared/ipc/agent/presence-ipc";
 import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { rendererIpc } from "../registration/ipc-registrar";
 import { presenceCapabilities } from "./platform/capabilities";
@@ -24,13 +24,8 @@ import type { LoginItemPort } from "./platform/login-item";
 import { ActivityProjection } from "./activity-projection";
 import { PresenceService } from "./service";
 import { PresenceTray } from "./tray";
-import { resolvePanelBinding } from "../../../shared/shortcuts/bindings";
-import { TaskPanelController } from "./notch/controller";
-import { PresenceScreenMonitor } from "./notch/screen-monitor";
-import { NativeScreenBridge } from "./notch/native-bridge";
 import { UnreadConsumption } from "./lifecycle/unread";
 import type { WindowRetention } from "./lifecycle/window-retention";
-import { workflowMarkerLabels } from "../workflows/runtime/surface/titles";
 
 export function createPresenceRuntime(ports: { mainDirectory: string; settings: SettingsStore; chats: ChatsService;
   update: UpdateService; coordinator: ConversationCoordinator; login: LoginItemPort; retention: WindowRetention; locale(): AppLocale; quit(): void; quitting(): boolean;
@@ -51,38 +46,24 @@ export function createPresenceRuntime(ports: { mainDirectory: string; settings: 
     if (owner?.role === "app-window" && windowRegistry.focus(owner.windowId)) return;
     await send({ type: "navigate", route: `/chat/${encodeURIComponent(chat.id)}` });
   };
-  const action = async (intent: TaskPanelIntent) => {
-    if (intent.kind === "open-task") return openTask(intent.task);
-    if (intent.kind === "open-settings") return send({ type: "presence-destination", destination: "general" });
-    ports.retention.open();
-  };
   const tray = new PresenceTray({ resources: resourcesPath, quitting: ports.quitting, locale: ports.locale, activities: () => projection.snapshot(),
     update: () => ports.update.snapshot(), open: () => ports.retention.open(), pending: () => { void send({ type: "presence-destination", destination: "activity" }); },
     failed: () => { void service.refresh(); }, quit: ports.quit, install: (candidateId) => { void ports.update.installNow(candidateId); }, dock: ports.dockMenu });
-  const screens = new PresenceScreenMonitor(capabilities.displayModeSelection, (receive, failed) => new NativeScreenBridge(
-    app.isPackaged ? join(resourcesPath, "presence/bin/screen-bridge") : join(ports.mainDirectory, "../presence/bin/screen-bridge"), receive, failed));
-  const panel = new TaskPanelController({ mainDirectory: ports.mainDirectory, screens, rendererUrl: devRendererUrl(app.isPackaged),
-    locale: ports.locale, action, menu: (window) => tray.popup(window), failed: () => service.panelFailed(), changed: () => service.notifyLifecycle(),
-    binding: () => resolvePanelBinding(ports.settings.get().keyboardShortcuts), mainFocused: () => windowRegistry.main()?.window.isFocused?.() ?? false,
-    workflowLabels: workflowMarkerLabels });
-  const service = new PresenceService({ settings: ports.settings, quitting: ports.quitting, supported: capabilities.background, macos: capabilities.displayModeSelection, screens, login: ports.login, tray, panel,
+  const service = new PresenceService({ settings: ports.settings, quitting: ports.quitting, supported: capabilities.background, login: ports.login, tray,
     restoreMain: () => { if (!windowRegistry.main()?.window.isVisible?.()) ports.retention.open(); } });
   const unread = new UnreadConsumption({ windows: windowRegistry,
     incarnation: (chatId) => ports.chats.store.getIncarnationId(chatId), consume: (receipt) => activity.consume(receipt),
     assertScope: (context, chatId) => surfaceWindowController.assertConversationMutation(context, chatId) });
-  const stop = [ports.settings.onChanged(() => panel.refreshShortcut()), projection.onChanged((value) => { tray.refresh(); panel.update(value); }), ports.update.onChanged(() => tray.refresh()),
+  const stop = [ports.settings.onChanged(() => tray.refresh()), projection.onChanged(() => tray.refresh()), ports.update.onChanged(() => tray.refresh()),
     service.onChanged((value) => { windowRegistry.publish(PRESENCE_CHANNEL.changed, value, (record) => record.role === "main"); tray.refresh(); })];
-  panel.update(projection.snapshot());
   rendererIpc(rendererUrl, "Rejected untrusted presence request")
     .handle(PRESENCE_CHANNEL.snapshot, () => service.snapshot())
     .handle(PRESENCE_CHANNEL.refresh, () => service.refresh())
-    .handle(PRESENCE_CHANNEL.openPanel, () => { if (!ports.quitting()) return panel.open(); })
-    .handle(PRESENCE_CHANNEL.togglePanel, () => { if (!ports.quitting()) return panel.toggle(); })
     .handle(PRESENCE_CHANNEL.observe, () => service.observe())
     .handle(PRESENCE_CHANNEL.setLaunchAtLogin, (value) => service.setLaunchAtLogin(value as boolean))
     .handle(PRESENCE_CHANNEL.setWindowRetention, (value) => service.setWindowRetention(value as boolean))
-    .handle(PRESENCE_CHANNEL.setDisplayMode, (value) => service.setDisplayMode(value as import("../../../shared/ipc/agent/presence-ipc").PresenceDisplayMode))
+    .handle(PRESENCE_CHANNEL.setMenuBar, (value) => service.setMenuBar(value as boolean))
     .handle(PRESENCE_CHANNEL.openSystemSettings, () => { if (process.platform === "darwin") return shell.openExternal("x-apple.systempreferences:com.apple.LoginItems-Settings.extension"); })
     .roles("main", "app-window").handleWithContext(PRESENCE_CHANNEL.presented, (context, value) => unread.presented(context, value));
-  return { service, send, refreshMenu: () => tray.refresh(), initialize: () => service.initialize(), close() { stop.forEach((stop) => stop()); service.close(); projection.close(); } };
+  return { service, send, tasks: { snapshot: () => projection.snapshot(), subscribe: (listener: () => void) => projection.onChanged(listener), open: openTask }, refreshMenu: () => tray.refresh(), initialize: () => service.initialize(), close() { stop.forEach((stop) => stop()); service.close(); projection.close(); } };
 }

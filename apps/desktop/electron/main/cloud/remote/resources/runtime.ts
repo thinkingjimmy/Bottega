@@ -18,11 +18,6 @@ import { pluginInstallRequests, setPluginInstallAccount, type PluginInstallReque
 import { pluginInstallSourceSchema } from "@ai-chat/cloud-protocol/resources/plugin-install";
 import type { ProjectResourcePort } from "./projects";
 import type { RecordResourcePort } from "./records";
-declare const __BOTTEGA_SERVER_TUNNEL__: boolean;
-const extension = (): ReturnType<typeof import("../../../apps/gateway/tunnel/entry").resourceExtension> =>
-  typeof __BOTTEGA_SERVER_TUNNEL__ !== "undefined" && __BOTTEGA_SERVER_TUNNEL__
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Independent optional build entry; a source import would join the production closure.
-    ? require("../../../server-tunnel-entry.js").resourceExtension() : null;
 type RunFacts = { runId: string; revision: number; confirmations: readonly { stepId: string; proposalDigest: string; decision: unknown; expiredAt: number | null }[] };
 export type WorkflowRunAction = "cancel" | "force-stop" | "pause" | "resume" | "check-result" | "retry-step" | "start-rework";
 /** The workflow runtime as a remote sender may use it; every answer is the run after the action (its ledger revision). */
@@ -116,9 +111,8 @@ export class ResourceCommandRuntime {
 
   private async pass() {
     const admission = accountScopeAdmission(this.ports);
-    if (admission.kind !== "admitted") { this.stop(); extension()?.reset(); this.key = ""; return; }
+    if (admission.kind !== "admitted") { this.stop();  this.key = ""; return; }
     if (admission.key !== this.key) {
-      extension()?.reset();
       this.stop(); this.key = admission.key;
       this.scoped = this.ports.own?.({ close: async () => { this.stop(); await this.flight?.catch(() => undefined); } }) ?? null;
       try { this.watching = this.ports.transport.watchResourceInbox?.(admission.header, () => this.wake(), error => this.ports.report?.(error)) ?? null; }
@@ -142,11 +136,9 @@ export class ResourceCommandRuntime {
     // Past its expiry on this clock it never runs; the server settles it expired.
     if (this.now() >= command.expiresAt) return;
     let opened: Awaited<ReturnType<typeof openResourceCommand>> | null = null;
-    let effect: import("../../../apps/gateway/tunnel/commands").TunnelEffect | null = null;
     try { opened = await openResourceCommand(command, { targetDeviceId: this.ports.deviceId }, admission.crypto); }
     catch {
-      try { effect = await extension()?.open(command, this.ports.deviceId, admission.crypto) ?? null; } catch { /* Unknown or malformed extensions use the same closed refusal. */ }
-      if (!effect) return this.settle(admission, command, 1, "refused", { ok: false, code: "invalid-command" });
+      return this.settle(admission, command, 1, "refused", { ok: false, code: "invalid-command" });
     }
     if (opened && !opened.classMatches) return this.settle(admission, command, 1, "refused", { ok: false, code: "class-mismatch" });
     /* C2-03: the server answers expired for an acceptance past the deadline; only an acceptance it recorded may run, and only
@@ -161,10 +153,6 @@ export class ResourceCommandRuntime {
     if (this.now() >= command.expiresAt) return this.settle(admission, command, 2, "refused", { ok: false, code: "command-expired" }).then(() => undefined);
     let body: ResourceResultBody;
     try {
-      if (effect) {
-        const result = await effect();
-        await this.ports.transport.mutate("resources/commands:settle", { ...admission.header, commandId: command.commandId, ciphertextHash: command.packet.ciphertextHash, result }); return;
-      }
       body = await this.execute(command, opened!.body, { userId: admission.header.expectedUserId, deviceId: command.sourceDeviceId }, () => {
         const current = accountScopeAdmission(this.ports);
         if (current.kind !== "admitted" || current.key !== admission.key) throw new Error("project-git-unavailable");

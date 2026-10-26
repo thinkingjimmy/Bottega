@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, shared App/agent contracts, the App manifest schema, and the apps/support canonicalJson
- * [OUTPUT]: Strict AppFile v16 authority with independent portable catalog, installed generation contracts and stable App/Project/Base association records; older formats are refused. Canonicalizes the independent App enabled flag and its revision.
+ * [OUTPUT]: Durable independent update custody and strict AppFile v16 authority with independent portable catalog, installed generation contracts and stable App/Project/Base association records; older formats are refused. Canonicalizes the independent App enabled flag and its revision.
  * [POS]: AppStore persistence contract; storage and generation orchestration consume this fail-closed schema instead of defining it inline, while the quarantine decision for foreign bytes stays in app-store.ts
  */
 
@@ -306,6 +306,9 @@ export const appRecordSchema = z
     origin: z.enum(["github", "local", "preset"]),
     presetId: z.string().regex(/^[a-z][a-z0-9-]{1,38}$/).optional(),
     installedPresetPin: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+    presetUpdate: z.object({ operationId: z.string().uuid(), targetVersion: z.string().min(1).max(100),
+      state: z.enum(["frozen", "validated", "pending-built", "awaiting-consent", "consent-resolved", "committed", "post-commit", "pending-source-sync", "completed", "failed"]),
+    }).strict().optional(),
     displayName: z.string().trim().min(1).max(250),
     dir: z.string().min(1),
     enabled: z.boolean().default(true),

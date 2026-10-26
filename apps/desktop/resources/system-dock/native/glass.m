@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the Node-API and AppKit. NSGlassEffectView is resolved at runtime (macOS 26); the binary still loads on the macOS 15 deployment target.
- * [OUTPUT]: Provides the `dock-glass` addon: `apply(handle, radius)` inserts one clear glass plate behind the Electron content view, `clear(handle)` removes it. A missing class returns false and changes nothing.
+ * [OUTPUT]: Provides `apply`/`clear` for the bar glass and `measureMenu` for AppKit menu dimensions in unscaled DIP. A missing glass class does not prevent menu measurement.
  * [POS]: system-dock/native in-process glass for the bar window. It is not the JSON-line helper; Electron main loads this `.node` and never ships it to a renderer.
  */
 
@@ -101,13 +101,60 @@ static napi_value applyGlass(napi_env env, napi_callback_info info) {
   return result;
 }
 
+static napi_value measureMenu(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1], empty;
+  napi_get_null(env, &empty);
+  napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+  bool array = false;
+  uint32_t count = 0;
+  if (argc != 1 || napi_is_array(env, args[0], &array) != napi_ok || !array ||
+      napi_get_array_length(env, args[0], &count) != napi_ok || count == 0 || count > 64) return empty;
+  NSMutableArray *labels = [NSMutableArray arrayWithCapacity:count];
+  for (uint32_t index = 0; index < count; index++) {
+    napi_value entry;
+    napi_valuetype type;
+    if (napi_get_element(env, args[0], index, &entry) != napi_ok || napi_typeof(env, entry, &type) != napi_ok) return empty;
+    if (type == napi_null) { [labels addObject:[NSNull null]]; continue; }
+    size_t length = 0;
+    if (type != napi_string || napi_get_value_string_utf8(env, entry, NULL, 0, &length) != napi_ok || length > 2048) return empty;
+    char bytes[2049];
+    if (napi_get_value_string_utf8(env, entry, bytes, sizeof(bytes), &length) != napi_ok) return empty;
+    NSString *label = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
+    if (!label) return empty;
+    [labels addObject:label];
+  }
+  __block NSSize size = NSZeroSize;
+  void (^measure)(void) = ^{
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@""];
+    menu.autoenablesItems = NO;
+    for (id label in labels) {
+      if (label == [NSNull null]) [menu addItem:[NSMenuItem separatorItem]];
+      else [menu addItemWithTitle:label action:NULL keyEquivalent:@""];
+    }
+    size = menu.size;
+  };
+  if ([NSThread isMainThread]) measure();
+  else dispatch_sync(dispatch_get_main_queue(), measure);
+  napi_value result, width, height;
+  napi_create_object(env, &result);
+  napi_create_double(env, size.width, &width);
+  napi_create_double(env, size.height, &height);
+  napi_set_named_property(env, result, "width", width);
+  napi_set_named_property(env, result, "height", height);
+  return result;
+}
+
 static napi_value init(napi_env env, napi_value exports) {
   napi_value applyFn;
   napi_value clearFn;
+  napi_value measureFn;
   napi_create_function(env, "apply", NAPI_AUTO_LENGTH, applyGlass, NULL, &applyFn);
   napi_create_function(env, "clear", NAPI_AUTO_LENGTH, clearGlass, NULL, &clearFn);
+  napi_create_function(env, "measureMenu", NAPI_AUTO_LENGTH, measureMenu, NULL, &measureFn);
   napi_set_named_property(env, exports, "apply", applyFn);
   napi_set_named_property(env, exports, "clear", clearFn);
+  napi_set_named_property(env, exports, "measureMenu", measureFn);
   return exports;
 }
 

@@ -194,28 +194,6 @@
         "brotli": 26709
       }
     },
-    "renderer/task-panel/js": {
-      "raw": 472187,
-      "gzip": 154400,
-      "brotli": 132039,
-      "twoByteChunks": 0,
-      "measured": {
-        "raw": 462928,
-        "gzip": 151372,
-        "brotli": 129450
-      }
-    },
-    "renderer/task-panel/css": {
-      "raw": 5335,
-      "gzip": 1698,
-      "brotli": 1430,
-      "twoByteChunks": 0,
-      "measured": {
-        "raw": 5230,
-        "gzip": 1664,
-        "brotli": 1401
-      }
-    },
     "renderer/system-dock-bar/js": {
       "raw": 492678,
       "gzip": 162690,
@@ -267,15 +245,6 @@
         "raw": 62971,
         "gzip": 15163,
         "brotli": 12868
-      }
-    },
-    "preload/task-panel": {
-      "raw": 552,
-      "twoByteChunks": 0,
-      "measured": {
-        "raw": 541,
-        "gzip": 320,
-        "brotli": 274
       }
     },
     "preload/system-dock": {

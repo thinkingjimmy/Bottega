@@ -1,14 +1,14 @@
 /**
- * [INPUT]: Depends on the Dock widget face projections, shared Agent logos, lucide state glyphs, and the common limits/activity readings.
- * [OUTPUT]: Provides `LimitsFace` (up to three Agents as ring gauges — the ring is the share of the limit left, orange below 20 %, dimmed and half-drawn when masked — single-source ring with window/reset caption, +N chip, neutral glyphs for non-numeric states, Set up affordance) and `ActivityFace` (today's compact tokens and estimated cost), with vertical stacks and explicit Details when a 48 DIP reading cannot fit.
+ * [INPUT]: Depends on the Dock widget face projections, shared Agent logos, lucide state glyphs, and the common limits/activity/task readings.
+ * [OUTPUT]: Provides `LimitsFace` (up to three Agents as ring gauges — the ring is the share of the limit left, orange below 20 %, dimmed and half-drawn when masked — single-source ring with window/reset caption, +N chip, neutral glyphs for non-numeric states, Set up affordance) `ActivityFace` (today's compact tokens and estimated cost) and `TasksFace` (active/waiting counts and batch results), with vertical stacks and explicit Details when a 48 DIP reading cannot fit.
  * [POS]: system-dock/bar compact Widget renderers; purely visual, aria-hidden — the item button carries the spoken reading from common/format.
  */
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { CircleAlert, Gauge, KeyRound, Minus } from "lucide-react";
+import { CircleAlert, Gauge, KeyRound, ListTodo, Minus } from "lucide-react";
 import { AgentBackendIcon } from "@ai-chat/ui/components/identity/agent";
 import type { LimitsFaceSource, WidgetFace } from "../../../shared/system-dock/ipc";
-import { activityReading, clockText, limitsReading, windowLabel, type DockT } from "../common/format";
+import { activityReading, taskResultLabel, MASK, clockText, limitsReading, windowLabel, type DockT } from "../common/format";
 
 type LimitsFaceValue = Extract<WidgetFace, { type: "builtin.ai-limits" }>;
 type ActivityFaceValue = Extract<WidgetFace, { type: "builtin.ai-activity" }>;
@@ -80,5 +80,16 @@ function CompactReading({ value, t }: { value: string; t: DockT }) {
   return <span className="compact-reading">
     <span ref={measure} className="reading-measure">{value}</span>
     <span className={details ? "reading-details" : undefined}>{details ? t("systemDock.bar.details") : value}</span>
+  </span>;
+}
+
+export function TasksFace({ face, t, mask, vertical = false }: { face: Extract<WidgetFace, { type: "builtin.tasks" }>; t: DockT; mask: boolean; vertical?: boolean }) {
+  const count = mask ? MASK : new Intl.NumberFormat().format((face.running ?? 0) + (face.waiting ?? 0));
+  const caption = mask ? MASK : face.waiting ? t("settings.presence.waiting", { tasks: face.waiting })
+    : face.running ? t("settings.presence.active") : taskResultLabel(face.result, t);
+  return <span className="face face-activity" aria-hidden="true" data-waiting={!mask && Boolean(face.waiting) || undefined}>
+    <span className="face-row">{!vertical && <ListTodo className="face-glyph" style={{ color: !mask && face.waiting ? "var(--caution)" : undefined }} />}<span className="face-value">{count}</span>
+      {!vertical && <span className="face-unit">{t("systemDock.entry.tasks")}</span>}</span>
+    <span className="face-caption">{vertical ? <CompactReading value={caption} t={t} /> : caption}</span>
   </span>;
 }

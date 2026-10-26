@@ -1,9 +1,11 @@
 /**
  * [INPUT]: Apps package IPC, main preset/source/config/probe owners, GitHub detection, Base importer, ShareFlow and canonical App queries.
- * [OUTPUT]: Provides typed package admission, durable original-candidate resumption, explicit update application, pending configuration and existing install/share ownership.
+ * [OUTPUT]: Provides typed package admission, durable original-candidate resumption, independent signed update readiness/commands, explicit update application, pending configuration and existing install/share ownership.
  * [POS]: apps/share package-installation front door; AppsService retains only the general App lifecycle while package/distribution details stay encapsulated here
  */
 
+import { z } from "zod";
+import type { PresetUpdateService } from "../updates/service";
 import { AppCompatibilityRequests, appCompatibilityRequests } from "../compatibility/requests";
 import type { AppRepoProbeResult, PresetProbeResult } from "../../../../shared/ipc/apps/apps-ipc";
 import { constants } from "node:fs";
@@ -51,6 +53,10 @@ export class AppPackageController {
   private readonly probes: RepoProbeService;
   private readonly presetInstaller: PresetInstallService;
   private importer: BaseAppImporter | null = null;
+  private independentUpdates: PresetUpdateService | null = null;
+  configureIndependentUpdates(service: PresetUpdateService) { this.independentUpdates = service; }
+  independentUpdatesConfigured() { return this.independentUpdates?.configured() ?? false; }
+  private updates() { if (!this.independentUpdates) throw new Error("APP_UPDATE_UNAVAILABLE"); return this.independentUpdates; }
   private shareFlow: ShareFlow | null = null;
   private updatePort: Pick<import("../source/app-installer").AppInstaller, "resumeCompatibility" | "applyCompatibility"> | null = null;
   configureCompatibilityUpdates(port: NonNullable<AppPackageController["updatePort"]>) { this.updatePort = port; }
@@ -136,6 +142,13 @@ export class AppPackageController {
 
   register(ipc: RendererIpc, ports: ControllerPorts) {
     ipc
+      .handle(APPS_CHANNEL.presetUpdateStatus, rawId => this.updates().status(ports.assertAppId(rawId)))
+      .handle(APPS_CHANNEL.preparePresetUpdate, rawId => this.updates().prepare(ports.assertAppId(rawId)))
+      .handle(APPS_CHANNEL.decidePresetUpdate, raw => {
+        const input = z.object({ appId: z.string().regex(/^[a-z0-9]{10}$/), operationId: z.string().uuid(), approve: z.boolean() }).strict().parse(raw);
+        return this.updates().decide(input.appId, input.operationId, input.approve);
+      })
+      .handle(APPS_CHANNEL.retryPresetUpdate, rawId => this.updates().retry(ports.assertAppId(rawId)))
       .handle(APPS_CHANNEL.probeRepo, (rawUrl) =>
         this.compatibility.guard(() => this.probes.probe(ports.normalizeRepo(String(rawUrl)).repoUrl))
       )

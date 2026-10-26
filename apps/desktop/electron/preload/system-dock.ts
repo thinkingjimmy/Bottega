@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Electron contextBridge/ipcRenderer, the launch argument naming this window's role, and (type-only) the isolated Bottega Dock channel contract.
  * [OUTPUT]: Exposes `window.systemDock` with snapshots, intents, opaque icon/download visual lookups and bounded change subscriptions to Dock main frames only.
- * [POS]: Auxiliary preload beside task-panel.ts; no product settings, arbitrary file paths, shell, account, AX, or Apple Event bridge is reachable from here (INV-13).
+ * [POS]: Isolated Dock bar/panel preload; no product settings, arbitrary file paths, shell, account, AX, or Apple Event bridge is reachable from here (INV-13).
  */
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";

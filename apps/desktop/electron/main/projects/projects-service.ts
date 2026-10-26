@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on shared Project/Chat contracts, main/errors, lifecycle-fenced ProjectStore, filesystem validation, ProjectResourceCleanupCoordinator, rebind saga, and cross-domain cleanup ports
- * [OUTPUT]: Provides Project operations, unbound folder binding, throttled Git origin refresh, configured cloud-removal handoff and deletion-fenced navigation and branch mutations with a queued remote-authority check.
+ * [INPUT]: Depends on shared Project/Chat contracts, main/errors, lifecycle-fenced ProjectStore, canonical filesystem resolution, ProjectResourceCleanupCoordinator, rebind saga, and cross-domain cleanup ports
+ * [OUTPUT]: Provides Project operations, unbound folder binding, canonical directory reveal, throttled Git origin refresh, configured cloud-removal handoff and deletion-fenced navigation and branch mutations with a queued remote-authority check.
  * [POS]: Main Project authority; archive/rebind preserve incarnation while permanent removal is delegated only to the durable resource cleanup coordinator
  */
 
+import { realpathSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { basename } from "node:path";
 import type { BrowserWindow } from "electron";
@@ -590,7 +591,7 @@ export class ProjectsService {
     if (!directory || !isUsableDirectory(directory)) {
       throw new Error(`${PROJECT_UNAVAILABLE}: Project 目录不可用`);
     }
-    return directory;
+    return realpathSync(directory);
   }
   private branchWorkspace(projectId: string) {
     this.assertNoMemoryRebind(projectId);

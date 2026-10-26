@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared layout/IPC/metrics models and caller-supplied branded host, resolution, running, entry and Widget facts.
- * [OUTPUT]: Provides pure pinned/running item projections with bundle-identity de-duplication and one always-reachable branded host, shared face-dependent metric items for fitting, and privacy-safe labels.
+ * [OUTPUT]: Provides pure pinned/running item projections with bundle-identity de-duplication and one always-reachable branded host, shared face-dependent metric items for fitting, and privacy-safe labels. Projects live App emoji without adding them to persisted layout.
  * [POS]: system-dock projection kernel; DockService owns facts, this file only shapes them for renderers (INV-06/08/12).
  */
 
@@ -11,7 +11,7 @@ import { metricItem, type MetricItem } from "../../../shared/system-dock/metrics
 import type { RunningApp } from "./native/protocol";
 
 export type NativeResolution = { path: string; bundleIdentifier: string | null; name: string } | null;
-export type BottegaAppFact = { label: string; state: "ready" | "unavailable" | "missing"; running: boolean };
+export type BottegaAppFact = { appIcon?: string | null; label: string; state: "ready" | "unavailable" | "missing"; running: boolean };
 export type ProjectionFacts = {
   resolution(item: DockItem): NativeResolution | undefined;
   bottega(appId: string | null): BottegaAppFact;
@@ -23,7 +23,7 @@ export type ProjectionFacts = {
   downloadsPath: string;
   trash: TrashState;
   widgetFace(item: Extract<DockItem, { kind: "widget" }>): WidgetFace;
-  label(key: "finder" | "downloads" | "trash" | "limits" | "activity"): string;
+  label(key: "finder" | "downloads" | "trash" | "limits" | "activity" | "tasks"): string;
   showRunning: boolean;
 };
 function isHost(facts: ProjectionFacts, target: { bundleIdentifier: string | null; path: string | null }): boolean {
@@ -40,10 +40,10 @@ export function projectPinned(layout: DockLayout, facts: ProjectionFacts): DockB
       return { id: item.id, kind: "system", entry: item.entry, pinned: true, label: facts.label("trash"), iconKey: null, running: false, status: "ok", trash: facts.trash };
     }
     if (item.kind === "widget") return { id: item.id, kind: "widget", pinned: true, running: false, status: "ok", iconKey: null,
-      label: facts.label(item.widget.type === "builtin.ai-limits" ? "limits" : "activity"), widget: facts.widgetFace(item) };
+      label: facts.label(item.widget.type === "builtin.tasks" ? "tasks" : item.widget.type === "builtin.ai-limits" ? "limits" : "activity"), widget: facts.widgetFace(item) };
     if (item.kind === "bottega-app") {
       const fact = facts.bottega(item.appId);
-      return { id: item.id, kind: "bottega-app", pinned: true, label: fact.label || item.label || "", iconKey: null, running: fact.running,
+      return { id: item.id, kind: "bottega-app", pinned: true, label: fact.label || item.label || "", iconKey: null, appIcon: fact.appIcon, running: fact.running,
         status: fact.state === "ready" ? "ok" : fact.state === "missing" ? "missing" : "unavailable" };
     }
     const resolved = facts.resolution(item);
@@ -75,13 +75,14 @@ export function projectRunning(layout: DockLayout, facts: ProjectionFacts): Dock
     });
 }
 /** Literal keys so the catalog gate can see every reader. */
-export function entryLabel(locale: import("@ai-chat/ui/lib/locale").AppLocale, key: "finder" | "downloads" | "trash" | "limits" | "activity"): string {
+export function entryLabel(locale: import("@ai-chat/ui/lib/locale").AppLocale, key: "finder" | "downloads" | "trash" | "limits" | "activity" | "tasks"): string {
   switch (key) {
     case "finder": return translate(locale, "systemDock.entry.finder");
     case "downloads": return translate(locale, "systemDock.entry.downloads");
     case "trash": return translate(locale, "systemDock.entry.trash");
     case "limits": return translate(locale, "systemDock.entry.limits");
     case "activity": return translate(locale, "systemDock.entry.activity");
+    case "tasks": return translate(locale, "systemDock.entry.tasks");
   }
 }
 /** Empty means nothing to show at all: no pins and no running Apps in the area this mode displays (INV-07). */
@@ -93,6 +94,7 @@ export function metricItems(items: readonly DockBarItem[]): MetricItem[] {
 }
 /** Privacy mask hides values and file names in every projection, including accessible names (INV-06). */
 export function maskFace(face: WidgetFace): WidgetFace {
+  if (face.type === "builtin.tasks") return { ...face, running: null, waiting: null, result: null };
   if (face.type === "builtin.ai-limits") return { ...face, sources: face.sources.map((source) => ({ ...source, remaining: null, resetsAt: null })) };
   return { ...face, tokens: null, costUsd: null, unpricedTokens: 0 };
 }

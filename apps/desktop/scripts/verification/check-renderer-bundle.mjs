@@ -63,7 +63,7 @@ function validatePhosphorAbsent(report) {
 
 /* OPT-34: the auxiliary windows' first paint carries no zod: the notch task panel, the Dock bar and the Dock panel read their
    contracts as types and zod-free helpers only (the main window index is tracked separately, see DEV/platform/opt-34). */
-export const ZOD_FREE_ENTRIES = /^assets\/(?:task-panel|system-dock-bar|system-dock-panel)-[\w-]+\.js$/;
+export const ZOD_FREE_ENTRIES = /^assets\/(?:system-dock-bar|system-dock-panel)-[\w-]+\.js$/;
 export const ZOD_MODULE = /node_modules\/(?:\.pnpm\/zod@[^/]+\/node_modules\/)?zod\//;
 function validateAuxiliaryZodFree(report) {
   const chunks = new Map((report.chunks ?? []).map((chunk) => [chunk.fileName, chunk]));

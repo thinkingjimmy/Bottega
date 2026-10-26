@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Shared ProjectRowMenu, React/routing, Memory settings, Projects/Apps/Bases providers, active App target, App Editor intents, Project/Chat contracts, shared system-file-manager copy, lifecycle modules and the shared complete Project row
- * [OUTPUT]: Provides ProjectItem with pointer-explicit local expansion, Base, pinned App and native/mirror Chat ordering, sorting, Editor navigation, Settings, native directory reveal, unbound folder binding, the remote row's globe glyph and owning-computer badge with every directory item withheld, a new Chat created on the owning computer while it is awake, unpinning a borrowed row, uniform row-action states, and archive helpers
+ * [OUTPUT]: Provides ProjectItem with pointer-explicit local expansion, Base, pinned App and native/mirror Chat ordering, sorting, Editor navigation, Settings, native directory reveal, deferred lifecycle confirmations with menu focus return, unbound folder binding, the remote row's globe glyph and owning-computer badge with every directory item withheld, a new Chat created on the owning computer while it is awake, unpinning a borrowed row, uniform row-action states, and archive helpers
  * [POS]: Project row coordinator consumed by ProjectSection; reusable lifecycle state machines live in ../lifecycle, pinned App aliases in the sibling project-pinned-apps
  */
 
@@ -416,7 +416,7 @@ export function ProjectItem({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       disabled={busy}
-                      onSelect={lifecycle.requestArchive}
+                      onSelect={() => renameMenu.requestDialogOpen(lifecycle.requestArchive)}
                     >
                       <Archive />
                       {t("projects.archive")}
@@ -463,7 +463,7 @@ export function ProjectItem({
                     <DropdownMenuItem
                       variant="destructive"
                       disabled={busy}
-                      onSelect={lifecycle.requestLocalDetach}
+                      onSelect={() => renameMenu.requestDialogOpen(lifecycle.requestLocalDetach)}
                     >
                       <FolderX />
                       {t("projects.removeLocal")}
@@ -498,7 +498,7 @@ export function ProjectItem({
             onRename={(name) => renameProject(project.id, name)}
             onCloseAutoFocus={renameMenu.onDialogCloseAutoFocus}
           />
-          <ProjectLifecycleDialogs controller={lifecycle} />
+          <ProjectLifecycleDialogs controller={lifecycle} onCloseAutoFocus={renameMenu.onDialogCloseAutoFocus} />
           {rescueOpen && (
             <ProjectRescueDialog
               projectId={project.id}

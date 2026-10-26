@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on original local Chat outboxes, frozen manual admissions and serialized ledger handoff preparation.
- * [OUTPUT]: Captures owner-scoped turns (never a package Provider's local-only Chat) from a turn-scoped outbox scan and atomically prepares current result evidence, including prepared results arriving after cloud settlement, with per-intent failure isolation.
+ * [INPUT]: Depends on original Chat outboxes, frozen manual admissions and their canonical attachment metadata, plus serialized ledger handoff preparation.
+ * [OUTPUT]: Captures owner-scoped turns, recovers retired first-user prefixes from completed-result custody, and atomically prepares original result evidence with per-intent failure isolation; package Provider Chats remain local.
  * [POS]: Local-only adapter: every mutation targets the profile's SQLite worker, with no network transport.
  */
 import { hashChatContent } from "@ai-chat/cloud-protocol/chats/transcript/body";
@@ -11,6 +11,7 @@ import type { ChatStore } from "../../chats/chat-store";
 import type { DeepReadonly, RelayLedger } from "../../sections/coordinator/relay-ledger";
 import { stableId } from "../../sections/coordinator/coordinator-values";
 import { assertPreparedContentHash, type PreparedManualTurn } from "../../sections/coordinator/admission/prepared-manual-turn";
+import { preparedUserMessage } from "../../sections/coordinator/admission/prepared/messages";
 import { cloudActionSchema, cloudMutationSchema, handoffIdentity, type CloudAction } from "../../chats/sqlite/cloud/protocol";
 import { localTurnAdmissionSchema, type LocalTurnAdmission } from "../../chats/sqlite/cloud/delivery/turns/model";
 import { messageSchema, subagentsSchema } from "../../chats/schema/chat-schema";
@@ -57,20 +58,34 @@ export async function captureTurnAdmissions(ports: TurnSourcePorts, items: ChatO
     if (current.type !== "local-execution") throw new Error("EXECUTION_STATE_UNAVAILABLE");
     const confirmed = current.value?.head;
     if (confirmed && confirmed.ownerDeviceId !== ports.deviceId) continue;
-    const user = messageSchema.parse({ ...intent.userMessage as object, seq: intent.userSeq });
+    const originalUser = messageSchema.parse({ ...intent.userMessage as object, seq: intent.userSeq });
+    const savedUser = originalUser.role === "user" && originalUser.attachments === undefined && prepared.persistence?.input.attachmentPayloads?.length
+      ? await ports.store.getNativeMessage(intent.conversationId, { kind: "seq", seq: intent.userSeq! }) : null;
+    const user = originalUser.role === "user" ? preparedUserMessage(prepared, originalUser, intent.userSeq!, savedUser?.role === "user" ? savedUser : undefined) : originalUser;
+    const result = ports.ledger.snapshot().manualResultOutbox[intent.id];
+    const originalResult = result?.outcome === "stored" && result.assistantMessage
+      ? messageSchema.parse({ ...result.assistantMessage as object, seq: intent.assistantSeq }) : null;
     for (const item of await business(intent.conversationId)) {
       if (item.entity_kind === "turn" || JSON.parse(item.payload_json).chatId !== intent.conversationId) continue;
       let source = cached.get(item.id);
       if (!source) { source = (await readOutboxSource(ports.store.sync, ports.scope, item)).payload as Source;
         if (!source || !source.chat) continue; cached.set(item.id, source); }
       const messages = [source.message, ...(source.messages ?? []), ...(source.notices ?? [])].filter(Boolean);
-      if (!messages.some(message => hashChatContent(message) === hashChatContent(user))) continue;
+      const originalUser = messages.some(message => hashChatContent(message) === hashChatContent(user));
+      const completedResult = messages.some(raw => {
+        const value = messageSchema.safeParse(raw);
+        return originalResult && value.success && value.data.role === "assistant" && value.data.id === stableId("assistant", intent.id) &&
+          value.data.seq === intent.assistantSeq && value.data.turnId === intent.requestId && Boolean(value.data.completion && value.data.resultHash) &&
+          hashChatContent(value.data) === hashChatContent(originalResult);
+      });
+      if (!originalUser && !completedResult) continue;
       const chat = portableChatSchema.parse(source.chat), sequences = { noticeSeq: intent.noticeSeq,
         userSeq: intent.userSeq!, assistantSeq: intent.assistantSeq! };
-      const notices = [sequences.noticeSeq].filter(seq => seq !== undefined).map(seq => {
-        const found = messages.map(message => messageSchema.parse(message)).find(message => message.seq === seq);
+      const notices = await Promise.all([sequences.noticeSeq].filter(seq => seq !== undefined).map(async seq => {
+        const found = messages.map(message => messageSchema.parse(message)).find(message => message.seq === seq) ??
+          (completedResult ? await ports.store.getNativeMessage(intent.conversationId, { kind: "seq", seq }) : null);
         if (!found || found.role !== "notice") throw new Error("TURN_NOTICE_SOURCE_UNAVAILABLE"); return found;
-      });
+      }));
       const admission = localTurnAdmissionSchema.parse({ ledgerIntentId: intent.id, turnId: intent.requestId, chat, sequences,
         ownerDeviceId: ports.deviceId,
         assistantMessageId: stableId("assistant", intent.id), user, notices,

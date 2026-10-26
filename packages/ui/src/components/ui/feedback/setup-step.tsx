@@ -1,10 +1,44 @@
 /**
- * [INPUT]: Depends on React identity, caller-owned step labels and localized progress templates, plus shared class composition.
- * [OUTPUT]: Provides setupStepCaption and SetupStep — one shared caption formatter and open-column surface with progress, heading, optional body and actions.
- * [POS]: packages/ui/src/components/ui/feedback; Shared step surface for desktop onboarding, Sync settings and browser account admission; the page or window is the frame, so it draws no card.
+ * [INPUT]: Depends on React identity, caller-owned step labels and localized progress templates, shared class composition, SlimScroller and the product mark.
+ * [OUTPUT]: Provides setupStepCaption, SetupStep and SetupFrame — shared step content and the full-window desktop/mobile onboarding column.
+ * [POS]: packages/ui/src/components/ui/feedback; Shared onboarding presentation for desktop, mobile and browser account admission, without account or navigation authority.
  */
 import { useId, type ReactNode } from "react";
 import { cn } from "../../../lib/utils";
+import { SlimScroller } from "../layout/slim-scroller";
+import { PRODUCT_MARK_URL } from "../../workspace/brand";
+
+export function SetupFrame({ progress, title, description, children, draggable = false, titleId, descriptionId }: {
+  progress?: { current: number; total: number; label: string };
+  title?: string;
+  description?: ReactNode;
+  children: ReactNode;
+  draggable?: boolean;
+  titleId?: string;
+  descriptionId?: string;
+}) {
+  const id = useId(), heading = titleId ?? `${id}-title`;
+  return <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background", draggable && "h-svh")} data-setup-frame="">
+    {draggable && <div data-onboarding-drag="" className="h-[52px] shrink-0 select-none [-webkit-app-region:drag]" />}
+    <SlimScroller className="min-h-0 flex-1 overflow-y-auto px-6 sm:px-8">
+      <main aria-labelledby={title ? heading : undefined} className="mx-auto flex w-full max-w-[560px] flex-col pt-[clamp(1.5rem,6vh,3rem)] pb-[max(3rem,env(safe-area-inset-bottom))]">
+        {progress && <div className="flex items-center justify-between gap-4">
+          <p className="text-xs text-muted-foreground">{progress.label}</p>
+          <span aria-hidden="true" className="flex shrink-0 gap-1">{Array.from({ length: progress.total }, (_, position) =>
+            <span key={position} className={cn("h-[3px] w-4 rounded-[2px]", position < progress.current ? "bg-foreground" : "bg-border")} />)}</span>
+        </div>}
+        {title && <header className="mt-4 flex flex-col gap-2">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <img src={PRODUCT_MARK_URL} alt="" className="size-10 shrink-0 rounded-[23%] object-contain" />
+            <h1 id={heading} className="min-w-0 text-2xl font-semibold tracking-[-0.3px]">{title}</h1>
+          </div>
+          {description && <p id={descriptionId} className="text-[13px] leading-[1.6] text-muted-foreground">{description}</p>}
+        </header>}
+        <div className="mt-7 flex flex-col gap-3">{children}</div>
+      </main>
+    </SlimScroller>
+  </div>;
+}
 
 export function setupStepCaption(step: number, steps: readonly string[], template: string): string {
   const progress = template.replace("{{current}}", String(step + 1)).replace("{{total}}", String(steps.length));

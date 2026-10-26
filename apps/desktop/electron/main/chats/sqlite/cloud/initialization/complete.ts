@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the sole Chat SQLite connection, frozen source roots and validated delivery checkpoints.
- * [OUTPUT]: Completes one initial Chat only after native/imported/Home receipts and records durable manifest evidence.
+ * [OUTPUT]: Completes initial Chat only after native/imported/Home receipts and durable custody for any reserved unfinished turn; records manifest evidence.
  * [POS]: Initial synchronization commit; queue removal, completion proof and source release share one transaction.
  */
 import { z } from "zod";
@@ -11,6 +11,7 @@ import { readCheckpoint, requireOutbox } from "../delivery/checkpoints";
 import { chatDeliveryCheckpointSchema, retainedSourceRefSchema } from "../delivery/contracts";
 import { releaseRoot } from "../retention";
 import { readRetainedSource as source } from "../inventory/source";
+import { localTurnAdmissionSchema } from "../delivery/turns/model";
 export function completeInitialChat(db: SqliteDatabase, scope: SyncScope, id: string, payloadDigest: string, now: number) {
   const item = requireOutbox(db, scope, id, payloadDigest); if (item.kind !== "initialize") throw new Error("INITIAL_OUTBOX_REQUIRED");
   const input = z.object({ version: z.literal(1), chatId: z.string(), sources: z.tuple([retainedSourceRefSchema]) }).strict().parse(JSON.parse(String(item.payload_json)));
@@ -22,6 +23,19 @@ export function completeInitialChat(db: SqliteDatabase, scope: SyncScope, id: st
     native.checkpoint.kind !== "native-complete") throw new Error("INITIAL_COMPONENT_RECEIPT_REQUIRED");
   const head = metadata.checkpoint.receipt.head, proof: Record<string, string> = { source: input.sources[0].digest,
     metadata: metadata.reference.digest, native: native.reference.digest };
+  const manifest = native.checkpoint.manifest;
+  if (manifest.throughSeq < manifest.reservedThroughSeq) {
+    const rows = db.prepare("SELECT payload_json FROM cloud_outbox WHERE environment=? AND user_id=? AND kind='live-turn' AND seq_or_revision=? AND json_extract(payload_json,'$.chatId')=? LIMIT 2")
+      .all(scope.environment, scope.userId, manifest.throughSeq, input.chatId) as Row[];
+    const captured = rows.some(row => {
+      const reference = retainedSourceRefSchema.parse(JSON.parse(String(row.payload_json)).sources[0]);
+      const admission = localTurnAdmissionSchema.parse(source(db, reference));
+      return admission.chat.incarnationId === head.chat.incarnationId && admission.sequences.assistantSeq === manifest.reservedThroughSeq;
+    });
+    const settled = db.prepare("SELECT 1 FROM cloud_turn_receipts WHERE environment=? AND user_id=? AND chat_id=? AND settlement_state='settled' AND json_extract(receipt_json,'$.assistantSeq')=? AND json_extract(receipt_json,'$.incarnationId')=? LIMIT 1")
+      .get(scope.environment, scope.userId, input.chatId, manifest.reservedThroughSeq, head.chat.incarnationId);
+    if (!captured && !settled) throw new Error("INITIAL_TURN_CAPTURE_REQUIRED");
+  }
   if (snapshot.imported) {
     const imported = read("import-complete"); if (imported.checkpoint.kind !== "import-complete") throw new Error("INITIAL_COMPONENT_RECEIPT_REQUIRED");
     proof.imported = imported.reference.digest;

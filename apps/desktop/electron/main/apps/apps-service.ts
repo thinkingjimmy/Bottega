@@ -1,9 +1,10 @@
 /**
  * [INPUT]: App service composition, durable lifecycle/store/runtime owners, Extension/navigation collaborators and trusted Apps IPC.
- * [OUTPUT]: App lifecycle, availability, installation/configuration, cloud projections, build/rebuild and exact Use/Edit navigation with existing custody recovery.
+ * [OUTPUT]: App lifecycle, availability, installation/configuration, cloud projections, build/rebuild and exact Use/Edit navigation with independent preset update and existing custody recovery.
  * [POS]: App composition root; owns lifecycle, authority and late-bound collaborators, including the isolated plugin gateway delegate.
  */
 
+import { assertUpdateIdle } from "./updates/guard";
 import { recoverOrDefer } from "../persistence/recovery-policy";
 import { startupTrace } from "../startup/boot/startup-trace";
 import { APPS_CHANNEL } from "../../../shared/ipc/apps/apps-ipc";
@@ -226,6 +227,7 @@ export class AppsService {
       await startupTrace.span("apps:gui-cutovers", () => this.parts.guiRuntime.recoverCutovers());
       await startupTrace.span("apps:server-reconcile", () => this.parts.serverLifecycle.reconcile());
     });
+    await this.parts.presetUpdates.recover();
     await this.parts.gateway.start();
     await recoverOrDefer(async () => {
       await startupTrace.span("apps:installer", () => this.parts.installer.initialize()); await this.store.normalizeStartupStates();
@@ -272,6 +274,7 @@ export class AppsService {
       studioSurfaceReady: (record) =>
         this.projectRecord(record).studioSurfaceReady === true,
       revokeExtensionGrant: async (appId) => {
+        assertUpdateIdle(this.store.get(appId));
         await revokeExtensionGrant(this.store, this.extensions, appId);
         return this.extensionStatus(appId);
       },
@@ -400,7 +403,7 @@ export class AppsService {
     this.navigationService = service;
   }
   runAppLifecycleMutation<T>(appId: string, operation: () => Promise<T>) {
-    return this.lifecycleMutations.run(appId, operation);
+    return this.lifecycleMutations.run(appId, () => { assertUpdateIdle(this.store.get(appId)); return operation(); });
   }
   /** The navigation service and the remote build operations once App mode configured it; null before (remote App commands are then refused). */
   remoteApps(): RemoteApps | null {
@@ -539,6 +542,7 @@ export class AppsService {
   private projectRecord(record: AppRecord): AppRecordProjection {
     return {
       ...record,
+      presetUpdatesEnabled: record.origin === "preset" && this.parts.presetUpdates.configured(),
       ...(this.store.portable.isCloudManaged(record.id) ? { cloudManaged: true as const } : {}),
       studioSurfaceReady: studioSurfaceReady(
         record,
@@ -564,6 +568,7 @@ export class AppsService {
     });
   }
   private remove(appId: string, mode?: RemoveAppMode, requestId = "") {
+    assertUpdateIdle(this.store.get(appId));
     return removeApp({
       appId,
       mode,

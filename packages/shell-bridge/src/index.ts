@@ -4,5 +4,5 @@
  * [POS]: Main export of @ai-chat/shell-bridge; the native shell imports ./host.
  */
 export * from "./contract";
-export { createShellClient, getShell, readDescriptor, resetShellForTesting } from "./client";
+export { createShellClient, getShell, readDescriptor } from "./client";
 export { decodePageMessage, decodeShellMessage, encodeMessage } from "./codec";

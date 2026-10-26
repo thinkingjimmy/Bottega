@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Bundled, trusted Agent logo markup, lucide-react and React.
- * [OUTPUT]: Shared backendLabel, AgentBackendIcon, AgentBackendId (an open Provider id) and AgentIconTone.
+ * [OUTPUT]: Shared backendLabel, AgentBackendIcon with SVG marks that fill their wrapper size, AgentBackendId (an open Provider id) and AgentIconTone.
  * [POS]: Shared Agent identity independent of native availability policy; bundled marks cover the built-in providers and any other id renders a neutral mark and its own id, never a crash.
  */
 import { createElement, type ComponentProps } from "react";
@@ -42,7 +42,7 @@ export function AgentBackendIcon({
     "aria-hidden": labelled ? undefined : true,
     role: props.role ?? (labelled ? "img" : undefined),
 
-    className: `inline-block shrink-0 [&>svg]:block [&>svg]:size-full ${
+    className: `inline-block shrink-0 [&>svg]:block [&>svg]:size-full! ${
       tone === "mono" && known ? "[&_*]:fill-current " : ""
     }${className ?? ""}`,
     ...(known ? { dangerouslySetInnerHTML: { __html: logos[backend] } } : { "data-provider-fallback": "", children: createElement(Bot, { "aria-hidden": true }) }),

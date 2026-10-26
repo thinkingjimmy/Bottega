@@ -11,6 +11,7 @@ import { agentBackendIdSchema } from "../../../shared/platform/agent-schema";
 import type { DockIntent } from "../../../shared/system-dock/ipc";
 import type { DockItemDraft } from "../../../shared/system-dock/layout";
 import { addItem, moveItem, removeItem, undoRemove, updateItem } from "../../../shared/system-dock/placement";
+import { openDockTask } from "./widgets/tasks";
 import { addCandidates } from "./panel-snapshot";
 import type { DockService } from "./service";
 import type { DockRole } from "./window/surface";
@@ -114,6 +115,16 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
       service.closePanel(false);
       return service.ports.destination({ kind: "usage", agent: agent?.success ? agent.data : null });
     }
+    case "open-task": {
+      if (role !== "panel") throw new Error("DOCK_PANEL_REQUIRED");
+      const item = service.layoutItem(service.panelTargetItem() ?? "");
+      if (item?.kind !== "widget" || item.widget.type !== "builtin.tasks") throw new Error("DOCK_TASKS_NOT_VISIBLE");
+      const current = service.captureInteraction();
+      await openDockTask(service.ports.tasks, intent.task);
+      if (current()) service.closePanel(false);
+      return;
+    }
+    case "open-main": service.closePanel(false); service.ports.host?.open(); return;
     case "open-settings": service.closePanel(false); return service.ports.destination({ kind: "dock" });
     case "restore-system-dock": service.closePanel(false); await service.replacement?.suspend("user-restored"); return;
   }

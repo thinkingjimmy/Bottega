@@ -15,7 +15,3 @@ export function resolveCloudAssembly(flavor: string | undefined = "production"):
 export function workbenchUiFor(_assembly: Pick<CloudAssembly, "flavor">, flag: string | undefined) {
   return flag !== "0";
 }
-export function serverTunnelFor(_assembly: Pick<CloudAssembly, "flavor">, flag: string | undefined) {
-  if (flag && flag !== "0") throw new Error("Server tunnels cannot be enabled in production");
-  return false;
-}

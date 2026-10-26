@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Electron screen/power/shortcut/menu/shell, the Dock stores, native bridge adapters, entries, Usage adapter, replacement controller, read-only signed-installation verification, window surfaces/geometry/panel lifecycle, projections, and caller ports (Bottega Apps, main-window destinations, tray refresh, background retention).
- * [OUTPUT]: Provides DockService: the single main-owned Dock runtime — enable/start/stop, actual mode, three-edge display directory/placement, grouped overflow-aware panel anchors and revision-fenced hover, authoritative presentation, bounded transparent-frame transitions, the revealed bar's native glass, lazy panel orchestration, bar/panel/settings snapshots with an always-reachable local host and coalesced publication, consumer demand per ready visible surface, serialized startup cleanup, generation-fenced startup, renderer recovery, native-failure replacement suspension, intent admission, reference-only download visuals and resolution, disabled recovery responsibility, truthful recovery/permission health, keyboard entry, temporary hide, and the replacement admission facts.
+ * [INPUT]: Depends on Electron screen/power/shortcut/menu/shell, the Dock stores, native bridge adapters, entries, Usage and Tasks adapters, replacement controller, read-only signed-installation verification, window surfaces/geometry/panel lifecycle, projections, and caller ports (Bottega Apps, main-window destinations, tray refresh, background retention).
+ * [OUTPUT]: Provides DockService: the single main-owned Dock runtime — enable/start/stop, actual mode, three-edge display directory/placement, grouped overflow-aware panel anchors and revision-fenced hover, authoritative presentation, bounded transparent-frame transitions, the revealed bar's native glass, lazy panel orchestration, bar/panel/settings snapshots with an always-reachable local host, independent Tasks activity and coalesced publication, consumer demand per ready visible surface, serialized startup cleanup, generation-fenced startup, renderer recovery, native-failure replacement suspension, placement-fenced drag-removal admission, item-anchored native menus with display-safe bounds, reference-only download visuals and resolution, disabled recovery responsibility, truthful recovery/permission health, keyboard entry, temporary hide, and the replacement admission facts. Settings snapshots include pinned Bottega App IDs.
  * [POS]: system-dock orchestrator; intents live in intents.ts and Settings flows in setup.ts, both acting through this service. It is the only writer of DockConfigStore's working layout and DockLocalStore.
  */
 
@@ -29,14 +29,16 @@ import type { DockConfigStore } from "./store/config-store";
 import type { DockLocalStore } from "./store/local-store";
 import { buildPanel, panelDemand } from "./panel-snapshot";
 import { DockUsage, type HistoryPort, type LimitsPort } from "./widgets/usage";
-import { inBarGap, resolveBarPlacement, placePanel, type BarPlacement } from "./window/geometry";
+import { inBarGap, resolveBarPlacement, placePanel, placeContextMenu, type BarPlacement } from "./window/geometry";
 import { DisplayDirectory, dockClock, type DockClock } from "./window/display-observer";
 import { PanelLifecycle, type OpenRequest } from "./window/panel";
-import { applyDockGlass, clearDockGlass } from "./window/glass";
+import { applyDockGlass, clearDockGlass, measureDockMenu } from "./window/glass";
 import { createDockSurface, DockIpc, dockEntryUrl, type DockRole } from "./window/surface";
 import { barGroups, DOCK_METRICS } from "../../../shared/system-dock/metrics";
 
-export type BottegaAppsPort = { list(): { id: string; label: string; ready: boolean }[]; fact(appId: string | null): BottegaAppFact; open(appId: string): Promise<void> };
+import { taskFace, type DockTasksPort } from "./widgets/tasks";
+
+export type BottegaAppsPort = { list(): { id: string; label: string; appIcon?: string | null; ready: boolean }[]; fact(appId: string | null): BottegaAppFact; open(appId: string): Promise<void> };
 export type SyncHandle = { status(): DockSyncStatus; onChanged(listener: () => void): () => void; resolveConflict(choice: import("../../../shared/system-dock/ipc").ConflictChoice): Promise<unknown>; wake(): void };
 export type DockServicePorts = {
   platform: DockPlatform;
@@ -52,6 +54,7 @@ export type DockServicePorts = {
   host?: { open(): void; quit(): void };
   limits: LimitsPort | null;
   history: HistoryPort | null;
+  tasks?: DockTasksPort;
   /** Which account each Agent CLI is signed in to (an opaque fingerprint, null when unknown); read-only. */
   accounts?: AgentAccounts;
   apps: BottegaAppsPort;
@@ -61,7 +64,7 @@ export type DockServicePorts = {
   ensureBackground(): Promise<void>;
   menus: { item(service: DockService, itemId: string | null): Electron.Menu | null };
 };
-const PLACEMENT_INTENTS = new Set(["hover", "activate", "context-menu", "open-panel", "move", "pin-running"]);
+const PLACEMENT_INTENTS = new Set(["hover", "activate", "context-menu", "open-panel", "move", "pin-running", "remove"]);
 const LAYOUT_INTENTS = new Set(["add", "add-app-file", "remove", "undo", "move", "pin-running", "widget-apply"]);
 type Runtime = { started: boolean; temporarilyHidden: boolean; hover: { bar: boolean; panel: boolean }; revealed: boolean; locked: boolean;
   busy: string | null; placement: BarPlacement | null; bar: BrowserWindow | null; barUrl: string; revision: number; shortcut: string | null;
@@ -565,10 +568,11 @@ export class DockService {
       trash: this.trash?.face() ?? "unknown",
       widgetFace: (item: Extract<DockItem, { kind: "widget" }>) => {
         const widget = item.widget;
-        const face = widget.type === "builtin.ai-limits" ? this.usage.limitsFace(widget) : this.usage.activityFace(widget);
+        const face = widget.type === "builtin.tasks" ? taskFace(this.ports.tasks)
+          : widget.type === "builtin.ai-limits" ? this.usage.limitsFace(widget) : this.usage.activityFace(widget);
         return state.privacyMask ? maskFace(face) : face;
       },
-      label: (key: "finder" | "downloads" | "trash" | "limits" | "activity") => entryLabel(locale, key),
+      label: (key: "finder" | "downloads" | "trash" | "limits" | "activity" | "tasks") => entryLabel(locale, key),
       showRunning: state.showRunningByMode[mode],
     };
   }
@@ -612,9 +616,15 @@ export class DockService {
   showContextMenu(itemId: string | null) {
     this.closeMenu();
     const menu = this.ports.menus.item(this, itemId), window = this.barWindow();
-    if (!menu || !window) return;
+    const placement = this.runtime.placement;
+    if (!menu || !window || !placement) return;
+    const { pinned, running, overflow } = this.visibleItems();
+    const visible = [...pinned, ...running], index = itemId ? visible.findIndex(item => item.id === itemId) : -1;
+    if (itemId && index < 0) return;
+    const position = placeContextMenu(placement, metricItems(visible), pinned.length, index < 0 ? null : index,
+      this.ports.local.get().scale, overflow > 0, measureDockMenu(menu, this.ports.platform.paths.glass));
     this.contextMenu = menu;
-    menu.popup({ window, callback: () => { if (this.contextMenu === menu) this.contextMenu = null; } });
+    menu.popup({ window, ...position, callback: () => { if (this.contextMenu === menu) this.contextMenu = null; } });
   }
   private invalidateInteractions() {
     this.panel.destroy();
@@ -771,6 +781,7 @@ export class DockService {
       phase: rendererFailed ? "suspended" : this.runtime.started && this.actualMode() === "coexist" && status?.phase === "inactive" ? "active" : status?.phase ?? "inactive",
       suspendReason: rendererFailed ? "renderer-failed" : status?.reason ?? null, registration: status?.registration ?? "unsupported",
       recovery: { pending: this.unavailableRecovery || status?.pending === true, lastResult: status?.lastResult ?? this.previousRecovery }, layoutInitialized: record.layout.initialized, itemCount: record.layout.items.length,
+      pinnedAppIds: record.layout.items.flatMap((item) => item.kind === "bottega-app" && item.appId ? [item.appId] : []),
       sync: this.sync?.status() ?? { state: "local-only", conflict: null }, accessibility: this.accessibility, automation: this.trash?.snapshot().automation ?? "unavailable" };
   }
   panelTargetItem(): string | null { const current = this.panel.current(); return current.state === "visible" && current.request?.view.kind === "detail" ? current.request.view.itemId : null; }

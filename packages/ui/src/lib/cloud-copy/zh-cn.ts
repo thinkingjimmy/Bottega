@@ -312,7 +312,7 @@ export const cloudCopy = {
   "signOutFailed": "没能退出登录。请检查网络后重试。",
   "conflictsLoadFailed": "没能读取需要核对的改动。请检查网络后重试。",
   "openBaseFailed": "没能打开这个 Project 的 Base。请检查网络后重试。",
-  "secureStorageDescription": "macOS 可能请求钥匙串授权，用于保护这台电脑上的登录信息。",
+  "secureStorageDescription": "Bottega 会保护这台电脑上的登录信息，不会要求输入 macOS 密码。",
   "secureStorageRestart": "重启 Bottega 后重新登录。",
   "retrySecureSave": "重试安全保存",
   "discardSavedLogin": "放弃已保存的登录信息…",

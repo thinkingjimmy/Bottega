@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, window context, surface migration, shared feedback toasts, ArchiveCelebrationHost, SketchHost, startup marks, and the build-gated cloud account lifecycle.
- * [OUTPUT]: Composes persistent providers with system typography, window-level feedback hosts before route effects, task-panel access, App recovery, two-step onboarding without the Memory copy section, settings navigation (including background-surface requests, build-flagged Agent configs and Plugins, named plugin details and legacy Memory/Dock aliases), route-independent ProductApp sketch and archive celebration hosts, and the catalog-loaded/product-loading/gate-open startup milestones.
+ * [OUTPUT]: Composes persistent providers with system typography, window-level feedback hosts before route effects, App recovery, two-step onboarding without the Memory copy section, settings navigation (including background-surface requests, build-flagged Agent configs and Plugins, named plugin details and legacy Memory/Dock aliases), route-independent ProductApp sketch and archive celebration hosts, and the catalog-loaded/product-loading/gate-open startup milestones.
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
 import { SettingsNavigationContext } from "@/components/providers/navigation/context";
@@ -78,9 +78,6 @@ import {
 } from "@/lib/settings/navigation/settings-navigation";
 import { settingsStore } from "@/lib/settings/store/settings-store";
 import { markStartup } from "@/lib/platform/startup-marks";
-import { presenceStore } from "@/lib/clients/presence-client";
-import { useGlobalShortcuts } from "@/lib/navigation/shortcuts/shortcuts";
-import { resolvePanelBinding } from "../shared/shortcuts/bindings";
 import {
   commitSidebarLayout,
   readSidebarLayout,
@@ -590,12 +587,6 @@ function AppToaster() {
 
 function SurfaceRuntimeEvents() {
   const { t } = useAppTranslation();
-  useGlobalShortcuts(windowContext().role === "main" && isApplePlatform() ? { taskPanel: () => {
-    const settings = settingsStore.getSnapshot().settings;
-    if (settings?.showTaskStatusAtTop && !resolvePanelBinding(settings.keyboardShortcuts).conflict) {
-      void presenceStore.togglePanel().catch(() => toast.error(t("settings.presence.panelUnavailable")));
-    }
-  } } : {});
   useEffect(() => {
     const hydrate = () => panelSlotStore.reloadFromStorage();
     const draftLost = () =>

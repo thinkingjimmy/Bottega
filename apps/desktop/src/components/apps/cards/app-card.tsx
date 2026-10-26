@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Shared AppCard/AppCardStatus, localized surface failures, appDisplayName, AppsProvider, lifecycle dialogs, routing and platform actions.
- * [OUTPUT]: Provides native AppCard facts and capabilities to the shared catalog presentation, retaining lifecycle and cloud-management actions. An interrupted update or install reads from the Apps catalog by phase (U06-d). Adds the approved close/reopen menu and retained-data impact dialog.
+ * [INPUT]: Shared Dock settings state/client, AppCard/AppCardStatus, localized surface failures, appDisplayName, AppsProvider, lifecycle dialogs, routing and platform actions.
+ * [OUTPUT]: Provides native AppCard facts and capabilities to the shared catalog presentation, retaining lifecycle and cloud-management actions. An interrupted update or install reads from the Apps catalog by phase (U06-d). Adds the approved close/reopen menu and retained-data impact dialog. Adds independent Dock pin/unpin actions using catalog-owned Dock state.
  * [POS]: apps/desktop/src/components/apps/cards; App listing unit; the badge follows generation readiness without exposing internal terminology, and main-owned navigation focuses an existing Studio instead of rendering twice
  */
 
+import { dockSettingsStore, type DockSettingsState } from "@/lib/platform/system-dock-settings-client";
 import { useAppEnablement } from "../availability/control";
 import {
   AppCard as SharedAppCard,
@@ -18,6 +19,7 @@ import {
   MoreHorizontal,
   Pin,
   PinOff,
+  PanelBottom,
   RefreshCw,
   Wrench,
   Trash2,
@@ -62,10 +64,11 @@ import {
 
 type AppCardProps = {
   app: AppListItem;
+  dock?: DockSettingsState;
   onOpenProgress: (appId: string) => void;
 };
 
-export function AppCard({ app, onOpenProgress }: AppCardProps) {
+export function AppCard({ app, dock, onOpenProgress }: AppCardProps) {
   const { t, i18n } = useAppTranslation();
   const settings = useSettingsNavigation();
   const revealLabel = useSystemFileManagerRevealLabel();
@@ -89,6 +92,8 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
   const [busy, setBusy] = useState(false);
 
   const { record } = app;
+  const dockPinned = dock?.snapshot?.pinnedAppIds.includes(record.id) ?? false;
+  const dockAvailable = dock?.snapshot?.capability.supported && dock.snapshot.state.enabled;
   const enablement = useAppEnablement(record, i18n.language);
   const name = appDisplayName(record);
   const description =
@@ -237,6 +242,18 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                   >
                     <AppWindowIcon />
                     {t("windowSurface.openInWindow")}
+                  </DropdownMenuItem>
+                )}
+                {dockAvailable && (
+                  <DropdownMenuItem
+                    disabled={busy || dock.pending !== null || (!dockPinned && (!record.enabled || record.state !== "ready"))}
+                    onSelect={() => void act(async () => {
+                      const saved = await dockSettingsStore.setAppPinned({ appId: record.id, pinned: !dockPinned });
+                      if (!saved) throw new Error(t("apps.dock.pinFailed"));
+                    })}
+                  >
+                    <PanelBottom />
+                    {t(dockPinned ? "apps.dock.unpin" : "apps.dock.pin")}
                   </DropdownMenuItem>
                 )}
                 {record.state !== "installing" && (

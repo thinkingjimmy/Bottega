@@ -4,6 +4,20 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-10-26 — v0.2.10
+
+[Download 0.2.10](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.10) for macOS on Apple silicon (ARM64), or [open Bottega Web](https://app.getbottega.app).
+
+- **Keep Artifacts in tabs.** Open multiple Artifacts in the third column alongside other previews. Reopen a saved Artifact to return to its existing tab. Use the current panel width, or choose the full view. Switching or closing waits for saving; a failed save keeps the original tab and input.
+- **Select without reloading.** Click an element on a desktop or phone artboard without resetting its live preview, form input or page state. A preview that must load first keeps the original click. Compact Canvas controls share one floating toolbar and wrap when space is limited.
+- **Follow tasks from the Dock.** Add the Tasks widget to see running and waiting work, read details and return to the corresponding Chat. Privacy mode hides task content and counts. The Dock widget replaces the previous notch task panel.
+- **Open Apps from the Dock.** Pin an available Bottega App from its menu. Open or focus it in a separate window while retaining its session and draft. Dock pinning and sidebar pinning are separate. Reorder pinned items by dragging, or drag an item out to unpin it. Menus open beside the selected App icon.
+- **Choose menu-bar visibility.** Show or hide the menu-bar icon in General settings. This choice is separate from background tasks and the Dock.
+- **Handle startup and quit more clearly.** Suppress macOS Keychain authorization popups from Bottega's credential encryption path. If encrypted credentials are unavailable, retain them and show recovery in the app. Cancel pending Cloud requests during quit, then finish local cleanup. Keep unconfirmed uploads for recovery after restart.
+- **Recover sync without repeating work.** Recover eligible older replies and Artifacts without rerunning the task. Preserve differing local results in a recovery Project before adopting the Cloud copy. A failed Artifact marker without file bytes no longer blocks recovery; real files still require size and hash checks. Reveal linked Project folders at their current location and open archive or removal confirmations after the menu closes.
+
+**Compatibility and limits.** This release keeps protocol 21. Existing content, sync passwords and account keys are retained. Bottega Dock remains Alpha and requires macOS 27.x with Apple silicon. Canvas memory comparison, the measured handoff response difference, strict latency and extreme cases, physical trackpad, native IME and physical 120 Hz checks retain their previous limits. Dock replacement recovery and physical display/fullscreen validation remain separate. The Android test app remains a separate test environment.
+
 ## 2026-10-23 — v0.2.9
 
 [Download 0.2.9](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.9) for macOS on Apple silicon (ARM64), or [open Bottega Web](https://app.getbottega.app).

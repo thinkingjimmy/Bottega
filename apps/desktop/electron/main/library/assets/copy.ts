@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on canonical Chat references, portable attachment maps and the shared bounded Home scanner.
- * [OUTPUT]: Copies retained Fork files into independent Chat directories, preserving exact bytes and reporting omissions.
+ * [INPUT]: Depends on canonical Chat references, retained Artifact byte descriptors, portable attachment maps and the bounded Home scanner.
+ * [OUTPUT]: Copies committed Fork files with exact byte checks, preserves reference-only failure markers and reports missing real files.
  * [POS]: Shared ordinary-Fork byte custody; no CLI files, worktrees or local control ledgers are transported.
  */
 import { lstat, readFile, readdir, mkdir, realpath } from "node:fs/promises";
@@ -13,6 +13,7 @@ import { fileFingerprint } from "../../cloud/sync-home/incremental/identity";
 import { messageArtifactFences } from "../../artifacts/core/service";
 import { libraryChatPath, libraryDirectory, libraryHomePath } from "../paths";
 import { LibraryAttachments } from "./attachments";
+import { retainedArtifactFence } from "./references";
 export async function copyLibraryAssets(root: string, sourceId: string, child: ChatRecord) {
   const attachments = new LibraryAttachments(() => root), missing: string[] = [];
   for (const message of child.messages) {
@@ -26,6 +27,9 @@ export async function copyLibraryAssets(root: string, sourceId: string, child: C
       }
     }
     for (const fence of messageArtifactFences(message, child.subagents)) {
+      const descriptor = retainedArtifactFence(fence, child.parentChatId === sourceId && child.parentIncarnationId
+        ? { chatId: sourceId, incarnationId: child.parentIncarnationId, artifactId: fence.id } : undefined);
+      if (!descriptor) continue;
       const source = join(libraryChatPath(root, sourceId), "artifacts", fence.id);
       let entries;
       try { entries = await readdir(source, { withFileTypes: true }); }
@@ -34,9 +38,9 @@ export async function copyLibraryAssets(root: string, sourceId: string, child: C
       const entry = entries.find(item => item.isFile() && /^snapshot\.[a-z]+$/.test(item.name));
       if (!entry) { missing.push(`artifacts/${fence.id}`); continue; }
       const path = join(source, entry.name), stat = await lstat(path);
-      if (stat.isSymbolicLink() || stat.size !== fence.bytes) throw new Error("ARTIFACT_INTEGRITY_FAILED");
+      if (stat.isSymbolicLink() || stat.size !== descriptor.bytes) throw new Error("ARTIFACT_INTEGRITY_FAILED");
       const bytes = await readFile(path);
-      if (createHash("sha256").update(bytes).digest("hex") !== fence.sha256) throw new Error("ARTIFACT_INTEGRITY_FAILED");
+      if (createHash("sha256").update(bytes).digest("hex") !== descriptor.sha256) throw new Error("ARTIFACT_INTEGRITY_FAILED");
       const target = await libraryDirectory(root, "chats", child.id, "artifacts", fence.id);
       await durableReplaceBytes(join(target, entry.name), bytes);
     }

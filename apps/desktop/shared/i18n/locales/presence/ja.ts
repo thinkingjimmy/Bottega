@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides ja settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut conflict guidance, and task failures, without transient settings loading copy.
+ * [OUTPUT]: Provides ja settings, tray, quit, and Dock task translations, including independent menu bar/background switches and Dock task states, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -13,19 +13,13 @@ export const presenceJa = {
   "taskFailed": "失敗",
   "empty": "実行中のタスクはありません",
   "emptyDescription": "Bottega でタスクを開始すると、ここに進行状況が表示されます。",
-  "shortcutUnavailable": "このショートカットは使用できません。「キーボードショートカット」で変更してください。",
-  "displayMode": "表示方法",
-  "iconMode": "メニューバーアイコン",
-  "notchMode": "ノッチのタスクパネル",
-  "iconDescription": "メニューバーアイコンから Bottega を開き、タスクの状況を確認できます。",
-  "notchDescription": "ほかのアプリの使用中もノッチの横でタスクや入力待ちの状態を確認できます。タスクをクリックするとチャットに戻ります。",
-  "noNotch": "ノッチ付きディスプレイが見つかりません。メニューバーアイコンを使用します。",
-  "retentionDescriptionTray": "メインウィンドウを閉じても Bottega を実行し続けます。システムトレイアイコンから再び開けます。",
+  "menuBar": "メニューバーに表示",
+  "menuBarDescription": "メニューバーに Bottega アイコンを表示します。バックグラウンド動作は変更されません。",
   "title": "バックグラウンド動作",
   "login": "ログイン時に Bottega を起動",
   "loginDescription": "パソコンへのログイン後に起動します。バックグラウンド動作が有効な場合はウィンドウを表示しません。",
   "retention": "メインウィンドウを閉じても実行を継続",
-  "retentionDescription": "メインウィンドウを閉じても Bottega を実行し続けます。選択したバックグラウンドの表示から再び開けます。",
+  "retentionDescription": "メインウインドウを閉じても Bottega を実行し続けます。Dock またはアプリケーションから再度開けます。",
   "notice": "Bottega を終了するとローカルタスクが停止します。スリープ中はタスクやリモート操作が一時停止する場合があります。",
   "open": "Bottega を開く",
   "quitting": "終了しています…",
@@ -47,7 +41,7 @@ export const presenceJa = {
   "more": "他 {{tasks}} 件",
   "unavailable": "利用不可",
   "recovered": "問題が発生したためウィンドウを復元しました。保存済みの会話は利用できますが、未保存の下書きは失われた可能性があります。",
-  "backgroundNotice": "Bottega はバックグラウンドで動作します。メニューバーから終了できます。",
+  "backgroundNotice": "Bottega はバックグラウンドで動作し続けます。Dock またはアプリケーションから再度開けます。",
   "closeFailed": "下書きを移行できませんでした。もう一度ウィンドウを閉じてください。",
   "retry": "再試行",
   "systemSettings": "システム設定を開く",
@@ -62,9 +56,6 @@ export const presenceJa = {
   "loginFailed": "ログイン項目を確認できません",
   "saveFailed": "設定を保存できません",
   "trayUnavailable": "バックグラウンドアイコンを利用できません",
-  "panelUnavailable": "タスクの状態を表示できません",
-  "screenUnavailable": "画面の空き領域が不足しています",
-  "nativeUnavailable": "画面アダプターを利用できません",
   "preparing": "準備中",
   "active": "実行中",
   "approval": "承認待ち",
@@ -76,5 +67,4 @@ export const presenceJa = {
   "ended": "タスク終了",
   "failureResult": "失敗したタスクがあります",
   "openFailed": "このタスクは利用できなくなりました",
-  "collapse": "タスクの状態を折りたたむ"
 };
