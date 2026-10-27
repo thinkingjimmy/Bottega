@@ -1,7 +1,7 @@
 {
   "schema": "bottega.app-gui-performance-baseline/v1",
   "status": "verified-selected-platform-evidence",
-  "sourceInputDigest": "sha256:1cf15e8cd859e9fb089c86c14a0d168ce49eb1f4e765cc450f28f8f7bb80da28",
+  "sourceInputDigest": "sha256:99885a0b686d5056a245241b5e9c8b7253353be24a06f1b02fc2408a06fec49e",
   "fixture": {
     "rows": 10000,
     "columns": 20,
@@ -39,10 +39,10 @@
         "electronBuild": "43.1.1; Chromium 150.0.7871.114; Node 24.18.0",
         "platform": "darwin-arm64",
         "fixtureDigest": "sha256:7687e611319f05e09fe266a8084873ce8ec55f9e83459572880195340f750bad",
-        "sourceInputDigest": "sha256:1cf15e8cd859e9fb089c86c14a0d168ce49eb1f4e765cc450f28f8f7bb80da28",
-        "rawSampleDigest": "sha256:5e9a527da6279c4f94111cec87854e7452ce87139a596eeeac1e6736ba019ee0",
+        "sourceInputDigest": "sha256:99885a0b686d5056a245241b5e9c8b7253353be24a06f1b02fc2408a06fec49e",
+        "rawSampleDigest": "sha256:32e3d84356bbba0b613d02038af10ca33f7f66d6dc37864a86370b518113fb6b",
         "fixtureBytesDigest": "sha256:9bc11b126f3e2eaf56c1b9183a51bba1bfbbbffc984d62478961d28a18758447",
-        "buildDigest": "sha256:08d842dfdb9dedf35d0867923fe6268362ea4c523dfb020eabb8711c4e50f4d3",
+        "buildDigest": "sha256:dae0428ee5de97aa6d14f235bd27bdeb1670fbdf08a8746c8710876dfcee8d36",
         "producerDigest": "sha256:853170599681fe496cc31fff2d80a085e3e2f455f81e11d6e4978cb50bfa9d8c",
         "thresholds": {
           "coldSurfaceTtiP95Ms": 1500,
@@ -59,21 +59,21 @@
           "interactionQueries": 2
         },
         "measurements": {
-          "coldSurfaceTtiP95Ms": 156.65625,
-          "warmSurfaceTtiP95Ms": 90.663818359375,
-          "query10kP95Ms": 58.03399991989136,
+          "coldSurfaceTtiP95Ms": 156.19287109375,
+          "warmSurfaceTtiP95Ms": 88.53515625,
+          "query10kP95Ms": 51.97600030899048,
           "queryHardTimeoutMs": 500,
-          "interactionP95Ms": 60.799999713897705,
+          "interactionP95Ms": 46.5,
           "readyLongTaskMaxMs": 0,
           "startupLongTaskMaxMs": 0,
           "mountedDomNodes": 131,
           "mountedVirtualRows": 19,
-          "rendererHeapDeltaBytes": 6553300,
+          "rendererHeapDeltaBytes": 6572692,
           "initialQueries": 2,
           "interactionQueries": 2
         },
-        "deadlineProofDigest": "sha256:d0bac814b9bc7757df064981a4977d880952b72b486901dfd179e144d12152b0",
-        "deadlineObservedElapsedMs": 502.68475000000035
+        "deadlineProofDigest": "sha256:d2d90c7fc601263e65578f3278aacc2d5d0f9ff75e1051d0ef61a18b4bee8e44",
+        "deadlineObservedElapsedMs": 500.67299999999886
       },
       "requiredIdentity": [
         "hardwareSku",

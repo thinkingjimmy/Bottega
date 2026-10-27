@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the trusted SDK request port, AbortSignal, and an abortable clock
- * [OUTPUT]: Provides the consistent, cursor-complete Base snapshot reader embedded in the React SDK
+ * [OUTPUT]: Provides the consistent, cursor-complete Base snapshot reader and bounded read-invalidation owner embedded in the React SDK
  * [POS]: Product SDK data leaf; app-react embeds these bytes in its signed runtime source
  */
 
@@ -44,15 +44,27 @@ async function readSnapshotOnce(request, signal) {
   if (end.revision !== start.revision || end.baseInstanceId !== start.baseInstanceId) throw snapshotChanged();
   return { meta: end, rows };
 }
-async function readBaseSnapshot(request, signal, sleep = snapshotSleep) {
+async function readInvalidatedResource(read, { signal, generation = () => 0, sleep = snapshotSleep, retryConflicts = false, publish = (value) => value } = {}) {
   const delays = [250, 500, 1000];
   for (let attempt = 0; ; attempt += 1) {
-    try { return await readSnapshotOnce(request, signal); }
-    catch (error) {
+    const before = generation();
+    let invalidated = false;
+    try {
+      const value = await read();
       signal?.throwIfAborted();
-      if (error?.status !== 409 || attempt === delays.length) throw error;
+      if (generation() !== before) {
+        invalidated = true;
+        throw snapshotChanged();
+      }
+      return publish(value);
+    } catch (error) {
+      signal?.throwIfAborted();
+      if ((!invalidated && (!retryConflicts || error?.status !== 409)) || attempt === delays.length) throw error;
       await sleep(delays[attempt], signal);
     }
   }
+}
+async function readBaseSnapshot(request, signal, sleep = snapshotSleep, options = {}) {
+  return readInvalidatedResource(() => readSnapshotOnce(request, signal), { ...options, signal, sleep, retryConflicts: true });
 }
 `;

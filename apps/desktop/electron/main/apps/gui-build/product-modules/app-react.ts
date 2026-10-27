@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React hooks, the cursor-complete snapshot reader, and the trusted bootstrap client injected through the App SDK provider
- * [OUTPUT]: Provides the immutable @bottega/app-react runtime source consumed as a virtual module; every host registration happens in layout effects, never during render
+ * [INPUT]: Depends on React hooks, the cursor-complete snapshot reader with bounded invalidation ownership, and the trusted bootstrap client injected through the App SDK provider
+ * [OUTPUT]: Provides the immutable @bottega/app-react runtime source consumed as a virtual module; Base revision reads coalesce invalidations without cancelling manual owners; every host registration happens in layout effects, never during render
  * [POS]: gui-build/product-modules SDK runtime snapshot; its bytes hash into every compiled-v3 receipt sdkDigest
  */
 
@@ -18,7 +18,7 @@ function useResource(operation, payload, critical = true) {
   const payloadRef = useRef(payload);
   const [state, setState] = useState({ status: "loading" });
   const criticalId = useRef(crypto.randomUUID());
-  const latest = useRef({ key, sequence: 0, controller: null });
+  const latest = useRef({ key, sequence: 0, controller: null, running: false, invalidation: 0 });
   /* 渲染阶段不写宿主：ref 同步、critical 注册与释放全部落在 layout effect 里。
      用 layout 而不是 passive，是因为 publishReady 的双帧检查跑在 rAF 上，而
      passive effect 在 paint 之后才执行——那一帧的空窗足够让 ready 抢跑。 */
@@ -37,30 +37,39 @@ function useResource(operation, payload, critical = true) {
     const controller = new AbortController();
     latest.current.controller = controller;
     const sequence = ++latest.current.sequence;
+    latest.current.running = true;
     if (!preserve) setState({ status: "loading" });
+    const generation = () => latest.current.invalidation;
+    const publish = (data) => {
+      controller.signal.throwIfAborted();
+      if (latest.current.key !== key || latest.current.sequence !== sequence) throw new DOMException("Superseded", "AbortError");
+      latest.current.running = false;
+      setState({ status: "success", data });
+      return data;
+    };
     const request = operation === "base.snapshot"
-      ? readBaseSnapshot(client.request.bind(client), controller.signal)
-      : client.request(operation, payloadRef.current, controller.signal);
-    return request.then(
-      (data) => {
-        controller.signal.throwIfAborted();
-        if (latest.current.key !== key || latest.current.sequence !== sequence) throw new DOMException("Superseded", "AbortError");
-        setState({ status: "success", data });
-        return data;
-      },
-      (error) => {
-        if (!controller.signal.aborted && latest.current.key === key && latest.current.sequence === sequence) {
-          setState({ status: "error", error: { ...error, code: error.code || "unknown_outcome", message: error.message, retryable: ![401, 403, 404, 410].includes(error.status) && error.code !== "permission_denied" } });
-        }
-        throw error;
+      ? readBaseSnapshot(client.request.bind(client), controller.signal, undefined, { generation, publish })
+      : ["base.meta", "base.query-v1"].includes(operation)
+        ? readInvalidatedResource(() => client.request(operation, payloadRef.current, controller.signal), { signal: controller.signal, generation, retryConflicts: false, publish })
+        : client.request(operation, payloadRef.current, controller.signal).then(publish);
+    return request.catch((error) => {
+      if (!controller.signal.aborted && latest.current.key === key && latest.current.sequence === sequence) {
+        latest.current.running = false;
+        setState({ status: "error", error: { ...error, code: error.code || "unknown_outcome", message: error.message, retryable: ![401, 403, 404, 410].includes(error.status) && error.code !== "permission_denied" } });
       }
-    );
+      throw error;
+    }).finally(() => {
+      if (latest.current.sequence === sequence) latest.current.running = false;
+    });
   }, [client, key, operation]);
   useEffect(() => {
     void run(false).catch(() => undefined);
     const unsubscribe = ["base.meta", "base.query-v1", "base.snapshot"].includes(operation)
       ? client.subscribeBaseRevision(() => {
-          if (operation === "base.meta" || document.visibilityState === "visible") void run(true).catch(() => undefined);
+          if (latest.current.key !== key || (operation !== "base.meta" && document.visibilityState !== "visible")) return;
+          latest.current.invalidation += 1;
+          // A revision invalidates the read; it does not cancel its manual consumer.
+          if (!latest.current.running) void run(true).catch(() => undefined);
         })
       : () => undefined;
     return () => {
