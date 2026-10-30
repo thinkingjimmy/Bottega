@@ -94,7 +94,7 @@
   },
   "authoringCatalogDigest": "sha256:7f09b176b96cca667c74a2e90bfb9b1fb10b13475530b4312c29ab40ce5c408f",
   "compatibilitySupportDigest": "sha256:5a876d99d1fef6e30040d49ea6283feabaecd97a871ee4955b98610a9cbbdba7",
-  "performanceBaselineDigest": "sha256:7b6401d5006ce2a4638cb3cecc3646c026c440972b0e8434f674579da3aee6ae",
+  "performanceBaselineDigest": "sha256:cd91f63966e22c0037c466025c2e773e8e608163e8ccbda0397f801da29f2def",
   "runtimeSbomDigest": "sha256:d1efedf6c195565fc69ac03d81a57be8e402f030edda0f6197caeb3dc813a840",
   "noticesDigest": "sha256:6df76f9d823ebe833f5a30bf73a99b41d6dd18815983e3b892796dfbc2b55923",
   "artifactPaths": {

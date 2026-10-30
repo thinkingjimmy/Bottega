@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the closed output-root parser and selected stable/production or staging product and auxiliary (system-dock, desktop-dialog) preload JavaScript.
+ * [INPUT]: Depends on the closed output-root parser and selected stable/production or staging product and auxiliary (system-dock, system-dock-detail, desktop-dialog) preload JavaScript.
  * [OUTPUT]: Rejects sibling chunk requires, product bridge leakage into auxiliary preloads, and a bundled validator library (zod) in any preload.
  * [POS]: Build-time sandbox preload oracle; every entry must load independently.
  */
