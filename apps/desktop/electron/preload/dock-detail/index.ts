@@ -1,5 +1,6 @@
+/// <reference lib="dom" />
 /**
-* [INPUT]: Depends on Electron isolated IPC, schema-free Dock budgets and a private main-owned launch identity.
+* [INPUT]: Depends on browser DOM event types, Electron isolated IPC, schema-free Dock budgets and a private main-owned launch identity.
 * [OUTPUT]: Exposes only __bottegaDock request/change/failure methods to the launched native main frame.
 * [POS]: Dedicated sandboxed Widget preload; author code never receives Electron, Node, tokens or product bridges.
 */
