@@ -187,6 +187,32 @@
           }
         }
       }
+    },
+    {
+      "date": "2026-10-30",
+      "reason": "Jimmy directly approved only the 0.2.11 Main raw ceiling of 4,699,930 bytes on 2026-10-30 10:25 Asia/Singapore, based on the original 4,607,774-byte measurement plus the existing 2% headroom. Preserve all original failures and defer package-size optimization. Fresh production measurement is recorded below; every other surface and policy remains unchanged.",
+      "surfaces": {
+        "main/index": {
+          "before": {
+            "raw": 4600878,
+            "twoByteChunks": 0,
+            "measured": {
+              "raw": 4510664,
+              "gzip": 1318830,
+              "brotli": 1030982
+            }
+          },
+          "after": {
+            "raw": 4699930,
+            "twoByteChunks": 0,
+            "measured": {
+              "raw": 4607757,
+              "gzip": 1347402,
+              "brotli": 1053400
+            }
+          }
+        }
+      }
     }
   ],
   "surfaces": {
@@ -284,12 +310,12 @@
       }
     },
     "main/index": {
-      "raw": 4600878,
+      "raw": 4699930,
       "twoByteChunks": 0,
       "measured": {
-        "raw": 4510664,
-        "gzip": 1318830,
-        "brotli": 1030982
+        "raw": 4607757,
+        "gzip": 1347402,
+        "brotli": 1053400
       }
     },
     "main/sync-crypto-worker-entry": {
