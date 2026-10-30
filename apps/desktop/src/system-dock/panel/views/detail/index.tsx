@@ -11,6 +11,7 @@ import { lazy, Suspense } from "react";
 import { TrashDetail } from "./trash";
 
 const TasksDetail = lazy(() => import("./tasks").then((module) => ({ default: module.TasksDetail })));
+const CustomDetail=lazy(()=>import('./custom').then(module=>({default:module.CustomDetail})));
 
 export function DetailView({ itemId }: { itemId: string }) {
   const { snapshot, t } = usePanel();
@@ -21,5 +22,6 @@ export function DetailView({ itemId }: { itemId: string }) {
   if (item.widget?.type === "builtin.tasks") return <Suspense fallback={<p className="empty-state" role="status">{t("settings.presence.preparing")}</p>}><TasksDetail /></Suspense>;
   if (item.widget?.type === "builtin.ai-limits") return <LimitsDetail itemId={itemId} />;
   if (item.widget?.type === "builtin.ai-activity") return <TokensDetail itemId={itemId} />;
+  if(item.widget?.type==='custom')return <Suspense fallback={<p className="empty-state" role="status">{t('settings.presence.preparing')}</p>}><CustomDetail itemId={itemId}/></Suspense>;
   return <p className="empty-state" role="status">{t("systemDock.panel.itemGone")}</p>;
 }

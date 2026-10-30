@@ -11,7 +11,7 @@ import type { DockTaskReference, DockTasksDetail, WidgetFace } from "../../../..
 export type DockTasksPort = {
   snapshot(): TaskActivitySnapshot;
   subscribe?(listener: () => void): () => void;
-  open(task: DockTaskReference): Promise<void>;
+  open(task: DockTaskReference, current?:()=>boolean): Promise<void>;
   labels?(): DockTasksDetail["workflowLabels"];
 };
 const EMPTY: TaskActivitySnapshot = { version: 1, revision: 0, tasks: [], total: 0, running: 0, waiting: 0, overflow: 0, result: null };
@@ -25,11 +25,11 @@ export function taskDetail(port: DockTasksPort | undefined, mask: boolean): Dock
     tasks: activity.tasks.map((task) => ({ ...task, title: null, context: null, startedAt: null, subtaskCount: 0 })) } : activity,
     workflowLabels: port?.labels?.() };
 }
-export async function openDockTask(port: DockTasksPort | undefined, reference: DockTaskReference) {
-  const current = port?.snapshot().tasks.some((task) => task.chatId === reference.chatId && task.incarnationId === reference.incarnationId
-    && task.requestId === reference.requestId && task.generation === reference.generation);
-  if (!current || !port) throw new Error("TASK_UNAVAILABLE");
-  await port.open(reference);
+export async function openDockTask(port: DockTasksPort | undefined, reference: DockTaskReference, live:()=>boolean=()=>true) {
+  const current = () => live() && Boolean(port?.snapshot().tasks.some((task) => task.chatId === reference.chatId && task.incarnationId === reference.incarnationId
+    && task.requestId === reference.requestId && task.generation === reference.generation));
+  if (!current() || !port) throw new Error("TASK_UNAVAILABLE");
+  await port.open(reference,current);
 }
 
 /** Workflow copy stays lazy and its late completion cannot revive a closed Dock runtime. */

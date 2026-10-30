@@ -1,12 +1,14 @@
 /**
  * [INPUT]: Depends on clone-safe primitives and workspace-reference identities shared by Electron main, preload, and renderer
- * [OUTPUT]: Provides window role/bootstrap, exact App Studio route helpers, navigation-intent-fenced surface DTOs, migration commands with side-channel image transfers and their limits, fixed background-destination (activity/General/Dock/Usage) commands, IPC channels, and WindowSurfacesBridgeApi
+ * [OUTPUT]: Provides window role/bootstrap, exact App Studio route helpers, navigation-intent-fenced surface DTOs, migration commands with side-channel image transfers and their limits, fixed background-destination (activity/General/Dock/Usage) commands with independent quota/history selection, IPC channels, and WindowSurfacesBridgeApi
  * The resume-drafts command restores editing after a cancelled draft flush.
  * Composer capsules retain original queued review request IDs/times instead of allocating new submissions.
  * [POS]: apps/desktop/shared/ipc/settings; Shared wire truth for one-surface-one-window routing; renderer submits intents while main owns residency and migration
  */
 import type { RemoteFileReference } from "@ai-chat/cloud-protocol/remote/input/references";
 import { ATTACHMENT_BYTE_LIMIT, ATTACHMENT_LIMIT, type AgentBackendId } from "../agent/agent-ipc";
+import type {DockWidgetEntry} from '../../system-dock/widgets/management';
+import type {UsageQueryTarget} from './usage-ipc';
 
 export { WINDOW_ROLE_ARGUMENT } from "../../ipc-channels/window";
 export { WINDOW_ID_ARGUMENT } from "../../ipc-channels/window";
@@ -121,8 +123,9 @@ export type SurfaceMigrationCommand =
   | Readonly<{ type: "prepare-hydrate"; transactionId: string; capsule: SurfaceCapsuleV1 }>
   | Readonly<{ type: "validate-export"; transactionId: string; capsule: SurfaceCapsuleV1 }>
   /* Background surfaces (menu bar, notch, Bottega Dock) reach the main window only through these
-     fixed destinations; `agent` only narrows the Usage page. */
-  | Readonly<{ type: "presence-destination"; destination: "activity" | "general" | "dock" | "usage"; agent?: AgentBackendId }>
+     fixed destinations; quota and history retain independent filters. */
+  | Readonly<{ type: "presence-destination"; destination: "activity" | "general" | "dock" | "usage"; agent?: AgentBackendId; usageSource?: UsageQueryTarget }>
+  | Readonly<{type:'dock-widget-entry';entry:DockWidgetEntry}>
   | Readonly<{
       type: "export";
       transactionId: string;

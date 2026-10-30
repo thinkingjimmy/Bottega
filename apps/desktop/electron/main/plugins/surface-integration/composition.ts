@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Initialized plugin catalog, Chat/Project/App services and current account identity.
+ * [INPUT]: Initialized plugin catalog, Chat/Project/App services, current Library identity and separate Cloud account identity.
  * [OUTPUT]: Initializes the native plugin lifetime and attaches its catalog before cloud composition.
  * [POS]: Startup seam; initial compilation runs asynchronously and reports preparation/failure through the catalog.
  */

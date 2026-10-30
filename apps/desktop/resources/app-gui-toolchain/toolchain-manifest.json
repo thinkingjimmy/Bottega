@@ -61,10 +61,20 @@
       "sha256": "sha256:f4fc6404e1b01460f7663b233de4b2e071fdda68d9a84465bff023a4bc819be6",
       "sourceDigest": "sha256:bcb1928b9efec605658dee3b7a24bdec57e0d96baa29921d28cb4ea6763b9669"
     },
+    "app": {
+      "path": "modules/app.json",
+      "sha256": "sha256:ea6b2eebe9a0b395ab39b56720b7182e03c2d5923a140b7e3c467c721cbb9844",
+      "sourceDigest": "sha256:37178343338261e5104c06ffa0d6386c9a99213e0d5ee70399a52f76a4b50a8f"
+    },
     "plugin": {
       "path": "modules/plugin.json",
       "sha256": "sha256:1fe36dd30d0ba09759bd1732eeeafe21ded488c3e3bcfd61988f0ad0c6af45b4",
       "sourceDigest": "sha256:3b294e6dd6a8aceffd62bfa24e1e131ddc65d23980b058c45412660e71878642"
+    },
+    "dock": {
+      "path": "modules/dock.json",
+      "sha256": "sha256:727b94eb5e35956eafd435cf6f0555f62b29aaac29a0a40379bef168f49ad6e1",
+      "sourceDigest": "sha256:089ef3aaa6c78a40a95650497ce5ff06a99b83ffde4658b33a74356e5d5586d2"
     }
   },
   "platforms": [
@@ -78,13 +88,13 @@
     "gate-3"
   ],
   "sliceDigests": {
-    "gate-1": "sha256:74e46e18547fbb44d5e39021371568d39af87458445e7c7c606c354411d05279",
+    "gate-1": "sha256:19046ff2f77f55f46bb1caf717207c54f2519e50b68251c4d54b1acbacb0a684",
     "gate-2": "sha256:d4888c6787ac9a3a25b21765928da5b90ea53bad17c8320b8fbe68415c382567",
     "gate-3": "sha256:1c88ec0fa2a63af994cc87c2701a600ba497682b290a846065a869fcc5a8656f"
   },
   "authoringCatalogDigest": "sha256:7f09b176b96cca667c74a2e90bfb9b1fb10b13475530b4312c29ab40ce5c408f",
   "compatibilitySupportDigest": "sha256:5a876d99d1fef6e30040d49ea6283feabaecd97a871ee4955b98610a9cbbdba7",
-  "performanceBaselineDigest": "sha256:6a2e364c2b7ce8a1bfc2d50eaa796e01df32a962331a00a0d40844fdb8e4038f",
+  "performanceBaselineDigest": "sha256:7b6401d5006ce2a4638cb3cecc3646c026c440972b0e8434f674579da3aee6ae",
   "runtimeSbomDigest": "sha256:d1efedf6c195565fc69ac03d81a57be8e402f030edda0f6197caeb3dc813a840",
   "noticesDigest": "sha256:6df76f9d823ebe833f5a30bf73a99b41d6dd18815983e3b892796dfbc2b55923",
   "artifactPaths": {

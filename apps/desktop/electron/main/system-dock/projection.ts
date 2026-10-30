@@ -40,7 +40,7 @@ export function projectPinned(layout: DockLayout, facts: ProjectionFacts): DockB
       return { id: item.id, kind: "system", entry: item.entry, pinned: true, label: facts.label("trash"), iconKey: null, running: false, status: "ok", trash: facts.trash };
     }
     if (item.kind === "widget") return { id: item.id, kind: "widget", pinned: true, running: false, status: "ok", iconKey: null,
-      label: facts.label(item.widget.type === "builtin.tasks" ? "tasks" : item.widget.type === "builtin.ai-limits" ? "limits" : "activity"), widget: facts.widgetFace(item) };
+      label: item.label??facts.label(item.widget.type === "builtin.tasks" ? "tasks" : item.widget.type === "builtin.ai-limits" ? "limits" : "activity"), widget: facts.widgetFace(item) };
     if (item.kind === "bottega-app") {
       const fact = facts.bottega(item.appId);
       return { id: item.id, kind: "bottega-app", pinned: true, label: fact.label || item.label || "", iconKey: null, appIcon: fact.appIcon, running: fact.running,
@@ -94,6 +94,7 @@ export function metricItems(items: readonly DockBarItem[]): MetricItem[] {
 }
 /** Privacy mask hides values and file names in every projection, including accessible names (INV-06). */
 export function maskFace(face: WidgetFace): WidgetFace {
+  if(face.type==='custom')return{...face,summary:null,description:null,readings:{}};
   if (face.type === "builtin.tasks") return { ...face, running: null, waiting: null, result: null };
   if (face.type === "builtin.ai-limits") return { ...face, sources: face.sources.map((source) => ({ ...source, remaining: null, resetsAt: null })) };
   return { ...face, tokens: null, costUsd: null, unpricedTokens: 0 };

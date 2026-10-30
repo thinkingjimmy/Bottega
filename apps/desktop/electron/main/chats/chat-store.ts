@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node crypto, ProductFailure, chat lifecycle/projection collaborators, device identity, the typed SQLite worker client, and the shared ChatStoreState cell with read, history, fork, transition, and persistence collaborators; the provider catalog's default provider
- * [OUTPUT]: Provides receipt-gated Chat APIs with frozen execution admission, durable title-job recovery, scoped background result updates, readonly-safe Project detachment and App transcript retention, opened through the two-phase open()/adopt() startup split that initialize() composes.
+ * [OUTPUT]: Provides receipt-gated Chat APIs, frozen execution admission, optional incarnation-CAS archive updates, durable title jobs, scoped results and readonly-safe retention through two-phase open/adopt startup.
  * [POS]: Main-process Chat domain queue and metadata owner; durable writes, fork construction, pure transitions, read projections, and import/continuation sagas live in focused composed siblings
  */
 import { type ChatStoreDependencies, type ChatSqliteRuntimeFacts, sessionKey, requestHash } from "./store-contracts";
@@ -509,17 +509,18 @@ export class ChatStore {
     return this.state.metadata.has(chatId);
   }
 
-  setArchivedAt(chatId: string, archivedAt: number | undefined) {
+  async setArchivedAt(chatId: string, archivedAt: number | undefined, expectedIncarnationId?:string) {
+    if(expectedIncarnationId&&this.getIncarnationId(chatId)!==expectedIncarnationId)throw new Error('CHAT_INCARNATION_CHANGED');
     if (this.state.metadata.get(chatId)?.readOnlyReason === "external-readonly") {
       return this.history.updateReadonlyPresentation(chatId, {
         kind: "archive",
         archivedAt: archivedAt ?? null,
       });
     }
-    return this.updateFacts(chatId, (current) => ({
-      ...current,
-      archivedAt,
-    }));
+    return this.updateFacts(chatId, current => {
+      if(expectedIncarnationId&&current.incarnationId!==expectedIncarnationId)throw new Error('CHAT_INCARNATION_CHANGED');
+      return {...current,archivedAt};
+    });
   }
 
   /** 删除聊天并返回其附件元数据；附件文件清理由持有 AttachmentStore 的调用方负责 */

@@ -6,10 +6,15 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./plugins/dock/api": "./src/plugins/dock/api/index.ts",
     "./*": "./src/*.ts"
   },
   "publishConfig": {
     "exports": {
+      "./plugins/dock/api": {
+        "types": "./dist/plugins/dock/api/index.d.ts",
+        "import": "./dist/plugins/dock/api/index.js"
+      },
       "./*": {
         "types": "./dist/*.d.ts",
         "import": "./dist/*.js"

@@ -51,7 +51,7 @@ export function DockPanel() {
   const api = useMemo<PanelApi | null>(() => {
     if (!snapshot) return null;
     const send = (intent: DockIntent) => void sendIntent(intent);
-    return { snapshot, t: dockTranslator(snapshot.locale), now, mask: snapshot.privacyMask, send, focused: snapshot.focused, escapeLayers,
+    return { snapshot, t: dockTranslator(snapshot.locale), now, mask: snapshot.privacyMask, send,perform:sendIntent, focused: snapshot.focused, escapeLayers,
       announce: (text) => { setAnnouncement(""); requestAnimationFrame(() => setAnnouncement(text)); },
       rememberReturn: (itemId) => setBackTo(`detail:${itemId}`),
       openDetail: (itemId) => { setBackTo(`detail:${itemId}`); send({ kind: "open-panel", view: { kind: "detail", itemId } }); } };

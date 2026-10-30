@@ -182,7 +182,7 @@ async function validateSourceFiles(
 ) {
   if (!gui.build) return;
   const manifest = await readGuiBuildManifest(receipt.snapshotRoot);
-  const allowed = authorPublicSpecifiers(gui.build.iconLibrary, manifest.kind === "plugin" ? "plugin" : "app");
+  const allowed = authorPublicSpecifiers(gui.build.iconLibrary, manifest.kind === "plugin" ? 'dock'in manifest?'dock':'plugin' : "app");
   const known = new Set(receipt.files.map((file) => file.path));
   for (const file of receipt.files) {
     if (file.path.startsWith("gui/media/") && file.path.endsWith(".svg")) {

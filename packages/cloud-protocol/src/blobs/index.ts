@@ -20,7 +20,7 @@ export function contentBlobId(descriptor: Pick<BlobDescriptor, "sha256" | "mime"
   return extension ? `att_${descriptor.sha256}.${extension}` :
     `blob_${descriptor.sha256}_${bytesToHex(sha256(new TextEncoder().encode(JSON.stringify([userId, descriptor.mime])))).slice(0, 16)}`;
 }
-export const blobOwnerSchema = z.object({ kind: z.enum(["chat", "base", "app", "skill", "plugin"]), id: cloudIdSchema }).strict();
+export const blobOwnerSchema = z.object({ kind: z.enum(["chat", "base", "app", "skill", "plugin", "widget"]), id: cloudIdSchema }).strict();
 export function partSizes(bytes: number): number[] {
   z.number().int().min(0).max(MAX_BLOB_BYTES).parse(bytes);
   const sizes = Array.from({ length: Math.ceil(bytes / MAX_PART_BYTES) }, (_, i) => Math.min(MAX_PART_BYTES, bytes - i * MAX_PART_BYTES));

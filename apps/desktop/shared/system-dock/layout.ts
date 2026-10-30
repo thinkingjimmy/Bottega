@@ -7,6 +7,8 @@
 import { z } from "zod";
 import { agentBackendIdSchema } from "../platform/agent-schema";
 import { USAGE_QUERY_TARGETS } from "../ipc/settings/usage-ipc";
+import {widgetNameSchema} from '@bottega/contracts/plugins/dock/settings';
+import {customDockWidgetSchema,type CustomDockWidget} from './widgets/instance';
 
 export const DOCK_LAYOUT_SCHEMA_VERSION = 1;
 export const DOCK_LAYOUT_BUDGET = { items: 100, itemBytes: 8 * 1024, labelChars: 256 } as const;
@@ -31,8 +33,8 @@ export const aiLimitsWidgetSchema = z.object({ type: z.literal("builtin.ai-limit
 export const aiActivityWidgetSchema = z.object({ type: z.literal("builtin.ai-activity"), configVersion: z.literal(1), standard: z.literal("compact"),
   source: z.enum(USAGE_QUERY_TARGETS), period: z.literal("today") }).strict();
 export const tasksWidgetSchema = z.object({ type: z.literal("builtin.tasks"), configVersion: z.literal(1), standard: z.literal("compact") }).strict();
-const widgetSchema = z.object({ id, kind: z.literal("widget"), widget: z.union([aiLimitsWidgetSchema, aiActivityWidgetSchema, tasksWidgetSchema]) }).strict();
-export const dockItemSchema = z.union([nativeAppSchema, bottegaAppSchema, systemEntrySchema, widgetSchema]);
+export const dockWidgetItemSchema = z.object({ id, kind: z.literal("widget"), label:widgetNameSchema.optional(),widget: z.union([aiLimitsWidgetSchema, aiActivityWidgetSchema, tasksWidgetSchema,customDockWidgetSchema]) }).strict();
+export const dockItemSchema = z.union([nativeAppSchema, bottegaAppSchema, systemEntrySchema, dockWidgetItemSchema]);
 export const dockLayoutSchema = z.object({ schemaVersion: z.literal(DOCK_LAYOUT_SCHEMA_VERSION), initialized: z.boolean(),
   items: z.array(dockItemSchema).max(DOCK_LAYOUT_BUDGET.items), order: z.array(id).max(DOCK_LAYOUT_BUDGET.items) }).strict()
   .superRefine((layout, context) => {
@@ -52,7 +54,7 @@ export type DockLayout = z.infer<typeof dockLayoutSchema>;
 export type AiLimitsWidget = z.infer<typeof aiLimitsWidgetSchema>;
 export type AiActivityWidget = z.infer<typeof aiActivityWidgetSchema>;
 export type TasksWidget = z.infer<typeof tasksWidgetSchema>;
-export type DockWidget = AiLimitsWidget | AiActivityWidget | TasksWidget;
+export type DockWidget = AiLimitsWidget | AiActivityWidget | TasksWidget | CustomDockWidget;
 export type DockItemCategory = "finder" | "app" | "trailing";
 /** Draft item before an identity is minted. */
 export type DockItemDraft = DockItem extends infer T ? T extends { id: string } ? Omit<T, "id"> : never : never;

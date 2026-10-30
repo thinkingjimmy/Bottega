@@ -1,12 +1,43 @@
 /**
  * [INPUT]: None; plain ja copy.
- * [OUTPUT]: Provides systemDockLazyJa, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes sync decisions, grouped Downloads, previews and named Finder actions.
+ * [OUTPUT]: Provides systemDockLazyJa, localized deferred Dock copy including API consent, credential controls and structured request failures.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../ja.ts.
  */
 
 import type { systemDockLazyEn } from "./en";
 
 export const systemDockLazyJa: typeof systemDockLazyEn = {
+  widgets: {
+    api: {"connectionRouting":"設定されている場合はシステムのプロキシを使用します。プロキシ利用時は Cloudflare が HTTPS 経由でサービスのドメイン名を解決します。","title":"外部 API","consent":"このコンピューターでこのリクエストを許可する。","parameters":"送信するパラメータ","noParameters":"追加のパラメータはありません。","apiKey":"API キー","bearerToken":"Bearer トークン","set":"設定済み","unset":"未設定","save":"接続を保存","saved":"接続を保存しました。","test":"接続をテスト","tested":"接続テストが完了しました。","revoke":"アクセスを取り消す","clear":"保存したキーを消去","chooseCopy":"保存したキーを選択","copy":"保存したキーをコピー","copyHint":"独立したコピーを作成します。キーが変わったら各コピーを個別に更新してください。","failed":"接続を更新できませんでした。選択内容は保持されます。","loadFailed":"リクエストを確認できませんでした。適用する前に再試行してください。","retry":"再試行","invalid":"各 API リクエストを確認し、必要な認証情報を設定してください。","httpStatus":"HTTP {{status}}。","retryAt":"{{time}} 以降に再試行できます。","attribution":"提供元：{{name}}","yes":"はい","no":"いいえ","failures":{"network":"接続できませんでした。ネットワークを確認して再試行してください。","timeout":"リクエストがタイムアウトしました。準備ができたら再試行してください。","proxy-required":"この接続には対応するネットワーク経路が必要です。","http":"サービスがリクエストを完了できませんでした。","mapping":"応答が宣言されたデータ形式と一致しません。","budget":"リクエストまたは応答が許容上限を超えました。","authorization":"保存したキーとリクエストの権限を確認してください。","unknown-result":"リクエストは送信された可能性があります。再試行する前に結果を確認してください。"}},
+    definitionDelete: {"title": "アカウントから {{name}} を削除", "hint": "この Widget を停止し、関連する Dock インスタンスを削除します。他のコンピューターは削除通知を受信後に停止します。作成元の Project と Chat は保持されます。", "confirm": "個人用 Widget を削除", "removing": "Widget を削除中…", "removed": "アカウントから削除しました。", "pending": "この Mac でのアクセスを停止しました。削除またはアカウント同期は未完了です。同じ操作を再試行してください。"},
+    uninstall: {"title": "この Mac から {{name}} をアンインストール", "hint": "この Mac の実行バージョンとデータ権限を削除します。Dock の位置と作成元の Chat は保持されます。再インストールには新たな確認が必要です。", "confirm": "この Mac からアンインストール", "removing": "Widget をアンインストール中…", "removed": "この Mac からアンインストールしました。", "pending": "ローカルアクセスを停止しました。削除は未完了です。同じ操作を再試行してください。"},
+    install: {"repair":"インストールを修復","preparing":"この Mac 向けにこのバージョンを準備しています。","emptyHint":"この Mac にこのバージョンをインストールします。Dock に追加する前にインスタンスを設定してください。","accountAvailable":"アカウントから利用可能","reviewSource":"作成元の Chat で確認","title": "このMacに{{name}}をインストール", "hint": "次のインスタンスにこのバージョンを確認します。設定とデータアクセスは各インスタンスで管理します。", "instances": "対象のインスタンス", "oldKept":"確認するまで現在の設定を保持します。", "dataHint": "必要なデータです。ローカルBaseへのアクセスは各インスタンスの設定で確認してください。", "downloading": "Widgetをダウンロード中…", "verifying": "Widgetを検証中…", "registering": "Widgetを登録中…", "bytes": "{{total}}バイト中{{done}}バイト", "failed": "インストールを完了できませんでした。現在のバージョンは保持されます。同じ操作を再試行してください。", "installed": "このMacにインストールしました。", "needsSetup": "設定またはローカルデータへのアクセスが必要なインスタンスがあります。", "configure": "{{name}}を設定", "done": "完了", "update": "更新を確認", "confirm": "Widgetをインストール", "reviewUpdate": "更新を確認"},
+    delivery: {"preparing": "ほかのコンピューター向けに準備中", "transferring": "アカウントに送信中…", "pending": "ほかのコンピューターへの送信待ち", "ready": "ほかのコンピューターで利用可能", "failed": "このバージョンを送信できませんでした。ローカルでの使用は続けられます。", "abandoned": "このバージョンの共有を停止しました", "abandon": "このバージョンの共有を停止"},
+    previewDetails: "詳細をプレビュー", previewTitle: "Widget のプレビュー", previewReal: "実際のデータ", previewUseReal: "実際のデータを使う", previewStartReal: "実データのプレビューを開始", previewStarting: "プレビューを開始中…", previewClose: "プレビューを閉じる", previewHint: "概要と詳細を確認します。このプレビューは Dock の Widget を変更しません。", previewConsentHint: "読み取りの許可はこのプレビューにのみ適用されます。保存には別の確認が必要です。", previewExecution: "{{computer}} で実行します。", previewAction: "プレビューの操作では実行内容の説明だけを表示します。", previewRefresh: "実際のデータを更新", previewSuspended: "プレビューは非表示または保護されています。表示すると読み取りを再開します。", previewEnded: "プレビューは終了しました。閉じて現在のバージョンを開いてください。", previewFailed: "プレビューを開けませんでした。再試行してください。", previewTarget: "プレビューするインスタンス",
+    previewTheme: "プレビューのテーマ", previewLight: "ライト", previewDark: "ダーク",
+    review: {"title":"Widget の更新を確認","hint":"新しい設定やアクセスが必要な各インスタンスを確認してください。更新を適用したときにのみ有効になります。","configuration":"新しい設定が必要です","authorization":"このインスタンスのアクセスを確認","reviewed":"この更新について確認済み","ready":"現在の設定を維持できます","save":"この更新用に保存"},
+    actions: {"openBase":"Base を開く：{{name}}","openTask":"タスクを開く：{{name}}","openUsage":"使用量を開く：{{name}}","failed":"操作を完了できませんでした。再試行してください。"},
+    base: {"groups":"グループ別のレコード","history":"履歴","range":"日付範囲：{{from}} から {{to}}（終了日は含まれません）","hint":"このインスタンスの Base、フィールド、フィルターを選択します。","search":"Base を検索","loadFailed":"Base を読み込めませんでした。再試行してください。","narrowSearch":"名前で検索して他の Base を探してください。","source":"Base {{index}}","base":"Base","chooseBase":"Base を選択","unavailable":"Base を利用できません","fieldFor":"{{field}} のフィールド","chooseField":"フィールドを選択","readFields":"読み取るフィールド","readField":"{{field}} を読み取る","filters":"フィルター","filterField":"対象フィールド","condition":"条件","equals":"等しい","notEquals":"等しくない","lessThan":"未満","greaterThan":"より大きい","onDay":"指定日","value":"値","timeZone":"タイムゾーン","emptyValue":"空","checked":"オン","unchecked":"オフ","addFilter":"フィルターを追加","removeFilter":"フィルターを削除","consent":"このコンピューターでこれらの Base とフィールドの読み取りを許可します。","invalid":"Base とフィールドを選択し、フィルターと読み取り権限を確認してください。","revoke":"Base アクセスを取り消す","records":"選択したレコード"},
+    detailStopped: "Widget の詳細を停止しました。再試行するか Widget を編集してください。",
+    copyName: "{{name}}（コピー）",
+    versions: "バージョン", versionTitle: "Widget のバージョン", versionHint: "保存済みのバージョンをプレビューし、確認後に適用します。", currentVersion: "現在", previewVersion: "プレビュー", versionSaved: "バージョンを保存しました。後で Dock に追加できます。",
+    customize: "カスタマイズ", copyCustomize: "複製してカスタマイズ", customName: "{{name}}（カスタム）", replaceWithCopy: "適用してコピーに置き換える", preserveInstance: "インスタンス名と位置を保持します。元の Widget も引き続き追加できます。", usageSource: "使用量のソース", allAgents: "すべての Agent", otherSources: "詳細にさらに {{count}} 件",
+    applyInstance: "適用", continue: "続ける", noSavedVersion: "この Widget を追加する前にバージョンを保存してください。", instancePending: "変更は保持されています。Bottega を再起動すると完了します。", pause: "Widget を一時停止", resume: "Widget を再開", remove: "Dock から削除",
+    fields: {"groupCount":"グループ数","time": "時刻", "date": "日付", "remainingDays": "残り日数", "remainingHours": "残り時間", "remainingSeconds": "残り秒数", "remaining": "残量", "maximum": "上限", "resetsAt": "リセット日時", "tokens": "トークン", "costUsd": "推定費用", "unpricedTokens": "価格不明のトークン", "running": "実行中", "waiting": "待機中", "total": "合計", "count": "件数", "sum": "合計値", "numericCount": "数値の件数"},
+    sources: {"api": "外部 API", "clock": "時計", "limits": "AI 利用枠", "activity": "AI 使用量", "tasks": "タスク", "base": "Base"},
+    deadline: "目標日時：{{date}}",
+    states: {"needs-installation":"インストールが必要","package-preparing":"パッケージを準備中","installing":"インストール中…","ready": "準備完了", "loading": "読み込み中…", "no-data": "データなし", "partial": "一部のデータ", "stale": "データが古くなっています", "needs-setup": "設定が必要", "needs-authorization": "許可が必要", "definition-missing": "Widget を利用できません", "paused": "一時停止中", "failed": "データを読み込めません"},
+    configure: "Widget を設定", configurationHint: "このインスタンスと使用するデータを確認してください。", dateZone: "タイムゾーン：{{zone}}", invalidSettings: "強調表示された設定を確認してください。", executionHere: "この Widget は現在のコンピューターで実行されます。",
+    saveAndAdd: "保存して Dock に追加", applyOne: "1 個の Widget に適用", applyMany: "{{count}} 個の Widget に適用", saveVersion: "バージョンを保存", applying: "適用中…",
+    applyFailed: "変更を完了できませんでした。入力は保持されています。再試行してください。", commitPending: "Widget のバージョンは保存されました。Dock の変更は未完了です。", conflict: "バージョンまたは Dock の配置が変わりました。新しいプレビューを確認してください。", applied: "このコンピューターに適用しました。他のコンピューターでは更新を個別に確認します。",
+    sizeSmall: "小", sizeMedium: "中", sizeLarge: "大",
+    name: "名前", invalidName: "改行や制御文字を含まない 1～80 文字を入力してください。",
+    title: "ウィジェット", add: "ウィジェットを追加", new: "ウィジェットを作成", untitled: "名称未設定のウィジェット", edit: "機能を編集", empty: "必要な情報を Dock に表示するウィジェットを作成します。",
+    search: "ウィジェットを検索", failed: "ウィジェットを開けませんでした。作業は保存されています。再試行してください。", creating: "作成中…", describe: "表示したい情報を説明してください。追加する前にプレビューを確認します。",
+    build: "プレビューを作成", building: "作成中…", example: "サンプルデータ", draft: "下書き", candidate: "プレビューの準備完了", buildFailed: "プレビューを作成できませんでした。編集を続けて再試行してください。",
+    settings: "ウィジェット設定", impact: "このコンピューターの {{count}} 件", noMatches: "一致するウィジェットはありません", sourceUnavailable: "元のチャットを利用できません。ソースは保存されています。",
+    addExisting: "ウィジェットを選択", cancel: "キャンセル", added: "Dock に追加しました", addFailed: "追加できませんでした。選択は保存されています。",
+  },
   placement: {
     panelSpaceHint: "パネルを開くスペースが足りません。別のディスプレイを選ぶか、Dock のサイズを小さくしてください。",
     title: "表示位置",

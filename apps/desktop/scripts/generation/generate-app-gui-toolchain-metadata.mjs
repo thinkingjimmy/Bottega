@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on component-catalog.mjs, apps/desktop/runtime-dependencies.json (package slice membership and appGui set), the installed production dependency graph and lockfile, package os/cpu/libc constraints and license bytes, Lightning CSS's detect-libc dependency on Linux, explicit runtime/build source slices with three reviewed public export transformations, signed components, Starters, legacy GUI SDK bytes, external release/platform public keys, and optional measured performance evidence
- * [OUTPUT]: Generates and checks component catalog, Sketch resources and exact-source toolchain metadata from the host-eligible dependency graph, including native esbuild resolution, legacy GUI SDK custody, compact source facts, transport/platform identities, and performance receipts bound to public-equivalent runtime/build inputs without changing thresholds
+ * [OUTPUT]: Generates and checks the component catalog, exact-source App/composer/Dock/Sketch SDK resources and toolchain metadata from the host-eligible graph, including native esbuild, legacy SDK custody, compact identities and public-equivalent performance receipts without changing thresholds.
  * [POS]: apps/desktop/scripts/generation; App GUI release metadata authority; receipts consume generated digests instead of hand-maintained placeholders; `--check` runs first in the desktop `typecheck`, so a drifting source change fails there
  */
 
@@ -81,12 +81,20 @@ const gateFiles = {
     "electron/main/apps/gui-build/product-modules/base-snapshot.ts",
     "electron/main/apps/gui-build/product-modules/bootstrap.ts",
     "electron/main/apps/gui-build/product-modules/plugin.ts",
+    "electron/main/apps/gui-build/product-modules/dock.ts",
     "electron/main/apps/gui-build/product-modules/sketch/index.ts",
     "electron/main/apps/gui-build/product-modules/sketch/bundle.json",
     "electron/main/apps/gui-build/product-modules/sketch/identity.json",
     "electron/main/apps/gui-build/source/manifest.ts",
     "electron/main/apps/gui-build/source/inspection.ts",
     "../../packages/sdk/contracts/src/plugins/surface/contract.ts",
+    "../../packages/sdk/contracts/src/plugins/dock/data.ts",
+    "../../packages/sdk/contracts/src/plugins/dock/geometry.ts",
+    "../../packages/sdk/contracts/src/plugins/dock/manifest.ts",
+    "../../packages/sdk/contracts/src/plugins/dock/session.ts",
+    "../../packages/sdk/contracts/src/plugins/dock/session/protocol.ts",
+    "../../packages/sdk/contracts/src/plugins/dock/settings.ts",
+    "../../packages/sdk/contracts/src/plugins/dock/summary.ts",
     "electron/main/apps/gui-build/product-modules/virtual-contracts.ts",
     "electron/main/apps/gui-build/pipeline/portable.ts",
     "electron/main/apps/gui-build/pipeline/receipt-metadata.ts",
@@ -168,6 +176,15 @@ outputs.set("modules/sketch.json", sketchResource);
 const productModules = { sketch: { path: "modules/sketch.json", sha256: sha256(Buffer.from(sketchResource)), sourceDigest: sketchIdentity.sourceDigest } };
 // Only fixed product sources are evaluated here; no author path or source enters this generator.
 const { build: bundleProductModule } = desktopRequire("esbuild");
+const appBundle=await bundleProductModule({entryPoints:[join(desktopRoot,'electron/main/apps/gui-build/product-modules/app-react.ts')],bundle:true,write:false,metafile:true,format:'esm',platform:'node',target:'node22'});
+const signedAppInputs=new Set(['electron/main/apps/gui-build/product-modules/app-react.ts','electron/main/apps/gui-build/product-modules/base-snapshot.ts','electron/main/apps/gui-build/product-modules/virtual-contracts.ts','shared/app-gui/contracts.ts','../../packages/cloud-protocol/src/apps/schemas/constants.ts'].map(path=>resolve(desktopRoot,path)));
+if(Object.keys(appBundle.metafile.inputs).some(path=>!signedAppInputs.has(resolve(path)))||appBundle.outputFiles.length!==1)throw new Error('App SDK generation escaped its fixed product source set');
+const productApp=await import('data:text/javascript;base64,'+Buffer.from(appBundle.outputFiles[0].contents).toString('base64'));
+const appRuntime=productApp.SDK_RUNTIME_SOURCE,appTypes=productApp.SDK_TYPES_SOURCE;
+if(![appRuntime,appTypes].every(value=>typeof value==='string'&&value))throw new Error('App SDK resource is incomplete');
+const appSourceDigest=sha256(Buffer.from(appRuntime+appTypes)),appResource=json({schema:'bottega.app-sdk-module/v1',runtime:appRuntime,types:appTypes,sourceDigest:appSourceDigest});
+outputs.set('modules/app.json',appResource);outputs.set('modules/app-identity.json',json({sourceDigest:appSourceDigest}));
+productModules.app={path:'modules/app.json',sha256:sha256(Buffer.from(appResource)),sourceDigest:appSourceDigest};
 const pluginBundle = await bundleProductModule({ entryPoints: [join(desktopRoot, "electron/main/apps/gui-build/product-modules/plugin.ts")], bundle: true,
   write: false, metafile: true, format: "esm", platform: "node", target: "node22" });
 const pluginInputs = Object.keys(pluginBundle.metafile.inputs).map(path => resolve(path));
@@ -181,6 +198,16 @@ const pluginResource = json({ schema: "bottega.plugin-module/v1", runtime: plugi
 outputs.set("modules/plugin.json", pluginResource);
 outputs.set("modules/plugin-identity.json", json({ sourceDigest: pluginSourceDigest }));
 productModules.plugin = { path: "modules/plugin.json", sha256: sha256(Buffer.from(pluginResource)), sourceDigest: pluginSourceDigest };
+const dockBundle=await bundleProductModule({entryPoints:[join(desktopRoot,'electron/main/apps/gui-build/product-modules/dock.ts')],bundle:true,write:false,metafile:true,format:'esm',platform:'node',target:'node22'});
+const signedDockInputs=new Set([join(desktopRoot,'electron/main/apps/gui-build/product-modules/dock.ts'),resolve(desktopRoot,'../../packages/sdk/contracts/src/plugins/dock/session/protocol.ts')]);
+if(Object.keys(dockBundle.metafile.inputs).some(path=>!signedDockInputs.has(resolve(path)))||dockBundle.outputFiles.length!==1)throw new Error('Dock SDK generation escaped its fixed product source set');
+const productDock=await import('data:text/javascript;base64,'+Buffer.from(dockBundle.outputFiles[0].contents).toString('base64'));
+const dockRuntime=productDock.DOCK_RUNTIME_SOURCE,dockTypes=productDock.DOCK_TYPES_SOURCE,dockBootstrap=productDock.dockBootstrapSource('bottega:app-entry');
+if(![dockRuntime,dockTypes,dockBootstrap].every(value=>typeof value==='string'&&value))throw new Error('Dock SDK resource is incomplete');
+const dockSourceDigest=sha256(Buffer.from(dockRuntime+dockTypes+dockBootstrap));
+const dockResource=json({schema:'bottega.dock-module/v1',runtime:dockRuntime,types:dockTypes,bootstrap:dockBootstrap,sourceDigest:dockSourceDigest});
+outputs.set('modules/dock.json',dockResource);outputs.set('modules/dock-identity.json',json({sourceDigest:dockSourceDigest}));
+productModules.dock={path:'modules/dock.json',sha256:sha256(Buffer.from(dockResource)),sourceDigest:dockSourceDigest};
 
 const sliceDigests = {};
 for (const [id, paths] of Object.entries(gateFiles)) {

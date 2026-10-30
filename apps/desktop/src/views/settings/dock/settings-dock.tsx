@@ -17,6 +17,7 @@ import { DockSetupDialog, type DockSetupFlow } from "@/components/settings/dock/
 import { DockMaster, DockRecovery, DockUnsupported } from "@/components/settings/dock/status";
 import { DockSync } from "@/components/settings/dock/sync";
 import { DOCK_CONSENT_VERSION } from "../../../../shared/system-dock/local-state";
+import {DockWidgetsSection} from '@/components/settings/dock/widgets';
 
 const FAILURE_KEYS: Record<DockSettingsCommand, string> = {
   "app-pin": "apps.dock.pinFailed",
@@ -63,6 +64,7 @@ export function DockSettingsContent({ plugin = false }: { plugin?: boolean }) {
           if (snapshot.state.consentVersion === DOCK_CONSENT_VERSION) void dockSettingsStore.setMode("replace"); else setSetup("consent");
         }} />
         <DockPlacement state={state} />
+        <DockWidgetsSection />
         {snapshot.state.enabled && <>
           <DockAppearance state={state} />
           <DockBehavior state={state} />

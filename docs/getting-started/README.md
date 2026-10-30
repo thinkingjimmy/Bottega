@@ -47,6 +47,10 @@ Setup has one path and never mentions an account: choose your Bottega folder, th
 
 See the [features guide](../features/README.md) for the product model and its four core capability areas.
 
+### Upgrading to 0.2.11
+
+0.2.11 uses protocol 22. Update connected desktop computers and reload Bottega Web after the coordinated service update. Earlier clients require an update for Cloud access. Existing content, sync passwords and account keys remain; no data reset is required. Back up your Bottega folder and application data before updating. Stable macOS Apple silicon builds use the stable update channel; 0.2.5 personal requires manual installation. Dock remains Alpha on macOS 27.x and Apple silicon.
+
 ### Upgrading to 0.2.10
 
 0.2.10 keeps protocol 21. Update the desktop computers that run your Agents to receive the desktop fixes, then reload Bottega Web. Existing content, sync passwords and account keys remain; no data reset is required. Stable macOS Apple silicon builds use the stable update channel. Version 0.2.5 personal requires a manual installation. Dock remains Alpha and requires macOS 27.x with Apple silicon. The Android test app uses a separate test environment.

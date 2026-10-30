@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React context/effects, the panel snapshot, the Dock translator and the intent sender.
- * [OUTPUT]: Provides `PanelContext`/`usePanel` (snapshot, translator, clock, mask, intents, detail navigation, announcements, focus mode) and `useEscapeLayer`, the registration point for one nested "go back one level" step.
+ * [OUTPUT]: Provides PanelContext/usePanel with snapshots, fire-and-forget intents, awaited action results and layered Escape.
  * [POS]: system-dock/panel shared state between panel.tsx and every view; views never read the bridge directly.
  */
 
@@ -15,6 +15,7 @@ export type PanelApi = Readonly<{
   now: number;
   mask: boolean;
   send(intent: DockIntent): void;
+  perform(intent:DockIntent):Promise<boolean>;
   /** Opens an item's detail from the keyboard list and remembers that Escape returns there. */
   openDetail(itemId: string): void;
   /** Records that the detail main is about to open for `itemId` was reached from the keyboard list. */

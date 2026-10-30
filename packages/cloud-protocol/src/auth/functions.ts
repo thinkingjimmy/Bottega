@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on closed account/device/environment schemas, immutable spaces, continuity and business registries (including account-config).
+ * [INPUT]: Depends on closed account/device/environment schemas, immutable spaces, continuity and business registries including account-config and Widget delivery.
  * [OUTPUT]: Provides cloudFunctions, the merged public function registry (every domain table plus core-functions.ts), with typed arguments/results.
  * [POS]: Shared contract authority; private Convex exports are verified against this registry. Desktop and services use it whole; Cloud Web imports only
  *        the domain tables it uses (OPT-31), and tests/platform/function-tables.test.ts proves the union of the tables is exactly this registry.
@@ -28,7 +28,9 @@ import { previewFunctions } from "../resources/preview";
 import { pushFunctions } from "../push/functions";
 import { surfaceFunctions } from "../surfaces/functions";
 import { memoryControlFunctions } from "../remote/memory-control/model";
+import { widgetPackageFunctions } from "../widgets/functions";
 export const cloudFunctions = {
+  ...widgetPackageFunctions,
   ...previewFunctions,
   ...memoryControlFunctions,
   ...skillFunctions,

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on closed account scopes and logical blob descriptors.
- * [OUTPUT]: Defines bounded encrypted uploads, claim-only reuse of ready blobs, receipts and authenticated reads.
+ * [OUTPUT]: Defines bounded encrypted uploads, dedicated Widget file namespaces, claim-only ready-blob reuse, receipts and authenticated reads.
  * [POS]: Shared private-file RPC boundary; storage IDs and provider URLs stay inside the backend.
  */
 import { z } from "zod";
@@ -10,7 +10,7 @@ import { blobOwnerSchema, logicalBlobIdSchema, sha256Schema } from "./index";
 import { ciphertextFileDescriptorSchema, encryptedFilePartSchema, encryptedFileManifestSchema, MAX_FILE_CHUNKS } from "./encrypted/model";
 import { canonicalJson } from "../encryption/encoding";
 const integer = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const blobContentKindSchema = z.enum(["gallery", "thumbnail", "chat-attachment", "message-overflow", "history-generation", "home-snapshot", "app-package", "artifact", "skill-file", "skill-generation", "app-surface-file", "app-surface-generation", "plugin-surface-file", "plugin-surface-generation"]);
+const blobContentKindSchema = z.enum(["gallery", "thumbnail", "chat-attachment", "message-overflow", "history-generation", "home-snapshot", "app-package", "artifact", "skill-file", "skill-generation", "app-surface-file", "app-surface-generation", "plugin-surface-file", "plugin-surface-generation", "widget-package", "widget-review"]);
 export const blobPartSchema = encryptedFilePartSchema;
 const uploadStateSchema = z.enum(["uploading", "verifying", "ready", "cancelled", "failed", "expired"]);
 export const uploadStatusSchema = z.object({ uploadId: id, blobId: logicalBlobIdSchema, payloadHash: sha256Schema, state: uploadStateSchema,
@@ -18,6 +18,8 @@ export const uploadStatusSchema = z.object({ uploadId: id, blobId: logicalBlobId
 export type BlobUploadStatus = z.infer<typeof uploadStatusSchema>;
 export const beginUploadSchema = businessHeaderSchema.extend({ uploadId: id, owner: blobOwnerSchema, contentKind: blobContentKindSchema,
   claimOnly: z.literal(true).optional(), descriptor: ciphertextFileDescriptorSchema, parts: z.array(blobPartSchema).min(1).max(MAX_FILE_CHUNKS) }).strict().superRefine((value, ctx) => {
+  const widgetContent = value.contentKind === "widget-package" || value.contentKind === "widget-review";
+  if ((value.owner.kind === "widget") !== widgetContent) ctx.addIssue({ code: "custom", message: "invalid-widget-file-namespace" });
   if (value.parts.length !== value.descriptor.encryption.chunkCount || value.parts.some((part, index) => part.partIndex !== index) ||
     value.parts.reduce((sum, part) => sum + part.bytes, 0) !== value.descriptor.bytes ||
     canonicalJson(value.owner) !== canonicalJson(value.descriptor.encryption.owner) ||

@@ -1,0 +1,29 @@
+/*
+ * [INPUT]: Depends on the inherited color scheme or the host preview's explicit light/dark scheme.
+ * [OUTPUT]: Provides a scoped Dock summary palette, semantic colors and native text typography.
+ * [POS]: Shared summary skin; authoring and the real Dock use identical colors without changing global appearance.
+ */
+.dock-summary-theme {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: light-dark(#1d1d1f, #f4f4f6);
+  --dock-summary-accent: light-dark(#0a64d6, #4c9dff);
+  --dock-summary-success: light-dark(#1f7a3a, #6fd18b);
+  --dock-summary-warning: light-dark(#a34a00, #ffab5c);
+  --dock-summary-danger: light-dark(#c4262e, #ff7a73);
+}
+@media (forced-colors: active) {
+  .dock-summary-theme {
+    color: CanvasText;
+    --dock-summary-accent: LinkText;
+    --dock-summary-success: CanvasText;
+    --dock-summary-warning: CanvasText;
+    --dock-summary-danger: CanvasText;
+  }
+}

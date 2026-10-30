@@ -59,14 +59,14 @@ function productionCsp(): Plugin {
 }
 /* Isolated auxiliary surfaces (notch task panel, Bottega Dock bar/panel) each get one
    self-contained preload; none of them may share a chunk with the product preload. */
-const AUXILIARY_PRELOADS = ["system-dock", "desktop-dialog"] as const;
+const AUXILIARY_PRELOADS = ["system-dock", "desktop-dialog", "system-dock-detail"] as const;
 function auxiliaryPreload(): Plugin {
     return {
         name: "self-contained-auxiliary-preloads",
         generateBundle() {
             for (const name of AUXILIARY_PRELOADS) {
                 // Sandboxed preloads can require Electron, but cannot load sibling chunks.
-                const result = buildSync({ entryPoints: [resolve(__dirname, `electron/preload/${name === "desktop-dialog" ? "desktop-dialog/index" : name}.ts`)], bundle: true, write: false,
+                const result = buildSync({ entryPoints: [resolve(__dirname, `electron/preload/${name === "desktop-dialog" ? "desktop-dialog/index" : name === 'system-dock-detail' ? 'dock-detail/index' : name}.ts`)], bundle: true, write: false,
                     platform: "node", format: "cjs", target: "node22", external: ["electron"], metafile: true,
                     /* 与 main/preload 同一口味：这份也在每个辅助渲染进程里常驻。 */
                     minify: true, keepNames: true, legalComments: "none", charset: "ascii" });

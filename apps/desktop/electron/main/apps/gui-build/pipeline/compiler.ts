@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on TypeScript, esbuild local CSS modules, Tailwind Node/Oxide, one shared author-source analysis, immutable source validation, fixed toolchain metadata, and the apps/support digest primitives
- * [OUTPUT]: Provides distinct App/plugin bootstrap and SDK composition with on-demand bounded trusted Sketch resource verification, strict semantic typecheck plus exact local-alias/CSS-module resolution, module-relative asset URLs mapped by a Web App surface when present, asar-to-unpacked dependency path mapping for the native esbuild child, deterministic React/Tailwind compiled-v3 runtime, and canonical receipt generation whose manifest digest covers the raw app.json or plugin.json bytes
+ * [OUTPUT]: Provides separate App/composer/Dock bootstraps, fixed signed SDK resource composition, strict semantic typechecking and local assets, deterministic compiled-v3 runtime and canonical raw-manifest/Dock receipts.
  * [POS]: apps/gui-build/pipeline transform kernel; sandbox child invokes it and generation code consumes only validated output
  */
 import { createRequire } from "node:module";
@@ -35,9 +35,7 @@ import {
 import {
   CHARTS_RUNTIME_SOURCE,
   CHARTS_TYPES_SOURCE,
-  SDK_TYPES_SOURCE,
 } from "../product-modules/virtual-contracts";
-import { SDK_RUNTIME_SOURCE } from "../product-modules/app-react";
 import {
   bootstrapSource,
   type BootstrapRuntimeSlice,
@@ -45,11 +43,12 @@ import {
 import { analyzeAuthorSource, type AuthorSourceAnalysis } from "../source-analysis";
 import { guiImportCandidates } from "../source-imports";
 import { requiredGates } from "../admission";
-import { loadReceiptMetadata, loadSketchModule, loadPluginModule, type SketchModule, type PluginModule } from "./receipt-metadata";
+import { loadReceiptMetadata, loadSketchModule, loadPluginModule, loadDockModule, loadAppModule, type AppModule, type SketchModule, type PluginModule } from "./receipt-metadata";
 
 const require = createRequire(import.meta.url);
 const SKETCH_MODULE = "bottega:sketch-react";
 const PLUGIN_MODULE = "bottega:plugin-react";
+const DOCK_MODULE='bottega:dock-react';
 const APP_REACT_MODULE = "bottega:app-react";
 const CHARTS_MODULE = "bottega:charts";
 const BLOCKS_MODULE = "bottega:app-blocks";
@@ -67,16 +66,18 @@ export async function compilePreparedAppGui(input: SealedCompilerInput): Promise
   const analysis = await analyzeAuthorSource(sourceReceipt);
   const structural = await validateCompiledGuiSource(sourceReceipt, manifest.gui, analysis);
   if (structural.length) throw findingsError(structural);
-  const plugin = manifest.kind === "plugin" ? await loadPluginModule() : undefined;
+  const appSdk=await loadAppModule();
+  const plugin = manifest.kind === "plugin"&&'composer'in manifest ? await loadPluginModule() : undefined;
+  const dock=manifest.kind==='plugin'&&'dock'in manifest?await loadDockModule():undefined;
   const sketch = manifest.kind === "plugin" && analysis.specifiers.has("@bottega/sketch-react") ? await loadSketchModule() : undefined;
-  const diagnostics = semanticTypecheck(input.snapshotRoot, input.tempRoot, sketch, plugin);
+  const diagnostics = semanticTypecheck(input.snapshotRoot, input.tempRoot, appSdk, sketch, plugin, dock);
   if (diagnostics.length) throw findingsError(diagnostics);
   const gates = requiredGates(analysis, manifest);
   const compatibility = compatibilityRef(
     manifest,
     analysis,
     input.transformContractDigest,
-    plugin?.runtime
+    (dock??plugin??appSdk).runtime
   );
   const receiptMetadata = await loadReceiptMetadata(gates);
 
@@ -91,8 +92,9 @@ export async function compilePreparedAppGui(input: SealedCompilerInput): Promise
     manifest,
     compatibility,
     gates,
+    appSdk,
     sketch,
-    plugin
+    plugin, dock
   );
   const emittedCss = bundled.filter((file) => file.path.endsWith(".css"));
   const combinedCss = Buffer.concat([
@@ -133,7 +135,7 @@ export async function compilePreparedAppGui(input: SealedCompilerInput): Promise
     transformContractDigest: input.transformContractDigest,
     platformCompilerCustodyDigest: input.platformCompilerCustodyDigest,
     componentOriginsDigest: treeDigest("bottega.app-gui-component-origins/v1", componentFiles),
-    allowlistDigest: canonicalDigest([...authorPublicSpecifiers(manifest.gui.build.iconLibrary, manifest.kind === "plugin" ? "plugin" : "app")].sort()),
+    allowlistDigest: canonicalDigest([...authorPublicSpecifiers(manifest.gui.build.iconLibrary, manifest.kind === "plugin" ? 'dock'in manifest?'dock':'plugin' : "app")].sort()),
     ...receiptMetadata,
     compatibility,
     platform: platformIdentity(),
@@ -152,20 +154,24 @@ export async function compilePreparedAppGui(input: SealedCompilerInput): Promise
 function semanticTypecheck(
   snapshotRoot: string,
   tempRoot: string,
+  appSdk:AppModule,
   sketch?: SketchModule,
-  plugin?: PluginModule
+  plugin?: PluginModule,
+  dock?:PluginModule
 ): readonly AppGuiBuildFinding[] {
   const sourceRoot = join(snapshotRoot, "gui/src");
   const virtualRoot = join(tempRoot, "virtual-types");
   const sdkTypes = join(virtualRoot, "app-react.d.ts");
   const sketchTypes = join(virtualRoot, "sketch-react.d.ts");
   const pluginTypes = join(virtualRoot, "plugin-react.d.ts");
+  const dockTypes=join(virtualRoot,'dock-react.d.ts');
   const chartTypes = join(virtualRoot, "charts.d.ts");
   const blocksTypes = join(virtualRoot, "blocks.d.ts");
   const assetTypes = join(virtualRoot, "assets.d.ts");
   const virtualFiles = new Map<string, string>([
-    [sdkTypes, SDK_TYPES_SOURCE],
+    [sdkTypes, appSdk.types],
     [pluginTypes, plugin?.types ?? "export {};"],
+    [dockTypes,dock?.types??'export {};'],
     [sketchTypes, sketch?.types ?? "export {};"],
     [chartTypes, CHARTS_TYPES_SOURCE],
     [blocksTypes, BLOCKS_TYPES_SOURCE],
@@ -216,6 +222,7 @@ function semanticTypecheck(
       const specifier = literal.text;
       if (specifier === "@bottega/sketch-react") return { resolvedModule: moduleResolution(sketchTypes) };
       if (specifier === "@bottega/plugin-react") return { resolvedModule: moduleResolution(pluginTypes) };
+      if(specifier==='@bottega/dock-react')return{resolvedModule:moduleResolution(dockTypes)};
       if (specifier === "@bottega/app-react") return { resolvedModule: moduleResolution(sdkTypes) };
       if (specifier === "@bottega/charts") return { resolvedModule: moduleResolution(chartTypes) };
       if (specifier === "@bottega/app-blocks") return { resolvedModule: moduleResolution(blocksTypes) };
@@ -274,8 +281,10 @@ async function bundleReact(
   manifest: GuiBuildManifest,
   compatibility: AppGuiCompiledV3CompatibilityRef,
   gates: readonly import("../admission").AppGuiAdmissionGate[],
+  appSdk:AppModule,
   sketch?: SketchModule,
-  plugin?: PluginModule
+  plugin?: PluginModule,
+  dock?:PluginModule
 ) {
   const output = await buildEsbuild({
     entryPoints: { "sdk-bootstrap": BOOTSTRAP_MODULE },
@@ -309,7 +318,7 @@ async function bundleReact(
       ".css": "css",
     },
     nodePaths: [realDependencyPath(dirname(require.resolve("react/package.json")) + "/..")],
-    plugins: [resolverPlugin(snapshotRoot, manifest, compatibility, gates, sketch, plugin)],
+    plugins: [resolverPlugin(snapshotRoot, manifest, compatibility, gates, appSdk, sketch, plugin, dock)],
   });
   return output.outputFiles.map((file) => ({
     path: relative(outputRoot, file.path).split(sep).join("/"),
@@ -322,8 +331,10 @@ function resolverPlugin(
   manifest: GuiBuildManifest,
   compatibility: AppGuiCompiledV3CompatibilityRef,
   gates: readonly import("../admission").AppGuiAdmissionGate[],
+  appSdk:AppModule,
   sketch?: SketchModule,
-  plugin?: PluginModule
+  plugin?: PluginModule,
+  dock?:PluginModule
 ): Plugin {
   /* macOS /var is a symlink to /private/var. esbuild canonicalizes importer paths;
      the policy root must use the same identity or every legitimate author import
@@ -331,7 +342,7 @@ function resolverPlugin(
   const packageRoot = realpathSync(snapshotRoot);
   const sourceRoot = join(packageRoot, "gui/src");
   const entry = join(sourceRoot, "main.tsx");
-  const allowed = authorPublicSpecifiers(manifest.gui!.build!.iconLibrary, manifest.kind === "plugin" ? "plugin" : "app");
+  const allowed = authorPublicSpecifiers(manifest.gui!.build!.iconLibrary, manifest.kind === "plugin" ? 'dock'in manifest?'dock':'plugin' : "app");
   return {
     name: "bottega-app-gui-resolver",
     setup(build) {
@@ -346,6 +357,7 @@ function resolverPlugin(
       build.onResolve({ filter: /^bottega:/ }, (args) => ({ path: args.path, namespace: "bottega-product" }));
       build.onResolve({ filter: /^@bottega\/sketch-react$/ }, () => ({ path: SKETCH_MODULE, namespace: "bottega-product" }));
       build.onResolve({ filter: /^@bottega\/plugin-react$/ }, () => ({ path: PLUGIN_MODULE, namespace: "bottega-product" }));
+      build.onResolve({filter:/^@bottega\/dock-react$/},()=>({path:DOCK_MODULE,namespace:'bottega-product'}));
       build.onResolve({ filter: /^@bottega\/app-react$/ }, () => ({ path: APP_REACT_MODULE, namespace: "bottega-product" }));
       build.onResolve({ filter: /^@bottega\/charts$/ }, () => ({ path: CHARTS_MODULE, namespace: "bottega-product" }));
       build.onResolve({ filter: /^@bottega\/app-blocks$/ }, () => ({ path: BLOCKS_MODULE, namespace: "bottega-product" }));
@@ -359,6 +371,7 @@ function resolverPlugin(
           ],
           [APP_REACT_MODULE]: ["react"],
           [PLUGIN_MODULE]: ["react", "react/jsx-runtime"],
+          [DOCK_MODULE]: ['react','react/jsx-runtime'],
           [SKETCH_MODULE]: ["react", "react-dom", "react-dom/client", "react/jsx-runtime"],
           [CHARTS_MODULE]: [
             "react",
@@ -394,14 +407,15 @@ function resolverPlugin(
       });
       build.onLoad({ filter: /.*/, namespace: "bottega-product" }, (args) => {
         if (args.path === BOOTSTRAP_MODULE) return {
-          contents: manifest.kind === "plugin" ? plugin!.bootstrap : bootstrapSource(APP_ENTRY_MODULE, runtimeSlice(compatibility, gates)),
+          contents: manifest.kind === "plugin" ? (dock??plugin)!.bootstrap : bootstrapSource(APP_ENTRY_MODULE, runtimeSlice(compatibility, gates)),
           loader: "tsx",
           resolveDir: dirname(entry),
         };
         if (args.path === APP_ENTRY_MODULE) return { contents: `export { default } from ${JSON.stringify(entry)};`, loader: "tsx", resolveDir: dirname(entry) };
         if (args.path === SKETCH_MODULE) return sketch ? { contents: sketch.runtime, loader: "js", resolveDir: dirname(entry) } : { errors: [{ text: "Sketch module was not admitted for this source" }] };
         if (args.path === PLUGIN_MODULE) return plugin ? { contents: plugin.runtime, loader: "tsx", resolveDir: dirname(entry) } : { errors: [{ text: "Plugin SDK was not admitted for this source" }] };
-        if (args.path === APP_REACT_MODULE) return { contents: SDK_RUNTIME_SOURCE, loader: "tsx", resolveDir: dirname(entry) };
+        if(args.path===DOCK_MODULE)return dock?{contents:dock.runtime,loader:'tsx',resolveDir:dirname(entry)}:{errors:[{text:'Dock SDK was not admitted for this source'}]};
+        if (args.path === APP_REACT_MODULE) return { contents: appSdk.runtime, loader: "tsx", resolveDir: dirname(entry) };
         if (args.path === CHARTS_MODULE) return { contents: CHARTS_RUNTIME_SOURCE, loader: "tsx", resolveDir: dirname(entry) };
         if (args.path === BLOCKS_MODULE) return { contents: BLOCKS_RUNTIME_SOURCE, loader: "tsx", resolveDir: dirname(entry) };
         return { errors: [{ text: "unknown product virtual module" }] };
@@ -436,7 +450,7 @@ function compatibilityRef(
   manifest: GuiBuildManifest,
   analysis: AuthorSourceAnalysis,
   transformContractDigest: Sha256Digest,
-  sdkSource = SDK_RUNTIME_SOURCE
+  sdkSource:string
 ): AppGuiCompiledV3CompatibilityRef {
   const appGui = manifest.kind === "base" ? manifest.gui : undefined;
   const sdkImports = analysis.appReactBindings;

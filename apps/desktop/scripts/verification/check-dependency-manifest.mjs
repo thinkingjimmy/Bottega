@@ -54,8 +54,8 @@ for (const [name, entry] of Object.entries(packages)) {
 }
 for (const [name, entry] of Object.entries(manifest.virtualSpecifiers ?? {})) {
   if (!name.startsWith("@bottega/")) fail(`virtual specifier ${name} must live under @bottega/`);
-  if (!["core", "gate-3", "plugin"].includes(entry.authorAdmission)) {
-    fail(`virtual specifier ${name}: authorAdmission must be core, gate-3 or plugin`);
+  if (!["core", "gate-3", "plugin", "dock"].includes(entry.authorAdmission)) {
+    fail(`virtual specifier ${name}: authorAdmission must be core, gate-3, plugin or dock`);
   }
 }
 

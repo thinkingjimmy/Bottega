@@ -140,6 +140,10 @@ Dock remains **Alpha**. Replacement, recovery across logout or restart, and disp
 - Return to Bottega from its own Dock icon, even when other open Apps are hidden. Quit a running native App through its normal save and cancel prompts.
 - Browse Downloads by time with native thumbnails and file icons. Enlarge previews, return with Escape, and reveal files in Finder. Privacy masking also hides thumbnails.
 
+### Custom Widgets
+
+Create a Widget from Dock settings and continue editing in its source Chat. Preview and install with separate consent. Each instance has independent settings and Base/API grants. API credentials stay encrypted on this computer. Use standard or isolated details, approved actions and manual refresh. Receiving a private compiled package never grants execution or local data access automatically.
+
 ## Cloud Sync
 
 - Keep synchronization optional: Bottega works without an account, setup never asks about one, and signing in uploads nothing until you confirm the first sync.
@@ -179,7 +183,7 @@ Dock remains **Alpha**. Replacement, recovery across logout or restart, and disp
 - Rebuild conversations from the folder when the local Chat database cannot be opened, while the previous database is preserved.
 - Move the folder from Settings › General, including to another disk, with every saved path following it; or erase all of Bottega's data on this computer while cloud data stays in your account.
 - Keep a Bottega folder with the computer that published it: the same computer takes it back after a reinstall, a cleared data folder, or a new profile with nothing to confirm, and another computer is refused by name. A folder that has never synchronized opens anywhere.
-- Back up the Bottega folder and complete application data before changing versions. 0.2.8 retains existing content and uses protocol 19; see the [upgrade guide](../getting-started/README.md#upgrading-to-028), including historical migration notes for older releases.
+- Back up the Bottega folder and complete application data before changing versions. 0.2.11 retains existing content and uses protocol 22; see the [upgrade guide](../getting-started/README.md#upgrading-to-0211), including historical migration notes for older releases.
 
 ## Bundled runtime and Agent boundaries
 

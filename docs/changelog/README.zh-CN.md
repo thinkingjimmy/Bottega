@@ -4,6 +4,16 @@
 
 本文件只记录产品里程碑，不记录内部实现的逐次迭代。日期表示对应能力首次形成完整产品形态的时间。
 
+## 2026-10-30 — v0.2.11
+
+[下载 0.2.11](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.11)，适用于 macOS Apple 芯片（ARM64）。
+
+- **创建自己的 Dock Widget。** 从 Dock 设置发起，在来源 Chat 中创建，预览候选后单独确认加入。继续在原 Chat 编辑，并自行决定何时应用新版本。每个实例独立保存设置与数据许可。
+- **选择它可以读取的数据。** 授予指定 Base 数据或声明式只读 API 的访问权限，通过宿主配置 API Key 或 Bearer。凭据在本机加密保存。预览与已安装实例分别授权。
+- **就近查看详情。** 打开标准或隔离的自定义详情，刷新数据并执行已授权动作。可以在 Dock 设置中暂停或移除实例。私有包交付传输不可变的编译文件；收到包不会自动获得执行或读取本地数据的权限。
+
+**兼容性与边界。** 本版使用协议 22。服务协调升级后，请更新已连接的桌面端并刷新 Bottega Web；旧客户端访问 Cloud 时需要更新。保留已有内容、同步密码和账号密钥，无需清空数据。Dock 仍为 Alpha，仅支持 macOS 27.x 与 Apple 芯片。双 Mac 物理传输、VoiceOver、物理锁屏／输入／显示及已安装旧版升级验收仍需独立验证。Android 测试版继续使用独立渠道。
+
 ## 2026-10-26 — v0.2.10
 
 [下载 0.2.10](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.10)，适用于 macOS Apple 芯片（ARM64），或[打开 Bottega Web](https://app.getbottega.app)。

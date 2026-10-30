@@ -169,6 +169,24 @@
           }
         }
       }
+    },
+    {
+      "date": "2026-10-29",
+      "reason": "Add the isolated Dock detail preload as a new production surface: 2397 measured raw bytes, 2445 ceiling under the existing 2 percent policy, zero two-byte chunks. Every existing surface ceiling and policy stays unchanged.",
+      "surfaces": {
+        "preload/system-dock-detail": {
+          "before": null,
+          "after": {
+            "raw": 2445,
+            "twoByteChunks": 0,
+            "measured": {
+              "raw": 2397,
+              "gzip": 1195,
+              "brotli": 1030
+            }
+          }
+        }
+      }
     }
   ],
   "surfaces": {
@@ -254,6 +272,15 @@
         "raw": 854,
         "gzip": 446,
         "brotli": 377
+      }
+    },
+    "preload/system-dock-detail": {
+      "raw": 2445,
+      "twoByteChunks": 0,
+      "measured": {
+        "raw": 2397,
+        "gzip": 1195,
+        "brotli": 1030
       }
     },
     "main/index": {

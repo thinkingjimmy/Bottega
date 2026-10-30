@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod and canonical Agent identities.
- * [OUTPUT]: Provides durable notice validators and deterministic stored notice text. Includes an idempotent App-disabled transcript notice.
+ * [OUTPUT]: Provides durable notices, distinct Dock authoring identities and deterministic stored text.
  * [POS]: Shared transcript notice authority; localized product rendering remains separate.
  */
 import { z } from "zod";
@@ -74,11 +74,13 @@ const appExtensionDeclinedNoticeSchema = z
   .refine((value) => (value.by === "remote") === (value.deviceName !== undefined), "remote-decline-names-its-device");
 
 const appDisabledNoticeSchema = z.object({ kind: z.literal("app-disabled"), appId: z.string().regex(/^[a-z0-9]{10}$/), revision: z.number().int().nonnegative() }).strict();
+const pluginChatReadyNoticeSchema=z.object({kind:z.literal('plugin-chat-ready'),pluginId:z.string().regex(/^[a-z][a-z0-9.-]{0,119}$/),target:z.literal('dock')}).strict();
 export const chatNoticeSchema = z.discriminatedUnion("kind", [agentSwitchedNoticeSchema,
   actionableNoticeSchema, failedNoticeSchema, manualRecoveredNoticeSchema,
-  skillDescriptionsTruncatedNoticeSchema, appChatReadyNoticeSchema, appExtensionDeclinedNoticeSchema, appDisabledNoticeSchema]);
+  skillDescriptionsTruncatedNoticeSchema, appChatReadyNoticeSchema, appExtensionDeclinedNoticeSchema, appDisabledNoticeSchema, pluginChatReadyNoticeSchema]);
 export type ChatNotice = z.infer<typeof chatNoticeSchema>;
 export function noticeMessageContent(notice: ChatNotice) {
+  if(notice.kind==='plugin-chat-ready')return 'Widget authoring session is ready.';
   if (notice.kind === "agent-switched") return `Agent switched · Replies from here are by ${notice.to}`;
   if (notice.kind === "app-disabled") return "This App is closed. Running tasks stopped; queued messages will resume when it is reopened.";
   if (notice.kind === "app-chat-ready") return "App Studio session is ready.";

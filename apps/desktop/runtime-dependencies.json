@@ -360,6 +360,9 @@
     "@bottega/plugin-react": {
       "authorAdmission": "plugin"
     },
+    "@bottega/dock-react": {
+      "authorAdmission": "dock"
+    },
     "@bottega/sketch-react": {
       "authorAdmission": "plugin"
     }

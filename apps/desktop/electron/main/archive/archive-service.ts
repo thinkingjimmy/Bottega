@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron IPC, Node crypto/fs, Chat/Project stores, ChatHome/Purge journals, Coordinator pending CreationIntent/conversation critical area, ProjectsService durable cleanup, ChatsService deletion-resource chain, and optional Memory rebuild port
- * [OUTPUT]: Provides archiveService: explicitly archived Agent-identified Chat projection carrying read-only capability, admission-first immutable local-only/cleanup-and-rebuild purge that refuses read-only Chats, short Project intent/CAS, canonical+pending member snapshot, verified/record-only tokenized preview, and legacy Home convergence through the shared deletion helper Restoring a Project also restores its workflow runs' pauses to ordinary ones (V-02).
+ * [OUTPUT]: Provides archive projections, optional scope/incarnation-fenced restoration, admission-first immutable purge, canonical member snapshots and verified tokenized previews. Project restoration also restores ordinary workflow pauses (V-02).
  * [POS]: The trans-book coordinator of the archive module; initialize only publishes gates and the caller resumes interrupted purges through recoverPurge; The product gate only packs intent/CAS, Memory receipt/drain/network both outside the gate and hold multiple conversation locks at different times
  */
 
@@ -244,11 +244,12 @@ export class ArchiveService {
     });
   }
 
-  restore(targets: ArchiveTarget[]) {
+  restore(targets: ArchiveTarget[], expectedChats?:Readonly<Record<string,string>>,current:()=>boolean=()=>true) {
     return this.queue.enqueue(async () => {
       let committed = false;
       try {
         for (const target of this.unique(targets)) {
+          if(!current())throw new Error('ARCHIVE_RESTORE_SCOPE_CHANGED');
           if (target.kind === "chat") {
             const candidate = this.chats.getMetadata(target.id);
             /* 导入历史是只读但活着的会话：归档过就必须恢复得回来。
@@ -263,7 +264,8 @@ export class ArchiveService {
             ) {
               throw new Error("所属 Project 正在清理，不能恢复该聊天");
             }
-            const record = await this.chats.setArchivedAt(target.id, undefined);
+            const record = await this.chats.setArchivedAt(target.id, undefined,expectedChats?.[target.id]);
+            if(!current())throw new Error('ARCHIVE_RESTORE_SCOPE_CHANGED');
             this.chatsService.publishEffectiveArchive(
               record,
               Boolean(

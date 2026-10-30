@@ -10,7 +10,7 @@ import process from "node:process";
 import { resolveOutputRoot } from "../assembly/output-root.mjs";
 const output = resolveOutputRoot(process.argv.slice(2));
 const PRODUCT_BRIDGES = /exposeInMainWorld\("(?:agent|chats|settings|app|presence|systemDockSettings|cloud|usage)"/;
-const AUXILIARY = { "system-dock": "systemDock", "desktop-dialog": "desktopDialog" };
+const AUXILIARY = { "system-dock": "systemDock", "desktop-dialog": "desktopDialog", 'system-dock-detail':'__bottegaDock' };
 for (const name of ["index", ...Object.keys(AUXILIARY)]) {
   const source = readFileSync(resolve(import.meta.dirname, `../../${output}/preload/${name}.js`), "utf8");
   for (const [, dependency] of source.matchAll(/require\(["']([^"']+)["']\)/g)) {

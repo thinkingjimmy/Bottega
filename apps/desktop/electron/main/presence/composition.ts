@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical turns, retained activity receipts, Chat events, coordinator preparations, update state, product windows, and trusted IPC.
- * [OUTPUT]: Provides cross-platform background presence, independent menu bar IPC, readonly Dock task publication and validated task destinations, a shared native recovery menu (with the optional Dock submenu and refresh hook), the main-window destination sender, and main-authorized unread receipts.
+ * [OUTPUT]: Provides cross-platform background presence, independent menu bar IPC, readonly Dock tasks, guarded destinations across Main readiness waits, a shared native recovery menu and main-authorized unread receipts.
  * [POS]: Presence composition beneath the desktop root; auxiliary renderers never receive product capabilities.
  */
 
@@ -34,17 +34,21 @@ export function createPresenceRuntime(ports: { mainDirectory: string; settings: 
   const resourcesPath = app.isPackaged ? process.resourcesPath : join(ports.mainDirectory, "../../resources");
   const rendererUrl = devRendererUrl(app.isPackaged) ?? pathToFileURL(join(ports.mainDirectory, "../renderer/index.html")).href;
   const projection = new ActivityProjection({ turns, activity, chats: ports.chats, pending: () => ports.coordinator.pendingStopOperations(), onPendingChanged: (listener) => ports.coordinator.onPendingChanged(listener) });
-  const send = async (command: SurfaceMigrationCommand) => {
-    const main = await ports.retention.ensureMain(); main.window.webContents.send(WINDOW_SURFACES_CHANNEL.command, command); ports.retention.open();
+  const send = async (command: SurfaceMigrationCommand, current:()=>boolean=()=>true) => {
+    if(!current())throw new Error('DESTINATION_UNAVAILABLE');
+    const main = await ports.retention.ensureMain();
+    if(!current())throw new Error('DESTINATION_UNAVAILABLE');
+    main.window.webContents.send(WINDOW_SURFACES_CHANNEL.command, command); ports.retention.open();
   };
-  const openTask = async (raw: TaskReference) => {
+  const openTask = async (raw: TaskReference, current:()=>boolean=()=>true) => {
+    if(!current())throw new Error('TASK_UNAVAILABLE');
     if (!raw || typeof raw.chatId !== "string" || typeof raw.incarnationId !== "string" || raw.chatId.length > 128 || raw.incarnationId.length > 128) throw new Error("TASK_REFERENCE_INVALID");
     const chat = ports.chats.store.getChatRef(raw.chatId);
     if (!chat || chat.incarnationId !== raw.incarnationId) throw new Error("TASK_UNAVAILABLE");
     const ownerId = surfaceWindowController.residence.get(chatSurface(chat.id, chat.incarnationId)).windowId;
     const owner = ownerId ? windowRegistry.get(ownerId) : undefined;
-    if (owner?.role === "app-window" && windowRegistry.focus(owner.windowId)) return;
-    await send({ type: "navigate", route: `/chat/${encodeURIComponent(chat.id)}` });
+    if (owner?.role === "app-window" && current() && windowRegistry.focus(owner.windowId)) return;
+    await send({ type: "navigate", route: `/chat/${encodeURIComponent(chat.id)}` },()=>current()&&ports.chats.store.getChatRef(raw.chatId)?.incarnationId===raw.incarnationId);
   };
   const tray = new PresenceTray({ resources: resourcesPath, quitting: ports.quitting, locale: ports.locale, activities: () => projection.snapshot(),
     update: () => ports.update.snapshot(), open: () => ports.retention.open(), pending: () => { void send({ type: "presence-destination", destination: "activity" }); },

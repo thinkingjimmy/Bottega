@@ -1,9 +1,11 @@
 /**
  * [INPUT]: Owner Project Git resource operations, the PreparedCloudRuntime shape from prepare.ts, Electron account/lifecycle ports and preferred languages, shared locale negotiation, the bounded recovery timeline, isolated userData, original coordinator/control owners, bounded connection-first shutdown and artifact custody/publication.
- * [OUTPUT]: Wires binding-fenced offline identity, a read-only operation-receipt lookup for the broker, startup/token admission, synchronization with library-confirmed remote readiness independent of historical backlog, bidirectional Chat read acknowledgements, scoped artifact transfers, sleep/quit presence (resume is refreshed by the application lifecycle), continuation, remote IPC and the `attachAccountConfig(store)` Dock-layout sync seam onto an already prepared runtime, with verified owner/account record resource ports, Agent-configuration sync, the Workflow projection outbox and the resource-command executor attached alongside, behind one shared Memory reconnect barrier.
+ * [OUTPUT]: Wires binding-fenced offline identity, a read-only operation-receipt lookup for the broker, startup/token admission, synchronization with library-confirmed remote readiness independent of historical backlog, bidirectional Chat read acknowledgements, scoped artifact transfers, sleep/quit presence (resume is refreshed by the application lifecycle), continuation, remote IPC and the `attachAccountConfig(store)` Dock-layout sync seam onto an already prepared runtime, with deferred immutable Widget package delivery and verified owner/account record resource ports, Agent-configuration sync, the Workflow projection outbox and the resource-command executor attached alongside, behind one shared Memory reconnect barrier.
  * Native mirror Artifact commands retain original execution-owner identity and durable encrypted request recovery. Terminal shutdown reports offline within two seconds and cancels the connection before draining network consumers.
  * [POS]: Heavy half of the cloud composition, dynamically loaded and never reached from prepare.ts; stable builds exclude the implementation and SDK.
  */
+import type { WidgetCloudPort } from "../widgets/ports";
+import { accountScopeAdmission } from "../sync/account-config/admission";
 import { projectResourcePort } from "../remote/resources/projects";
 import { recordResourcePort } from "../remote/resources/records";
 import { MemoryControlBarrier } from "../remote/memory/runtime";
@@ -283,13 +285,24 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
     return transport.query(name, { ...protocolHeader(config), expectedUserId: current.userId,
       encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint }, operationId });
   };
+  let widgetConnection:WidgetCloudPort|null=null,widgetLoading:Promise<WidgetCloudPort>|null=null,widgetsClosed=false;
+  const loadWidgets=()=>widgetLoading??=(async()=>{
+    const {createWidgetCloudConnection}=await import('../widgets/connection');
+    if(widgetsClosed)throw new Error('WIDGET_DELIVERY_CLOSED');
+    return widgetConnection=createWidgetCloudConnection({config,userData,deviceId,binding,account:service,crypto:contentCrypto,transport,
+      own:activity=>scope.own(activity),subscribe:listener=>service.subscribe(listener),files:userId=>desktopFileTransport({config,userId,transport,crypto:contentCrypto,token:()=>http.getToken()})});
+  })();
+  const widgetPackages:WidgetCloudPort={available:()=>!widgetsClosed&&accountScopeAdmission({config,deviceId,binding,account:service,crypto:contentCrypto}).kind==='admitted',
+    catalog:async(...args)=>(await loadWidgets()).catalog(...args),watchCatalog:(changed,failed)=>{let stopped=false,release=()=>{};void loadWidgets().then(owner=>{if(!stopped)release=owner.watchCatalog(changed,failed);}).catch(error=>{if(!stopped)failed(error);});return()=>{stopped=true;release();};},
+    publish:async(...args)=>(await loadWidgets()).publish(...args),review:async(...args)=>(await loadWidgets()).review(...args),download:async(...args)=>(await loadWidgets()).download(...args),
+    retire:async(...args)=>(await loadWidgets()).retire(...args),close:async()=>{widgetsClosed=true;await widgetLoading?.catch(()=>null);await widgetConnection?.close();}};
   const pluginSurfaces = new NativePluginSurfaces({config,crypto:contentCrypto,transport,
     confirmedHead:chatId=>chatReader!.head(chatId),ownerDevice:id=>{const value=service.computers();return value.kind==="computers"&&value.computers.some(computer=>computer.installations.some(device=>device.deviceId===id&&device.state==="active"));},subscribe:listener=>service.subscribe(listener),
     own:activity=>scope.own(activity),files:userId=>desktopFileTransport({config,userId,transport,crypto:contentCrypto,token:()=>http.getToken()}),current:()=>{
       const current=binding.snapshot(),account=service.snapshot();
       if(!current||current.phase!=="active"||current.paused||account.status!=="ready"||account.profile?.userId!==current.userId)throw new Error("PLUGIN_ACCOUNT_UNAVAILABLE");
     }});
-  return { openPluginSurface:pluginSurfaces.open.bind(pluginSurfaces),assertPluginDraft:pluginSurfaces.assertDraft.bind(pluginSurfaces),
+  return { widgetPackages, openPluginSurface:pluginSurfaces.open.bind(pluginSurfaces),assertPluginDraft:pluginSurfaces.assertDraft.bind(pluginSurfaces),
     subscribeIdentity:(listener:()=>void)=>service.subscribe(listener),attachAccountConfig, receipt, register: (window: BrowserWindow, rendererUrl: string) => {
     registerCloudAccount(service, window, rendererUrl, () => resolveAppLocale(ui.remote.settings.get().language, app.getPreferredSystemLanguages()));
     registerCloudChat(chatReader!, execution, window, rendererUrl); registerCloudBaseReview(baseReview!, window, rendererUrl);
@@ -300,7 +313,7 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
     /** Read-only: who is signed in on this computer (the verified operator of a workflow confirmation). */
     accountIdentity: () => service.connectionIdentity(), close: async () => {
       await closeCloudConnection({ reportOffline: reportQuit, disconnect: () => { transport.stop(); service.close(); }, drain: async () => {
-        await previews.close(); await accountConfig?.close(); await agentConfigs?.close(); await workflowProjection.close();
+        await widgetPackages.close(); await previews.close(); await accountConfig?.close(); await agentConfigs?.close(); await workflowProjection.close();
         await resources.close(); await memoryBarrier.close(); await remoteActivity?.close(); await readState?.close();
       } });
       powerMonitor.removeListener("suspend", sleep); app.removeListener("before-quit", quit); if (promotionTimer) clearInterval(promotionTimer); inbox.close(); unsubscribeSync(); await encryption.close(); await remote.close(); avatars.close(); await avatars.settled(); await cloudApps?.close(); await execution.close(); await chatReader?.close(); await baseImages.close(); baseReview?.close(); await service.login.drain(); await vault.drain(); await sync.close(); await recorder.close(); await prepared.homeCapture?.close(); await scope.close(); await recoveringPromotion; await binding.close(); void recoveryDiagnostics.flush(); } };

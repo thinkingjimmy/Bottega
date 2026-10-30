@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on one immutable source freeze receipt, one validated compiler runtime, canonical build receipt bytes, the apps/support digest/directory primitives, and a generation-owned final root
- * [OUTPUT]: Provides identity-distinct App/plugin compiled-v3 source/runtime/metadata sealing in one read per file and four-digest startup verification that hashes each subtree once
+ * [OUTPUT]: Provides identity-distinct App/plugin compiled-v3 sealing, four-digest verification and exact retained-source/runtime byte parity for disk or decoded packages
  * [POS]: apps/gui-build/pipeline content-layout-v3 custody boundary; Gateway receives only runtime/gui while source and receipt remain unreachable metadata
  */
 
@@ -70,12 +70,18 @@ export async function verifyCompiledV3Artifact(
   const receipt = parseReceipt(await readFile(receiptPath, "utf8"));
   const sourceFiles = await walk(sourceRoot);
   const runtimeFiles = await walk(runtimeRoot);
-  /* runtime/gui 是 runtime 的子树：单独再走一遍等于把同一批字节重读重哈希。
-     递归遍历按目录逐层排序，所以过滤保序，与直接遍历子树同形。 */
+  const manifest = await readGuiBuildManifest(runtimeRoot);
+  return verifyCompiledV3Inventory({manifest,receipt,sourceFiles,runtimeFiles},expectedDigests);
+}
+
+/** The archive reader supplies facts computed from its exact decoded bytes. */
+export function verifyCompiledV3Inventory(input:{manifest:GuiBuildManifest;receipt:AppGuiBuildReceipt;
+  sourceFiles:readonly{path:string;bytes:number;sha256:Sha256Digest}[];
+  runtimeFiles:readonly{path:string;bytes:number;sha256:Sha256Digest}[]},expectedDigests?:CompiledV3DigestSet){
+  const {manifest,receipt,sourceFiles,runtimeFiles}=input;
   const runtimeGuiFiles = runtimeFiles
     .filter((file) => file.path.startsWith("gui/"))
     .map((file) => ({ ...file, path: file.path.slice("gui/".length) }));
-  const manifest = await readGuiBuildManifest(runtimeRoot);
   const actual: CompiledV3DigestSet = {
     manifestDigest: canonicalDigest(manifest),
     sourcePackageDigest: sourceDigest(sourceFiles),
@@ -93,8 +99,16 @@ export async function verifyCompiledV3Artifact(
   ) {
     throw invalid("compiled-v3 receipt does not describe the sealed source/runtime bytes");
   }
+  const retainedSource = sourceFiles.filter((file) => file.path !== "data/base.json" && !file.path.startsWith("gui/"));
+  const runtimeByPath = new Map(runtimeFiles.map((file) => [file.path, file]));
+  for (const source of retainedSource) {
+    const runtime = runtimeByPath.get(source.path);
+    if (!runtime || runtime.bytes !== source.bytes || runtime.sha256 !== source.sha256) {
+      throw invalid(`compiled-v3 retained source/runtime projection differs: ${source.path}`);
+    }
+  }
   const allowedRuntime = new Set([
-    ...sourceFiles.filter((file) => file.path !== "data/base.json" && !file.path.startsWith("gui/")).map((file) => file.path),
+    ...retainedSource.map((file) => file.path),
     ...runtimeGuiFiles.map((file) => `gui/${file.path}`),
   ]);
   if (runtimeFiles.some((file) => !allowedRuntime.has(file.path))) {

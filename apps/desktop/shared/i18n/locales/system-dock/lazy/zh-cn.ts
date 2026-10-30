@@ -1,12 +1,43 @@
 /**
  * [INPUT]: None; plain zh-cn copy.
- * [OUTPUT]: Provides systemDockLazyZhCN, the system-dock copy that no first-screen surface reads, including display placement, three-edge readings, Alpha admission and signed replacement availability and unresolved recovery status and native App Quit; includes sync decisions, grouped Downloads, previews and named Finder actions.
+ * [OUTPUT]: Provides systemDockLazyZhCN, localized deferred Dock copy including API consent, credential controls and structured request failures.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../zh-cn.ts.
  */
 
 import type { systemDockLazyEn } from "./en";
 
 export const systemDockLazyZhCN: typeof systemDockLazyEn = {
+  widgets: {
+    api: {"connectionRouting":"按系统代理连接。代理模式通过 Cloudflare 加密解析服务域名。","title":"外部 API","consent":"允许在这台电脑上执行此请求。","parameters":"将发送的参数","noParameters":"没有额外参数。","apiKey":"API 密钥","bearerToken":"Bearer 令牌","set":"已设置","unset":"未设置","save":"保存连接","saved":"连接已保存。","test":"测试连接","tested":"连接测试已完成。","revoke":"撤销访问权限","clear":"清除已保存密钥","chooseCopy":"选择已保存密钥","copy":"复制已保存密钥","copyHint":"这会创建独立副本。密钥更改后，请分别更新每个副本。","failed":"无法更新连接。你的选择已保留。","loadFailed":"无法检查此请求。请在应用前重试。","retry":"重试","invalid":"请确认每项 API 请求，并设置所需凭据。","httpStatus":"HTTP {{status}}。","retryAt":"可在 {{time}} 后重试。","attribution":"来源：{{name}}","yes":"是","no":"否","failures":{"network":"无法连接。请检查网络后重试。","timeout":"请求超时。可在准备好后重试。","proxy-required":"此连接需要受支持的网络路径。","http":"服务未能完成此请求。","mapping":"响应不符合声明的数据格式。","budget":"请求或响应超出允许限制。","authorization":"请检查已保存密钥和请求权限。","unknown-result":"请求可能已发送。请在重试前检查结果。"}},
+    definitionDelete: {"title": "从账号删除 {{name}}", "hint": "停止此 Widget，并移除相关 Dock 实例。其他电脑收到删除记录后停止运行。保留源 Project 和创作 Chat。", "confirm": "删除个人 Widget", "removing": "正在删除 Widget…", "removed": "已从账号删除。", "pending": "已停止此 Mac 上的访问，清理或账号同步尚未完成。请重试此操作。"},
+    uninstall: {"title": "从此 Mac 卸载 {{name}}", "hint": "移除此电脑上的运行版本和数据许可。保留 Dock 位置和创作 Chat。再次安装需要重新确认。", "confirm": "从此 Mac 卸载", "removing": "正在卸载 Widget…", "removed": "已从此 Mac 卸载。", "pending": "已停止本机访问，清理尚未完成。请重试此操作。"},
+    install: {"repair":"修复安装","preparing":"此版本仍在为此 Mac 准备交付。","emptyHint":"在此 Mac 上安装此版本。完成实例配置后再加入 Dock。","accountAvailable":"可从你的账号安装","reviewSource":"在创作 Chat 中确认","title": "在此 Mac 安装 {{name}}", "hint": "为以下实例确认此版本。各实例保留独立的设置和数据访问权限。", "instances": "受影响的实例", "oldKept":"确认前保留当前设置。", "dataHint": "此版本需要以下数据。请在各实例设置中单独确认本机 Base 访问。", "downloading": "正在下载 Widget…", "verifying": "正在校验 Widget…", "registering": "正在登记 Widget…", "bytes": "已完成 {{done}} / {{total}} 字节", "failed": "安装未完成。当前版本保留，可重试原操作。", "installed": "已在此 Mac 安装。", "needsSetup": "部分实例仍需设置或确认本机数据访问。", "configure": "配置 {{name}}", "done": "完成", "update": "确认更新", "confirm": "安装 Widget", "reviewUpdate": "查看更新"},
+    delivery: {"preparing": "正在为其他电脑准备", "transferring": "正在发送到你的账号…", "pending": "等待发送到其他电脑", "ready": "已可在你的其他电脑安装", "failed": "此版本发送失败。本机仍可使用。", "abandoned": "此版本已停止共享", "abandon": "停止共享此版本"},
+    previewDetails: "预览详情", previewTitle: "预览 Widget", previewReal: "真实数据", previewUseReal: "使用真实数据", previewStartReal: "开始真实预览", previewStarting: "正在启动预览…", previewClose: "关闭预览", previewHint: "检查摘要和详情。此预览不会修改 Dock 中的 Widget。", previewConsentHint: "访问许可仅用于此次预览。保存时需要单独确认。", previewExecution: "在 {{computer}} 上运行。", previewAction: "预览动作只展示执行说明。", previewRefresh: "刷新真实数据", previewSuspended: "预览已隐藏或受保护。可见后恢复读取。", previewEnded: "此次预览已结束。请关闭后打开当前版本。", previewFailed: "无法打开预览。请重试。", previewTarget: "预览实例",
+    previewTheme: "预览主题", previewLight: "浅色", previewDark: "深色",
+    review: {"title":"检查 Widget 更新","hint":"逐个检查需要新配置或授权的实例。这些选择只在应用更新后生效。","configuration":"需要新配置","authorization":"确认此实例的访问范围","reviewed":"已为本次更新确认","ready":"可以保留当前配置","save":"保存到本次更新"},
+    actions: {"openBase":"打开 Base：{{name}}","openTask":"打开任务：{{name}}","openUsage":"打开用量：{{name}}","failed":"无法完成此操作。请重试。"},
+    base: {"groups":"分组记录","history":"历史记录","range":"日期范围：{{from}} 至 {{to}}（不含结束日期）","hint":"为当前实例选择 Base、字段和筛选条件。","search":"搜索 Base","loadFailed":"无法加载 Base，请重试。","narrowSearch":"请按名称搜索更多 Base。","source":"Base {{index}}","base":"Base","chooseBase":"选择 Base","unavailable":"Base 不可用","fieldFor":"{{field}} 对应的字段","chooseField":"选择字段","readFields":"读取字段","readField":"读取 {{field}}","filters":"筛选条件","filterField":"筛选字段","condition":"条件","equals":"等于","notEquals":"不等于","lessThan":"小于","greaterThan":"大于","onDay":"在指定日期","value":"值","timeZone":"时区","emptyValue":"空值","checked":"已勾选","unchecked":"未勾选","addFilter":"添加条件","removeFilter":"移除条件","consent":"允许在当前电脑上只读访问这些 Base 和字段。","invalid":"请选择 Base 和字段，检查筛选条件，并确认只读访问。","revoke":"撤销 Base 访问","records":"所选记录"},
+    detailStopped: "Widget 详情已停止。请重试或编辑 Widget。",
+    copyName: "{{name}}（副本）",
+    versions: "版本", versionTitle: "Widget 版本", versionHint: "预览已保存的版本，确认后再应用。", currentVersion: "当前版本", previewVersion: "预览", versionSaved: "版本已保存。你可以稍后将其加入 Dock。",
+    customize: "自定义", copyCustomize: "复制并自定义", customName: "{{name}}（自定义）", replaceWithCopy: "应用并替换为副本", preserveInstance: "保留当前实例名称和位置，原版仍可添加。", usageSource: "用量来源", allAgents: "全部 Agent", otherSources: "详情中还有 {{count}} 项",
+    applyInstance: "应用", continue: "继续", noSavedVersion: "请先保存版本，再添加此 Widget。", instancePending: "已保留你的更改。重新启动 Bottega 后完成。", pause: "暂停 Widget", resume: "恢复 Widget", remove: "从 Dock 移除",
+    fields: {"groupCount":"分组数","time": "时间", "date": "日期", "remainingDays": "剩余天数", "remainingHours": "剩余小时", "remainingSeconds": "剩余秒数", "remaining": "剩余额度", "maximum": "最大额度", "resetsAt": "重置时间", "tokens": "Token", "costUsd": "估算费用", "unpricedTokens": "未定价 Token", "running": "运行中", "waiting": "等待处理", "total": "总计", "count": "数量", "sum": "合计", "numericCount": "数字项数量"},
+    sources: {"api": "外部 API", "clock": "时钟", "limits": "AI 额度", "activity": "AI 用量", "tasks": "任务", "base": "Base"},
+    deadline: "目标日期：{{date}}",
+    states: {"needs-installation":"待安装","package-preparing":"版本准备中","installing":"安装中…","ready": "已就绪", "loading": "正在加载…", "no-data": "暂无数据", "partial": "部分数据", "stale": "数据已过期", "needs-setup": "需要配置", "needs-authorization": "需要授权", "definition-missing": "Widget 不可用", "paused": "已暂停", "failed": "无法加载数据"},
+    configure: "配置 Widget", configurationHint: "检查当前实例，并确认它将使用的数据。", dateZone: "时区：{{zone}}", invalidSettings: "请检查标出的设置。", executionHere: "此 Widget 在当前电脑上运行。",
+    saveAndAdd: "保存并加入 Dock", applyOne: "应用到 1 个 Widget", applyMany: "应用到 {{count}} 个 Widget", saveVersion: "保存版本", applying: "正在应用…",
+    applyFailed: "未能完成修改。已保留你的选择，请重试。", commitPending: "Widget 版本已保存，Dock 修改尚待完成。", conflict: "版本或 Dock 布局已变化。请重新检查预览后应用。", applied: "已在此电脑应用。其他电脑需单独确认更新。",
+    sizeSmall: "小", sizeMedium: "中", sizeLarge: "大",
+    name: "名称", invalidName: "名称须为 1–80 个字符，不能包含换行或控制字符。",
+    title: "Widgets", add: "添加 Widget", new: "新建 Widget", untitled: "未命名 Widget", edit: "编辑功能", empty: "创建 Widget，将需要的信息留在 Dock 上。",
+    search: "搜索 Widget", failed: "无法打开 Widget。已保留你的工作，请重试。", creating: "正在创建…", describe: "描述你想查看的信息。检查预览后，再将 Widget 加入 Dock。",
+    build: "构建预览", building: "正在构建…", example: "示例数据", draft: "草稿", candidate: "预览已就绪", buildFailed: "无法构建预览。请继续修改后重试。",
+    settings: "Widget 设置", impact: "此电脑上的 {{count}} 个实例", noMatches: "没有匹配的 Widget", sourceUnavailable: "原创作 Chat 暂不可用。已保留 Widget 源码。",
+    addExisting: "选择 Widget", cancel: "取消", added: "已加入 Dock", addFailed: "无法添加 Widget。已保留你的选择。",
+  },
   placement: {
     panelSpaceHint: "没有足够空间打开面板。请选择其他显示器或缩小 Dock。",
     title: "显示位置",

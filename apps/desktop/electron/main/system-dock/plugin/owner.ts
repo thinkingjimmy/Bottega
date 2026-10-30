@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on PluginCatalog's builtin owner port, DockService/DockSetup and the local preference validator.
+ * [INPUT]: Depends on PluginCatalog's builtin owner port, DockService, the asynchronous Setup disable/preference seam and local preference validation.
  * [OUTPUT]: Provides dockPluginOwner and attachDockPlugin: single-owner switch/settings, health, effects and change notifications.
  * [POS]: Dock's plugin adapter; setup and disable retain the original lifecycle authority and stores.
  */
@@ -11,7 +11,7 @@ import type { DockSetup } from "../setup";
 import { DOCK_FIELDS, DOCK_PLUGIN, dockText } from "./descriptor";
 import { dockEffects, dockHealth } from "./health";
 
-export function dockPluginOwner(service: DockService, setup: DockSetup): BuiltinOwner {
+export function dockPluginOwner(service: DockService, setup: Pick<DockSetup,"disable"|"setPreference">): BuiltinOwner {
   const loaded = () => { if (!service.initialized) throw new Error("DOCK_NOT_READY"); };
   return {
     descriptor: DOCK_PLUGIN,
@@ -43,7 +43,7 @@ export function dockPluginOwner(service: DockService, setup: DockSetup): Builtin
     },
   };
 }
-export function attachDockPlugin(catalog: PluginCatalog, service: DockService, setup: DockSetup) {
+export function attachDockPlugin(catalog: PluginCatalog, service: DockService, setup: Pick<DockSetup,"disable"|"setPreference">) {
   const owner = dockPluginOwner(service, setup);
   const remove = catalog.addOwnerSource(() => [owner], { reservedIds: ["dock"] });
   let previous = "";

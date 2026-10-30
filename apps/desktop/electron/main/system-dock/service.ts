@@ -10,7 +10,7 @@ import { homedir, release } from "node:os";
 import { join } from "node:path";
 import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import type { AgentBackendId } from "../../../shared/ipc/agent/agent-ipc";
-import type { DockBarItem, DockBarSnapshot, DockSettingsSnapshot, DockSyncStatus, PanelSnapshot } from "../../../shared/system-dock/ipc";
+import type { DockBarItem, DockBarSnapshot, DockSettingsSnapshot, DockSyncStatus, PanelSnapshot,WidgetFace } from "../../../shared/system-dock/ipc";
 import { UNINITIALIZED_LAYOUT, type DockItem, type DockWidget } from "../../../shared/system-dock/layout";
 import { DEFAULT_DOCK_LOCAL_STATE, DOCK_CONSENT_VERSION, type DockMode, type DockDisplaySelection, type DockDisplayPreference } from "../../../shared/system-dock/local-state";
 import type { DockPlacementStatus, DockPresentation } from "../../../shared/system-dock/displays";
@@ -37,6 +37,7 @@ import { createDockSurface, DockIpc, dockEntryUrl, type DockRole } from "./windo
 import { barGroups, DOCK_METRICS } from "../../../shared/system-dock/metrics";
 
 import { taskFace, type DockTasksPort } from "./widgets/tasks";
+import type {DockCustomWidgetsPort} from './widgets/custom/ports';
 
 export type BottegaAppsPort = { list(): { id: string; label: string; appIcon?: string | null; ready: boolean }[]; fact(appId: string | null): BottegaAppFact; open(appId: string): Promise<void> };
 export type SyncHandle = { status(): DockSyncStatus; onChanged(listener: () => void): () => void; resolveConflict(choice: import("../../../shared/system-dock/ipc").ConflictChoice): Promise<unknown>; wake(): void };
@@ -55,6 +56,10 @@ export type DockServicePorts = {
   limits: LimitsPort | null;
   history: HistoryPort | null;
   tasks?: DockTasksPort;
+  custom?:DockCustomWidgetsPort;
+  prepareCustom?():Promise<void>;
+  widgetEntry?(entry:import('../../../shared/system-dock/widgets/management').DockWidgetEntry):Promise<void>;
+  widgetDetail?:import('./widgets/detail/ports').DockWidgetDetailPort;
   /** Which account each Agent CLI is signed in to (an opaque fingerprint, null when unknown); read-only. */
   accounts?: AgentAccounts;
   apps: BottegaAppsPort;
@@ -180,6 +185,7 @@ export class DockService {
         this.native?.release();
       }
     } else this.unavailableRecovery = await this.files.exists();
+    if(!this.quitRestore&&this.ports.prepareCustom)await this.ports.prepareCustom().catch(cause=>console.warn('[system-dock] Widget preparation failed',cause));
     this.refreshAccessibility();
     if (this.quitRestore) return;
     this.ready = true;
@@ -305,7 +311,7 @@ export class DockService {
     if (this.barRetry) this.clock.clearTimeout(this.barRetry);
     this.barRetry = null; this.barLoad = null; this.barFailed = false; this.barReady = false;
     this.cancelTransition(); this.invalidateInteractions();
-    this.usage.setVisible("dock-bar", []); this.usage.setVisible("dock-panel", []);
+    this.setWidgetDemand("dock-bar", []); this.setWidgetDemand("dock-panel", []);
     this.trash?.demand("bar", false); this.trash?.demand("panel", false);
     this.downloads.setVisible(false);
     if (this.runtime.shortcut) { globalShortcut.unregister(this.runtime.shortcut); this.runtime.shortcut = null; }
@@ -371,7 +377,7 @@ export class DockService {
   /** The panel's Usage consumer follows what it shows: the draft while editing, the applied Widget otherwise. */
   refreshPanelDemand() {
     const current = this.panel.current();
-    this.usage.setVisible("dock-panel", panelDemand(current.state === "visible" ? current.request?.view ?? null : null, (id) => this.layoutItem(id), this.drafts));
+    this.setWidgetDemand("dock-panel", panelDemand(current.state === "visible" ? current.request?.view ?? null : null, (id) => this.layoutItem(id), this.drafts));
   }
   /* ============================================================ windows */
   /** A coexistence renderer retry never changes replacement intent or system preferences. */
@@ -463,7 +469,8 @@ export class DockService {
     this.downloads.setVisible(detail?.kind === "system" && detail.entry === "system.downloads");
     this.trash?.demand("panel", detail?.kind === "system" && detail.entry === "system.trash");
     if (detail?.kind === "system" && detail.entry === "system.trash") void this.trash?.preflight(false);
-    this.usage.setVisible("dock-panel", panelDemand(view, (id) => this.layoutItem(id), this.drafts));
+    this.setWidgetDemand("dock-panel", panelDemand(view, (id) => this.layoutItem(id), this.drafts));
+    this.ports.widgetDetail?.presented(this.panelWindow,detail?.kind==='widget'&&detail.widget.type==='custom'?detail.id:null);
     if (!request && this.search) this.search = "";
     /* A panel that closed (Esc, focus loss) takes its hover with it; a strip revealed by the keyboard or a highlight
        otherwise stayed up until the pointer happened to cross it (F-19). */
@@ -568,7 +575,7 @@ export class DockService {
       trash: this.trash?.face() ?? "unknown",
       widgetFace: (item: Extract<DockItem, { kind: "widget" }>) => {
         const widget = item.widget;
-        const face = widget.type === "builtin.tasks" ? taskFace(this.ports.tasks)
+        const face:WidgetFace = widget.type==='custom'?(this.ports.custom?.face(item,state.edge)??{type:'custom',size:widget.size,state:'definition-missing',summary:null,description:null,readings:{}}):widget.type === "builtin.tasks" ? taskFace(this.ports.tasks)
           : widget.type === "builtin.ai-limits" ? this.usage.limitsFace(widget) : this.usage.activityFace(widget);
         return state.privacyMask ? maskFace(face) : face;
       },
@@ -586,6 +593,7 @@ export class DockService {
   }
   isEmpty(): boolean { return isDockEmpty(this.ports.config.layout(), this.facts()); }
   allItems(): DockBarItem[] { const layout = this.ports.config.layout(); const facts = this.facts(); return barGroups(projectPinned(layout, facts), projectRunning(layout, facts)).flatMap((group) => group.items); }
+  setWidgetDemand(surface:'dock-bar'|'dock-panel',widgets:readonly{itemId:string;widget:DockWidget}[]){this.usage.setVisible(surface,widgets);this.ports.custom?.setVisible(surface,widgets);}
   private refreshAccessibility() {
     if (process.platform !== "darwin") return;
     try { this.accessibility = systemPreferences.isTrustedAccessibilityClient(false) ? "granted" : "not-granted"; } catch { this.accessibility = "unsupported"; }
@@ -752,7 +760,7 @@ export class DockService {
     const visibleWidgets = pinned.slice(0, placement?.fit.pinned ?? 0).flatMap((item) => {
       const source = this.layoutItem(item.id); return source?.kind === "widget" ? [{ itemId: source.id, widget: source.widget }] : [];
     });
-    this.usage.setVisible("dock-bar", showing ? visibleWidgets : []);
+    this.setWidgetDemand("dock-bar", showing ? visibleWidgets : []);
     this.trash?.demand("bar", showing && layout.items.some((item) => item.kind === "system" && item.entry === "system.trash"));
     if (this.panel.visible) { this.panel.reposition(); this.ipc?.send("panel", this.panelSnapshot()); }
     const settings = this.settingsSnapshot();
@@ -785,4 +793,5 @@ export class DockService {
       sync: this.sync?.status() ?? { state: "local-only", conflict: null }, accessibility: this.accessibility, automation: this.trash?.snapshot().automation ?? "unavailable" };
   }
   panelTargetItem(): string | null { const current = this.panel.current(); return current.state === "visible" && current.request?.view.kind === "detail" ? current.request.view.itemId : null; }
+  panelContainer(){return this.panelWindow;}
 }

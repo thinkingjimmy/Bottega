@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Validated runtime generations, candidate plugin manifests and the encrypted remote catalog schema.
- * [OUTPUT]: Bounded catalog projection and whole-directory admission with reserved diagnostic bytes and the official Sketch slot.
+ * [OUTPUT]: Bounded composer catalog projection and admission with reserved diagnostic bytes; Dock definitions stay in their own catalog.
  * [POS]: Shared projection/admission leaf; native history retains full diagnostics while every admitted catalog can be sealed.
  */
 import {canonicalJson} from '@ai-chat/cloud-protocol/encryption';
@@ -20,7 +20,7 @@ function diagnostic(error:string|null):string|null{
 }
 export function pluginCatalog(records:readonly PluginRuntimeRecord[],seedError:string):RemotePluginCatalog{
   const entries:RemotePluginCatalog=records.filter(isCatalogPlugin).flatMap(record=>{
-    const current=record.generations.find(generation=>generation.generationId===record.activeGenerationId);if(!current)return [];
+    const current=record.generations.find(generation=>generation.generationId===record.activeGenerationId);if(!current||'dock' in current.manifest)return [];
     return [{id:record.pluginId,name:current.manifest.name,enabled:record.enabled,error:diagnostic(record.error??(current.available?null:'PLUGIN_GENERATION_UNAVAILABLE')),
       generationId:record.activeGenerationId,composer:current.manifest.composer,sourceFormat:current.manifest.sourceFormat}];
   });
@@ -29,6 +29,7 @@ export function pluginCatalog(records:readonly PluginRuntimeRecord[],seedError:s
   return entries;
 }
 export function admitPluginCatalog(catalog:RemotePluginCatalog,candidate:PluginGuiManifest):void{
+  if('dock' in candidate)return;
   const entries=catalog.filter(entry=>entry.id!==candidate.id);
   entries.push({id:candidate.id,name:candidate.name,enabled:false,error:null,generationId:'plugin-'+'0'.repeat(36),composer:candidate.composer,sourceFormat:candidate.sourceFormat});
   admitCatalogEntries(entries);

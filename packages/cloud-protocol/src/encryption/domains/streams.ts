@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Closed file, Home, turn and remote routing identities with ciphertext references.
- * [OUTPUT]: Stream bindings, pre-allocation Chat creation identity and immutable remote result linkage. Protocol 16 AAD admits only the closed take-queued and set-queue-paused kinds with null request IDs.
+ * [OUTPUT]: Stream bindings including source/package-bound Widget file ownership, pre-allocation Chat creation and immutable remote linkage. Protocol 16 AAD admits only the closed take-queued and set-queue-paused kinds with null request IDs.
  * [POS]: Authenticated transport boundaries; these fields never confer execution or ownership authority.
  */
 import { z } from "zod";
 import { MAX_CHUNKS } from "../limits";
 import { agent, digest, id, nullableId, version } from "./scalars";
-export const fileBindingSchema = z.object({ ownerKind: z.enum(["chat", "project", "base", "app", "home", "message", "skill", "plugin"]), ownerId: id,
+export const fileBindingSchema = z.object({ ownerKind: z.enum(["chat", "project", "base", "app", "home", "message", "skill", "plugin", "widget"]), ownerId: id,
   ownerGeneration: nullableId, manifestId: id, chunkIndex: version, chunkCount: version.positive().max(MAX_CHUNKS) }).strict().refine(value => value.chunkIndex < value.chunkCount);
 export const homeBindingSchema = z.object({ role: z.enum(["manifest", "page"]), incarnationId: id, snapshotId: id,
   throughSeq: version, expectedSnapshotId: nullableId, pageIndex: version.nullable(), pageCount: version.positive(), metadataCommitment: digest }).strict()

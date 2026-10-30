@@ -108,6 +108,10 @@ export function dockItemName(item: DockBarItem, t: DockT, mask: boolean, now: nu
   }
   if (face?.type === "builtin.tasks") states.push(tasksReading(face, t, mask));
   if (face?.type === "builtin.ai-activity") states.push(activityReading(face, t, mask).spoken);
+  if(face?.type==='custom'&&!mask){
+    if(face.description)states.push(face.description);if(face.updateAvailable)states.push(t('systemDock.widgets.install.oldKept'));
+    if(face.state!=='ready')states.push(t(`systemDock.widgets.states.${face.state}`));
+  }
   if (mask && face) states.push(t("systemDock.item.masked"));
   return states.length ? t("systemDock.item.nameWithState", { name: item.label, state: states.join(t("systemDock.item.stateSeparator")) }) : item.label;
 }

@@ -4,6 +4,16 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-10-30 — v0.2.11
+
+[Download 0.2.11](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.11) for macOS on Apple silicon (ARM64).
+
+- **Build your own Dock widgets.** Start a Widget from Dock settings, create it in its source Chat, preview a candidate, and approve adding it. Edit through the same Chat and choose when to apply a new version. Each instance keeps its own settings and data permissions.
+- **Choose the data it can read.** Grant access to specific Base data or declared read-only APIs. Configure API keys or Bearer credentials through the host. Credentials stay encrypted on this computer. Preview access and installed-instance access require separate consent.
+- **Keep details close.** Open standard or isolated custom details, refresh data, and use approved actions. Pause or remove an instance from Dock settings. Private package delivery carries immutable compiled files; receiving a package does not grant permission to run it or read local data.
+
+**Compatibility and limits.** This release uses protocol 22. Update connected desktop computers and reload Bottega Web after the coordinated service update. Earlier clients require an update for Cloud access. Existing content, sync passwords and account keys are retained; no data reset is required. Dock remains Alpha on macOS 27.x and Apple silicon. Physical two-Mac transfer, VoiceOver, physical lock/input/display checks and installed old-to-new upgrade acceptance remain separate. The Android test app remains a separate channel.
+
 ## 2026-10-26 — v0.2.10
 
 [Download 0.2.10](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.10) for macOS on Apple silicon (ARM64), or [open Bottega Web](https://app.getbottega.app).

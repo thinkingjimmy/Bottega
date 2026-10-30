@@ -83,7 +83,7 @@ export const TranscriptMessage = memo(function TranscriptMessage(props: Props) {
   const fork = useMemo(() => onFork && forkLabel ? { label: forkLabel, onClick: () => onFork(message) } : undefined, [onFork, forkLabel, message]);
   if (message.role === "notice") {
     const notice = message.notice;
-    if (notice.kind === "app-chat-ready") return null;
+    if (notice.kind === "app-chat-ready" || notice.kind === "plugin-chat-ready") return null;
     // A remote viewer reads a notice with a line of its own from its kind, in its language (U06-d); the stored line is the rest's fallback.
     const remote = props.remoteFailure ? remoteNoticeText(notice, locale, props.remoteFailure) : null;
     const text =

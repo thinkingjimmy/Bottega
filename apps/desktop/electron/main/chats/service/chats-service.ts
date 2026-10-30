@@ -59,6 +59,7 @@ import { ChatForkService } from "../fork/chat-fork-service";
 import type { ChatStorageFailure } from "../../../../shared/product/product-failure";
 import type { ChatsServiceOptions } from "./chats-service-options";
 import { createDormantAppChat, type DormantAppChatInput } from "../lifecycle/dormant-app-chat";
+import {createSourceChat,type SourceChatInput} from '../lifecycle/source/create';
 import {
   beginAdoptedContinuation,
   createAdoptedChat,
@@ -296,6 +297,12 @@ export class ChatsService {
       withProject: (projectId, task) => this.withProject(projectId, task),
       publish: (mutation) => this.events.emitMutation(mutation),
     }, input);
+  }
+  createPluginChat(input:SourceChatInput){
+    this.assertAdmission();return createSourceChat({store:this.store,homes:this.options.chatHomes,
+      withProject:(id,work)=>this.withProject(id,work),publish:mutation=>this.events.emitMutation(mutation),
+      assertProject:async id=>{if(this.options.isProjectArchived?.(id)||!await this.options.resolveProjectWorkspace?.(id))throw new Error('PROJECT_UNAVAILABLE');},
+    },input);
   }
   async createAdoptedChat(
     input: AdoptChatInput,

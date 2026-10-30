@@ -36,7 +36,7 @@ function PreviewStrip({ preview, selected }: { preview: DockSetupPreview; select
   const { t } = useAppTranslation();
   const apps = preview.candidates.filter((candidate) => selected.has(candidate.key)).map((candidate) => candidate.label);
   const fixed = preview.preview.items.flatMap((item) => item.kind === "system" ? [t(ENTRY_KEYS[item.entry])]
-    : item.kind === "widget" ? [t(ENTRY_KEYS[item.widget.type])] : []);
+    : item.kind === "widget" ? [item.widget.type==='custom'?(item.label??t('systemDock.widgets.title')):t(ENTRY_KEYS[item.widget.type])] : []);
   const labels = fixed[0] === t("systemDock.entry.finder") ? [fixed[0], ...apps, ...fixed.slice(1)] : [...apps, ...fixed];
   return <ol aria-label={t("systemDock.settings.previewLabel")} className="flex flex-wrap gap-1.5">
     {labels.map((label, index) => <li key={`${label}-${index}`} className="rounded-md bg-muted px-2 py-1 text-xs">{label}</li>)}

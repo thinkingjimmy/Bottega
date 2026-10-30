@@ -2,7 +2,7 @@
  * [INPUT]: Depends on Electron lifecycle, Node filesystem, installation-scoped device identity, on-demand English-plus-active-locale translation (shared and main-only native catalogs), and every main-owned service, including signed-update compatibility, scoped Extensions, Project cleanup/Tools, Agent policy, Chat continuation recovery, coordinator/custody, Apps, Artifact document commit/recovery, browser, local usage history, account quota service seeded from its durable last-known snapshot, presence lifecycle/composition and crash-aware main readiness, and the build-gated cloud account lifecycle with consent restoration, cross-Store cleanup and original-coordinator remote intake.
  * Artifact workspace/checkpoint ownership composes with the existing document journal and plugin lifecycle. App surface leases share the canonical effective-workspace resolver used by files and tools.
  * [OUTPUT]: Provides the desktop composition root with parallel pre-window store initialization, the two-phase Chat store open/adopt that spawns the SQLite worker ahead of custody recovery and adopts it alongside, early CLI-discovery warm-up feeding the persisted Agent runtime snapshot that seeds the window's startup snapshot, a post-window maintenance queue that also finishes a window-first folder mount and remounts the Bases its new Chat identities unblock, pre-Project App authority repair, the trust-gated signed candidate preflight, App Query snapshot wiring, scoped inventory and Project Tools wiring, Chat Home/SQLite continuation reconciliation, post-reconciliation external-history sync, the periodic chat-store maintenance gate, cleanup participants, recovery order, windows, and two-phase shutdown, background retention independent of menu bar visibility, shared quit authorization, and task status startup. Agent configuration inventory resolves live library Skills and scoped MCP servers; workflow defaults read Provider preferences.
- * Plugin Surface composition owns source authoring, sealed generations and delivery; Memory exposes its existing owners and remote pause port, and Dock retains its original owner and recovery lifecycle. Managed previews follow committed App conversation availability and drain before App disable returns.
+ * Plugin Surface composition owns source authoring, guarded original Chat restoration, sealed generations and delivery; Memory exposes its existing owners and remote pause port, and Dock retains its original owner and recovery lifecycle. Managed previews follow committed App conversation availability and drain before App disable returns.
  * Folder ownership shares cloud identity; terminal quit disconnects Cloud before preview drainage and reports live process/task facts and named unconfirmed drafts, cancellation restores editing, and failure dialogs load only when requested by startup/shutdown/runtime.
  * [POS]: The root lifecycle owner of the desktop main process; entry files own identity and the V8 compile cache before this module is imported
  */
@@ -246,8 +246,10 @@ if (!hasSingleInstanceLock) {
         .get()
         .disabledBuiltinTools.join("\0");
       let activeLocale = currentLocale();
+      let activeLibraryId=settingsStore.get().libraryId??null;
       settingsStore.onChanged(({ settings }) => {
         applyThemeSource(settings.theme);
+        const nextLibraryId=settings.libraryId??null;if(nextLibraryId!==activeLibraryId){activeLibraryId=nextLibraryId;pluginSurfaceIntegration()?.libraryChanged();}
         /* 语言改了才取新目录：注册后 runtime 会作废该语言的缓存实例，下一次
            translate() 自然升级。改语言本就要重开界面，这一次异步加载排在
            renderer 自己的目录切换后面，用户看不到中间态。 */
@@ -612,7 +614,12 @@ if (!hasSingleInstanceLock) {
           operator: () => ({ userId: cloudRuntime?.accountIdentity().profile?.userId ?? "local", deviceId: localDeviceId! }), locale: currentLocale } });
       previews = await (await import("./preview/session/composition")).createPreviewFeature({ userData, catalog: foundation.plugins, locale: currentLocale, current: (chatId, incarnationId, workspace) => { if (!appsService!.conversationEnabled(chatId, { committedOnly: true })) return false; const resolved = resolveEffectiveWorkspace({ kind: "conversation", conversationId: chatId }); return chatStore!.getIncarnationId(chatId) === incarnationId && resolved.kind === "ready" && resolved.workspace === workspace ? resolved.authorityIdentity + ":" + settingsStore!.get().allowCrossChatRead : false; } });
       releaseMemoryPlugin = installMemoryPlugin(foundation.plugins, { settings: settingsStore, settingsOwner: memorySettingsOwner!, service: memoryService!, runtimes: memoryRuntimes!, platformSupport });
-      await initializePluginSurfaceIntegration({userData,apps:appsService,chats:chatStore,projects:projectsService,catalog:foundation.plugins,deviceId:localDeviceId!,accountId:()=>cloudRuntime?.accountIdentity().profile?.userId??`local:${localDeviceId}`,
+      await initializePluginSurfaceIntegration({widgetCleanup:cloudPrepared?.widgetCleanup,userData,apps:appsService,chats:chatStore,projects:projectsService,catalog:foundation.plugins,deviceId:localDeviceId!,accountId:()=>{const identity=cloudRuntime?.accountIdentity();return identity?.profile&&!['signed-out','signing-out','revoked','deleted','deleting'].includes(identity.status)?identity.profile.userId:`local:${localDeviceId}`;},libraryId:()=>settingsStore!.get().libraryId,
+        createSourceChat:input=>chatsService!.createPluginChat(input),
+        restoreSourceChat:async(input,current)=>{
+          if(!current()||chatStore!.getIncarnationId(input.chatId)!==input.incarnationId||chatStore!.getProjectId(input.chatId)!==input.projectId)throw new Error('DOCK_SOURCE_CHAT_CHANGED');
+          await archiveService!.restore([{kind:'chat',id:input.chatId}],{[input.chatId]:input.incarnationId},current);
+        },
         records:{registry:appMode.extensions.registry,installer:appMode.extensions.installer,packages:foundation.hostPackages,bases:foundation.bases,catalog:foundation.plugins}});
       /* Settings read the stored default through the live catalog from now on: a package default reads back while it is available. */
       settingsStore!.useProviderCatalog(providerCatalog());
@@ -662,7 +669,7 @@ if (!hasSingleInstanceLock) {
       surfaceWindowController.configurePresence({ beforeAppClose: (record) => windowRetention.beforeAppClose(record),
         ensureMain: () => windowRetention.ensureMain(), closeFailure: () => dialog.showErrorBox(translate(currentLocale(), "settings.native.windowCloseTitle"), translate(currentLocale(), "settings.native.windowCloseMessage")) });
       systemDockRuntime = createSystemDockRuntime({ plugins: foundation!.plugins, mainDirectory: __dirname, userData, locale: currentLocale, installation: localDeviceId!,
-        limits: usageLimits, history: usageService, apps: () => appsService,
+        limits: usageLimits, history: usageService, bases:basesService!, apps: () => appsService,
         send: async (command) => { await presenceRuntime?.send(command); },
         tasks: { snapshot: () => presenceRuntime!.tasks.snapshot(), subscribe: (listener) => presenceRuntime!.tasks.subscribe(listener), open: (task) => presenceRuntime!.tasks.open(task) },
         refreshMenu: () => presenceRuntime?.refreshMenu(),

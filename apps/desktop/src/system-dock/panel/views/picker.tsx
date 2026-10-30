@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the panel context (candidates, focus mode, Escape layers), the common glyph cache, and lucide affordance glyphs.
- * [OUTPUT]: Provides `PickerView`: a debounced query sent to main, four candidate groups (Mac Apps, Bottega Apps, system items, Widgets) with In Dock / unavailable / needs-repair notes, arrow-key movement from the field into the rows, and a dedicated "Choose an App…" file picker. Uses the live App emoji.
+ * [OUTPUT]: Provides debounced native/App/system candidates, common host Widget Add/New entries, keyboard movement and the App file picker.
  * [POS]: system-dock/panel add view (3.3, DCK-11); main filters, inserts at the semantic default position, and closes or highlights on success — this view only renders what the snapshot says.
  */
 
@@ -43,6 +43,7 @@ export function PickerView() {
   const note = (candidate: AddCandidate) => candidate.pinned ? t("systemDock.add.inDock")
     : candidate.note === "unavailable" ? t("systemDock.item.unavailable") : candidate.note === "needs-repair" ? t("systemDock.item.needsRepair") : null;
   return <>
+    <div className="field-row"><button type="button" className="text-button" onClick={()=>send({kind:'widget-entry',entry:{kind:'add'}})}>{t('systemDock.widgets.add')}</button><button type="button" className="text-button" onClick={()=>send({kind:'widget-entry',entry:{kind:'new'}})}>{t('systemDock.widgets.new')}</button></div>
     <div className="field-row">
       <label className="visually-hidden" htmlFor="dock-add-query">{t("systemDock.add.queryLabel")}</label>
       {/* Autofocus only once the user is in the panel; a hover-opened panel stays read-only (INV-09). */}
@@ -60,7 +61,7 @@ export function PickerView() {
               <h2 id={`dock-add-${group}`} className="group-label">{t(GROUP_KEYS[group])}</h2>
               {members.map((candidate, index) => <button key={candidate.key} type="button" className="row" data-candidate={candidate.key}
                 data-pinned={candidate.pinned || undefined} aria-describedby={note(candidate) ? `dock-note-${group}-${index}` : undefined}
-                onClick={() => send({ kind: "add", key: candidate.key })}>
+                onClick={() => candidate.kind==='widget'?send({kind:'widget-entry',entry:{kind:'add',definitionId:candidate.key}}):send({ kind: "add", key: candidate.key })}>
                 <span className="row-glyph"><DockGlyph subject={{ kind: candidate.kind, appIcon: candidate.appIcon, iconKey: candidate.iconKey,
                   // Candidate keys for system entries and Widgets are their semantic identities (system.*, builtin.*).
                   entry: candidate.kind === "system" ? candidate.key as SystemEntryId : undefined,

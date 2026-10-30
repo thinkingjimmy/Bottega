@@ -4,7 +4,7 @@
  * [POS]: system-dock/bar slot renderer composed by bar.tsx; it sends nothing itself — activation and context menus bubble to the bar's intent handlers.
  */
 
-import type { CSSProperties } from "react";
+import {lazy,Suspense,type CSSProperties} from "react";
 import { CircleAlert } from "lucide-react";
 import type { DockBarItem } from "../../../shared/system-dock/ipc";
 import type { DockEdge } from "../../../shared/system-dock/local-state";
@@ -13,6 +13,7 @@ import { dockItemName, hasDetail, type DockT } from "../common/format";
 import { DockGlyph } from "../common/icons";
 import { ActivityFace, LimitsFace, TasksFace } from "./faces";
 import { slotOffset, type useBarReorder } from "./reorder";
+const DockSummary=lazy(()=>import('../common/widgets/summary').then(module=>({default:module.DockSummary})));
 
 type Props = {
   edge: DockEdge; item: DockBarItem; index: number; area: "pinned" | "running"; t: DockT; mask: boolean; now: number;
@@ -27,7 +28,8 @@ export function BarItem({ edge, item, index, area, t, mask, now, icons, open, bu
   const removing = dragging && reorder.view?.removing;
   const vertical = edge !== "bottom";
   const extent = itemExtent(metricItem(item), edge);
-  const style = { width: vertical ? DOCK_METRICS.item : extent, height: vertical ? extent : DOCK_METRICS.item,
+  const cross=item.widget?.type==='custom'?68:DOCK_METRICS.item;
+  const style = { width: vertical ? cross : extent, height: vertical ? extent : cross,
     "--offset": `${offset}px` } as CSSProperties;
   return <button type="button" className="item" style={style} data-item-id={item.id} data-area={area} data-entry={item.entry} data-kind={item.kind}
     data-status={item.status} data-dragging={dragging || undefined} data-removing={removing || undefined} data-shifted={offset !== 0 && !dragging || undefined}
@@ -37,7 +39,7 @@ export function BarItem({ edge, item, index, area, t, mask, now, icons, open, bu
     onPointerUp={reorder.onPointerUp} onPointerCancel={reorder.onPointerCancel} onLostPointerCapture={reorder.onPointerCancel}
     onClick={() => { if (!reorder.consumeClick()) onActivate(item.id); }}>
     <span className="item-body">
-      {item.widget?.type === "builtin.tasks" ? <TasksFace vertical={vertical} face={item.widget} t={t} mask={mask} />
+      {item.widget?.type==='custom'?<span data-widget-summary="" data-widget-state={item.widget.state} aria-hidden="true" style={{display:'flex',alignItems:'center',justifyContent:'center',width:'100%',height:'100%',padding:4,overflow:'hidden',boxSizing:'border-box'}}>{!mask&&item.widget.summary?<Suspense fallback="—"><DockSummary node={item.widget.summary} readings={item.widget.readings} locale={document.documentElement.lang||'en'} /></Suspense>:mask?'—':<span style={{fontSize:10,lineHeight:1.2,textAlign:'center',whiteSpace:'normal',overflowWrap:'anywhere'}}>{t(`systemDock.widgets.states.${item.widget.state}`)}</span>}</span>:item.widget?.type === "builtin.tasks" ? <TasksFace vertical={vertical} face={item.widget} t={t} mask={mask} />
         : item.widget?.type === "builtin.ai-limits" ? <LimitsFace vertical={vertical} face={item.widget} t={t} mask={mask} now={now} />
         : item.widget?.type === "builtin.ai-activity" ? <ActivityFace vertical={vertical} face={item.widget} t={t} mask={mask} />
           : <DockGlyph subject={{ kind: item.kind, appIcon: item.appIcon, host: item.host, iconKey: item.iconKey, entry: item.entry, trash: item.trash }} icons={icons} />}

@@ -1,23 +1,25 @@
 /**
  * [INPUT]: Dynamic Cloud account, verified remote generations, trusted draft owner and native plugin gateway.
- * [OUTPUT]: RemotePluginSurfaces binds remote leases, recovery scopes and account erasure to native lifecycle.
+ * [OUTPUT]: Binds remote leases/recovery erasure to native lifecycle and publishes every account identity transition, including first sign-in.
  * [POS]: Main integration adapter; an owner-device ID is authenticated through Cloud before any local recovery access.
  */
 import type { PluginDraftOwner } from "@bottega/contracts/plugins/surface/native";
 import type { PluginSurfaceGateway } from "../surface-runtime/gateway";
 import type { PluginRecoveryStore } from "../recovery/store";
 export type PluginCloudRuntime=Pick<Awaited<ReturnType<typeof import("../../cloud/runtime/composition").createCloudRuntime>>,
- "openPluginSurface"|"assertPluginDraft"|"accountIdentity"|"subscribeIdentity">;
+ "openPluginSurface"|"assertPluginDraft"|"accountIdentity"|"subscribeIdentity"|"widgetPackages">;
 export class RemotePluginSurfaces{
  private cloud:PluginCloudRuntime|null=null;private stop=()=>{};
  private readonly leases=new Map<string,{windowId:number;close():void;timer:ReturnType<typeof setTimeout>}>();
  constructor(private readonly gateway:PluginSurfaceGateway,private readonly recovery:PluginRecoveryStore,private readonly changed:()=>void){}
  configure(cloud:PluginCloudRuntime){this.stop();this.cloud=cloud;let previous=cloud.accountIdentity().profile?.userId??null;
-  this.stop=cloud.subscribeIdentity(()=>{const next=cloud.accountIdentity().profile?.userId??null;if(previous&&previous!==next){
-    const account=previous;for(const [id,lease]of this.leases)this.release(id,lease.windowId);this.changed();
-    void this.recovery.clearAccount(account).catch(error=>console.error("[plugin-recovery] account cleanup failed",error));
-  }previous=next;});
+  this.stop=cloud.subscribeIdentity(()=>{const next=cloud.accountIdentity().profile?.userId??null;if(previous===next){this.changed();return;}
+    const account=previous;previous=next;
+    for(const [id,lease]of this.leases)this.release(id,lease.windowId);this.changed();
+    if(account)void this.recovery.clearAccount(account).catch(error=>console.error("[plugin-recovery] account cleanup failed",error));
+  });
  }
+ widgets(){return this.cloud?.widgetPackages??null;}
  scope(ownerDeviceId:string,owner:PluginDraftOwner){if(!this.cloud)throw new Error("PLUGIN_CLOUD_UNAVAILABLE");return this.cloud.assertPluginDraft(ownerDeviceId,owner);}
  async open(pluginId:string,ownerDeviceId:string,owner:PluginDraftOwner,windowId:number){
   const cloud=this.cloud;if(!cloud)throw new Error("PLUGIN_CLOUD_UNAVAILABLE");await cloud.assertPluginDraft(ownerDeviceId,owner);

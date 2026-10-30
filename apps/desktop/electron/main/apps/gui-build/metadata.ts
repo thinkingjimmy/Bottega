@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/platform facts, the apps/support digest primitives, generated authoring file identities, and apps/desktop/runtime-dependencies.json, the single authority for runtime packages, gate membership and author admission that scripts/verification/check-dependency-manifest.mjs pins to package.json
- * [OUTPUT]: Provides canonical GUI toolchain identities, distinct App/plugin author imports and trusted plugin/Sketch module hashes, a compact signed Sketch identity that avoids loading editor bytes during startup, identity-cached payload digests, and verified legacy SDK custody
+ * [OUTPUT]: Provides canonical GUI toolchain identities, separate App/composer/Dock imports and signed module hashes, compact SDK identities without embedded payloads, cached verification and legacy SDK custody.
  * [POS]: apps/gui-build metadata authority; receipts, validators, and the gateway consume these values without mutable discovery
  */
 
@@ -12,6 +12,8 @@ import type { Sha256Digest } from "../../../../shared/ipc/settings/extensions-ip
 import runtimeDependencies from "../../../../runtime-dependencies.json";
 import sketchIdentity from "./product-modules/sketch/identity.json";
 import pluginIdentity from "../../../../resources/app-gui-toolchain/modules/plugin-identity.json";
+import dockIdentity from '../../../../resources/app-gui-toolchain/modules/dock-identity.json';
+import appIdentity from '../../../../resources/app-gui-toolchain/modules/app-identity.json';
 import authoringCatalog from "../../../../resources/app-gui-toolchain/authoring-catalog.json";
 import { bootstrapSource } from "./product-modules/bootstrap";
 import { canonicalDigest, sha256 } from "../support";
@@ -29,7 +31,7 @@ const VIRTUAL_SPECIFIERS: Readonly<Record<string, { authorAdmission: string }>> 
 
 /* 作者裸导入准入按 authorAdmission 从清单派生，虚拟 specifier 同源；排序保证
    派生结果确定，进入 TRANSFORM_CONTRACT_DIGEST 的数组不因对象键序漂移。 */
-function authorSpecifiersFor(admission: "core" | "gate-3" | "plugin") {
+function authorSpecifiersFor(admission: "core" | "gate-3" | "plugin" | "dock") {
   return [
     ...Object.entries(RUNTIME_PACKAGES)
       .filter(([, entry]) => entry.authorAdmission === admission)
@@ -93,14 +95,14 @@ const CORE_AUTHOR_SPECIFIERS: readonly string[] = authorSpecifiersFor("core");
 export const GATE_3_AUTHOR_SPECIFIERS: readonly string[] =
   authorSpecifiersFor("gate-3");
 
-export function authorPublicSpecifiers(iconLibrary: "lucide" | "phosphor", subject: "app" | "plugin" = "app") {
+export function authorPublicSpecifiers(iconLibrary: "lucide" | "phosphor", subject: "app" | "plugin" | "dock" = "app") {
   const result = new Set<string>([
     ...CORE_AUTHOR_SPECIFIERS,
     ...BASE_UI_AUTHOR_SPECIFIERS,
     ...GATE_3_AUTHOR_SPECIFIERS,
     ...(iconLibrary === "lucide" ? LUCIDE_AUTHOR_SPECIFIERS : PHOSPHOR_AUTHOR_SPECIFIERS),
   ]);
-  if (subject === "plugin") { result.delete("@bottega/app-react"); for (const specifier of authorSpecifiersFor("plugin")) result.add(specifier); }
+  if (subject !== "app") { result.delete("@bottega/app-react"); for (const specifier of authorSpecifiersFor(subject)) result.add(specifier); }
   return result;
 }
 
@@ -117,6 +119,8 @@ const APP_GUI_DEPENDENCY_VERSIONS: Readonly<Record<string, string>> = Object.fre
 );
 
 export const PLUGIN_SDK_SOURCE_DIGEST = pluginIdentity.sourceDigest as Sha256Digest;
+export const DOCK_SDK_SOURCE_DIGEST=dockIdentity.sourceDigest as Sha256Digest;
+export const APP_SDK_SOURCE_DIGEST=appIdentity.sourceDigest as Sha256Digest;
 export const PLUGIN_SKETCH_SOURCE_DIGEST = sketchIdentity.sourceDigest as Sha256Digest;
 
 export const TRANSFORM_CONTRACT_DIGEST = canonicalDigest({
@@ -132,6 +136,7 @@ export const TRANSFORM_CONTRACT_DIGEST = canonicalDigest({
     phosphor: PHOSPHOR_AUTHOR_SPECIFIERS,
     gate3: GATE_3_AUTHOR_SPECIFIERS,
     plugin: authorSpecifiersFor("plugin"),
+    dock: authorSpecifiersFor('dock'),
   },
   transform: {
     jsx: "automatic",
@@ -149,8 +154,10 @@ export const TRANSFORM_CONTRACT_DIGEST = canonicalDigest({
     assetNames: "asset-[hash]",
   },
   productModules: {
+    app: APP_SDK_SOURCE_DIGEST,
     sketch: PLUGIN_SKETCH_SOURCE_DIGEST,
     plugin: PLUGIN_SDK_SOURCE_DIGEST,
+    dock: DOCK_SDK_SOURCE_DIGEST,
     bootstrapCore: sha256(Buffer.from(bootstrapSource("bottega:app-entry", {
       data: false,
       preferences: false,

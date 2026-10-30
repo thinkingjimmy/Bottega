@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the pinned Convex SDK/socket factory, Zod validation, public registry and main-only session token provider.
- * [OUTPUT]: Provides bounded socket-first calls, JWT-refreshing HTTP fallback and authenticated subscriptions that are re-attached to each new socket within one account/device scope (a scope change fails them), immediate cancellation of all in-flight socket/HTTP/token calls when the connection closes and terminal stop admission, a socket token retry on a 1/2/5/15/30/60 s ladder that networkOnline cuts short and invalid-session ends (T20-2), a separately authenticated bulk socket with the same token retry and bounded readiness, one call at a time, closed with the primary, a queued one settling unsent once close() moves the generation (T20-4, review 0929 R05), per-command hop traces with queue and execution time (traceCommand/commandTrace, T20-5), a server-time offset from HTTP Date headers (T20-9b), including the account's computer list, the account-config revision, per-computer Memory control intent and the Agent-configuration directory.
+ * [OUTPUT]: Provides bounded socket-first calls, JWT-refreshing HTTP fallback and authenticated subscriptions that are re-attached to each new socket within one account/device scope (a scope change fails them), immediate cancellation of all in-flight socket/HTTP/token calls when the connection closes and terminal stop admission, a socket token retry on a 1/2/5/15/30/60 s ladder that networkOnline cuts short and invalid-session ends (T20-2), a separately authenticated bulk socket with the same token retry and bounded readiness, one call at a time, closed with the primary, a queued one settling unsent once close() moves the generation (T20-4, review 0929 R05), per-command hop traces with queue and execution time (traceCommand/commandTrace, T20-5), a server-time offset from HTTP Date headers (T20-9b), including the private Widget account directory head, the account's computer list, the account-config revision, per-computer Memory control intent and the Agent-configuration directory.
  * [POS]: apps/desktop/electron/main/cloud/runtime/transport; Main cloud transport; private generated code and credentials never cross IPC.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -23,6 +23,7 @@ function reference<N extends CloudFunctionName>(name: N) {
 }
 export interface AccountTransport {
   handshake(): Promise<void>;
+  watchWidgetCatalog?(input:CloudFunctionArgs<"widgets/api:head">,changed:(value:CloudFunctionResult<"widgets/api:head">)=>void,failure:(error:unknown)=>void):()=>void;
   query<N extends Names<"query">>(name: N, input: CloudFunctionArgs<N>): Promise<CloudFunctionResult<N>>;
   mutate<N extends Names<"mutation">>(name: N, input: CloudFunctionArgs<N>): Promise<CloudFunctionResult<N>>;
   watch(changed: (access: AccountAccess) => void, connected: (value: boolean) => void, failure: (error: unknown) => void): void;
@@ -256,6 +257,7 @@ export class CloudTransport implements AccountTransport {
     this.requireSocket(); const contract = cloudFunctions[name];
     return this.subscribe(name, contract.args.parse(input), value => { try { changed(contract.result.parse(value) as CloudFunctionResult<N>); } catch (error) { failure(error); } }, failure);
   }
+  watchWidgetCatalog(input:CloudFunctionArgs<'widgets/api:head'>,changed:(value:CloudFunctionResult<'widgets/api:head'>)=>void,failure:(error:unknown)=>void){return this.parsed('widgets/api:head',input,changed,failure);}
   watchSkillsCatalog(input: CloudFunctionArgs<"skills/sync:catalog">, changed: (value: CloudFunctionResult<"skills/sync:catalog">) => void, failure: (error: unknown) => void) {
     return this.parsed("skills/sync:catalog", input, changed, failure);
   }

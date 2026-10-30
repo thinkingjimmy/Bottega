@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on Zod and standard URL parsing.
- * [OUTPUT]: Protocol-21 Artifact recovery, checkpoint CAS and source-baseline handshakes, static Artifact image reads/target hints, retained navigation and native update metadata.
+ * [OUTPUT]: Protocol-22 immutable Widget/source/file-owner handshakes, Artifact recovery, checkpoint CAS and source baselines, static Artifact image reads/target hints, retained navigation and native update metadata.
  * [POS]: Shared configuration boundary for desktop, Web and the private backend.
  */
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 21;
+export const PROTOCOL_VERSION = 22;
 export const MAX_BLOB_BYTES = 50_000_000;
 export const MAX_PART_BYTES = 8_388_608;
 export const MAX_PARTS = 6;

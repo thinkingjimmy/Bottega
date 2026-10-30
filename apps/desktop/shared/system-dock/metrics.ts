@@ -5,6 +5,7 @@
  */
 
 import type { DockEdge } from "./local-state";
+import {summaryDimensions,type DockSummarySize} from '@bottega/contracts/plugins/dock/geometry';
 
 export const DOCK_METRICS = {
   /* Glyphs fill the 48 DIP slot. gap 1 leaves the icon art's own margin as the visible gutter. */
@@ -20,15 +21,16 @@ export const DOCK_METRICS = {
   downloadsPanel: { width: 408, height: 600 },
 } as const;
 
-export type MetricItem = { kind: string; entry?: string; widgetType?: string; limits?: { configured: boolean; sourceCount: number; more: number } };
+export type MetricItem = { kind: string; entry?: string; widgetType?: string; size?:DockSummarySize;limits?: { configured: boolean; sourceCount: number; more: number } };
 /** Only projection facts affect geometry; the same adapter serves main and the item renderer. */
-export function metricItem(item: { kind: string; entry?: string; widget?: { type: string; configured?: boolean; sources?: readonly unknown[]; more?: number } }): MetricItem {
+export function metricItem(item: { kind: string; entry?: string; widget?: { type: string; size?:DockSummarySize;configured?: boolean; sources?: readonly unknown[]; more?: number } }): MetricItem {
   const widget = item.widget;
-  return { kind: item.kind, entry: item.entry, widgetType: widget?.type,
+  return { kind: item.kind, entry: item.entry, widgetType: widget?.type,...(widget?.type==='custom'&&widget.size?{size:widget.size}:{}),
     ...(widget?.type === "builtin.ai-limits" ? { limits: { configured: widget.configured === true, sourceCount: widget.sources?.length ?? 0, more: widget.more ?? 0 } } : {}) };
 }
 export function itemExtent(item: MetricItem, edge: DockEdge): number {
   if (item.kind !== "widget" || !item.widgetType) return DOCK_METRICS.item;
+  if(item.widgetType==='custom'){const size=summaryDimensions(item.size??'small',edge);return edge==='bottom'?size.width:size.height;}
   if (edge === "bottom") return DOCK_METRICS.widget[item.widgetType] ?? DOCK_METRICS.item;
   const side = DOCK_METRICS.sidebarWidget;
   if (item.widgetType === "builtin.ai-activity" || item.widgetType === "builtin.tasks") return side.activity;

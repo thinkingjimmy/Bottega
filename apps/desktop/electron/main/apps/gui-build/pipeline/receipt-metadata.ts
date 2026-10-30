@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on packaged/generated App GUI toolchain manifest and gate-specific slice/SBOM/NOTICE bytes
- * [OUTPUT]: Provides verified gate-specific receipt digests and bounded, exact-identity Sketch and plugin SDK resources loaded only on demand
+ * [OUTPUT]: Provides verified gate-specific receipts and bounded, exact-identity App, composer, Dock and Sketch SDK resources loaded only on demand.
  * [POS]: gui-build/pipeline release-metadata join; compiler receipts cannot invent parallel metadata identities
  */
 
@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { open, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { APP_GUI_BUILD_BUDGET } from "../contracts";
-import { PLUGIN_SKETCH_SOURCE_DIGEST, PLUGIN_SDK_SOURCE_DIGEST } from "../metadata";
+import { APP_SDK_SOURCE_DIGEST, PLUGIN_SKETCH_SOURCE_DIGEST, PLUGIN_SDK_SOURCE_DIGEST, DOCK_SDK_SOURCE_DIGEST } from "../metadata";
 import type { AppGuiAdmissionGate } from "../admission";
 import { canonicalDigest, sha256 } from "../../support";
 
@@ -53,13 +53,18 @@ export async function loadReceiptMetadata(gates: readonly AppGuiAdmissionGate[])
 
 
 export type SketchModule = Readonly<{ runtime: string; styles: string; types: string }>;
+export type AppModule = Readonly<{runtime:string;types:string}>;
 export type PluginModule = Readonly<{ runtime: string; bootstrap: string; types: string }>;
 const PRODUCT_MODULES = {
+  app: {path:'modules/app.json',digest:APP_SDK_SOURCE_DIGEST,fields:['runtime','types'],schema:'bottega.app-sdk-module/v1'},
   sketch: { path: "modules/sketch.json", digest: PLUGIN_SKETCH_SOURCE_DIGEST, fields: ["runtime", "types", "styles"], schema: "bottega.sketch-module/v1" },
   plugin: { path: "modules/plugin.json", digest: PLUGIN_SDK_SOURCE_DIGEST, fields: ["runtime", "types", "bootstrap"], schema: "bottega.plugin-module/v1" },
+  dock: {path:'modules/dock.json',digest:DOCK_SDK_SOURCE_DIGEST,fields:['runtime','types','bootstrap'],schema:'bottega.dock-module/v1'},
 } as const;
 export const loadSketchModule = async (): Promise<SketchModule> => await loadProductModule("sketch") as SketchModule;
 export const loadPluginModule = async (): Promise<PluginModule> => await loadProductModule("plugin") as PluginModule;
+export const loadDockModule=async():Promise<PluginModule>=>await loadProductModule('dock')as PluginModule;
+export const loadAppModule=async():Promise<AppModule>=>await loadProductModule('app')as AppModule;
 async function loadProductModule(name: keyof typeof PRODUCT_MODULES): Promise<Record<string, string>> {
   const root = metadataRoot(), contract = PRODUCT_MODULES[name];
   const manifest = JSON.parse(await readFile(join(root, "toolchain-manifest.json"), "utf8"));

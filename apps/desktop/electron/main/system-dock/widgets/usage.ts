@@ -24,11 +24,13 @@ export type HistoryPort = { getSummary(target: UsageQueryTarget, options?: { for
   /** The Providers with usage history, in display order: the activity sources. */
   sources(): readonly UsageSourceId[] };
 export type DockSurface = "dock-bar" | "dock-panel";
+type UsageSurface=DockSurface|'dock-custom-bar'|'dock-custom-panel'|'dock-preview-bar'|'dock-preview-panel';
 type Activity = { summary: AgentUsageSummary | null; at: number; flight: Promise<void> | null; error: boolean; manualAt: number; failures: number };
 const ACTIVITY_REFRESH_MS = 5 * 60_000;
 
 export class DockUsage {
-  private readonly visible = new Map<DockSurface, { limits: Map<string, AgentBackendId[]>; activity: Set<UsageQueryTarget> }>();
+  private readonly visible = new Map<UsageSurface, { limits: Map<string, AgentBackendId[]>; activity: Set<UsageQueryTarget> }>();
+  private readonly touched=new Set<UsageSurface>();
   private readonly activity = new Map<UsageQueryTarget, Activity>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly stop: (() => void) | null;
@@ -40,7 +42,8 @@ export class DockUsage {
    * The only consumer registration: a surface is visible with these Widgets. A hidden surface,
    * a locked screen or a prewarmed panel passes an empty list and releases just its own demand.
    */
-  setVisible(surface: DockSurface, widgets: readonly { itemId: string; widget: DockWidget }[]) {
+  setVisible(surface: UsageSurface, widgets: readonly { itemId: string; widget: DockWidget }[]) {
+    this.touched.add(surface);
     const previous = this.visible.get(surface);
     const limits = new Map<string, AgentBackendId[]>();
     const activity = new Set<UsageQueryTarget>();
@@ -145,7 +148,7 @@ export class DockUsage {
   }
   close() {
     for (const surface of [...this.visible.keys()]) this.setVisible(surface, []);
-    this.limits?.clearDemands("dock-bar"); this.limits?.clearDemands("dock-panel");
+    for(const surface of this.touched)this.limits?.clearDemands(surface);this.touched.clear();
     this.stop?.(); if (this.timer) clearInterval(this.timer); this.timer = null;
   }
 }

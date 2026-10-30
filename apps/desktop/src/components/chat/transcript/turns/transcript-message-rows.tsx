@@ -81,7 +81,7 @@ export const ChatNoticeRow = memo(function ChatNoticeRow({
 }: {
   message: NoticeChatMessage;
 }) {
-  if (message.notice.kind === "app-chat-ready") return null;
+  if (message.notice.kind === "app-chat-ready" || message.notice.kind === "plugin-chat-ready") return null;
   return (
     <MessageShell id={message.id}>
       <ChatNotice message={message} />

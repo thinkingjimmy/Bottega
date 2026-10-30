@@ -46,6 +46,13 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
       return;
     }
     case "add-app-file": return addFromFile(service);
+    case 'widget-entry': service.closePanel(false);await service.ports.widgetEntry?.(intent.entry);return;
+    case 'widget-detail-slot': if(role!=='panel')throw new Error('DOCK_PANEL_REQUIRED');service.ports.widgetDetail?.bounds(intent);return;
+    case 'widget-detail-retry': if(role!=='panel')throw new Error('DOCK_PANEL_REQUIRED');service.ports.widgetDetail?.retry(intent.itemId,intent.key);return;
+    case 'widget-action': {
+      if(role!=='panel'||service.panelTargetItem()!==intent.itemId||!service.ports.custom?.invokeAction)throw new Error('DOCK_ACTION_UNAVAILABLE');
+      await service.ports.custom.invokeAction(intent.itemId,intent.ref);return;
+    }
     case "remove": {
       let label = "";
       await service.ports.config.edit((layout) => {
@@ -85,7 +92,7 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
       if (item?.kind !== "widget" || item.widget.type !== intent.widget.type) return;
       if (!service.draftBases.has(intent.itemId)) service.draftBases.set(intent.itemId, canonical(intent.base ?? item.widget));
       service.drafts.set(intent.itemId, intent.widget);
-      service.usage.setVisible("dock-panel", [{ itemId: intent.itemId, widget: intent.widget }]);
+      service.setWidgetDemand("dock-panel", [{ itemId: intent.itemId, widget: intent.widget }]);
       service.schedule();
       return;
     }
@@ -107,7 +114,7 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
     case "widget-cancel": service.dropDraft(intent.itemId); service.refreshPanelDemand(); service.schedule(); return;
     case "refresh-usage": {
       const item = service.layoutItem(intent.itemId);
-      if (item?.kind === "widget") await service.usage.refresh(service.drafts.get(item.id) ?? item.widget);
+      if (item?.kind === "widget") {if(item.widget.type==='custom')await service.ports.custom?.refresh(item.id);else await service.usage.refresh(service.drafts.get(item.id) ?? item.widget);}
       return;
     }
     case "open-full-usage": {

@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Depends on the durable account binding, actual Store owners, the late-bound account-config cleanup port and the shared lifecycle gate/journal.
- * [OUTPUT]: Coordinates enrollment, activity shutdown, original conversion/installation settlement and reviewed cross-Store cleanup, including unresolved deletion custody and the account's download cache and composer drafts, before rebinding; onAdmitted, so work a suspension stopped can come back on re-admission (TASK-20 F2).
+ * [OUTPUT]: Coordinates enrollment, activity shutdown, original conversion/installation settlement and reviewed cross-Store cleanup, including unresolved deletion custody and the account's download cache and composer drafts, and Widget mapping/confirmation/custody cleanup before rebinding; onAdmitted, so work a suspension stopped can come back on re-admission (TASK-20 F2).
  * [POS]: Main account scope owner; business queues stay inside Chat/Base/Project/App Stores.
  */
+import type {WidgetScopeCleanup} from "../../../widgets/cleanup/owner";
 import type { CloudBuildConfig } from "@ai-chat/cloud-protocol";
 import { sameScope, type RuntimeStorageMode } from "../../../../../../shared/local-storage/contracts";
 import type { AdmissionGate } from "../../../../lifecycle/admission-gate";
@@ -34,7 +35,7 @@ export class AccountScopeLifecycle {
   private readonly cleanup: ScopeCleanupCoordinator;
   constructor(private input: { userData: string; config: CloudBuildConfig; binding: SyncBindingStore; owners: CleanupOwners;
     journal: LifecycleIntentStore; gate: AdmissionGate; conversions?: ConversionCleanupServices; installations?: Pick<CloudAppInstaller, "settleScopeCleanup">;
-    accountConfig?: Pick<AccountConfigCleanup, "cleanupScope"> }) {
+    widgets?:Pick<WidgetScopeCleanup,"cleanupScope">;accountConfig?: Pick<AccountConfigCleanup, "cleanupScope"> }) {
     this.bytes = new CleanupBytes(input.owners);
     const participants = storageCleanupParticipants({ ...input.owners, verifyBlob: proof => this.bytes.verify(proof), accountConfig: input.accountConfig });
     this.cleanup = new ScopeCleanupCoordinator(input.journal, input.gate, { ...participants, blobs: async plan => {
@@ -138,6 +139,7 @@ export class AccountScopeLifecycle {
     await this.stopActivities(true);
     if (!closing) return;
     const scope = { environment: this.input.config.environmentId, userId: closing.userId }, operationId = closing.cleanup!.operationId;
+    await this.input.widgets?.cleanupScope(scope);
     await this.input.installations?.settleScopeCleanup(scope, operationId, () => {
       const current = binding.snapshot(), mode = binding.mode();
       if (current?.phase !== "closing" || current.userId !== scope.userId || current.cleanup?.operationId !== operationId ||

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the preload WindowSurfacesBridgeApi, shared surface/capsule DTOs, browser history/sessionStorage, and React external-store hooks
+ * [INPUT]: Depends on the preload WindowSurfacesBridgeApi, shared surface/capsule DTOs, browser history/sessionStorage, lazy Usage history store, and React external-store hooks
  * [OUTPUT]: Provides windowContext, installWindowSurfaceRuntime (including background-surface Settings/Usage/activity destinations, and a quit's flush-drafts answered flushed only when every held draft is on disk), navigation-generation-fenced show/open/reclaim intents, capsule operations (draft/queue image bytes ride beside the exported capsule), the pre-quit durable draft flush, a refused export restored from this window's own record, checkpoints, nullable useSurfaceResidence, and useHoldsSurface (resident here and not being exported: an exported surface is leaving until commit, restore or an aborted export)
  * Freezes the renderer before awaiting quit persistence and thaws it on resume-drafts.
  * [POS]: apps/desktop/src/lib/platform; Renderer client for main-owned surface residency; it caches projections only and never decides ownership
@@ -25,6 +25,7 @@ import {
 import { takeComposerImageTransfers } from "../chat-composer/images";
 import { flushDurableDrafts } from "../chat-composer/durable/durable";
 import { requestSettingsSection } from "../settings/navigation/settings-navigation";
+import {queueWidgetEntry} from './dock-widgets/entry';
 
 declare global {
   interface Window {
@@ -85,7 +86,12 @@ async function handleCommand(command: SurfaceCommand) {
 }
 
 async function runCommand(command: SurfaceCommand) {
+    if(command.type==='dock-widget-entry'){queueWidgetEntry(command.entry);return;}
     if (command.type === "presence-destination") {
+      if (command.destination === "usage" && command.usageSource) {
+        const { usageStore } = await import("../usage/usage-store");
+        usageStore.setTarget(command.usageSource);
+      }
       // "general" once navigated to a /settings/general route that never existed; every Settings target is an overlay section.
       if (command.destination === "activity") window.dispatchEvent(new Event("bottega:open-activity"));
       else requestSettingsSection({ section: command.destination, agent: command.agent ?? null });

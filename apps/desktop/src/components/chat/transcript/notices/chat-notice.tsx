@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared NoticeChatMessage canonical structure, I18n Provider, Section snapshot, React and Button
- * [OUTPUT]: Provides instantly updated memo ChatNotice with current language; dormant app-chat-ready identity notices render no UI, while actionable notices retain live state Localizes the App-disabled notice.
+ * [OUTPUT]: Provides localized memo ChatNotice; dormant App/Widget identity notices render no UI while actionable notices retain live state.
  * [POS]: apps/desktop/src/components/chat/transcript/notices; chat/transcript control-message renderer; ordinary user and assistant content stays in the standard message bubble path
  */
 
@@ -30,7 +30,7 @@ function localizedNoticeMessageContent(
   notice: ChatNoticeData,
   t: ReturnType<typeof useAppTranslation>["t"]
 ) {
-  if (notice.kind === "app-chat-ready" || notice.kind === "agent-switched") return "";
+  if (notice.kind === "app-chat-ready" || notice.kind === "plugin-chat-ready" || notice.kind === "agent-switched") return "";
   if (notice.kind === "app-disabled") return t("notice.appDisabled");
   if (notice.kind === "manual-recovered") return t("notice.manualRecovered");
   if (notice.kind === "skill-descriptions-truncated") {
@@ -155,7 +155,7 @@ export const ChatNotice = memo(function ChatNotice({
   message: NoticeChatMessage;
 }) {
   if (message.notice.kind === "agent-switched") return <AgentSwitchNotice notice={message.notice} />;
-  return message.notice.kind === "app-chat-ready"
+  return message.notice.kind === "app-chat-ready" || message.notice.kind === "plugin-chat-ready"
     ? null
     : <VisibleChatNotice message={message} />;
 });

@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Depends on zod, the Dock layout/local-state models, task identities/activity, Agent/usage identities, and the shared locale type.
+ * [INPUT]: Depends on Zod, Dock layout/local state, narrow Widget quick entries, task/Agent/usage identities and the shared locale type; host form contracts are type-only dependencies.
  * [OUTPUT]: Provides least-privilege Dock channels, pathless download visuals, task face/detail snapshots and identity-fenced Chat opening, validated intents including placement-fenced drag removal, isolated bridges and the main-window Settings contract. Includes strict App pin intents, pinned App IDs and live App emoji.
  * [POS]: shared/system-dock transport contract; auxiliary renderers receive projections and opaque short-lived references only, never paths, accounts, shell, AX or Apple Event senders (INV-13).
  */
+import type {WidgetApiControl,WidgetApiReview} from './widgets/api/control';
 
 import { z } from "zod";
 import type { AppLocale } from "@ai-chat/ui/lib/locale";
@@ -14,6 +15,15 @@ import { aiActivityWidgetSchema, aiLimitsWidgetSchema, tasksWidgetSchema, type A
 import { dockPreferencePatchSchema, type DockLocalState, type DockMode, type RecoveryRegistration, type ReplacementPhase, type SuspendReason } from "./local-state";
 import type { MergeConflict } from "./merge";
 import type { DockDisplay, DockPlacementStatus } from "./displays";
+import type {WidgetAuthoringTarget,WidgetManagementSnapshot,WidgetPreview,WidgetApplyInput,WidgetApplyReceipt,WidgetVersionView,newDockWidgetSchema,editDockWidgetSchema,forkDockWidgetSchema,previewWidgetVersionSchema} from './widgets/authoring';
+import type {CustomWidgetFace,CustomWidgetDetail} from './widgets/runtime';
+import type {WidgetInstanceForm,WidgetInstanceReceipt,widgetInstancePauseSchema,widgetInstanceRemoveSchema,widgetBaseRevokeSchema} from './widgets/management';
+import {dockWidgetEntrySchema} from './widgets/entry';
+import type {OfficialWidgetForm,SubmitOfficialWidget,officialWidgetQuerySchema} from './widgets/official';
+import type {WidgetRuntimeHealth} from './widgets/native';
+import type {WidgetBaseDirectory,WidgetBaseDirectoryRequest} from './widgets/base/access';
+import type {WidgetUpdateReview,StageWidgetUpdate} from './widgets/review';
+import type {WidgetPreviewControl,WidgetPreviewResult,WidgetPreviewSnapshot} from './widgets/preview/contracts';
 
 /* ============================================================ bar / panel (isolated preload) */
 
@@ -31,6 +41,7 @@ export type LimitsFaceSource = Readonly<{ backend: AgentBackendId; remaining: nu
 export type DockTaskReference = Pick<PresenceTask, "chatId" | "incarnationId" | "requestId" | "generation">;
 export type DockTasksDetail = Readonly<{ activity: TaskActivitySnapshot; workflowLabels?: Partial<Record<"plan" | "develop" | "review", string>> }>;
 export type WidgetFace =
+  | CustomWidgetFace
   | Readonly<{ type: "builtin.tasks"; running: number | null; waiting: number | null; result: TaskActivitySnapshot["result"] }>
   | Readonly<{ type: "builtin.ai-limits"; configured: boolean; sources: readonly LimitsFaceSource[]; more: number }>
   | Readonly<{ type: "builtin.ai-activity"; state: "ok" | "partial" | "loading" | "no-data" | "error"; tokens: number | null;
@@ -101,6 +112,7 @@ export type PanelSnapshot = Readonly<{
   privacyMask: boolean;
   items: readonly DockBarItem[];
   tasks?: DockTasksDetail | null;
+  customWidget?:CustomWidgetDetail|null;
   downloads: DownloadsDetail | null;
   trash: TrashDetail | null;
   /** Limits detail in selection order; `configurable` is what the Bottega service confirms it can read (3.4). */
@@ -138,6 +150,10 @@ export const dockIntentSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("request-automation") }).strict(),
   z.object({ kind: z.literal("add"), key: z.string().min(1).max(600) }).strict(),
   z.object({ kind: z.literal("add-app-file") }).strict(),
+  z.object({kind:z.literal('widget-entry'),entry:dockWidgetEntrySchema}).strict(),
+  z.object({kind:z.literal('widget-detail-slot'),itemId,key:z.string().regex(/^[a-f0-9]{64}$/),bounds:z.object({x:z.number().finite().min(-4096).max(4096),y:z.number().finite().min(-4096).max(4096),width:z.number().finite().positive().max(4096),height:z.number().finite().positive().max(4096)}).strict()}).strict(),
+  z.object({kind:z.literal('widget-detail-retry'),itemId,key:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
+  z.object({kind:z.literal('widget-action'),itemId,ref:z.string().regex(/^[a-f0-9]{32}$/)}).strict(),
   z.object({ kind: z.literal("remove"), itemId, placementRevision: placementRevision.optional() }).strict(),
   z.object({ kind: z.literal("undo") }).strict(),
   z.object({ kind: z.literal("move"), itemId, placementRevision: placementRevision.optional(), index: z.number().int().min(0).max(200) }).strict(),
@@ -222,6 +238,41 @@ export { dockPreferencePatchSchema };
 export type SetupConfirm = z.infer<typeof setupConfirmSchema>;
 export type ConflictChoice = z.infer<typeof conflictChoiceSchema>;
 export type SystemDockSettingsBridge = {
+  widgetInstallReview(input:{itemId:string}):Promise<import('./widgets/install/types').WidgetInstallReview>;
+  confirmWidgetInstall(input:{operationId:string;reviewId:string}):Promise<import('./widgets/install/types').WidgetInstallResult>;
+  widgetInstallOperation(input:{operationId:string}):Promise<import('./widgets/install/types').WidgetInstallResult|null>;
+  retryWidgetInstall(input:{operationId:string}):Promise<import('./widgets/install/types').WidgetInstallResult>;
+  cancelWidgetInstall(input:{operationId:string}):Promise<import('./widgets/install/types').WidgetInstallResult>;
+  widgetLifecycleControl(input:import('./widgets/install/lifecycle').WidgetLifecycleControl):Promise<import('./widgets/install/lifecycle').WidgetLifecycleResult>;
+  widgetDeliveryControl(input:{reference:string;action:'retry'|'abandon'}):Promise<void>;
+
+  widgetPreviewControl(input:WidgetPreviewControl):Promise<WidgetPreviewResult>;
+  onWidgetPreviewChanged(listener:(snapshot:WidgetPreviewSnapshot)=>void):()=>void;
+  widgetSnapshot():Promise<WidgetManagementSnapshot>;
+  widgetHealth():Promise<WidgetRuntimeHealth>;
+  widgetApiControl(input:WidgetApiControl):Promise<WidgetApiReview>;
+  widgetBaseDirectory(input:WidgetBaseDirectoryRequest):Promise<WidgetBaseDirectory>;
+  revokeWidgetBaseAccess(input:z.infer<typeof widgetBaseRevokeSchema>):Promise<WidgetInstanceReceipt>;
+  widgetUpdateReview(input:{previewId:string}):Promise<WidgetUpdateReview>;
+  widgetUpdateForm(input:{previewId:string;itemId:string}):Promise<WidgetInstanceForm>;
+  stageWidgetUpdate(input:StageWidgetUpdate):Promise<WidgetUpdateReview>;
+  onWidgetsChanged(listener:()=>void):()=>void;
+  newWidget(input:z.infer<typeof newDockWidgetSchema>):Promise<WidgetAuthoringTarget>;
+  editWidget(input:z.infer<typeof editDockWidgetSchema>):Promise<WidgetAuthoringTarget>;
+  forkWidget(input:z.infer<typeof forkDockWidgetSchema>):Promise<WidgetAuthoringTarget>;
+  buildWidget(input:z.infer<typeof editDockWidgetSchema>):Promise<WidgetPreview>;
+  instancePreview(input:{itemId:string}):Promise<WidgetInstanceForm>;
+  savedWidgetPreview(input:{definitionId:string;sourceInstallationId?:string}):Promise<WidgetInstanceForm>;
+  submitWidgetInstance(input:WidgetApplyInput):Promise<WidgetInstanceReceipt>;
+  officialWidgetPreview(input:z.infer<typeof officialWidgetQuerySchema>):Promise<OfficialWidgetForm>;
+  submitOfficialWidget(input:SubmitOfficialWidget):Promise<WidgetInstanceReceipt>;
+  setWidgetPaused(input:z.infer<typeof widgetInstancePauseSchema>):Promise<WidgetInstanceReceipt>;
+  removeWidgetInstance(input:z.infer<typeof widgetInstanceRemoveSchema>):Promise<WidgetInstanceReceipt>;
+  widgetPreview(input:z.infer<typeof editDockWidgetSchema>):Promise<WidgetPreview>;
+  widgetVersions(input:z.infer<typeof editDockWidgetSchema>):Promise<readonly WidgetVersionView[]>;
+  previewWidgetVersion(input:z.infer<typeof previewWidgetVersionSchema>):Promise<WidgetPreview>;
+  applyWidget(input:WidgetApplyInput):Promise<WidgetApplyReceipt>;
+  widgetOperation(input:{operationId:string}):Promise<WidgetApplyReceipt|null>;
   snapshot(): Promise<DockSettingsSnapshot>;
   onChanged(listener: (snapshot: DockSettingsSnapshot) => void): () => void;
   beginSetup(mode: DockMode): Promise<DockSetupPreview>;

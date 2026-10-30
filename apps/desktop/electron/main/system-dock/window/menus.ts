@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron Menu, localized catalog strings, and the DockService actions.
- * [OUTPUT]: Provides the placement-fenced bar context menu (Open, Downloads reveal, Dock Settings, optional restore, then normal native or managed host Quit last) and the Presence Dock submenu (show/hide, restore, settings). Layout changes use drag gestures instead of menu entries.
+ * [OUTPUT]: Provides placement-fenced native menus, fixed Widget management destinations and host/native Quit last.
  * [POS]: system-dock native menus; restore stays reachable from both the Dock itself and the menu bar (3.1), independent of the bar renderer's health.
  */
 
@@ -26,6 +26,15 @@ export function itemMenu(service: DockService, itemId: string | null): Menu | nu
     template.push({ label: translate(service.ports.locale(), "systemDock.menu.open"), click: perform(() => import("../intents").then(({ handleIntent }) => current() ? handleIntent(service, "bar", { kind: "activate", itemId: item.id }) : undefined)) });
     if (item.kind === "system" && item.entry === "system.downloads")
       template.push({ label: translate(service.ports.locale(), "systemDock.menu.reveal"), click: perform(() => service.downloads.reveal()) });
+  }
+  if(item?.kind==='widget'&&service.ports.widgetEntry){
+    const custom=item.widget.type==='custom',paused=custom&&service.ports.custom?.face(item,'bottom').state==='paused';
+    const entry=(kind:'configure'|'edit'|'fork'|'versions'|'pause'|'remove',key:string)=>template.push({id:'dock-widget-'+kind,label:translate(service.ports.locale(),'systemDock.widgets.'+key),click:perform(()=>service.ports.widgetEntry?.({kind,itemId:item.id}))});
+    template.push({type:'separator'});
+    entry('configure','configure');
+    if(custom){entry('edit','edit');entry('fork','copyCustomize');entry('versions','versions');entry('pause',paused?'resume':'pause');}
+    else entry('fork','customize');
+    entry('remove','remove');
   }
   const nativeTarget = running
     ? service.apps?.runningRegular().find((app) => `running-${app.pid}` === running.id)

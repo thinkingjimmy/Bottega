@@ -74,6 +74,10 @@ export function buildPanel(service: DockService): PanelSnapshot {
   }
   if (item.kind === "system" && item.entry === "system.trash") return { ...base, trash: service.trash?.snapshot() ?? { state: "unknown", emptying: false, automation: "unavailable", lastResult: "none" } };
   if (item.kind !== "widget") return base;
+  if(item.widget.type==='custom'){
+    const detail=service.ports.custom?.detail(item,state.edge);if(!detail)return base;
+    return{...base,customWidget:state.privacyMask?{...detail,name:'••••',data:[],face:maskFace(detail.face) as typeof detail.face}:detail};
+  }
   if (item.widget.type === "builtin.tasks") return { ...base, tasks: taskDetail(service.ports.tasks, state.privacyMask) };
   const draft: DockWidget = service.drafts.get(item.id) ?? item.widget;
   const withDraft = { ...base, draft: service.drafts.has(item.id) ? { itemId: item.id, widget: draft, stale: service.staleDrafts.has(item.id) } : null };

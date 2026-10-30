@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Original App publication source identity, its existing Store queue and durable no-follow JSON files.
+ * [INPUT]: Original App/plugin/Widget publication source identity, its existing Store queue and durable no-follow JSON files.
  * [OUTPUT]: Bounded immutable file intent/part/completion records under the original source custody directory, appCiphertextDirectory (that directory's path), plus the ENOENT-tolerant lstatOrNull probe the source custody shares.
- * [POS]: App publication byte custody; it cannot schedule, enroll or create another business outbox.
+ * [POS]: Separate App/plugin/Widget publication byte custody; it cannot schedule, enroll or create another business outbox.
  */
 import { constants } from "node:fs";
 import { lstat, mkdir, open, unlink, rmdir } from "node:fs/promises";
@@ -13,7 +13,9 @@ import type { SyncScope } from "../../../../../../shared/local-storage/contracts
 import { durableReplaceFile, syncDirectory } from "../../../../persistence/durable-json";
 const maximumBytes = 2_097_152;
 type Commit = <T>(operation: () => Promise<T>) => Promise<T>;
-export function appCiphertextJournal(userData: string, scope: SyncScope, appId: string, sourceHash: string, commit: Commit, kind: "app" | "plugin" = "app"): FrozenFileJournal {
+export type CiphertextCustodyKind = "app" | "plugin" | "widget";
+export function appCiphertextJournal(userData: string, scope: SyncScope, appId: string, sourceHash: string, commit: Commit, kind: CiphertextCustodyKind = "app"): FrozenFileJournal {
+  if (!["app", "plugin", "widget"].includes(kind)) throw new Error("APP_SOURCE_ID_INVALID");
   if (!(kind === "app" ? /^[a-z0-9]{10}$/ : /^[a-f0-9]{64}$/).test(appId) || !/^[a-f0-9]{64}$/.test(sourceHash)) throw new Error("APP_SOURCE_ID_INVALID");
   const account = hashBytes(new TextEncoder().encode(canonicalJson(scope)));
   const directories = [userData, join(userData, `${kind}-source-custody`), join(userData, `${kind}-source-custody`, account),
@@ -56,7 +58,8 @@ export function appCiphertextJournal(userData: string, scope: SyncScope, appId: 
   }) };
 }
 /** The custody directory appCiphertextJournal writes for one source hash; a published App surface generation removes it whole (TASK-22). */
-export function appCiphertextDirectory(userData: string, scope: SyncScope, appId: string, sourceHash: string, kind: "app" | "plugin" = "app") {
+export function appCiphertextDirectory(userData: string, scope: SyncScope, appId: string, sourceHash: string, kind: CiphertextCustodyKind = "app") {
+  if (!["app", "plugin", "widget"].includes(kind)) throw new Error("APP_SOURCE_ID_INVALID");
   if (!(kind === "app" ? /^[a-z0-9]{10}$/ : /^[a-f0-9]{64}$/).test(appId) || !/^[a-f0-9]{64}$/.test(sourceHash)) throw new Error("APP_SOURCE_ID_INVALID");
   return join(userData, `${kind}-source-custody`, hashBytes(new TextEncoder().encode(canonicalJson(scope))), appId, sourceHash + "-ciphertext");
 }

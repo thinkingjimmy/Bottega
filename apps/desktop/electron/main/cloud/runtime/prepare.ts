@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Electron userData, guarded native encryption, the cloud build schema, credential and device identity stores, the durable sync binding and the owners attached before the first window.
- * [OUTPUT]: Provides prepareCloudRuntime and the PreparedCloudRuntime shape consumed by createCloudRuntime, including the late-bound account-config cleanup port.
+ * [OUTPUT]: Provides prepareCloudRuntime and the PreparedCloudRuntime shape consumed by createCloudRuntime, including the late-bound account-config and Widget cleanup ports.
  * [POS]: Light half of the cloud composition; startup reads the binding here without compiling the transport/session/sync implementation.
  */
+import {WidgetScopeCleanup} from "../widgets/cleanup/owner";
 import { app } from "electron";
 import { secureStorage } from "../../security/safe-storage";
 import { cloudBuildConfigSchema, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
@@ -39,14 +40,15 @@ export async function prepareCloudRuntime(input: CloudBuildConfig) {
   let appInstall: ReturnType<typeof prepareCloudApps> | null = null;
   // Exists before any Dock store: scope cleanup may run at startup, and the store attaches later through composition.
   const accountConfig = new AccountConfigCleanup();
-  return { config, userData, vault, deviceId, binding, accountConfig, get appInstall() { return appInstall; }, get scope() { return scope; }, get owners() { return attachedOwners; }, get lifecycle() { return lifecycle; }, get homeCapture() { return homeCapture; },
+  const widgetCleanup=new WidgetScopeCleanup(userData,deviceId);
+  return { config, userData, vault, deviceId, binding, accountConfig, widgetCleanup, get appInstall() { return appInstall; }, get scope() { return scope; }, get owners() { return attachedOwners; }, get lifecycle() { return lifecycle; }, get homeCapture() { return homeCapture; },
     baseIdentities: (chats: ChatStore) => baseIdentityCatalog(chats, binding.snapshot() ? { environment: config.environmentId, userId: binding.snapshot()!.userId } : null),
     async attach(owners: CleanupOwners, journal: LifecycleIntentStore, gate: AdmissionGate, conversions: ConversionCleanupServices,
       installation: Pick<CloudAppInstallPorts, "configs" | "extensions" | "validateAgent" | "removed"> & { reconciliation: LifecycleReconciliation; removal: AppLocalRemovalService }) {
       if (scope) throw new Error("SYNC_OWNERS_ALREADY_ATTACHED");
       appInstall = prepareCloudApps({ userData, ...owners, journal, gate, ...installation });
       installation.reconciliation.registerRecovery("app-cloud-install", intent => appInstall!.installer.recover(intent));
-      scope = new AccountScopeLifecycle({ userData, config, binding, owners, journal, gate, conversions, installations: appInstall, accountConfig }); await scope.initialize();
+      scope = new AccountScopeLifecycle({ userData, config, binding, owners, journal, gate, conversions, installations: appInstall, accountConfig, widgets:widgetCleanup }); await scope.initialize();
       attachedOwners = owners; lifecycle = { journal, gate };
       homeCapture = new LocalHomeCapture({ config, userData, binding, store: owners.chats.sync, homes: owners.homes, own: activity => scope!.ownLocal(activity) });
     } };

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared immutable compiler/seal, Surface file-tree digest, durable file publication, source inventory, catalog admission, source provenance and host authorization.
- * [OUTPUT]: Provides capacity-admitted local install, owned-source watching, atomic activation, retained failure, durable rollback/forward, strict-current publication and expiring lease-scoped generation pins with runtime-only Surface identities.
+ * [OUTPUT]: Provides capacity-admitted authored sources, manual Dock candidates, automatic composer activation, account-scoped durable delivery retention and cleanup, rollback/forward and strict-current composer delivery with bounded session pins.
  * [POS]: Plugin surface lifecycle owner; reuses App compiler artifacts without App records, Base grants or host-package execution.
  */
 import {assertPluginIdentity} from "./identity";
@@ -9,7 +9,7 @@ import { REMOTE_PLUGIN_CATALOG_LIMITS } from "@ai-chat/cloud-protocol/surfaces/p
 import { appSurfaceTreeDigest } from "@ai-chat/cloud-protocol/surfaces/manifest";
 import { readFile, realpath, mkdir } from "node:fs/promises";
 import { extname, join } from "node:path";
-import { runtimeFileSchema, type PluginRuntimeRecord, type PluginGeneration, type PluginRuntimeOptions } from "./model";
+import { runtimeFileSchema, generationCustodyScopeSchema, type GenerationCustodyScope, type PluginRuntimeRecord, type PluginGeneration, type PluginRuntimeOptions } from "./model";
 import { pluginGuiManifestSchema } from "../../apps/gui-build/source/manifest";
 import { inspectPluginSource } from "../../apps/gui-build/source/inspection";
 import { verifyCompiledV3Artifact } from "../../apps/gui-build/pipeline/seal";
@@ -70,6 +70,35 @@ export class PluginSurfaceRuntime {
   installLocal(sourceRoot:string,input:{ownerChatId:string;expectedActiveGenerationId?:string|null;signal?:AbortSignal}) {
     return this.install(sourceRoot,input,"local");
   }
+  registerDockSource(sourceRoot:string,ownerChatId:string){
+    return this.enqueue(async()=>{
+      const canonical=await realpath(sourceRoot);await inspectPluginSource(canonical);const manifest=await this.manifest(canonical);
+      if(!('dock' in manifest))throw new Error('Dock source declaration required');
+      await assertPluginIdentity({pluginId:manifest.id,sourceRoot:canonical,origin:'local'},this.options);
+      const existing=this.records.get(manifest.id);
+      if(existing){if(existing.sourceRoot!==canonical||existing.ownerChatId!==ownerChatId)throw new Error('Plugin source ownership changed');return this.descriptor(manifest.id)!;}
+      if(this.records.size>=REMOTE_PLUGIN_CATALOG_LIMITS.entries)throw new Error('Plugin catalog capacity exceeded');
+      if([...this.records.values()].some(record=>record.ownerChatId===ownerChatId))throw new Error('Chat already owns another plugin source');
+      if(!ownerChatId.trim()||ownerChatId.length>160)throw new Error('Invalid source Chat');
+      const record:PluginRuntimeRecord={pluginId:manifest.id,origin:'local',ownerChatId,sourceRoot:canonical,enabled:true,authoringManifest:manifest,
+        activeGenerationId:null,candidateGenerationId:null,previousGenerationId:null,generations:[],retentionPins:[],lastActivation:null,error:null,revision:0};
+      this.observed.set(record.pluginId,await this.fingerprint(canonical));await this.commit(record);return this.descriptor(record.pluginId)!;
+    });
+  }
+  async dockPreview(pluginId:string){
+    const record=this.require(pluginId),generation=record.generations.find(value=>value.generationId===record.candidateGenerationId&&value.available);
+    if(!generation||!('dock' in generation.manifest))throw new Error('DOCK_PREVIEW_UNAVAILABLE');
+    await assertPluginIdentity(record,this.options);await this.verify(pluginId,generation);
+    const sourceFingerprint=await this.fingerprint(join(this.artifactRoot(pluginId,generation.generationId),'source'));
+    if(await this.fingerprint(record.sourceRoot)!==sourceFingerprint||this.require(pluginId).candidateGenerationId!==generation.generationId)throw new Error('DOCK_PREVIEW_CONFLICT');
+    return{id:pluginId,generationId:generation.generationId,sourceFingerprint,name:generation.manifest.name,dock:structuredClone(generation.manifest.dock)};
+  }
+  async dockVersion(pluginId:string,generationId:string){
+    const record=this.require(pluginId),generation=record.generations.find(value=>value.generationId===generationId&&value.available);
+    if(!generation||!('dock'in generation.manifest))throw new Error('DOCK_VERSION_UNAVAILABLE');
+    await assertPluginIdentity(record,this.options);await this.verify(pluginId,generation);
+    return{id:pluginId,generationId,sourceFingerprint:await this.fingerprint(join(this.artifactRoot(pluginId,generationId),'source')),name:generation.manifest.name,dock:structuredClone(generation.manifest.dock)};
+  }
   /** Main-only seed entry. Agent/IPC authoring only receives installLocal. */
   installOfficial(sourceRoot:string,input:{ownerChatId:string;signal?:AbortSignal}) {
     return this.install(sourceRoot,input,"official");
@@ -86,7 +115,7 @@ export class PluginSurfaceRuntime {
       if(existing && existing.sourceRoot!==canonical) throw new Error("Plugin already has a different source directory");
       if(!input.ownerChatId.trim()||input.ownerChatId.length>160)throw new Error("Invalid plugin source Chat");
       if(input.expectedActiveGenerationId!==undefined && (existing?.activeGenerationId??null)!==input.expectedActiveGenerationId)throw new Error("Active plugin generation changed");
-      const record:PluginRuntimeRecord=existing??{pluginId:manifest.id,origin,ownerChatId:input.ownerChatId,sourceRoot:canonical,enabled:true,activeGenerationId:null,previousGenerationId:null,generations:[],error:null,revision:0};
+      const record:PluginRuntimeRecord=existing??{pluginId:manifest.id,origin,ownerChatId:input.ownerChatId,sourceRoot:canonical,enabled:true,authoringManifest:null,activeGenerationId:null,candidateGenerationId:null,previousGenerationId:null,generations:[],retentionPins:[],lastActivation:null,error:null,revision:0};
       return this.build(record,"install",input.signal);
     });
   }
@@ -97,9 +126,10 @@ export class PluginSurfaceRuntime {
       return this.build(record,"rebuild",input.signal);
     });
   }
-  activate(pluginId:string,generationId:string,input:{expectedActiveGenerationId:string|null;signal?:AbortSignal}) {
+  activate(pluginId:string,generationId:string,input:{expectedActiveGenerationId:string|null;expectedSourceFingerprint?:string;operationId?:string;signal?:AbortSignal}) {
     return this.enqueue(async()=>{
       const record=this.require(pluginId);
+      if(input.operationId!==undefined&&!/^[A-Za-z0-9_-]{8,128}$/.test(input.operationId))throw new Error('Invalid activation operation identity');
       if(record.activeGenerationId!==input.expectedActiveGenerationId)throw new Error("Active plugin generation changed");
       const target=record.generations.find(item=>item.generationId===generationId&&item.available);
       if(!target)throw new Error("Plugin generation is no longer available");
@@ -109,7 +139,11 @@ export class PluginSurfaceRuntime {
       await this.verify(pluginId,target);
       await this.authorize(record,target,"activate");
       input.signal?.throwIfAborted();
-      const next={...record,activeGenerationId:generationId,previousGenerationId:record.activeGenerationId===generationId?record.previousGenerationId:record.activeGenerationId,error:null,revision:record.revision+1};
+      if(input.expectedSourceFingerprint!==undefined){
+        if(!('dock' in target.manifest)||record.candidateGenerationId!==generationId||await this.fingerprint(record.sourceRoot)!==input.expectedSourceFingerprint)throw new Error('DOCK_PREVIEW_CONFLICT');
+      }
+      const next={...record,activeGenerationId:generationId,previousGenerationId:record.activeGenerationId===generationId?record.previousGenerationId:record.activeGenerationId,
+        lastActivation:input.operationId?{operationId:input.operationId,generationId,expectedPrevious:input.expectedActiveGenerationId}:null,error:null,revision:record.revision+1};
       await this.commit(next);
       return this.descriptor(pluginId)!;
     });
@@ -168,6 +202,7 @@ export class PluginSurfaceRuntime {
     });
   }
   private delivery(pluginId:string,generation:PluginGeneration,validate:()=>Promise<void>,failed?:()=>void) {
+    if('dock' in generation.manifest)throw new Error('Dock generations require a Dock-scoped Surface');
     const root=join(this.artifactRoot(pluginId,generation.generationId),"runtime/gui");
     // Surface identity covers only delivered GUI files; contentDigest also covers private authoring source.
     return {kind:"compiled" as const,generationId:generation.generationId,artifactDigest:appSurfaceTreeDigest(generation.files),
@@ -187,7 +222,40 @@ export class PluginSurfaceRuntime {
   }
   private purgePins(){for(const [id,pin]of this.pins)if(pin.expiresAt<=Date.now())this.releasePin(id);}
   private protectedGenerations(record:PluginRuntimeRecord){
-    this.purgePins();return new Set([record.activeGenerationId,record.previousGenerationId,...[...this.pins.values()].filter(pin=>pin.pluginId===record.pluginId).map(pin=>pin.generationId)]);
+    this.purgePins();return new Set([record.activeGenerationId,record.candidateGenerationId,record.previousGenerationId,...record.retentionPins.map(pin=>pin.generationId),...[...this.pins.values()].filter(pin=>pin.pluginId===record.pluginId).map(pin=>pin.generationId)]);
+  }
+  /** Persistent custody only. This does not authorize a Surface, data read or activation. */
+  retainGeneration(pluginId:string,generationId:string,id:string,scope?:GenerationCustodyScope){
+    return this.enqueue(async()=>{
+      if(scope)scope=generationCustodyScopeSchema.parse(scope);
+      if(!/^[A-Za-z0-9_-]{8,128}$/.test(id))throw new Error('Invalid generation retention identity');
+      const record=this.require(pluginId),existing=record.retentionPins.find(pin=>pin.id===id);
+      if(existing){if(existing.generationId!==generationId||canonicalJson(existing.scope??null)!==canonicalJson(scope??null))throw new Error('Generation retention identity changed');return;}
+      const generation=record.generations.find(value=>value.generationId===generationId&&value.available);
+      if(!generation)throw new Error('Retained generation is unavailable');
+      if(record.retentionPins.length>=128)throw new Error('Generation retention capacity exceeded');
+      await assertPluginIdentity(record,this.options);await this.verify(pluginId,generation);
+      await this.commit({...record,retentionPins:[...record.retentionPins,{id,generationId,...(scope?{scope}: {})}],revision:record.revision+1});
+    });
+  }
+  releaseGeneration(pluginId:string,id:string){
+    return this.enqueue(async()=>{const record=this.require(pluginId);if(!record.retentionPins.some(pin=>pin.id===id))return;
+      await this.commit({...record,retentionPins:record.retentionPins.filter(pin=>pin.id!==id),revision:record.revision+1});await this.collect(pluginId);
+    });
+  }
+  releaseAccountGenerations(raw:GenerationCustodyScope){
+    const scope=generationCustodyScopeSchema.parse(raw);
+    return this.enqueue(async()=>{
+      const matches=(pin:PluginRuntimeRecord['retentionPins'][number])=>pin.scope?.accountId===scope.accountId&&pin.scope.installationId===scope.installationId;
+      for(const record of [...this.records.values()])if(record.retentionPins.some(matches)){
+        await this.commit({...record,retentionPins:record.retentionPins.filter(pin=>!matches(pin)),revision:record.revision+1});await this.collect(record.pluginId);
+      }
+      const quarantined=this.quarantined.map(record=>record.retentionPins.some(matches)?{...record,retentionPins:record.retentionPins.filter(pin=>!matches(pin)),revision:record.revision+1}:record);
+      if(quarantined.some((record,index)=>record!==this.quarantined[index])){
+        const before=this.quarantined;this.quarantined=quarantined;
+        try{await this.persist(this.records);}catch(error){this.quarantined=before;throw error;}
+      }
+    });
   }
   async assertServing(pluginId:string,generationId:string) {
     const record=this.require(pluginId),current=this.active(record);
@@ -208,12 +276,15 @@ export class PluginSurfaceRuntime {
       await assertPluginIdentity(record,this.options);
       const manifest=await this.manifest(record.sourceRoot);
       if(manifest.id!==record.pluginId)throw new Error("Plugin source identity changed");
+      const previous=record.generations[0]?.manifest??record.authoringManifest;
+      if(previous&&('dock' in previous)!==('dock' in manifest))throw new Error('Plugin authoring target changed; create a separate definition');
       if(!this.records.has(record.pluginId)&&this.records.size>=REMOTE_PLUGIN_CATALOG_LIMITS.entries)throw new Error(`Plugin catalog capacity exceeds ${REMOTE_PLUGIN_CATALOG_LIMITS.entries} entries`);
       this.options.admit?.(manifest);
-      const fingerprint=await this.fingerprint(record.sourceRoot);
       prepared=await this.options.compiler.prepare({appId:record.pluginId,sourceRoot:record.sourceRoot,manifest,...(signal?{signal}:{})});
       const generation:PluginGeneration={generationId,createdAt:Date.now(),manifest,digests:{...prepared.digests},files:[...prepared.receipt.files],available:true};
       await prepared.seal(this.artifactRoot(record.pluginId,generationId));
+      // Component synchronization can update working source before the compiler freezes it.
+      const fingerprint=await this.fingerprint(join(this.artifactRoot(record.pluginId,generationId),'source'));
       await this.verify(record.pluginId,generation);
       await this.authorize(record,generation,reason);
       signal?.throwIfAborted();
@@ -224,7 +295,9 @@ export class PluginSurfaceRuntime {
         if(index<0)throw new Error("Plugin generation history is fully retained");
         generations.splice(index,1);
       }
-      const next={...record,activeGenerationId:generationId,previousGenerationId:record.activeGenerationId,generations,error:null,revision:record.revision+1};
+      const manual='dock' in manifest;
+      const next={...record,authoringManifest:manifest,activeGenerationId:manual?record.activeGenerationId:generationId,candidateGenerationId:manual?generationId:null,
+        previousGenerationId:manual?record.previousGenerationId:record.activeGenerationId,lastActivation:manual?record.lastActivation:null,generations,error:null,revision:record.revision+1};
       await this.commit(next);
       this.observed.set(record.pluginId,fingerprint);
       await this.collect(record.pluginId).catch(()=>undefined);
@@ -252,10 +325,12 @@ export class PluginSurfaceRuntime {
     try {for(const record of this.list()) {
       if(this.stopped)break;
       try {
-        const fingerprint=await this.fingerprint(record.sourceRoot);
-        if(this.observed.get(record.pluginId)===fingerprint)continue;
-        this.observed.set(record.pluginId,fingerprint);
-        await this.rebuild(record.pluginId);
+        await this.enqueue(async()=>{
+          const current=this.require(record.pluginId),fingerprint=await this.fingerprint(current.sourceRoot);
+          if(this.observed.get(current.pluginId)===fingerprint)return;
+          this.observed.set(current.pluginId,fingerprint);
+          await this.build(current,"rebuild");
+        });
       } catch(cause) {
         if(!this.stopped)await this.enqueue(async()=>{const current=this.require(record.pluginId),error=this.reason(cause);if(current.error!==error)await this.commit({...current,error,revision:current.revision+1});});
       }
