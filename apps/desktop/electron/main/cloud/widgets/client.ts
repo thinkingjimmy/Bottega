@@ -1,9 +1,8 @@
 /**
- * [INPUT]: Depends on authenticated current account/space metadata, private encrypted file transport and exact immutable package/review verification.
+ * [INPUT]: Depends on authenticated current account/space metadata, private encrypted file transport, deferred catalog validation and exact immutable package/review verification.
  * [OUTPUT]: Provides bounded cancellable WidgetCloudClient reviews, original-byte downloads and terminal definition retirement without code acceptance or data permission.
  * [POS]: Main-only receiver transport; installation and local version selection remain separate durable owners.
  */
-import {assertWidgetCatalogPage} from "@ai-chat/cloud-protocol/widgets/catalog";
 import { createHash } from "node:crypto";
 import { canonicalJson } from "@bottega/contracts/core/canonical-json";
 import { WIDGET_PACKAGE_BUDGET as BUDGET } from "@bottega/contracts/plugins/dock/packages";
@@ -39,7 +38,14 @@ export class WidgetCloudClient {
   private readonly flights = new Set<Promise<unknown>>();
   private closed = false;
   constructor(private readonly ports: Ports) {}
-  catalog(cursor:string|null,signal?:AbortSignal){return this.run(signal,async context=>assertWidgetCatalogPage(await context.call(()=>this.ports.transport.query('widgets/api:catalog',{...this.ports.header(),cursor})),this.ports.scope.userId));}
+  catalog(cursor: string | null, signal?: AbortSignal) {
+    return this.run(signal, async context => {
+      const { assertWidgetCatalogPage } = await import('@ai-chat/cloud-protocol/widgets/catalog');
+      return assertWidgetCatalogPage(await context.call(() => this.ports.transport.query('widgets/api:catalog', {
+        ...this.ports.header(), cursor,
+      })), this.ports.scope.userId);
+    });
+  }
   review(input: Request, signal?: AbortSignal) {
     return this.run(signal, async (context) => {
       const delivery = await this.delivery(input, context.call),
