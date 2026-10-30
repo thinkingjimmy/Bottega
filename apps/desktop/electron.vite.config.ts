@@ -279,7 +279,13 @@ export default defineConfig({
             rollupOptions: {
                 onwarn,
                 // Workers and resource helpers resolve from the main bundle directory.
-                output: { chunkFileNames: "[name]-[hash].js" },
+                output: {
+                    chunkFileNames: "[name]-[hash].js",
+                    onlyExplicitManualChunks: true,
+                    // Keep the deferred Cloud composition separate from shared protocol modules.
+                    manualChunks: id => id === resolve(__dirname, "electron/main/cloud/runtime/composition.ts")
+                        ? "cloud-composition" : undefined,
+                },
                 input: {
                     
                     index: resolve(__dirname, "electron/main/main-entry.ts"),
