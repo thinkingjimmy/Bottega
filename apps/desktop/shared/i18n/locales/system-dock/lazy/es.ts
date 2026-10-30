@@ -35,8 +35,8 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
     title: "Widgets", add: "Añadir widget", new: "Crear widget", untitled: "Widget sin nombre", edit: "Editar funciones", empty: "Crea un widget para mostrar la información que necesitas en el Dock.",
     search: "Buscar widgets", failed: "No se pudo abrir el widget. Tu trabajo se conserva. Inténtalo de nuevo.", creating: "Creando…", describe: "Describe la información que quieres ver. Revisa la vista previa antes de añadir el widget.",
     build: "Crear vista previa", building: "Creando…", example: "Datos de ejemplo", draft: "Borrador", candidate: "Vista previa lista", buildFailed: "No se pudo crear la vista previa. Continúa editando y vuelve a intentarlo.",
-    settings: "Ajustes del widget", impact: "{{count}} instancias en este ordenador", noMatches: "No hay widgets coincidentes", sourceUnavailable: "El chat de origen no está disponible. El código se conserva.",
-    addExisting: "Elegir un widget", cancel: "Cancelar", added: "Añadido al Dock", addFailed: "No se pudo añadir el widget. Tus opciones se conservan.",
+    impact: "{{count}} instancias en este ordenador", noMatches: "No hay widgets coincidentes",
+    addExisting: "Elegir un widget", cancel: "Cancelar", addFailed: "No se pudo añadir el widget. Tus opciones se conservan.",
   },
   placement: {
     panelSpaceHint: "No hay espacio suficiente para abrir el panel. Elige otra pantalla o reduce el tamaño del Dock.",

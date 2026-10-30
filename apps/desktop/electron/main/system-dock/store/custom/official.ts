@@ -19,7 +19,7 @@ export function officialChoices(directory:OfficialWidgetDirectory){
 export function validateOfficial(widget:OfficialWidget,directory:OfficialWidgetDirectory){
  if(widget.type==='builtin.ai-activity'&&widget.source!=='all'&&!directory.sources.includes(widget.source))throw new Error('DOCK_WIDGET_SOURCE_CONFIGURATION_REQUIRED');
  if(widget.type!=='builtin.ai-limits')return;
- if(widget.selectedBackends.some(backend=>!directory.configurable.includes(backend))||Object.keys(widget.selectionByBackend).some(backend=>!widget.selectedBackends.includes(backend as AgentBackendId)))throw new Error('DOCK_WIDGET_SOURCE_CONFIGURATION_REQUIRED');
+ if(widget.selectedBackends.some(backend=>!directory.configurable.includes(backend))||Object.keys(widget.selectionByBackend).some(backend=>!widget.selectedBackends.some(selected=>selected===backend)))throw new Error('DOCK_WIDGET_SOURCE_CONFIGURATION_REQUIRED');
  for(const backend of widget.selectedBackends){
   const selection=widget.selectionByBackend[backend];if(!selection||selection.poolId===null&&selection.windowId===null)continue;
   const pools=directory.agents.find(agent=>agent.backend===backend)?.pools??[];

@@ -9,15 +9,17 @@ import type {WidgetApiControl,WidgetApiReview} from '../../../../../../shared/sy
 import {useAppTranslation} from '@/components/providers/preferences/i18n-provider';
 import {SettingsAlert,SettingsButton} from '@/components/settings/settings-layout';
 
+type ApiMessage='saved'|'tested';
+const API_MESSAGE_KEYS={saved:'systemDock.widgets.api.saved',tested:'systemDock.widgets.api.tested'}satisfies Record<ApiMessage,string>;
 type Props={previewId:string;targetId?:string;settings:DockSettings;consent:readonly string[];disabled:boolean;onConsent(value:string[]):void;onReady(value:boolean):void};
 const command=(input:WidgetApiControl)=>window.systemDockSettings!.widgetApiControl(input);
 export function WidgetApiConfiguration({previewId,targetId,settings,consent,disabled,onConsent,onReady}:Props){
- const {t}=useAppTranslation(),[review,setReview]=useState<WidgetApiReview|null>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[failed,setFailed]=useState(false),[message,setMessage]=useState<'saved'|'tested'|null>(null),[retry,setRetry]=useState(0),[credentials,setCredentials]=useState<Record<string,string>>({}),[copies,setCopies]=useState<Record<string,string>>({});
+ const {t}=useAppTranslation(),[review,setReview]=useState<WidgetApiReview|null>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[failed,setFailed]=useState(false),[message,setMessage]=useState<ApiMessage|null>(null),[retry,setRetry]=useState(0),[credentials,setCredentials]=useState<Record<string,string>>({}),[copies,setCopies]=useState<Record<string,string>>({});
  const settingsKey=JSON.stringify(settings),alive=useRef(false),lock=useRef(false),context=useMemo(()=>({previewId,...(targetId?{targetId}:{}),settings:JSON.parse(settingsKey)as DockSettings}),[previewId,targetId,settingsKey]);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;onReady(false);};},[onReady]);
  useEffect(()=>{let active=true;void command({kind:'review',...context}).then(value=>{if(active&&alive.current)setReview(value);},()=>{if(active&&alive.current)setFailed(true);}).finally(()=>{if(active&&alive.current)setLoading(false);});return()=>{active=false;};},[context,retry]);
  useEffect(()=>{onReady(!loading&&!busy&&!failed&&review!==null&&review.requests.every(request=>(request.authorized||consent.includes(request.id))&&request.configured));},[loading,busy,failed,review,consent,onReady]);
- const run=async(action:()=>Promise<WidgetApiReview>,success:'saved'|'tested'|null=null)=>{
+ const run=async(action:()=>Promise<WidgetApiReview>,success:ApiMessage|null=null)=>{
   if(lock.current||disabled||!alive.current)return;lock.current=true;setBusy(true);setFailed(false);setMessage(null);
   try{const value=await action();if(alive.current){setReview(value);setMessage(success);}}
   catch{if(alive.current)setFailed(true);}finally{lock.current=false;if(alive.current)setBusy(false);}
@@ -35,7 +37,7 @@ export function WidgetApiConfiguration({previewId,targetId,settings,consent,disa
    <label className="flex items-start gap-2 text-sm"><input type="checkbox" data-testid={'widget-api-consent-'+request.id} checked={consent.includes(request.id)||request.authorized} disabled={blocked} onChange={event=>{
     const next=event.target.checked?[...new Set([...consent,request.id])]:consent.filter(id=>id!==request.id);onConsent(next);if(!event.target.checked&&request.authorized)void run(()=>command({kind:'revoke',...context,requestId:request.id}));
    }}/><span>{t('systemDock.widgets.api.consent')}</span></label>
-   {request.failure&&<p role="status" className="text-xs text-muted-foreground">{t('systemDock.widgets.api.failures.'+request.failure.code)}{request.failure.status?' '+t('systemDock.widgets.api.httpStatus',{status:request.failure.status}):''}</p>}
+   {request.failure&&<p role="status" className="text-xs text-muted-foreground">{t(`systemDock.widgets.api.failures.${request.failure.code}`)}{request.failure.status?' '+t('systemDock.widgets.api.httpStatus',{status:request.failure.status}):''}</p>}
    <div className="flex flex-wrap gap-2"><SettingsButton variant="outline" disabled={blocked||!consent.includes(request.id)&&!request.authorized} onClick={()=>void run(async()=>{await save();return command({kind:'test',...context,requestId:request.id});},'tested')}>{t('systemDock.widgets.api.test')}</SettingsButton>
     {request.authorized&&<SettingsButton variant="outline" disabled={blocked} onClick={()=>{onConsent(consent.filter(id=>id!==request.id));void run(()=>command({kind:'revoke',...context,requestId:request.id}));}}>{t('systemDock.widgets.api.revoke')}</SettingsButton>}</div>
   </fieldset>)}
@@ -47,7 +49,7 @@ export function WidgetApiConfiguration({previewId,targetId,settings,consent,disa
     {request.configured&&<SettingsButton variant="outline" disabled={blocked} onClick={()=>void run(async()=>{const value=await command({kind:'clear',...context,slotId:request.slot!});if(alive.current)setCredentials(previous=>({...previous,[request.slot!]:''}));return value;})}>{t('systemDock.widgets.api.clear')}</SettingsButton>}</div>
    {review!.copyChoices.length>0&&<><label className="grid gap-2 text-sm">{t('systemDock.widgets.api.chooseCopy')}<select className="min-h-10 rounded-md border bg-transparent px-3" value={copies[request.slot!]??''} disabled={blocked} onChange={event=>setCopies(previous=>({...previous,[request.slot!]:event.target.value}))}><option value="">{t('systemDock.widgets.api.chooseCopy')}</option>{review!.copyChoices.map(choice=><option key={choice.id} value={choice.id}>{choice.label} · {choice.slotId}</option>)}</select></label><p className="text-xs text-muted-foreground">{t('systemDock.widgets.api.copyHint')}</p><SettingsButton variant="outline" disabled={blocked||!copies[request.slot!]||!consent.includes(request.id)&&!request.authorized} onClick={()=>void run(()=>command({kind:'copy',...context,operationId:crypto.randomUUID(),selectionId:copies[request.slot!]!,slotId:request.slot!}),'saved')}>{t('systemDock.widgets.api.copy')}</SettingsButton></>}
   </div>)}
-  {message&&<p role="status" className="text-xs text-muted-foreground">{t('systemDock.widgets.api.'+message)}</p>}
+  {message&&<p role="status" className="text-xs text-muted-foreground">{t(API_MESSAGE_KEYS[message])}</p>}
   {failed&&<SettingsAlert>{t(review?'systemDock.widgets.api.failed':'systemDock.widgets.api.loadFailed')}<SettingsButton variant="outline" disabled={busy||disabled} onClick={()=>{setLoading(true);setFailed(false);setReview(null);setMessage(null);setRetry(value=>value+1);}}>{t('systemDock.widgets.api.retry')}</SettingsButton></SettingsAlert>}
  </section>;
 }

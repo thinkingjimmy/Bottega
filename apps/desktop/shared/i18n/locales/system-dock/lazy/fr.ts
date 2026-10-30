@@ -35,8 +35,8 @@ export const systemDockLazyFr: typeof systemDockLazyEn = {
     title: "Widgets", add: "Ajouter un widget", new: "Créer un widget", untitled: "Widget sans nom", edit: "Modifier les fonctions", empty: "Créez un widget pour afficher les informations utiles dans le Dock.",
     search: "Rechercher des widgets", failed: "Impossible d’ouvrir le widget. Votre travail est conservé. Réessayez.", creating: "Création…", describe: "Décrivez les informations à afficher. Vérifiez l’aperçu avant d’ajouter le widget.",
     build: "Créer l’aperçu", building: "Création…", example: "Données d’exemple", draft: "Brouillon", candidate: "Aperçu prêt", buildFailed: "Impossible de créer l’aperçu. Poursuivez les modifications et réessayez.",
-    settings: "Réglages du widget", impact: "{{count}} instances sur cet ordinateur", noMatches: "Aucun widget correspondant", sourceUnavailable: "Le chat d’origine est indisponible. Les sources sont conservées.",
-    addExisting: "Choisir un widget", cancel: "Annuler", added: "Ajouté au Dock", addFailed: "Impossible d’ajouter le widget. Vos choix sont conservés.",
+    impact: "{{count}} instances sur cet ordinateur", noMatches: "Aucun widget correspondant",
+    addExisting: "Choisir un widget", cancel: "Annuler", addFailed: "Impossible d’ajouter le widget. Vos choix sont conservés.",
   },
   placement: {
     panelSpaceHint: "L’espace est insuffisant pour ouvrir le panneau. Choisissez un autre écran ou réduisez la taille du Dock.",

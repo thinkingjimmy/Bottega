@@ -35,8 +35,8 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     title: "Widgets", add: "添加 Widget", new: "新建 Widget", untitled: "未命名 Widget", edit: "编辑功能", empty: "创建 Widget，将需要的信息留在 Dock 上。",
     search: "搜索 Widget", failed: "无法打开 Widget。已保留你的工作，请重试。", creating: "正在创建…", describe: "描述你想查看的信息。检查预览后，再将 Widget 加入 Dock。",
     build: "构建预览", building: "正在构建…", example: "示例数据", draft: "草稿", candidate: "预览已就绪", buildFailed: "无法构建预览。请继续修改后重试。",
-    settings: "Widget 设置", impact: "此电脑上的 {{count}} 个实例", noMatches: "没有匹配的 Widget", sourceUnavailable: "原创作 Chat 暂不可用。已保留 Widget 源码。",
-    addExisting: "选择 Widget", cancel: "取消", added: "已加入 Dock", addFailed: "无法添加 Widget。已保留你的选择。",
+    impact: "此电脑上的 {{count}} 个实例", noMatches: "没有匹配的 Widget",
+    addExisting: "选择 Widget", cancel: "取消", addFailed: "无法添加 Widget。已保留你的选择。",
   },
   placement: {
     panelSpaceHint: "没有足够空间打开面板。请选择其他显示器或缩小 Dock。",

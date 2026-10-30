@@ -33,8 +33,8 @@ export const systemDockLazyEn = {
     title: "Widgets", add: "Add Widget", new: "New Widget", untitled: "Untitled Widget", edit: "Edit functionality", empty: "Create a Widget to keep the information you need in the Dock.",
     search: "Search Widgets", failed: "The Widget could not be opened. Your work is kept. Try again.", creating: "Creating…", describe: "Describe what you want to see. Review the preview before you add the Widget.",
     build: "Build preview", building: "Building…", example: "Example data", draft: "Draft", candidate: "Preview ready", buildFailed: "The preview could not be built. Continue editing and try again.",
-    settings: "Widget settings", impact: "{{count}} instances on this computer", noMatches: "No matching Widgets", sourceUnavailable: "The source Chat is unavailable. Your Widget source is kept.",
-    addExisting: "Choose a Widget", cancel: "Cancel", added: "Added to Dock", addFailed: "The Widget could not be added. Your choices are kept.",
+    impact: "{{count}} instances on this computer", noMatches: "No matching Widgets",
+    addExisting: "Choose a Widget", cancel: "Cancel", addFailed: "The Widget could not be added. Your choices are kept.",
   },
   placement: {
     panelSpaceHint: "Not enough room to open the panel. Choose another display or reduce Dock size.",

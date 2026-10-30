@@ -35,8 +35,8 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     title: "ウィジェット", add: "ウィジェットを追加", new: "ウィジェットを作成", untitled: "名称未設定のウィジェット", edit: "機能を編集", empty: "必要な情報を Dock に表示するウィジェットを作成します。",
     search: "ウィジェットを検索", failed: "ウィジェットを開けませんでした。作業は保存されています。再試行してください。", creating: "作成中…", describe: "表示したい情報を説明してください。追加する前にプレビューを確認します。",
     build: "プレビューを作成", building: "作成中…", example: "サンプルデータ", draft: "下書き", candidate: "プレビューの準備完了", buildFailed: "プレビューを作成できませんでした。編集を続けて再試行してください。",
-    settings: "ウィジェット設定", impact: "このコンピューターの {{count}} 件", noMatches: "一致するウィジェットはありません", sourceUnavailable: "元のチャットを利用できません。ソースは保存されています。",
-    addExisting: "ウィジェットを選択", cancel: "キャンセル", added: "Dock に追加しました", addFailed: "追加できませんでした。選択は保存されています。",
+    impact: "このコンピューターの {{count}} 件", noMatches: "一致するウィジェットはありません",
+    addExisting: "ウィジェットを選択", cancel: "キャンセル", addFailed: "追加できませんでした。選択は保存されています。",
   },
   placement: {
     panelSpaceHint: "パネルを開くスペースが足りません。別のディスプレイを選ぶか、Dock のサイズを小さくしてください。",
