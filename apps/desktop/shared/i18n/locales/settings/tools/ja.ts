@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsToolsEn structural type
- * [OUTPUT]: Provides settingsToolsJa, the Japanese Settings Tools catalog
+ * [OUTPUT]: Provides settingsToolsJa, the Japanese Settings Tools catalog including offline Design font access
  * [POS]: Japanese leaf of shared/i18n/locales/settings/tools; loaded on demand by the matching top-level locale
  */
 
@@ -47,6 +47,7 @@ export const settingsToolsJa: typeof settingsToolsEn = {
       browser_act: { label: "Web ページを操作", hint: "Web ページ操作をまとめて実行します。Plan ターンでは利用できません。" },
       browser_tabs: { label: "Web タブを一覧表示", hint: "表示中とこの Section 所有のタブを表示します。Plan ターンでは利用できません。" },
       browser_close: { label: "Web タブを閉じる", hint: "この Section が所有するタブを閉じます。Plan ターンでは利用できません。" },
+      design_fonts: { label: "デザイン用フォントを一覧表示", hint: "オフラインのフォントを一覧表示し、このコンピューター上の検証済みフォントファイルとライセンスファイルを提供します。文書の変更やシステムフォントのインストールは行いません。" },
       design_check: { label: "デザイン文書を確認", hint: "構造と安定したファイル一式を読み取り専用で確認します。" },
       design_commit: { label: "デザイン版を保存", hint: "版の競合を確認し、検査済みの文書全体を保存します。" },
       design_render_check: { label: "Design の描画を確認", hint: "現在の Design キャンバスを描画し、スクリーンショットと anti-slop の指摘を返します。" },

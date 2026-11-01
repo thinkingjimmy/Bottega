@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsToolsEn structural type
- * [OUTPUT]: Provides settingsToolsZhCN, the Simplified Chinese Settings Tools catalog
+ * [OUTPUT]: Provides settingsToolsZhCN, the Simplified Chinese Settings Tools catalog including offline Design font access
  * [POS]: Simplified Chinese leaf of shared/i18n/locales/settings/tools; loaded on demand by the matching top-level locale
  */
 
@@ -50,6 +50,7 @@ export const settingsToolsZhCN: typeof settingsToolsEn = {
       browser_act: { label: "操作网页", hint: "批量执行网页动作；Plan 轮不签发。" },
       browser_tabs: { label: "列出网页标签", hint: "查看当前可见与本 Section 拥有的标签；Plan 轮不签发。" },
       browser_close: { label: "关闭网页标签", hint: "关闭本 Section 拥有的网页标签；Plan 轮不签发。" },
+      design_fonts: { label: "列出设计字体", hint: "列出离线字体，并提供本机已验证的字体和许可文件；不修改文档，也不安装系统字体。" },
       design_check: { label: "检查设计文档", hint: "只读检查结构与稳定文件集。" },
       design_commit: { label: "保存设计版本", hint: "检查版本冲突，并保存完整的已检查文档。" },
       design_render_check: { label: "检查设计渲染", hint: "渲染当前 Design 画布，并返回截图与 anti-slop 提示。" },

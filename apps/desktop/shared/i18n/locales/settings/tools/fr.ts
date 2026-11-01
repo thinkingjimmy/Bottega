@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsToolsEn structural type
- * [OUTPUT]: Provides settingsToolsFr, the French Settings Tools catalog
+ * [OUTPUT]: Provides settingsToolsFr, the French Settings Tools catalog including offline Design font access
  * [POS]: French leaf of shared/i18n/locales/settings/tools; loaded on demand by the matching top-level locale
  */
 
@@ -47,6 +47,7 @@ export const settingsToolsFr: typeof settingsToolsEn = {
       browser_act: { label: "Agir sur une page web", hint: "Exécuter un lot d’actions web ; indisponible dans les tours Plan." },
       browser_tabs: { label: "Lister les onglets web", hint: "Afficher les onglets visibles et ceux de cette Section ; indisponible dans les tours Plan." },
       browser_close: { label: "Fermer un onglet web", hint: "Fermer un onglet appartenant à cette Section ; indisponible dans les tours Plan." },
+      design_fonts: { label: "Lister les polices de design", hint: "Liste les polices hors ligne et fournit les fichiers de police et de licence vérifiés sur cet ordinateur. Ne modifie pas les documents et n’installe pas de polices système." },
       design_check: { label: "Vérifier le document", hint: "Vérification en lecture seule de la structure et des fichiers stables." },
       design_commit: { label: "Enregistrer une version", hint: "Enregistre le document complet après vérification des conflits de version." },
       design_render_check: { label: "Vérifier le rendu Design", hint: "Rendre le canevas Design actuel et renvoyer une capture avec les avertissements anti-slop." },

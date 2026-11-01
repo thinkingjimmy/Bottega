@@ -1,6 +1,6 @@
 /**
  * [INPUT]: No runtime dependencies
- * [OUTPUT]: Provides settingsToolsEn — global-default/Project scope, source/effective/support, localizable runtime constraints, owner group, reset, conflict, form, and bridge-unavailable copy — and the structural shape its translated leaves derive from
+ * [OUTPUT]: Provides settingsToolsEn — global-default/Project scope, offline Design font access, source/effective/support, localizable runtime constraints, owner group, reset, conflict, form, and bridge-unavailable copy — and the structural shape its translated leaves derive from
  * [POS]: English leaf of shared/i18n/locales/settings/tools; Tool/MCP identifiers, commands, transports, and external runtime diagnostics remain untranslated
  */
 
@@ -63,6 +63,7 @@ export const settingsToolsEn = {
       browser_act: { label: "Act on webpage", hint: "Run a batch of webpage actions; not issued in Plan turns." },
       browser_tabs: { label: "List webpage tabs", hint: "View visible tabs and tabs owned by this Section; not issued in Plan turns." },
       browser_close: { label: "Close webpage tab", hint: "Close a webpage tab owned by this Section; not issued in Plan turns." },
+      design_fonts: { label: "List design fonts", hint: "List offline fonts and provide verified font and license files on this computer. Does not change documents or install system fonts." },
       design_check: { label: "Check design document", hint: "Read-only structure and stable file-set check." },
       design_commit: { label: "Save design version", hint: "Save the complete checked document with revision conflict checks." },
       design_render_check: { label: "Check Design render", hint: "Render the current Design canvas and return a screenshot plus anti-slop advisories." },

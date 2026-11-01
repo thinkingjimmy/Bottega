@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsToolsEn structural type
- * [OUTPUT]: Provides settingsToolsEs, the Spanish Settings Tools catalog
+ * [OUTPUT]: Provides settingsToolsEs, the Spanish Settings Tools catalog including offline Design font access
  * [POS]: Spanish leaf of shared/i18n/locales/settings/tools; loaded on demand by the matching top-level locale
  */
 
@@ -47,6 +47,7 @@ export const settingsToolsEs: typeof settingsToolsEn = {
       browser_act: { label: "Actuar en página web", hint: "Ejecutar acciones web por lotes; no se emite en turnos Plan." },
       browser_tabs: { label: "Listar pestañas web", hint: "Ver pestañas visibles y de esta Section; no se emite en turnos Plan." },
       browser_close: { label: "Cerrar pestaña web", hint: "Cerrar una pestaña de esta Section; no se emite en turnos Plan." },
+      design_fonts: { label: "Listar fuentes de diseño", hint: "Lista las fuentes sin conexión y proporciona los archivos de fuente y licencia verificados en este ordenador. No modifica documentos ni instala fuentes del sistema." },
       design_check: { label: "Comprobar el documento", hint: "Comprueba la estructura y los archivos estables sin modificarlos." },
       design_commit: { label: "Guardar una versión", hint: "Guarda el documento completo tras comprobar conflictos de versión." },
       design_render_check: { label: "Comprobar renderizado Design", hint: "Renderizar el lienzo Design actual y devolver una captura con avisos anti-slop." },

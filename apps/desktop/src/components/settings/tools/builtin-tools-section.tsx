@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React state, i18n, an explicit global/Project scope port, ui/Tabs, and Settings primitives
- * [OUTPUT]: Provides the complete shared ambient-tool renderer, including Design document and system controls, with effective/source/backend facts, Project reset actions, and eight-domain navigation
+ * [OUTPUT]: Provides the complete shared ambient-tool renderer, including offline Design font access, document and system controls, with effective/source/backend facts, Project reset actions, and eight-domain navigation
  * [POS]: apps/desktop/src/components/settings/tools; Scope-agnostic built-in tool controls for Settings › Tools; controllers own persistence and this component only renders snapshots and mutations
  */
 
@@ -60,6 +60,7 @@ export const BUILTIN_TOOL_COPY = {
   browser_act: { domain: "Browser" },
   browser_tabs: { domain: "Browser" },
   browser_close: { domain: "Browser" },
+  design_fonts: { domain: "Design" },
   design_check: { domain: "Design" },
   design_commit: { domain: "Design" },
   design_render_check: { domain: "Design" },
