@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12"><img alt="0.2.11 stable" src="https://img.shields.io/badge/release-0.2.11%20stable-blue"></a>
+  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12"><img alt="0.2.12" src="https://img.shields.io/badge/release-0.2.12-blue"></a>
   <a href="https://github.com/thinkingjimmy/Bottega/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/thinkingjimmy/Bottega?style=flat&amp;logo=github"></a>
   <a href="./LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
@@ -57,19 +57,19 @@ Choose a prebuilt desktop release or run Bottega directly from source. Before la
 
 ## Download
 
-[Download 0.2.11 →](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12)
+[Download 0.2.12 →](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12)
 
 | Platform | Download |
 | --- | --- |
 | macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12) |
 
-0.2.11 is an **official stable release for macOS on Apple silicon only**. Automatic updates are enabled for this release and follow the official stable channel.
+0.2.12 supports **macOS on Apple silicon (ARM64) only**. Official installers use the stable automatic-update channel.
 
-**Updating:** 0.2.6 and 0.2.7 installations use the stable update channel. The shipped 0.2.5 personal build has its updater disabled and requires a manual installation of 0.2.11. Before replacing the app, quit Bottega completely and back up your Bottega folder and application data.
+**Updating:** 0.2.6 and 0.2.7 installations use the stable update channel. The shipped 0.2.5 personal build has its updater disabled and requires a manual installation of 0.2.12. Before replacing the app, quit Bottega completely and back up your Bottega folder and application data.
 
-This release uses **protocol 22**. Update connected desktops and reload Bottega Web after the coordinated service update. Existing Bottega content, cloud content, sync passwords, and account keys remain. No data reset is required. See the [changelog](./docs/changelog/README.md) for custom Dock Widgets, data permissions and upgrade limits.
+0.2.12 uses **protocol 23**. Update connected desktops and reload Bottega Web after the coordinated service update. Existing Bottega content, cloud content, sync passwords, and account keys remain. No data reset is required. See the [changelog](./docs/changelog/README.md) for native Canvas and Slides, reviewed AI edits and validation limits.
 
-Use the official **Developer ID signed and Apple notarized** DMG or ZIP. Download `Bottega-0.2.11-release-evidence.tar.gz` from the same release and read `release-manifest.json` at its root. Run `shasum -a 256` on the installer and compare the result with its `sha256` in the manifest, then copy Bottega into `Applications`. See the [installation guide](./docs/getting-started/README.md#download-and-install) for the commands.
+Use the official **Developer ID signed and Apple notarized** DMG or ZIP. Download `Bottega-0.2.12-release-evidence.tar.gz` from the same release and read `release-manifest.json` at its root. Run `shasum -a 256` on the installer and compare the result with its `sha256` in the manifest, then copy Bottega into `Applications`. See the [installation guide](./docs/getting-started/README.md#download-and-install) for the commands.
 
 **Historical validation:** 0.2.7 was published by owner decision before complete local and final-package GUI acceptance. It has no complete acceptance evidence archive. Those facts remain specific to 0.2.7; its Release page lists the actual assets.
 
@@ -97,7 +97,7 @@ pnpm build
 pnpm dist
 ```
 
-A signed distribution requires your own Apple signing configuration. Official release installers are available from the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12). See the [getting-started guide](./docs/getting-started/README.md) for requirements, supported Agent CLIs, and build commands.
+A signed distribution requires your own Apple signing configuration. Find official release installers and their verification records on the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12). See the [getting-started guide](./docs/getting-started/README.md) for requirements, supported Agent CLIs, and build commands.
 
 ## Build provenance
 
