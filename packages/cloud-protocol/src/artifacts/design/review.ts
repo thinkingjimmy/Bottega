@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Zod, lightweight fixed references and user-authored review text.
- * [OUTPUT]: Bounded anchors, Canvas/edit/annotation/camera checkpoints and original-Chat handoff text.
+ * [OUTPUT]: Bounded anchors, native unsent input and Canvas/edit/annotation/camera checkpoints and original-Chat handoff text.
  * [POS]: Shared review evidence; hints are data and never grant execution authority.
  */
 import { z } from "zod";
+import { nativeInputSchema } from "./native/comments";
 import { anchorSchema } from "./reference/model";
 import { designPropertySchema, sourceConflictSchema } from "./core/parameters";
 import { canvasCheckpointSchema } from "./canvas/commands";
@@ -28,6 +29,7 @@ export const checkpointSchema = z.object({ documentId: z.string().regex(/^[a-z0-
   save: z.object({ viewId: z.string().uuid(), sequence: z.number().int().nonnegative(), version: z.number().int().nonnegative() }).strict().optional(),
   revision: z.number().int().positive(), boardId: z.string().min(1).max(64), notes: z.array(noteSchema).max(32),
   handoff: z.object({ id: z.string().uuid(), createdAt: z.number().int().nonnegative(), action: z.enum(["draft", "send"]), status: z.enum(["pending", "transferred"]) }).strict().optional(),
+  native: nativeInputSchema.optional(),
   edit: editCheckpointSchema.optional(),
   system: systemCheckpointSchema.optional(),
   canvas: canvasCheckpointSchema.safeExtend({ sourceConflict: sourceConflictSchema.optional() }).optional(),

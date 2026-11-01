@@ -97,6 +97,18 @@ export class CodexNativeTurn implements AgentTurn {
       const selected = nativeRecord(this.config.thread.config?.mcp_servers);
       const servers = { ...Object.fromEntries(Object.keys(inherited).map(name => [name, { enabled: false }])), ...selected };
       const threadParams = { ...this.config.thread, config: { ...this.config.thread.config, mcp_servers: servers } };
+      if (this.config.purpose === "artifact-candidate") {
+        if (this.options.payload.session || this.options.sessionRecovery || this.config.continuation) throw new Error("Candidate threads cannot resume another session");
+        const listed = nativeRecord(await this.rpc.request("skills/list", { cwds: [this.options.workspace], forceReload: true }));
+        if (!Array.isArray(listed.data) || listed.data.length > 32) throw new Error("Candidate Skill discovery is unavailable");
+        const paths = listed.data.flatMap(row => {
+          const group = nativeRecord(row); if (!Array.isArray(group.skills)) throw new Error("Candidate Skill discovery is invalid");
+          return group.skills.map(skill => { const path = nativeRecord(skill).path; if (typeof path !== "string" || path.length > 4096) throw new Error("Candidate Skill path is invalid"); return path.replace(/[\\/]SKILL\.md$/i, ""); });
+        });
+        if (paths.length > 512) throw new Error("Candidate Skill discovery exceeds its budget");
+        Object.assign(threadParams.config, { "skills.config": [...new Set(paths)].map(path => ({ path, enabled: false })) });
+        if (Buffer.byteLength(JSON.stringify(threadParams.config)) > 96 * 1024) throw new Error("Candidate configuration exceeds its byte budget");
+      }
       const resume = this.options.payload.session;
       if (resume && resume.backend !== BUILTIN_PROVIDER_IDS.codex) throw new Error("Native thread belongs to a different Provider");
       let candidate = resume?.id;
@@ -121,6 +133,7 @@ export class CodexNativeTurn implements AgentTurn {
       if (typeof thread.id !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(thread.id) ||
         (candidate && !this.config.continuation && thread.id !== candidate) ||
         (this.config.continuation && thread.id === this.config.continuation.threadId)) throw new Error("Invalid native thread identity");
+      if (this.config.purpose === "artifact-candidate" && thread.ephemeral !== true) throw new Error("Native CLI refused an ephemeral candidate thread");
       const actual = nativeRecord(response.sandbox), expected = this.config.turn.sandboxPolicy;
       const roots = (value: unknown) => Array.isArray(value) && value.every(root => typeof root === "string")
         ? [...new Set(value.filter(root => root !== this.options.workspace))].sort() : null;

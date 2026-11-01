@@ -1,12 +1,11 @@
 /**
- * [INPUT]: Depends on strict plugin manifests, shared remote catalog limits and compiled GUI digest/receipt contracts.
+ * [INPUT]: Depends on strict plugin manifests, shared remote catalog limits, the GUI build service and compiled digest contracts.
  * [OUTPUT]: Provides at most 64 authored plugin owners, manual Dock candidates, bounded generation retention pins with optional account custody, source provenance and runtime authority ports.
  * [POS]: Plugin surface runtime model; grants/settings remain host-owned and never come from an artifact.
  */
 import { z } from "zod";
 import { REMOTE_PLUGIN_CATALOG_LIMITS } from "@ai-chat/cloud-protocol/surfaces/plugin/catalog";
 import { pluginGuiManifestSchema, type PluginGuiManifest } from "../../apps/gui-build/source/manifest";
-import type { AppGuiBuildReceipt } from "../../../../shared/ipc/apps/apps-ipc";
 import type { AppGuiBuildService } from "../../apps/gui-build/service";
 import type { CompiledV3DigestSet } from "../../apps/gui-build/pipeline/seal";
 const id = z.string().regex(/^[a-z][a-z0-9.-]{0,119}$/);
@@ -48,4 +47,3 @@ export type PluginRuntimeOptions = Readonly<{
  verify?(root:string,expected:CompiledV3DigestSet):Promise<unknown>;
  artifactBudgetBytes?:number;
 }>;
-export type PluginRuntimeFiles = readonly AppGuiBuildReceipt["files"][number][];

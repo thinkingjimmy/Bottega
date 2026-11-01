@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on Zod and the shared cloud identifier scalar.
+ * [INPUT]: Depends on Zod, the shared cloud identifier scalar and browser push subscription schemas.
  * [OUTPUT]: Provides push categories, Expo token/platform/locale scalars, the per-device registration projection, the closed notification data payload (a Chat push, or a workflow attention push (R-34) whose target is flattened into string keys), and R-36 token ownership: the install proof, the register result with its challenge outcome, and the data-only challenge payload.
  * [POS]: Push contract shared by the backend delivery, the Web settings/registration owner and the native shell's tap payload.
  */
 import { z } from "zod";
 import { cloudIdSchema, mobilePlatformSchema } from "../auth/index";
-export { allowedPushEndpoint, webPushEndpointSchema, webPushSubscriptionSchema, type WebPushSubscription } from "./browser";
+export { webPushEndpointSchema, webPushSubscriptionSchema, type WebPushSubscription } from "./browser";
 export const PUSH_LIMITS = Object.freeze({
   /* Expo push API: messages per send request, receipt ids per getReceipts request and bytes per message. */
   messagesPerRequest: 100, receiptsPerRequest: 300, messageBytes: 4096,

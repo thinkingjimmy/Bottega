@@ -18,6 +18,7 @@ import { previewViewSchema } from "./preview";
 import { pluginInstallSourceSchema, pluginInstallReceiptSchema } from "./plugin-install";
 import { pluginRecordReadSchema, pluginRecordReportSchema, pluginRecordResultsSchema, pluginRecordPageSchema } from "./plugin-records";
 import { artifactFenceSchema } from "../turns/text/artifact-reference";
+import { nativeRemoteInputSchema, nativeRemoteResultSchema } from "./artifact/native";
 import { artifactStatusInput, artifactHistoryInput, artifactOperationInput, artifactRemoteInput, artifactStatusSchema, artifactOperationSchema, artifactExportSchema, artifactHistorySchema, artifactDifferenceSchema, artifactCanvasTargetSchema, artifactCancellationSchema } from "./artifact/model";
 
 const packet = (plaintextBytes: number) => { const envelopeBytes = Math.ceil(plaintextBytes * 4 / 3) + 8_192; return { envelopeBytes, packetChars: Math.ceil(envelopeBytes * 4 / 3) }; };
@@ -44,6 +45,7 @@ const REGISTRY = {
   "artifact-status": { kind: "artifact", class: "read", critical: false, input: artifactStatusInput },
   "artifact-history": { kind: "artifact", class: "read", critical: false, input: artifactHistoryInput },
   "artifact-operation-status": { kind: "artifact", class: "read", critical: false, input: artifactOperationInput },
+  "artifact-native": { kind: "artifact", class: "work", critical: false, input: nativeRemoteInputSchema },
   "artifact-workspace": { kind: "artifact", class: "work", critical: false, input: artifactRemoteInput },
   "project-git-list": { kind: "project", class: "read", critical: false, input: projectGitListSchema },
   "project-git-checkout": { kind: "project", class: "control", critical: false, input: projectGitCheckoutSchema },
@@ -114,6 +116,7 @@ export const resourceResultBodySchema = z.union([
     pluginInstall: pluginInstallReceiptSchema.optional(),
     pluginRecord: pluginRecordPageSchema.optional(),
     artifactRecovery: z.object({ fence: artifactFenceSchema.nullable() }).strict().optional(),
+    artifactNative: nativeRemoteResultSchema.optional(),
     artifactStatus: artifactStatusSchema.optional(), artifactOperation: artifactOperationSchema.optional(),
     artifactCancellation: artifactCancellationSchema.optional(), artifactExport: artifactExportSchema.optional(), artifactHistory: artifactHistorySchema.optional(),
     artifactDifference: artifactDifferenceSchema.optional(),

@@ -1,0 +1,864 @@
+--- a/apps/design-editor/index.html
++++ b/apps/design-editor/index.html
+@@ -26,7 +26,7 @@
+ //   appifact_extra_export_formats     页面单独打开时 true  多出 PNG 导出、导出前挑画板、PDF 文字按 Unicode 编码、「Copy as PNG/SVG」等；
+ //                                     在 BaoCut 的 iframe 里 false，导出菜单仍只有 HTML、PDF（docs/product/product-design.md §3.3）
+ //   appifact_creation_sequence        false
+-(function(){var values={design_fast_edit:false,design_fast_edit_sample:{modelTier:"quick"},design_cross_canvas_paste_confirm:true,design_artboards_at_address:false,appifact_extra_export_formats:window.parent===window,appifact_creation_sequence:false};function kind(v){return v===null?"null":Array.isArray(v)?"array":typeof v}function copy(v){return JSON.parse(JSON.stringify(v))}globalThis.__appifact_flags={version:"appifact-flags:v1",ready:function(){return Promise.resolve(true)},get:function(key,fallback){if(!Object.prototype.hasOwnProperty.call(values,key)||kind(values[key])!==kind(fallback))return fallback;return copy(values[key])},all:function(){return copy(values)}};})();
++(function(){var values={design_fast_edit:false,design_fast_edit_sample:{modelTier:"quick"},design_cross_canvas_paste_confirm:true,design_artboards_at_address:false,appifact_extra_export_formats:true,appifact_creation_sequence:false};function kind(v){return v===null?"null":Array.isArray(v)?"array":typeof v}function copy(v){return JSON.parse(JSON.stringify(v))}globalThis.__appifact_flags={version:"appifact-flags:v1",ready:function(){return Promise.resolve(true)},get:function(key,fallback){if(!Object.prototype.hasOwnProperty.call(values,key)||kind(values[key])!==kind(fallback))return fallback;return copy(values[key])},all:function(){return copy(values)}};})();
+ </script>
+ <title>Design</title>
+ <meta name="appifact-capabilities" content="{&quot;downloads&quot;:{},&quot;artifact&quot;:{},&quot;comments&quot;:{&quot;composer_only&quot;:true,&quot;customAnchors&quot;:true},&quot;db&quot;:{&quot;rules&quot;:[{&quot;path&quot;:&quot;&quot;,&quot;write&quot;:&quot;admin&quot;}]},&quot;assets&quot;:{},&quot;user&quot;:{&quot;scopes&quot;:[&quot;profile&quot;]}}">
+--- a/packages/design-runtime/src/app.css
++++ b/packages/design-runtime/src/app.css
+@@ -6797,7 +6797,7 @@
+   font-family: var(--cds-font-sans);
+ }
+ [data-cds="Icon"]:not(svg) {
+-  font-family: var(--font-anthropicons, Anthropicons-Variable);
++  font-family:inherit;
+   font-feature-settings: "liga" 0;
+   font-optical-sizing: auto;
+   -webkit-user-select: none;
+@@ -13153,3 +13153,8 @@
+   --font-anthropic-sans:
+     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+ }
++
++[data-cds="Icon"][data-bottega-icon]{font-family:inherit;line-height:1}
++[data-bottega-icon-spin]{animation:bottega-icon-spin 1s linear infinite}
++@keyframes bottega-icon-spin{to{transform:rotate(360deg)}}
++@media(prefers-reduced-motion:reduce){[data-bottega-icon-spin]{animation:none}}
+--- a/packages/design-runtime/src/application/bootstrap.tsx
++++ b/packages/design-runtime/src/application/bootstrap.tsx
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original application boot and the installed native module file transport.
++ * [OUTPUT]: Initial complete file listing and source reads through the exact local or encrypted native channel.
++ * [POS]: Maintained application boot seam; authored frames and global fetch remain unchanged.
++ */
++import { nativeEditorFetch } from "../adapters/asset-address";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -478,7 +484,7 @@
+       files: {},
+     };
+     fetchArtifactFile = (input?: Dynamic): Dynamic =>
+-      fetch(input, {
++      nativeEditorFetch(input, {
+         credentials: "same-origin",
+         signal: AbortSignal.timeout(
+           input.startsWith(runtime.ProjectValue) ? 12e4 : 1e4,
+--- a/packages/design-runtime/src/application/design-bootstrap.tsx
++++ b/packages/design-runtime/src/application/design-bootstrap.tsx
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original native file boot state and the editor-owned private file transport.
++ * [OUTPUT]: Original document bootstrap with consistent ordinary and fresh snapshot reads.
++ * [POS]: Maintained original bootstrap; no global fetch or write gate is replaced.
++ */
++import { nativeEditorFetch } from "../adapters/asset-address";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -361,7 +367,7 @@
+     return (0, runtime.createDesignFilesPort)({
+       fetch: fetchFile,
+       fetchFresh: (input?: Dynamic): Dynamic =>
+-        fetch(input, {
++        nativeEditorFetch(input, {
+           credentials: "same-origin",
+           cache: "no-store",
+           signal: AbortSignal.timeout(3e4),
+@@ -701,7 +707,7 @@
+           readBlob: async (input?: Dynamic): Promise<Dynamic> => {
+             for (let index: Dynamic = 0; ; index += 1)
+               try {
+-                let value5: Dynamic = await fetch(input, {
++                let value5: Dynamic = await nativeEditorFetch(input, {
+                   credentials: "same-origin",
+                   signal: AbortSignal.timeout(12e4),
+                 });
+--- a/packages/design-runtime/src/canvas/artboard-frame.tsx
++++ b/packages/design-runtime/src/canvas/artboard-frame.tsx
+@@ -727,7 +727,7 @@
+             if (
+               value286 != null &&
+               dataset.source === value286 &&
+-              dataset.origin === (0, runtime.currentHttpOrigin)()
++              dataset.origin === "null"
+             ) {
+               let value287: Dynamic = dataset.ports[0];
+               value287 != null && value85.helloReceived(value287);
+@@ -735,7 +735,7 @@
+             return;
+           }
+           if (data?.__om_nav_away === 1) {
+-            if (dataset.origin !== (0, runtime.currentHttpOrigin)()) return;
++            if (dataset.origin !== "null") return;
+             let mountedGeneration: Dynamic = value85.mountedGeneration,
+               helloPort: Dynamic = value85.helloPort;
+             if (helloPort == null) return;
+@@ -4739,7 +4739,10 @@
+         [value2],
+       );
+       (0, runtime.reactCanvasShape.useEffect)((): Dynamic => {
+-        value91 > 0 && value28?.(value2, value91);
++        if (value91 > 0) {
++          value28?.(value2, value91);
++          (window as Dynamic).__bottegaNativeReady?.(value2, value91);
++        }
+       }, [value91]);
+       let [value274, value275]: Dynamic = (0,
+       runtime.reactCanvasShape.useState)(undefined);
+@@ -5501,7 +5504,7 @@
+                 (value61 && !value71 && !value72) || value80 ? -1 : undefined
+               }
+               inert={value81 ? true : undefined}
+-              sandbox={"allow-scripts allow-same-origin"}
++              sandbox={"allow-scripts"}
+               srcDoc={value88}
+               onLoad={(): Dynamic => {
+                 let value286: Dynamic = value86?.boot;
+--- a/packages/design-runtime/src/canvas/design-canvas.tsx
++++ b/packages/design-runtime/src/canvas/design-canvas.tsx
+@@ -1,4 +1,11 @@
++/**
++ * [INPUT]: Original Canvas state/capture producers, complete HTML preview readiness and main-frozen native output choices.
++ * [OUTPUT]: Main-frozen menu delegation and original HTML/HTML-ZIP/PDF/PNG production; fixed jobs audit every selected HTML board and use exact chosen ranges/scales.
++ * [POS]: Maintained native export seam; read-only job source stays separate from the working editor.
++ */
+ /** Restored application module; prepare first, initialize in original order. */
++import { nativeMainExport, nativeExportCanvasHtmlFontAudit, nativeExportBundleJob } from "../adapters/export-runtime";
++import { nativeExportZipResources } from "../adapters/asset-address";
+ import {
+   bindRuntimeValue,
+   type Dynamic,
+@@ -16374,6 +16381,8 @@
+             }
+             value479(true);
+             try {
++              const fixed = await nativeMainExport({ format: "png", scale: options ?? 2 }, [input]);
++              if (fixed) { await (0, runtime.saveThroughHost)(fixed.data, fixed.filename); return; }
+               let value653: Dynamic = await value483(input),
+                 value654: Dynamic = value653
+                   ? (0, runtime.createPreviewHandle)(value653)
+@@ -16827,7 +16836,7 @@
+         ],
+       ),
+       value507: Dynamic = (0, runtime.reactChromeTheme.useCallback)(
+-        async (input?: Dynamic): Promise<Dynamic> => {
++        async (input?: Dynamic, native = false): Promise<Dynamic> => {
+           if (!value493) {
+             if (value480) {
+               showToast(runtime.DownloadsArenTAvailableToYouForMessage);
+@@ -16842,7 +16851,10 @@
+                 );
+                 return;
+               }
++              const fixed = await nativeMainExport({ format: "html", bundle: true }, [input]);
++              if (fixed) { await (0, runtime.saveThroughHost)(fixed.data, fixed.filename); return; }
+               await value177.current.get(input)?.flushPending();
++              await nativeExportCanvasHtmlFontAudit([input], async (file: string) => { const frame = await value483(file); return frame ? (0, runtime.createPreviewHandle)(frame) : null; });
+               let files: Dynamic = doc.content().files,
+                 callback15: Dynamic = async (
+                   input2?: Dynamic,
+@@ -16966,9 +16978,11 @@
+                   value654,
+                 ),
+               });
++              items2.push(...await nativeExportZipResources(new Set(items2.map((item: Dynamic) => item.name))));
+               let value656: Dynamic = (0, runtime.createStoredZip)(items2),
+-                value657: Dynamic = value655 + "-html.zip",
+-                value658: Dynamic = await (0, runtime.saveThroughHost)(
++                value657: Dynamic = value655 + "-html.zip";
++              if (native) return { filename: value657, data: value656 };
++              let value658: Dynamic = await (0, runtime.saveThroughHost)(
+                   value656,
+                   value657,
+                 ),
+@@ -17027,6 +17041,7 @@
+                 runtime.designAnalyticsEvents.exported.zip,
+               );
+             } catch (value653: Dynamic) {
++              if (native) throw value653;
+               runtime.healthReporter.report(
+                 ...(0, runtime.classifyExportFailure)("zip"),
+               );
+@@ -17039,7 +17054,7 @@
+             }
+           }
+         },
+-        [assets, doc, value480, value493, showToast],
++        [assets, doc, value480, value483, value493, showToast],
+       ),
+       value508: Dynamic = (0, runtime.reactChromeTheme.useCallback)(
+         async (input?: Dynamic): Promise<Dynamic> => {
+@@ -17090,8 +17105,15 @@
+             value73.current,
+             value80.current,
+             value346.current,
+-          ),
+-          value656: Dynamic = value92
++          );
++        await nativeExportCanvasHtmlFontAudit(
++          value655.artboards.map((board: Dynamic) => board.file),
++          async (file: string) => {
++            const frame = await value483(file);
++            return frame ? (0, runtime.createPreviewHandle)(frame) : null;
++          },
++        );
++        let value656: Dynamic = value92
+             ? await value508(
+                 value655.artboards.map(
+                   (input?: Dynamic): Dynamic => input.file,
+@@ -17131,12 +17153,15 @@
+           filename: value657.filename,
+           data: value657.blob,
+         };
+-      }, [value508, assets, doc, value92, filePath]),
++      }, [value483, value508, assets, doc, value92, filePath]),
+       value510: Dynamic = (0, runtime.reactChromeTheme.useRef)(undefined),
+       value511: Dynamic = (0,
+       runtime.reactChromeTheme.useCallback)(async (): Promise<Dynamic> => {
+         value510.current = undefined;
+         try {
++          const range = (0, runtime.selectHtmlExportArtboards)(value73.current, value80.current, value346.current);
++          const fixed = await nativeMainExport({ format: "html" }, range.artboards.map((board: Dynamic) => board.file));
++          if (fixed) return fixed;
+           let value653: Dynamic = await value509();
+           (0, runtime.reportExportEvent)("htmlBuilt");
+           return value653;
+@@ -17202,6 +17227,8 @@
+           if (value653) {
+             value479(true);
+             try {
++              const fixed = await nativeMainExport({ format: "pdf" }, [input]);
++              if (fixed) { await (0, runtime.saveThroughHost)(fixed.data, fixed.filename); return; }
+               let value654: Dynamic = await value483(input);
+               if (!value654 || value654.getBoundingClientRect().width === 0) {
+                 showToast(
+@@ -17325,6 +17352,8 @@
+           }
+           value479(true);
+           try {
++            const fixed = await nativeMainExport({ format: "pdf" }, value653.printable.map((board: Dynamic) => board.file));
++            if (fixed) { await (0, runtime.saveThroughHost)(fixed.data, fixed.filename); return; }
+             let value654: Dynamic;
+             await value495(
+               value653.printable,
+@@ -17458,6 +17487,8 @@
+                 ) || "design") + "-selection";
+           value479(true);
+           try {
++            const fixed = await nativeMainExport({ format: "pdf" }, value654.printable.map((board: Dynamic) => board.file));
++            if (fixed) return fixed;
+             let { blob: value659, ...value660 }: Dynamic = await value495(
+               value654.printable,
+               (): Dynamic =>
+@@ -17598,6 +17629,8 @@
+             index: Dynamic = 0;
+           value479(true);
+           try {
++            const fixed = await nativeMainExport({ format: "png", bundle: true, scale: options.scale }, items.map((board: Dynamic) => board.file));
++            if (fixed) return fixed;
+             let value657: Dynamic = await (0, runtime.captureExportArtboards)(
+               items,
+               async (input?: Dynamic): Promise<Dynamic> => {
+@@ -17776,7 +17809,7 @@
+           let value654: Dynamic,
+             value655: Dynamic,
+             value656: Dynamic = null;
+-          if (input.interactive && value497) {
++          if ((input.interactive && value497) || input.nativeOptions) {
+             let value660: Dynamic = input.bundle ? "pngs" : "png",
+               value661: Dynamic = (0, runtime.initialExportPickedFiles)(
+                 value660,
+@@ -17788,7 +17821,7 @@
+               value662: Dynamic = value484.filter(
+                 (input2?: Dynamic): Dynamic => value661.has(input2.file),
+               );
+-            value656 = await value487(
++            value656 = input.nativeOptions ? { files: value484.map((board: Dynamic) => board.file), scale: input.nativeOptions.scale, signal: input.signal } : await value487(
+               value660,
+               {
+                 picked: value661,
+@@ -17851,6 +17884,8 @@
+             value659: Dynamic = Date.now() + 55e3;
+           value479(true);
+           try {
++            const fixed = await nativeMainExport({ format: "png", scale: value656?.scale ?? 2 }, [value654.file]);
++            if (fixed) return fixed;
+             let value660: Dynamic = await value483(value654.file);
+             if (value656?.signal.aborted) throw new runtime.ExportCancelled();
+             let value661: Dynamic = value660
+@@ -17876,10 +17911,10 @@
+               )
+                 .filter(
+                   (input2?: Dynamic): Dynamic =>
+-                    input2.fits && input2.scale <= 2,
++                    input2.fits && (input.nativeOptions || input2.scale <= 2),
+                 )
+                 .map((input2?: Dynamic): Dynamic => input2.scale),
+-              value663: Dynamic = value656
++              value663: Dynamic = input.nativeOptions ? [input.nativeOptions.scale] : value656
+                 ? value656.scale === 2 && value662.includes(2)
+                   ? [2, 1]
+                   : [1]
+@@ -18105,7 +18140,8 @@
+       : [
+           {
+             format: "html",
+-            produce: value511,
++            bundle: nativeExportBundleJob(),
++            produce: nativeExportBundleJob() ? async () => { const file = value73.current.artboards[0]?.file; if (!file) throw new Error("The original HTML ZIP artboard is missing"); return value507(file, true); } : value511,
+           },
+           {
+             format: "pdf",
+--- a/packages/design-runtime/src/canvas/key-routing.tsx
++++ b/packages/design-runtime/src/canvas/key-routing.tsx
+@@ -5,9 +5,13 @@
+   type RuntimeBindings,
+ } from "../runtime-types";
+ 
++import { rememberFrameWindow, knownFrameConnected, subscribeOpaqueFindKeys } from "../adapters/opaque-frame";
++
+ export function installCanvasKeyRouting(runtime: RuntimeBindings): () => void {
+   var react_Eu: Dynamic;
+   function isConnectedArtboardWindow(targetWindow?: Dynamic): Dynamic {
++    const connected = knownFrameConnected(targetWindow);
++    if (connected !== undefined) return connected;
+     try {
+       return targetWindow.frameElement?.isConnected === true;
+     } catch {
+@@ -155,11 +159,12 @@
+       ),
+       value9: Dynamic = (0, react_Eu.useRef)(value2.open);
+     value9.current = value2.open;
+-    let { attach: value10 }: Dynamic = value2,
++    let { attach: value10, opaqueKey }: Dynamic = value2,
+       value11: Dynamic = (0, react_Eu.useCallback)(
+         (input?: Dynamic): Dynamic => {
+           try {
+-            return host.frame(input)?.contentWindow ?? null;
++            const frame = host.frame(input);
++            return frame ? rememberFrameWindow(frame) : null;
+           } catch {
+             return null;
+           }
+@@ -182,11 +187,18 @@
+           value4.seen(
+             input,
+             value11(input),
+-            (input2?: Dynamic): Dynamic =>
+-              value10(input2, (): Dynamic => value5.current(input), callback),
++            (input2?: Dynamic): Dynamic => {
++              const frame = host.frame(input);
++              if (frame?.hasAttribute("sandbox") && !frame.sandbox.contains("allow-same-origin")) {
++                const port = runtime.getPreviewGenerationGate(frame).helloPort;
++                if (!port) throw new Error("Opaque frame keyboard port is unavailable");
++                return subscribeOpaqueFindKeys(port, key => value8(() => opaqueKey(key)));
++              }
++              return value10(input2, (): Dynamic => value5.current(input), callback);
++            },
+           );
+         },
+-        [value10, value4, value11, value8],
++        [value10, value4, value11, value8, opaqueKey, host],
+       ),
+       value13: Dynamic = (0, react_Eu.useCallback)(
+         (input?: Dynamic): Dynamic => {
+--- a/packages/design-runtime/src/cds/components/icon.tsx
++++ b/packages/design-runtime/src/cds/components/icon.tsx
+@@ -1,4 +1,5 @@
+ import type { Elevation } from "../../contracts/ui";
++import { NativeSvgIcon } from "../../adapters/native-icon";
+ import type * as React from "react";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+@@ -149,101 +150,10 @@
+         </svg>
+       );
+     }
+-    let {
+-      bold: value10 = false,
+-      animated: value11 = false,
+-      alt: value,
+-      className: value2,
+-      style: value3,
+-      name: value4,
+-      icon: value5,
+-      size: value6,
+-      customSize: value7,
+-      customIcon: value8,
+-      ...value9
+-    }: Dynamic = props;
+-    let value12: Dynamic = props.name ?? props.icon.name,
+-      value13: Dynamic,
+-      value14: Dynamic;
+-    value7 !== undefined
+-      ? ((value13 = value7), (value14 = nearestIconSize(value13)))
+-      : ((value14 = resolveIconSize(value6 ?? MdValue, defaultSize)),
+-        (value13 = iconSizeMetrics[value14].px));
+-    let stroke: Dynamic = iconSizeMetrics[value14].stroke,
+-      value15: Dynamic =
+-        value6 === "auto" || value6 === "auto-sm" || value6 === "auto-lg",
+-      value16: Dynamic = value10 && !("strong" in stroke) && !value15,
+-      value17: Dynamic = ComponentsIconIconsValue[value12],
+-      value18: Dynamic =
+-        value17 === undefined
+-          ? undefined
+-          : ComponentsIconResolvedValue[value12],
+-      value19: Dynamic = ComponentsIconFreezeValue[value14],
+-      value20: Dynamic =
+-        value7 === undefined
+-          ? value10 && value19.strong !== undefined
+-            ? value19.strong
+-            : value19.regular
+-          : iconFontStyle(
+-              value13,
+-              value10 && "strong" in stroke ? stroke.strong : stroke.regular,
+-            ),
+-      value21: Dynamic = value11 && ComponentsIconSubscribers.has(value12),
+-      value22: Dynamic = value21
+-        ? ComponentsIconResolvedValue_2[value12]
+-        : undefined,
+-      value23: Dynamic = value21
+-        ? ComponentsIconResolvedValue_3[value12]
+-        : undefined,
+-      value24: Dynamic = value21
+-        ? ComponentsIconResolvedValue_4[value12]
+-        : undefined,
+-      value25: Dynamic = value21
+-        ? {
+-            ...value20,
+-            "--cds-opsz": value13,
+-            "--cds-wght": value20.fontWeight,
+-            ...(value22 !== undefined && {
+-              "--cds-anim-dur": `${value22}ms`,
+-            }),
+-            ...(value23 !== undefined && {
+-              "--cds-anim-dur-out": `${value23}ms`,
+-            }),
+-            ...(value24 !== undefined && {
+-              "--cds-anim-ease": value24,
+-            }),
+-          }
+-        : value20;
+-    return (
+-      <span
+-        data-cds={"Icon"}
+-        data-cds-anim={value21 ? "" : undefined}
+-        data-cds-anim-loop={
+-          value21 && ComponentsIconSubscribers_2.has(value12) ? "" : undefined
+-        }
+-        style={
+-          value3
+-            ? {
+-                ...value25,
+-                ...value3,
+-              }
+-            : value25
+-        }
+-        className={value2}
+-        {...value9}
+-        role={value9.role ?? (value ? "img" : undefined)}
+-        aria-hidden={value9["aria-hidden"] ?? (value ? undefined : true)}
+-        aria-label={value9["aria-label"] ?? (value || undefined)}
+-      >
+-        {value18 !== undefined && (
+-          <span data-cds-icon-layer={"secondary"} aria-hidden={"true"}>
+-            {String.fromCodePoint(value18)}
+-          </span>
+-        )}
+-        {value17 !== undefined ? String.fromCodePoint(value17) : null}
+-      </span>
+-    );
+-  }
++    const pixelSize = props.customSize ?? iconSizeMetrics[resolveIconSize(props.size ?? MdValue, defaultSize)].px;
++    return <NativeSvgIcon {...props} pixelSize={(0, runtime.scaleCssPixels)(pixelSize)} />;
++  }
++
+   function isIconName(input?: Dynamic): Dynamic {
+     return typeof input == "string";
+   }
+--- a/packages/design-runtime/src/export/font-usage.ts
++++ b/packages/design-runtime/src/export/font-usage.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original capture/font usage flow and the main-owned actual output-font verifier.
++ * [OUTPUT]: Original producer results only after actual opaque document font admission.
++ * [POS]: Maintained Canvas output seam; no source font substitution or parent write capability.
++ */
++import { nativeExportCanvasFontAudit } from "../adapters/export-runtime";
+ import type { DataRecord } from "../contracts/storage";
+ import type {
+   UnicodeRange,
+@@ -37,6 +43,7 @@
+   async function collectArtboardFontDescriptors(
+     webview: PreviewHandle,
+   ): Promise<FontDescriptor[] | null> {
++    await nativeExportCanvasFontAudit(webview);
+     try {
+       let value = await webview.executeJavaScript(
+         fontLoadProbeScriptDefault,
+--- a/packages/design-runtime/src/export/html-producer.ts
++++ b/packages/design-runtime/src/export/html-producer.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original standalone producer and exact immutable native resource bytes through the existing file transport.
++ * [OUTPUT]: Complete native binary/text asset closure without encoding binary fonts as source text.
++ * [POS]: Maintained Canvas HTML resource reader; standalone behavior and original inliner stay intact.
++ */
++import { nativeExportAssetBytes } from "../adapters/asset-address";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -141,6 +147,8 @@
+     let values: Dynamic = new Set(document2.paths),
+       value: Dynamic = new TextEncoder();
+     return async (input?: Dynamic): Promise<Dynamic> => {
++      const native = await nativeExportAssetBytes(input);
++      if (native !== undefined) return native;
+       let value2: Dynamic = exportBlobPathPattern.exec(input)?.[1];
+       if (value2 !== undefined)
+         return fetchExportProjectBlob(document2.fetchBlob, value2);
+--- a/packages/design-runtime/src/export/image.ts
++++ b/packages/design-runtime/src/export/image.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original capture/font usage flow and the main-owned actual output-font verifier.
++ * [OUTPUT]: Original producer results only after actual opaque document font admission.
++ * [POS]: Maintained Canvas output seam; no source font substitution or parent write capability.
++ */
++import { nativeExportCanvasFontAudit } from "../adapters/export-runtime";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -61,10 +67,11 @@
+         value6 = await (0, runtime.withCaptureViewport)(
+           input,
+           value?.frame,
+-          (input2?: Dynamic): Dynamic => (
+-            (index = input2),
+-            input.executeJavaScript(value5, 15e3)
+-          ),
++          async (input2?: Dynamic): Promise<Dynamic> => {
++            index = input2;
++            await nativeExportCanvasFontAudit(input);
++            return input.executeJavaScript(value5, 15e3);
++          },
+           value?.settle === true,
+         );
+       } catch (value13: Dynamic) {
+--- a/packages/design-runtime/src/export/pdf/capture.ts
++++ b/packages/design-runtime/src/export/pdf/capture.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original capture/font usage flow and the main-owned actual output-font verifier.
++ * [OUTPUT]: Original producer results only after actual opaque document font admission.
++ * [POS]: Maintained Canvas output seam; no source font substitution or parent write capability.
++ */
++import { nativeExportCanvasFontAudit } from "../../adapters/export-runtime";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -380,6 +386,7 @@
+       release: Dynamic = value3.release,
+       settleMs: Dynamic = value3.settleMs;
+     try {
++      await nativeExportCanvasFontAudit(input);
+       let flag: Dynamic = false;
+       context?.flow &&
+         context.ifScrolls &&
+--- a/packages/design-runtime/src/find/controller.tsx
++++ b/packages/design-runtime/src/find/controller.tsx
+@@ -524,6 +524,14 @@
+       },
+       [value15, value16],
+     );
++    const opaqueKey = (0, react_Cl.useCallback)((key: Dynamic) => {
++      if (key.isComposing) return;
++      if ((0, runtime.isFindShortcut)(key)) { value15(null); return; }
++      const direction = (0, runtime.findDirectionShortcut)(key);
++      if (direction === undefined || key.editing) return;
++      if (!value10.current.isOpen) value15(null);
++      else value16(direction);
++    }, [value15, value16]);
+     return (0, react_Cl.useMemo)(
+       (): Dynamic => ({
+         isOpen: value,
+@@ -531,6 +539,7 @@
+         close: value19,
+         step: value16,
+         attach: value21,
++        opaqueKey,
+         bar: {
+           open: value,
+           subscribe: value11.subscribe,
+@@ -542,7 +551,7 @@
+           onMounted: value4,
+         },
+       }),
+-      [value, value20, value19, value16, value21, value11],
++      [value, value20, value19, value16, value21, value11, opaqueKey],
+     );
+   }
+   bindRuntimeValue(
+--- a/packages/design-runtime/src/platform/design-files-port.ts
++++ b/packages/design-runtime/src/platform/design-files-port.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original file-port options and the fixed native module fetch adapter.
++ * [OUTPUT]: Original complete file reads through local HTTP or the authenticated private native channel.
++ * [POS]: Maintained upstream file-port default; global fetch and authored frames remain unchanged.
++ */
++import { nativeEditorFetch } from "../adapters/asset-address";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -103,7 +109,7 @@
+   function createDesignFilesPort(options: Dynamic = {}): Dynamic {
+     let fetchFile: Dynamic =
+         options.fetch ??
+-        ((input?: Dynamic): Dynamic => (globalThis as Dynamic).fetch(input)),
++        ((input?: Dynamic): Dynamic => nativeEditorFetch(input)),
+       fetchFresh: Dynamic = options.fetchFresh ?? fetchFile,
+       useFreshReads: Dynamic = false,
+       now: Dynamic = (): Dynamic =>
+--- a/packages/design-runtime/src/platform/file-content.ts
++++ b/packages/design-runtime/src/platform/file-content.ts
+@@ -2633,7 +2633,7 @@
+     )
+       return false;
+     let value: Dynamic = context ?? previewMessageOrigin()?.origin;
+-    return value ? dataset.origin === value : false;
++    return options.hasAttribute("sandbox") && !options.sandbox.contains("allow-same-origin") ? dataset.origin === "null" : value ? dataset.origin === value : false;
+   }
+   bindRuntimeValue(
+     runtime,
+--- a/packages/design-runtime/src/preview/asset-rewriting.ts
++++ b/packages/design-runtime/src/preview/asset-rewriting.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original project asset rewriting and the exact captured remote resource map.
++ * [OUTPUT]: Initial and incremental preview markup/CSS use the same immutable native resource addresses.
++ * [POS]: Maintained original asset rewrite seam; source files and authored frame permissions are unchanged.
++ */
++import { nativePreviewResourceUrls } from "../adapters/asset-address";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -56,6 +62,7 @@
+     options?: Dynamic,
+     context: Dynamic = "",
+   ): Dynamic {
++    input = nativePreviewResourceUrls(input, context + "__preview__.dc.html");
+     if (
+       PreviewAssetRewritingSourceFilesFromDirConfig?.files === options &&
+       PreviewAssetRewritingSourceFilesFromDirConfig.source === input &&
+--- a/packages/design-runtime/src/preview/build-document.ts
++++ b/packages/design-runtime/src/preview/build-document.ts
+@@ -1,4 +1,10 @@
++/**
++ * [INPUT]: Runtime document/dependency preparation and the original native editor project address.
++ * [OUTPUT]: Generated preview HTML with source-bound early/nested captured font CSS, immutable remote resources and inline exact runtime bytes without a base tag, and assets and the original standalone fallback.
++ * [POS]: Maintained preview assembly; resource URLs remain inside their original lease.
++ */
+ /** Restored application module; prepare first, initialize in original order. */
++import { nativeAssetAddress, nativePreviewFontUrls, nativePreviewResourceUrls, nativeRemotePreview, nativeRuntimeSource } from "../adapters/asset-address";
+ import {
+   bindRuntimeValue,
+   type Dynamic,
+@@ -131,6 +137,8 @@
+     value?: Dynamic,
+     extra: Dynamic = {},
+   ): Dynamic {
++    if (nativeRemotePreview()) input = Object.fromEntries(Object.entries(input).map(([path, content]: Dynamic) => [path,
++      /\.(?:dc\.html|css)$/i.test(path) && typeof content === "string" ? nativePreviewResourceUrls(content, path) : content]));
+     let value2: Dynamic =
+       extra.atAddress !== undefined
+         ? 1 / 0
+@@ -145,6 +153,8 @@
+             }
+           : (0, runtime.collectProjectDependencyFiles)(input, options),
+       value4: Dynamic = value ?? new Set();
++    for (const path of Object.keys(value3))
++      if (/\.(?:dc\.html|css)$/i.test(path) && typeof value3[path] === "string") value3[path] = nativePreviewResourceUrls(nativePreviewFontUrls(value3[path], path), path);
+     value4.clear();
+     let state2: Dynamic = {},
+       state3: Dynamic = {};
+@@ -208,11 +218,13 @@
+     }
+     // BaoCut: the artboard runtime loads Babel from this URL instead of the CDN the CSP blocks (getBabelFileUrl).
+     let babelFile: Dynamic = (0, runtime.getBabelFileUrl)(),
+-      babelResources: Dynamic = babelFile
++      nativeBabel: Dynamic = nativeRuntimeSource(babelFile),
++      babelResources: Dynamic = nativeRemotePreview() ? " window.__resources = {};" : babelFile
+         ? ` window.__resources = ${JSON.stringify({ [runtime.exportBabelStandaloneUrl]: babelFile }).replace(/</g, "\\u003c")};`
+         : "";
+     let value6: Dynamic = Object.keys(state).length > 0,
+       value7: Dynamic = (0, runtime.selectRuntimeUrl)(context),
++      nativeRuntime: Dynamic = nativeRuntimeSource(value7 ?? "artifact-type/dc-runtime.js"),
+       atAddress: Dynamic = extra.atAddress,
+       value8: Dynamic =
+         atAddress === undefined
+@@ -224,7 +236,7 @@
+               runtime.PreviewDependencyInjectionResolvedValue_2,
+             ),
+       value9: Dynamic =
+-        (atAddress === undefined
++        (atAddress === undefined || nativeRemotePreview()
+           ? ""
+           : '<base href="' +
+             atAddress.base
+@@ -237,12 +249,12 @@
+         (0, runtime.inlineScriptHtml)(runtime.previewEvaluationRuntimeScript) +
+         value8,
+       value10: Dynamic = [
+-        ...(atAddress === undefined
++        ...(atAddress === undefined && !nativeRemotePreview()
+           ? [
+-              `<base href="/appifact/${options.split("/").map(encodeURIComponent).join("/")}">`,
++              `<base href="${nativeAssetAddress(options) ?? ("/appifact/" + options.split("/").map(encodeURIComponent).join("/"))}">`,
+             ]
+           : []),
+-        `<script>window.__dcFiles = ${JSON.stringify(state4).replace(/</g, "\\u003c")}; window.__dcRootPath = ${JSON.stringify(options).replace(/</g, "\\u003c")};${babelResources}${value6 ? previewCaptureScript : ""}<\/script>`,
++        `<script>window.__dcFiles = ${JSON.stringify(state4).replace(/</g, "\\u003c")}; window.__dcRootPath = ${JSON.stringify(options).replace(/</g, "\\u003c")};${nativeRemotePreview() ? "window.__dcSourcePath=" + JSON.stringify(options).replace(/</g, "\\u003c") + ";" : ""}${babelResources}${value6 ? previewCaptureScript : ""}<\/script>`,
+         ...Object.values(state5).map(
+           (input2?: Dynamic): Dynamic => `<script src="${input2}"><\/script>`,
+         ),
+@@ -262,7 +274,13 @@
+         (0, runtime.inlineScriptHtml)(
+           runtime.PreviewRuntimeLoadingResolvedValue,
+         ),
+-        ...(value7 !== undefined
++        ...(nativeRuntime !== undefined
++          ? [
++              ...(nativeBabel ? [(0, runtime.inlineScriptHtml)(nativeBabel)] : []),
++              (0, runtime.inlineScriptHtml)(nativeRuntime),
++              (0, runtime.inlineScriptHtml)(PreviewBuildDocumentResolvedValue_2),
++            ]
++          : value7 !== undefined
+           ? [
+               `<script src="${value7}"><\/script>`,
+               (0, runtime.inlineScriptHtml)(
+--- a/packages/design-runtime/src/preview/evaluation.ts
++++ b/packages/design-runtime/src/preview/evaluation.ts
+@@ -15,7 +15,7 @@
+       (window as Dynamic).addEventListener(
+         "message",
+         (input?: Dynamic): Dynamic => {
+-          if (input.origin !== (0, runtime.currentHttpOrigin)()) return;
++          if (input.origin !== "null" && input.origin !== (0, runtime.currentHttpOrigin)()) return;
+           let data: Dynamic = input.data;
+           data == null ||
+             typeof data != "object" ||
+--- a/packages/design-runtime/src/runtime/boot.ts
++++ b/packages/design-runtime/src/runtime/boot.ts
+@@ -26,6 +26,9 @@
+   DesignRuntime,
+   RuntimeOptions,
+ } from "./types";
++import { consumeRuntimeMarker, installRuntimeGlobals } from "../adapters/runtime-globals";
++const hostRuntime = consumeRuntimeMarker(window);
++
+ export function hideDesignSource(): RuntimeValue {
+   const styleElement: RuntimeValue = document.createElement("style");
+   styleElement.textContent = "x-dc{display:none!important}";
+@@ -62,7 +65,8 @@
+       omelette: omelette,
+     });
+   let rootName = "Root",
+-    mounted = false;
++    mounted = false,
++    booted = false;
+   const runtimeStyle: RuntimeValue = document.createElement("style");
+   runtimeStyle.textContent = RUNTIME_CSS;
+   document.head.prepend(runtimeStyle);
+@@ -133,9 +137,9 @@
+     DCLogic: runtime.StreamableLogic,
+     StreamableLogic: runtime.StreamableLogic,
+   };
+-  Object.assign(window, api);
+-  window.__dcContentKeyed = true;
+-  document.readyState !== "loading"
+-    ? api.__dcBoot()
+-    : document.addEventListener("DOMContentLoaded", (): RuntimeValue => api.__dcBoot());
++  installRuntimeGlobals(window, { ...api, __dcContentKeyed: true }, hostRuntime, () => booted && !mounted);
++  const boot = () => {
++    try { api.__dcBoot(); } finally { booted = true; }
++  };
++  document.readyState !== "loading" ? boot() : document.addEventListener("DOMContentLoaded", boot);
+ }
+--- a/packages/design-runtime/src/runtime/document.tsx
++++ b/packages/design-runtime/src/runtime/document.tsx
+@@ -1,3 +1,8 @@
++/**
++ * [INPUT]: Native React18 document mount, compiled root and source template.
++ * [OUTPUT]: Mounted document with a layout-commit marker for controlled native captures.
++ * [POS]: Maintained document bootstrap; it grants no host or file capability.
++ */
+ /**
+  * Reconstructed document subsystem of the Design Component runtime.
+  * Source declarations: dc-runtime.js offsets 143180..148344.
+@@ -158,7 +163,7 @@
+   documentNode: Document,
+   locationInfo: Pick<Location, "pathname">,
+ ): string {
+-  let pathname: RuntimeValue = locationInfo.pathname || "";
++  let pathname: RuntimeValue = (window as RuntimeValue).__dcSourcePath ?? locationInfo.pathname ?? "";
+   if (!/\.dc\.html?$/i.test(decodePath(pathname)))
+     try {
+       pathname = new URL(documentNode.baseURI || "/").pathname;
+@@ -209,6 +214,10 @@
+     entry: RuntimeValue = runtime.registry.get(rootName);
+   function RootWithDefaults(): RuntimeValue {
+     const [, setVersion] = react.useState(0);
++    react.useLayoutEffect(() => {
++      rootElement.setAttribute("data-bottega-document-mounted", "1");
++      return () => rootElement.removeAttribute("data-bottega-document-mounted");
++    }, []);
+     react.useEffect((): RuntimeValue => {
+       const refresh: RuntimeValue = (): RuntimeValue =>
+         setVersion((version?: RuntimeValue): RuntimeValue => version + 1);
+--- a/packages/design-runtime/src/scripts/preview-bridge.ts
++++ b/packages/design-runtime/src/scripts/preview-bridge.ts
+@@ -1,5 +1,6 @@
+ /** Restored injected script; compiled as an isolated IIFE before insertion into a preview. */
+ import type { Dynamic } from "../runtime-types";
++import { installOpaqueFindKeys } from "../adapters/opaque-frame";
+ const text: Dynamic = "__ARROW_OWNER__";
+ (function (this: Dynamic, ..._extraArguments: Dynamic[]): Dynamic {
+   /* WebRTC is an egress channel the CSP cannot close, and Frame's runtime
+@@ -49,6 +50,7 @@
+     var value_portPost: Dynamic = MessagePort.prototype.postMessage.bind(
+       value_ch.port1,
+     );
++    installOpaqueFindKeys(value_portPost);
+     value_ch.port1.onmessage = function (
+       this: Dynamic,
+       input?: Dynamic,
+--- a/packages/design-runtime/src/editor/properties/asset-picker.tsx
++++ b/packages/design-runtime/src/editor/properties/asset-picker.tsx
+@@ -1,4 +1,9 @@
+-/** Restored application module; prepare first, initialize in original order. */
++/**
++ * [INPUT]: Original property controls and project resources, with the trusted native source/blob address adapter.
++ * [OUTPUT]: Installs original image pickers with current-source image previews in local and encrypted editors.
++ * [POS]: Maintained original editor properties module; source values and upload/Undo behavior remain native.
++ */
++import { nativeEditorAssetAddress } from "../../adapters/asset-address";
+ import {
+   bindRuntimeValue,
+   type Dynamic,
+@@ -275,6 +280,8 @@
+   }
+   function resolveAssetPreviewUrl(input?: Dynamic, options?: Dynamic): Dynamic {
+     let value: Dynamic = (options ?? "").trim();
++    const native = nativeEditorAssetAddress(value);
++    if (native) return native;
+     return value
+       ? /^(https?:|data:|blob:)/i.test(value) ||
+         runtime.blobAssetPathPattern.test(value)

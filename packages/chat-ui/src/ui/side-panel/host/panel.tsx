@@ -16,7 +16,7 @@ import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import type { TranscriptSource } from "../../../platform/contracts";
 import type { ArtifactHost } from "../../../artifacts/context";
-import { ArtifactTab, isArtifactTab, rememberArtifactTab, useArtifactTabs } from "../../../artifacts/presentation/tabs";
+import { ArtifactTab, isArtifactTab, rememberArtifactTab, useArtifactTabs, useArtifactTabChrome } from "../../../artifacts/presentation/tabs";
 import { artifactCopy } from "../../../artifacts/copy";
 import { useConversationModel } from "../../conversation/body/model";
 import { decodeImageIdentity, encodeImageIdentity, resolveImage, type ImageIdentity, type ImageRegion } from "../image/identity";
@@ -40,6 +40,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   const eligible = Boolean(head && head.chat.classification.conversationKind === "ordinary"), chatId = head?.chat.id ?? "", incarnationId = head?.chat.incarnationId ?? "";
   const key = conversationKey(chatId, incarnationId), copy = sidePanelCopy(locale), narrow = useNarrowPanel(), model = useConversationModel();
   const artifactScope = `${chatId}:${incarnationId}`, artifacts = useArtifactTabs(artifactScope);
+  const artifactChrome = useArtifactTabChrome();
   const [cycle, setCycle] = useState(0), base = services.useBase(head, cycle), BaseTab = services.BaseTab;
   const rememberIntent = useCallback((open: boolean) => memory.rememberOpenIntent(conversationKey(chatId, incarnationId), open), [memory, chatId, incarnationId]);
   const history = services.useHistory(eligible, narrow, memory.readOpenIntent(key), rememberIntent);
@@ -161,7 +162,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
     const label = isArtifactTab(id) ? artifacts.get(id)?.fence.title ?? copy.artifactFallback : id === "base" ? copy.catalog.base.label : id === "subagents" ? copy.catalog.subagents.label : id === "browser" ? copy.catalog.browser.label : id.startsWith("app:") ? copy.catalog.app.label : image?.label ?? copy.catalog.image.label;
     const Icon = isArtifactTab(id) ? FileIcon : id === "base" ? DatabaseIcon : id === "subagents" ? BotIcon : id === "browser" ? GlobeIcon : id.startsWith("app:") ? BlocksIcon : ImageIcon;
     const unavailable = id === "browser" && !services.capabilities.browser || id.startsWith("app:") && !services.capabilities.apps;
-    return { key: id, label, ...(unavailable ? { dim: true, hint: remote.onComputer.replace("{name}", ownerName ?? remote.computer) } : {}), icon: <Icon className="size-3.5 shrink-0" />, selected: slots.active === id, panelId: `panel-tab-${id}`,
+    return { key: id, label, ...(isArtifactTab(id) && slots.active === id ? { labelContent: artifactChrome.title } : {}), ...(unavailable ? { dim: true, hint: remote.onComputer.replace("{name}", ownerName ?? remote.computer) } : {}), icon: <Icon className="size-3.5 shrink-0" />, selected: slots.active === id, panelId: `panel-tab-${id}`,
       actions: id === "base" ? <span ref={setBaseTabActions} className="flex items-center empty:hidden" /> : undefined,
       widthClass: id === "base" ? "max-lg:max-w-52" : undefined,
       closeLabel: copy.closeNamed.replace("{name}", label), select: () => navigate(() => setSlots(previous => ({ ...previous, active: id, touched: true }))),
@@ -171,7 +172,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   const promotedPath = base.promoted;
   const leaves: PanelLeaf[] = [
     ...(visible && !preview && isArtifactTab(slots.active) ? [{ id: slots.active, view: artifacts.has(slots.active) ? <ArtifactTab key={slots.active} value={artifacts.get(slots.active)!}
-      onFollowUp={() => closePanel(false)} presentation={{ full: history.takeover || artifactFull, canExpand: !narrow, setFull: setArtifactFull, close: () => closeTab(slots.active!), beforeClose }} />
+      onFollowUp={() => closePanel(false)} presentation={{ full: history.takeover || artifactFull, canExpand: !narrow, setFull: setArtifactFull, tabChrome: artifactChrome.value, close: () => closeTab(slots.active!), beforeClose }} />
       : <p role="status" className="p-4 text-sm">{artifactCopy(locale).unavailable}</p> }] : []),
     { id: "base-authority", managesVisibility: true, view: <>    {baseEngaged && <BaseTab chatId={chatId} incarnationId={incarnationId} targetBaseId={acceptedBase?.baseId ?? null} project={acceptedBase?.project ?? false} locale={locale} onDirtyChange={setDirty} visible={visible && !preview && slots.active === "base"} chrome={{ tabActions: baseTabActions, headerActions: baseHeaderActions, activate: () => openTab("base") }} />}
     {!preview && base.error && <div role="alert" className="p-4 text-sm">{copy.resolveFailed}<Button variant="outline" onClick={base.retry}>{copy.retry}</Button></div>}
@@ -191,7 +192,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   const element = (eligible || baseEngaged) && <SidePanelShell open={visible} takeover={history.takeover || artifactFull} {...geometry} onWidthChange={widthChange} onClose={close} resizeLabel={copy.resize} resizeHint={copy.resizeHint}>
     {closeFailed && <p role="alert" className="p-3 text-sm">{remote.requestFailed}</p>}
     <PanelHost close={close} backRef={backRef} takeover={history.takeover} copy={copy}
-      extraActions={!preview && slots.active === "base" ? <span ref={setBaseHeaderActions} className="flex items-center empty:hidden" /> : undefined}
+      extraActions={!preview && isArtifactTab(slots.active) ? artifactChrome.actions : !preview && slots.active === "base" ? <span ref={setBaseHeaderActions} className="flex items-center empty:hidden" /> : undefined}
       title={preview || history.takeover ? (preview ? "workspace" in preview ? preview.workspace.title : turnCopy(locale).plan.title : null) ?? items.find(item => item.selected)?.label ?? copy.tabs : undefined}
       hideTabs={Boolean(preview)} items={items} refs={tabRefs} tabsLabel={copy.tabs} closeTabLabel={copy.closeTab}
       active={preview ? null : slots.active} leaves={leaves} add={!preview ? add : undefined} footer={<>

@@ -22,14 +22,6 @@ export function historyFileState(previous: HistoryFileFingerprint | undefined, n
   return sameFingerprint(previous, next) ? "unchanged" : "replace";
 }
 
-export function historiesChanged(previous: AdapterEntry[], next: AdapterEntry[]) {
-  const before = new Map(previous.map((entry) => [entry.sourcePath, entry.fingerprint]));
-  const after = new Map(next.map((entry) => [entry.sourcePath, entry.fingerprint]));
-  return before.size !== after.size || [...after].some(
-    ([path, fingerprint]) => historyFileState(before.get(path), fingerprint) !== "unchanged"
-  );
-}
-
 /** Only new or changed read-only histories can be imported; continued Chats own their content. */
 export function historyImportCandidates(scans: AdapterScan[], previous: AdapterEntry[], lifecycle: (entry: AdapterEntry) => "external-readonly" | "managed" | "missing") {
   const before = new Map(previous.map((entry) => [entry.opaqueId, entry]));

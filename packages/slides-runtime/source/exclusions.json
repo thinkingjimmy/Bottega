@@ -1,0 +1,24 @@
+[
+  {
+    "path": "packages/slides-runtime/src/app.css",
+    "decision": "exclude-embedded-ui-font-before-archiving",
+    "originalSha256": "171a8d7db3695205f75754d30b8aaff93558dcc66071399206b93575b0f01432",
+    "originalBytes": 404783,
+    "productionSha256": "92405fa825434e53b1efe12908534146b0b51956b4ffd3f6990c70d2ccb1ffbb",
+    "productionBytes": 329940
+  },
+  {
+    "path": "packages/slides-runtime/src/fonts/anthropicons-fizzy-lake.woff2",
+    "decision": "excluded-ui-font",
+    "sha256": "df6cb87f3658618db5937e4afeec5cfe1a16dd187f309ebca0743eb0f76d19cd",
+    "bytes": 51556
+  },
+  {
+    "path": "packages/slides-runtime/src/rendering/icon-font.ts",
+    "decision": "exclude-embedded-ui-font-before-archiving",
+    "originalSha256": "428734fb1e09c9c6d0044b09f1377985edfb1788d0c98b9402358b025b4f0106",
+    "originalBytes": 23971,
+    "productionSha256": "1d454970db6dc753d000f475b91a5b44cac65aa93ff8e7db62017f7c22547814",
+    "productionBytes": 4324
+  }
+]

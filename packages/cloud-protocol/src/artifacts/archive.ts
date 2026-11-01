@@ -1,5 +1,5 @@
 /**
- * [INPUT]: The relative-path leaf validator and bounded byte arrays, without fence/render schemas.
+ * [INPUT]: The relative-path leaf validator and bounded byte arrays with an explicit design-only 512-member option, without fence/render schemas.
  * [OUTPUT]: Deterministic regular-file tar archives and strictly checked in-memory extraction.
  * [POS]: Artifact snapshot archive codec shared by desktop custody and isolated browser shells.
  */
@@ -18,8 +18,8 @@ function safeName(name: string) {
   if (name.split("/").length > 4 || name.split("/").includes("node_modules")) throw new Error("artifact-archive-path");
   return name;
 }
-export function packArtifactArchive(files: readonly ArtifactFile[]): Uint8Array {
-  if (!files.length || files.length > 200) throw new Error("artifact-archive-count");
+export function packArtifactArchive(files: readonly ArtifactFile[], maxFiles: 200 | 512 = 200): Uint8Array {
+  if (!files.length || files.length > maxFiles) throw new Error("artifact-archive-count");
   const sorted = [...files].sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   if (new Set(sorted.map(file => file.path)).size !== files.length) throw new Error("artifact-archive-duplicate");
   const size = sorted.reduce((total, file) => total + blockSize + Math.ceil(file.data.length / blockSize) * blockSize, 1024);
@@ -40,7 +40,7 @@ export function packArtifactArchive(files: readonly ArtifactFile[]): Uint8Array 
   }
   return result;
 }
-export function unpackArtifactArchive(bytes: Uint8Array): ArtifactFile[] {
+export function unpackArtifactArchive(bytes: Uint8Array, maxFiles: 200 | 512 = 200): ArtifactFile[] {
   if (bytes.length > MAX_BLOB_BYTES || bytes.length % blockSize) throw new Error("artifact-archive-budget");
   const files: ArtifactFile[] = [], names = new Set<string>();
   let offset = 0;
@@ -56,7 +56,7 @@ export function unpackArtifactArchive(bytes: Uint8Array): ArtifactFile[] {
     if (octal(read(148, 8)) !== checksum || read(257, 6) !== "ustar" || ![0, 48].includes(header[156]!)) throw new Error("artifact-archive-header");
     const prefix = read(345, 155), path = safeName((prefix ? prefix + "/" : "") + read(0, 100));
     const size = octal(read(124, 12));
-    if (!Number.isSafeInteger(size) || size < 0 || offset + blockSize + size > bytes.length || names.has(path) || files.length >= 200) throw new Error("artifact-archive-entry");
+    if (!Number.isSafeInteger(size) || size < 0 || offset + blockSize + size > bytes.length || names.has(path) || files.length >= maxFiles) throw new Error("artifact-archive-entry");
     names.add(path); files.push({ path, data: bytes.slice(offset + blockSize, offset + blockSize + size) });
     offset += blockSize + Math.ceil(size / blockSize) * blockSize;
   }

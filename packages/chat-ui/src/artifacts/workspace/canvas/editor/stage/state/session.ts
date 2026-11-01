@@ -6,7 +6,6 @@
 import { canvasOperationSchema, type CanvasOperation, type CanvasTarget } from "@ai-chat/cloud-protocol/artifacts/design/canvas/commands";
 import { canvasStyleSchema, type CanvasObject, type CanvasStyle } from "@ai-chat/cloud-protocol/artifacts/design/canvas/model";
 import type { CanvasEdit, DesignEdit } from "../../../edits";
-import type { DesignAnchor } from "@ai-chat/cloud-protocol/artifacts/design/review";
 export type TextTarget = { kind: "object"; object: CanvasObject } | { kind: "source"; target: CanvasTarget };
 export type TextExtras = { href?: string | null; list?: "none" | "ordered" | "unordered" };
 export function draftOperation(checkpoint: CanvasEdit | undefined, target: TextTarget) {
@@ -35,7 +34,4 @@ export function textOperation(target: TextTarget, previous: CanvasOperation | un
   const operation = previous?.type === "source.update" ? previous : undefined;
   return canvasOperationSchema.parse({ type: "source.update", anchor: target.target.anchor, ...(operation ?? {}),
     ...((operation?.changes || patch.text !== undefined || patch.style && Object.keys(patch.style).length) ? { changes: { ...operation?.changes, ...patch.style, ...(patch.text !== undefined ? { text: patch.text } : {}) } } : {}), ...patch.extras });
-}
-export function sourceForObject(object: CanvasObject, anchor: DesignAnchor | null) {
-  return anchor && anchor.boardId === object.boardId && anchor.selector === `#${object.id}` ? anchor : null;
 }

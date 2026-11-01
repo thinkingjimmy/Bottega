@@ -1,6 +1,6 @@
 /**
  * [INPUT]: DurableJson publication, complete tar snapshots and strict document identities.
- * [OUTPUT]: Scoped journal, durable source-write effects/conflicts, semantic navigation, immutable revisions and exact Fork aliases.
+ * [OUTPUT]: Selective fixed-revision/current-head reads and scoped journal with fixed create/replace/delete plans, durable path intents/receipts, conflicts, revisions and Fork aliases.
  * [POS]: Existing document storage authority; source writes use the separately guarded prepared edit effect.
  */
 import { z } from "zod";
@@ -8,11 +8,16 @@ import { join } from "node:path";
 import { readFile, rm } from "node:fs/promises";
 import { artifactFenceSchema } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import { DurableJson, durableReplaceBytes } from "../../persistence/durable-json";
-import { designDigest, documentKey, manifestSchema, type DesignAuthority } from "./model";
+import { DESIGN_EFFECT_LIMITS, DESIGN_SLIDES_LIMITS, designDigest, documentKey, manifestSchema, type DesignAuthority } from "./model";
 import { workspaceCommandSchema, sourcePath, digestSchema } from "@ai-chat/cloud-protocol/artifacts/design/model";
 
 const authoritySchema = z.object({ chatId: z.string(), incarnationId: z.string(), workspace: z.string(),
   ownerId: z.string(), authorityIdentity: z.string() }).strict();
+const directorySchema = z.object({ path: z.union([z.literal(""), sourcePath]), identity: z.string().regex(/^\d+:\d+$/) }).strict();
+const sourceEffectSchema = z.object({ path: sourcePath, kind: z.enum(["create", "replace", "delete"]),
+  before: digestSchema.nullable(), after: digestSchema.nullable() }).strict();
+const sourceWriteSchema = z.object({ path: sourcePath, state: z.enum(["started", "applied"]),
+  parents: z.array(directorySchema).max(4).optional(), beforeStamp: z.string().nullable().optional(), afterStamp: z.string().nullable().optional() }).strict();
 const revisionSchema = z.object({ authority: authoritySchema, path: z.string(), manifest: manifestSchema,
   revision: z.number().int().positive(), readSetDigest: z.string(), snapshotRef: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   requestId: z.string(), createdAt: z.number(), artifactId: z.string().uuid(), messageId: z.string(), backend: z.string(),
@@ -21,14 +26,19 @@ const revisionSchema = z.object({ authority: authoritySchema, path: z.string(), 
 }).strict();
 const operationSchema = z.object({ key: z.string(), parameterDigest: z.string(),
   state: z.enum(["prepared", "complete", "source-conflict", "rejected"]), revision: revisionSchema,
-  sourceEdit: z.object({ initial: z.literal(true).optional(), input: workspaceCommandSchema, baseline: z.array(z.object({ path: sourcePath, digest: digestSchema }).strict()).max(64), applied: z.boolean(),
-    writes: z.array(z.object({ path: sourcePath, state: z.enum(["started", "applied"]) }).strict()).max(64).default([]) }).strict().optional(),
-  conflict: z.object({ paths: z.array(sourcePath).max(128), message: z.string().max(500), resolvedAt: z.number().optional() }).strict().optional(),
+  sourceEdit: z.object({ initial: z.literal(true).optional(), input: workspaceCommandSchema,
+    baseline: z.array(z.object({ path: sourcePath, digest: digestSchema, stamp: z.string().optional() }).strict()).max(DESIGN_SLIDES_LIMITS.files), applied: z.boolean(),
+    effects: z.array(sourceEffectSchema).max(DESIGN_EFFECT_LIMITS.files).optional(),
+    directories: z.array(directorySchema).max(2048).optional(),
+    writes: z.array(sourceWriteSchema).max(DESIGN_EFFECT_LIMITS.files).default([]) }).strict().optional(),
+  conflict: z.object({ paths: z.array(sourcePath).max(DESIGN_EFFECT_LIMITS.files), message: z.string().max(500), resolvedAt: z.number().optional() }).strict().optional(),
   aliasOf: z.string().max(512).optional(),
 }).strict();
 const indexSchema = z.object({ schemaVersion: z.literal(1), operations: z.array(operationSchema) }).strict();
 export type DesignRevision = z.infer<typeof revisionSchema>;
 export type DesignOperation = z.infer<typeof operationSchema>;
+export type DesignSourceEffect = z.infer<typeof sourceEffectSchema>;
+export type DesignSourceWrite = z.infer<typeof sourceWriteSchema>;
 
 export class DesignDocumentStore {
   private readonly index: DurableJson<z.infer<typeof indexSchema>>;
@@ -56,12 +66,34 @@ export class DesignDocumentStore {
     }
     return { undoRevision: past.at(-1) ?? null, redoRevision: future.at(-1) ?? null };
   }
+  revision(authority: DesignAuthority, documentId: string, revision: number) {
+    const key = documentKey(authority, documentId);
+    return this.index.read(value => value.operations.find(operation => operation.state === "complete" && operation.revision.revision === revision &&
+      documentKey(operation.revision.authority, operation.revision.manifest.documentId) === key)?.revision ?? null);
+  }
+  heads(authority: DesignAuthority) {
+    return this.index.read(value => {
+      const latest = new Map<string, DesignRevision>();
+      for (const operation of value.operations) {
+        const version = operation.revision;
+        if (operation.state !== "complete" || version.authority.ownerId !== authority.ownerId ||
+          version.authority.chatId !== authority.chatId || version.authority.incarnationId !== authority.incarnationId) continue;
+        if ((latest.get(version.manifest.documentId)?.revision ?? 0) < version.revision) latest.set(version.manifest.documentId, version);
+      }
+      return [...latest.values()];
+    });
+  }
   latest(ownerId: string, documentId: string, scope?: Pick<DesignAuthority, "chatId" | "incarnationId">) {
     return this.index.read(value => {
-      const candidates = value.operations.filter(operation => operation.state === "complete" &&
-      operation.revision.authority.ownerId === ownerId && operation.revision.manifest.documentId === documentId)
-      .map(operation => operation.revision).sort((a, b) => b.revision - a.revision);
-      return (scope ? candidates.find(value => value.authority.chatId === scope.chatId && value.authority.incarnationId === scope.incarnationId) : null) ?? candidates[0] ?? null;
+      let latest: DesignRevision | null = null, matched: DesignRevision | null = null;
+      for (const operation of value.operations) {
+        const version = operation.revision;
+        if (operation.state !== "complete" || version.authority.ownerId !== ownerId || version.manifest.documentId !== documentId) continue;
+        if (!latest || latest.revision < version.revision) latest = version;
+        if (scope && version.authority.chatId === scope.chatId && version.authority.incarnationId === scope.incarnationId &&
+          (!matched || matched.revision < version.revision)) matched = version;
+      }
+      return matched ?? latest;
     });
   }
   alias(operation: DesignOperation) { return this.index.mutate(value => { if (!value.operations.some(item => item.key === operation.key)) value.operations.push(operation); }); }
@@ -92,19 +124,23 @@ export class DesignDocumentStore {
     });
   }
   sourceApplied(key: string) { return this.index.mutate(value => { const operation = value.operations.find(item => item.key === key); if (operation?.sourceEdit) operation.sourceEdit.applied = true; }); }
-  sourceWrite(key: string, path: string, state: "started" | "applied") {
+  sourceWrite(key: string, path: string, state: "started" | "applied", details: Omit<DesignSourceWrite, "path" | "state"> = {}) {
     return this.index.mutate(value => {
       const edit = value.operations.find(item => item.key === key)?.sourceEdit;
       if (!edit) throw new Error("Prepared source edit is missing");
+      if (edit.effects && !edit.effects.some(effect => effect.path === path)) throw new Error("Source effect is not in the prepared plan");
       const write = edit.writes.find(value => value.path === path);
-      if (!write) edit.writes.push({ path, state }); else if (state === "applied") write.state = state;
+      if (!write) {
+        if (state !== "started") throw new Error("Source effect has no durable intent");
+        edit.writes.push({ path, state, ...details });
+      } else if (state === "applied") { write.state = state; write.afterStamp = details.afterStamp; }
     });
   }
   sourceConflict(key: string, paths: string[], message: string) {
     return this.index.mutate(value => {
       const operation = value.operations.find(item => item.key === key);
       if (!operation?.sourceEdit || operation.sourceEdit.applied || operation.state !== "prepared") throw new Error("Source conflict cannot reject a published effect");
-      operation.conflict = { paths: [...new Set(paths)].slice(0, 128), message: message.slice(0, 500) };
+      operation.conflict = { paths: [...new Set(paths)].slice(0, DESIGN_EFFECT_LIMITS.files), message: message.slice(0, 500) };
       operation.state = operation.sourceEdit.writes.length ? "source-conflict" : "rejected";
       return operation;
     });

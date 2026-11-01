@@ -1,0 +1,33 @@
+{
+  "name": "@bottega/canvas-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "scripts": {
+    "build": "node build/index.mjs",
+    "typecheck": "node --check build/index.mjs && node --check build/compile.mjs"
+  },
+  "devDependencies": {
+    "@babel/standalone": "7.29.0",
+    "@base-ui/react": "1.6.0",
+    "@tanstack/react-virtual": "3.14.9",
+    "@tanstack/virtual-core": "3.17.7",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "dom-to-svg": "0.12.2",
+    "happy-dom": "20.9.0",
+    "jquery": "4.0.0",
+    "lodash.debounce": "4.0.8",
+    "lucide-react": "1.24.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "scheduler": "0.28.0",
+    "tailwind-merge": "3.6.0",
+    "usehooks-ts": "3.1.1",
+    "react-18": "npm:react@18.3.1",
+    "react-dom-18": "npm:react-dom@18.3.1",
+    "esbuild": "0.25.12",
+    "vite": "7.3.6"
+  }
+}

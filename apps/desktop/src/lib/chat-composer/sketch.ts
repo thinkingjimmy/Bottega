@@ -22,7 +22,6 @@ import {
   atomicComposerUpdate,
   composerOwnerValid,
   globalQueuedBytes,
-  readComposer,
   retainComposerResources,
   updateComposer,
   type ComposerFile,
@@ -242,5 +241,3 @@ export function swapComposerQueue(
   retainComposerResources(owner.chatId);
   return true;
 }
-export const readSketchSource = (chatId: string, id: string) =>
-  readComposer(chatId).sketch.sources.get(id)?.document;

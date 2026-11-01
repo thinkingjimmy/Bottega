@@ -1,0 +1,30 @@
+{
+  "source": {
+    "repository": "https://github.com/notofonts/noto-cjk",
+    "commit": "523d033d6cb47f4a80c58a35753646f5c3608a78",
+    "scope": "Private unmodified font input probe; not production adoption or installed system font.",
+    "files": [
+      {
+        "path": "NotoSansSC-VF.ttf",
+        "upstreamPath": "Sans/Variable/TTF/Subset/NotoSansSC-VF.ttf",
+        "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/Sans/Variable/TTF/Subset/NotoSansSC-VF.ttf",
+        "bytes": 17773132,
+        "sha256": "d68bafcb48a2707749396aa12bbbd833cb70401f3a9a689fd2902c7e0d295964",
+        "gitBlob": "5371a543be5fc670c7cdee9760c03554ee3e9b8e"
+      },
+      {
+        "path": "LICENSE",
+        "upstreamPath": "LICENSE",
+        "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/LICENSE",
+        "bytes": 4301,
+        "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+        "gitBlob": "d952d62c065f3f35fb83a173496e90b21525aef3"
+      }
+    ]
+  },
+  "archiveSha256": "5d077f6fdad064f345d3315b0f3d96d800205b054ac8b0df6f10064e0b0b3569",
+  "sourceSha256": "d68bafcb48a2707749396aa12bbbd833cb70401f3a9a689fd2902c7e0d295964",
+  "woff2Sha256": "a5822f9d6ef83d113dd94741221c16ba7a321f63033a02bd164968188995d547",
+  "licenseSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+  "cmapSha256": "5040e6f7f95f2a0084f1a431177ecd50be1aa81aabfb56a62c5818beac3ce7bc"
+}

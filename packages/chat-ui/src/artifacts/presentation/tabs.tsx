@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Owner-scoped immutable Artifact fences, original-composer callbacks and guarded panel presentation.
- * [OUTPUT]: Session-only Artifact tab identities, bounded owner memory and lazy active-tab content.
+ * [OUTPUT]: Session-only Artifact identities and stable native work tabs with current-head frame/Undo continuity, bounded owner memory, existing tab chrome portal targets and lazy active-tab content.
  * [POS]: Shared Artifact tab boundary for native and remote third-column hosts; no fences or callbacks are persisted.
  */
 import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
@@ -9,17 +9,20 @@ import { ArtifactHostProvider, ArtifactPresentationProvider, useArtifactHost, ty
 import { ArtifactPreview } from "../renderer";
 import { useArtifactCloseGuard } from "../lifecycle/close";
 
+export { useArtifactTabChrome } from "./tab-chrome";
+
 export type ArtifactTabId = `artifact:${string}`;
 export type ArtifactTabValue = { fence: ArtifactFence; followUp?: ArtifactHost["followUp"] };
 export const isArtifactTab = (id: unknown): id is ArtifactTabId => typeof id === "string" && /^artifact:[A-Za-z0-9_-]{1,128}$/.test(id);
-export const artifactTabId = (fence: ArtifactFence): ArtifactTabId => `artifact:${fence.id}`;
+export const artifactTabId = (fence: ArtifactFence): ArtifactTabId => `artifact:${fence.design?.contentFormat ? "work-" + fence.design.documentId : fence.id}`;
+const activeNativeHeads = new WeakMap<ArtifactTabValue, string>();
 const empty: ReadonlyMap<ArtifactTabId, ArtifactTabValue> = new Map();
 const owners = new Map<string, ReadonlyMap<ArtifactTabId, ArtifactTabValue>>();
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 export function rememberArtifactTab(scope: string, fence: ArtifactFence, followUp?: ArtifactHost["followUp"]) {
   const id = artifactTabId(fence), previous = owners.get(scope)?.get(id);
-  if (previous?.fence === fence && previous.followUp === followUp) return id;
+  if (previous?.fence === fence && previous.followUp === followUp || previous && fence.design?.contentFormat && activeNativeHeads.get(previous) === fence.design.readSetDigest) return id;
   const values = new Map(owners.get(scope));
   values.set(id, { fence, followUp }); owners.delete(scope); owners.set(scope, values);
   if (owners.size > 64) owners.delete(owners.keys().next().value!);
@@ -42,9 +45,17 @@ export function useArtifactTabGuard(owner: unknown) {
 export function ArtifactTab({ value, presentation, onFollowUp }: { value: ArtifactTabValue; presentation: ArtifactPresentation; onFollowUp?(): void }) {
   const host = useArtifactHost(), active = useRef<ArtifactTabValue | null>(null), afterFollowUp = useRef(onFollowUp);
   useLayoutEffect(() => { afterFollowUp.current = onFollowUp; }, [onFollowUp]);
-  useLayoutEffect(() => { active.current = value; return () => { if (active.current === value) active.current = null; }; }, [value]);
+  useLayoutEffect(() => {
+    active.current = value;
+    if (value.fence.design?.contentFormat) activeNativeHeads.set(value, value.fence.design.readSetDigest);
+    return () => { activeNativeHeads.delete(value); if (active.current === value) active.current = null; };
+  }, [value]);
   const followUp = value.followUp ?? host?.followUp;
-  const adapted = useMemo(() => host ? { ...host, followUp: followUp ? async (request: Parameters<NonNullable<ArtifactHost["followUp"]>>[0]) => {
+  const adapted = useMemo(() => host ? { ...host, remember: (fence: ArtifactFence) => {
+    host.remember?.(fence);
+    if (active.current === value && fence.design?.contentFormat && fence.design.documentId === value.fence.design?.documentId)
+      activeNativeHeads.set(value, fence.design.readSetDigest);
+  }, followUp: followUp ? async (request: Parameters<NonNullable<ArtifactHost["followUp"]>>[0]) => {
     if (active.current !== value) return;
     await followUp(request);
     if (active.current === value) afterFollowUp.current?.();

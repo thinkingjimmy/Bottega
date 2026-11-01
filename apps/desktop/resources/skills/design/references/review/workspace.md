@@ -33,7 +33,7 @@ A confirmed zero-effect source conflict is terminal. Possible started/applied ef
 the explicit keep-current-source resolution exposed by the owner. Resolution itself saves no
 source, revision or card. See [the source transaction](../formats/document.md).
 
-Undo/Redo follows the owner's displayed target revision and current CAS. It saves navigation
+For existing legacy documents, Undo/Redo follows the owner's displayed target revision and current CAS. It saves navigation
 without adding a new edit step. A normal edit truncates redo. Opening an older card only views
 its archive; it does not perform Undo or authorize editing that historical snapshot.
 Removing a Page/board/object does not remove prior versions or physically delete retained files.
@@ -41,6 +41,9 @@ Removing a Page/board/object does not remove prior versions or physically delete
 Artifact disable stops new admission. Saved archives and recovery input remain available;
 prepared work retains its original recovery identity. Re-enable creates a new generation, so an
 old view or reference cannot authorize a new write.
+
+Native current-head documents keep manual Undo in the mounted editor and one separate latest
+AI rollback. Read [native source](../formats/native.md) and [candidate purpose](candidates.md).
 
 ## Export a saved range
 

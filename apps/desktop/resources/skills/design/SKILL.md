@@ -1,12 +1,12 @@
 ---
 name: design
 displayName: Artifact Design
-description: Create or edit a Bottega Artifact design with local HTML boards and Canvas pages or objects. Use for visual prototypes, diagrams, print layouts and visual revisions in the current Chat workspace.
+description: Create or edit a Bottega Artifact with native Canvas v3/DC boards or Slides v4 presentations, or preserve an existing legacy design format. Use for visual prototypes, diagrams, print layouts and visual revisions in the current Chat workspace.
 requires: "tools: design_check, design_commit, design_render_check"
 ---
 
 <!--
-  [INPUT]: Bottega document and Canvas schemas, current Chat source authority, issued design tools and saved-revision evidence
+  [INPUT]: Native Canvas v3/DC, Slides v4 and legacy document schemas, current Chat source authority, issued design tools and saved-revision evidence
   [OUTPUT]: A scoped document transaction with a saved receipt and a stated inspection result
   [POS]: Bottega Artifact Design entry; routes document, Canvas, source, composition and inspection tasks
 -->
@@ -23,8 +23,11 @@ Load the reference for the operation you need. These paths are relative to this 
 
 | Operation | Contract |
 | --- | --- |
-| Author files or save a source revision | [Document transaction](references/formats/document.md) |
+| Create a presentation or edit native slides | [Native Slides](references/formats/slides.md) |
+| Create a native Canvas or edit its raw source | [Native Canvas](references/formats/native.md) |
+| Edit an existing legacy source or save either format | [Document transaction](references/formats/document.md) |
 | Add pages, boards or objects; change model geometry or resources | [Canvas model](references/formats/canvas.md) |
+| Edit comments through an isolated candidate | [Candidate purpose](references/review/candidates.md) |
 | Edit a selected element or region | [Target evidence](references/review/anchors.md) |
 | Recover input, navigate history, export or hand off review | [Workspace state](references/review/workspace.md) |
 | Inspect a saved board or diagnose capture | [Render evidence](references/review/visual-check.md) |
@@ -39,14 +42,14 @@ The separately attributed craft directories provide optional advice on
 
 ## Establish the document state
 
-For a new document, choose a valid slug and documentId once. For an existing document, retain
+For a new Canvas, load the native Canvas reference first. For a presentation, load the native Slides reference first. For a new document, choose a valid slug and documentId once. For an existing document, retain
 its directory, documentId, board IDs and saved Canvas identities. A different title does not
 create a different document.
 
 A Page groups boards and objects. A board contains HTML at a declared viewport. A revision
 identifies a complete saved source set. The recovery checkpoint holds view state and unfinished
 input. A Page switch or camera move therefore does not save a new source revision.
-Canvas notes are document objects; review opinions belong to the separate review/handoff state.
+Canvas notes are document objects. Native review opinions are source-backed comments.json threads; legacy review/handoff input keeps its existing checkpoint contract.
 
 Read the selected source before writing. Preserve model-owned object layers when editing board
 HTML. Workspace creation actions allocate their own IDs; do not add caller IDs to their commands.
@@ -69,7 +72,7 @@ is unknown, retain the original request and parameters. A second request cannot 
 the first one did. Do not increase expectedRevision to make a refusal disappear.
 
 Canvas direct edits are workspace actions admitted by the host. They share this document
-journal, CAS and semantic Undo/Redo. The three tools named in this entry do not create a
+journal and CAS. Existing legacy documents keep semantic Undo/Redo; native manual Undo stays in the mounted editor and latest AI rollback is separate. The three tools named in this entry do not create a
 general-purpose Canvas command tool. Use only actions that the current host actually exposes;
 otherwise make an authorized source revision or report the missing capability.
 

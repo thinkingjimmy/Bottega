@@ -10,7 +10,10 @@ The save unit is the complete directory `design/<documentId>`. Select that docum
 editing. Every captured file, including unused local files, contributes to its read-set digest.
 The host saves that read set as one immutable archive; saving one board does not omit its peers.
 
-## Declare the source
+For new native Canvas, use [Native Canvas](native.md). The source declaration below applies to
+existing legacy documents; both formats use the same checked-byte transaction and budgets.
+
+## Declare the legacy source
 
 `canvas.json` has these required fields:
 
@@ -92,8 +95,8 @@ prepared recovery retains captured bytes even while Artifact is off.
 ## Inspect the saved result
 
 Render with documentId/revision from the receipt and an optional saved boardId/viewport.
-The renderer reads that archive, not newer workspace files. A historical card keeps its saved
-revision; the document directory entry opens the latest saved revision.
+The renderer reads that archive, not newer workspace files. A legacy historical card keeps its saved revision. Native work cards open current head
+metadata directly and expose no permanent history list; fixed snapshot references remain readable.
 
 Source commits, workspace property/Canvas edits, restore and system changes all use the same
 journal. Semantic Undo/Redo is navigation supplied by that owner. A new edit clears the redo

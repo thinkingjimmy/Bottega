@@ -1,8 +1,14 @@
 /**
  * [INPUT]: Main document/Artifact custody, current Chat/workspace facts, the canonical Provider default, plugin lifecycle and trusted top-frame requests.
- * [OUTPUT]: Fixed Canvas reads and exact-length native image bytes, semantic history, source conflicts, mounted-view custody, request-start preview lifetime guards and immutable exports.
+ * [OUTPUT]: Format-dispatched Canvas reads and exact-length native image bytes, semantic history, source conflicts, mounted-view custody, request-start preview lifetime guards, isolated immutable candidates, existing-only prepared native recovery and journal-backed AI rollback/exports.
  * [POS]: Workspace authority; renderer input cannot select a filesystem root or App installation.
  */
+import { readNativeComments } from "@ai-chat/cloud-protocol/artifacts/design/native/comments";
+import { NativeCandidates } from "./candidates/service";
+import { join } from "node:path";
+import { requestKey } from "../../design/documents/model";
+import type { ChatTurnOptions } from "../../../../shared/chat-agent/options";
+import { projectNativeManifest } from "@ai-chat/cloud-protocol/artifacts/design/native/source";
 import { randomUUID } from "node:crypto";
 import { DEFAULT_PROVIDER_ID } from "../../../../shared/providers/catalog";
 import { manifestSchema, workspaceCommandSchema, summarizeDesignBoards, type WorkspaceCommand } from "@ai-chat/cloud-protocol/artifacts/design/model";
@@ -23,8 +29,12 @@ import type { RemoteArtifactWorkspace } from "./remote";
 import { readCanvas, readCanvasImage, validateCanvasCheckpoint } from "@ai-chat/cloud-protocol/artifacts/design/canvas/view";
 export class ArtifactWorkspace {
   readonly checkpoints: ArtifactCheckpoints;
+  readonly candidates: NativeCandidates;
   remote: RemoteArtifactWorkspace | undefined;
-  constructor(root: string) { this.checkpoints = new ArtifactCheckpoints(root); }
+  constructor(root: string, optionsFor: (chatId: string, incarnationId: string) => ChatTurnOptions = () => { throw new Error("Original Chat selection is unavailable"); }) {
+    this.checkpoints = new ArtifactCheckpoints(root);
+    this.candidates = new NativeCandidates(join(root, "candidates"), optionsFor, (input, windowId) => this.checkpoints.ownsView(windowId, input.viewId!, this.checkpoints.key(input.chatId, input.incarnationId, input.documentId!)));
+  }
   initialize() { return this.checkpoints.initialize(); }
   async authorizeReference(chatId: string, incarnationId: string, value: DesignReference) {
     const reference = designReferenceSchema.parse(value);
@@ -49,8 +59,10 @@ export class ArtifactWorkspace {
     let authority: DesignRevision["authority"] | null = null;
     if (!source.record.remote) { try { authority = documents.authority(input.chatId, input.incarnationId); } catch { /* Retained bytes grant no working-source authority. */ } }
     const local = authority ? documents.store.versions(authority, summary.documentId).find(version => version.artifactId === input.artifactId && version.snapshotRef === summary.snapshotRef) : undefined;
-    const files = unpackArtifactArchive(source.data), manifest = manifestSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(files.find(file => file.path === "canvas.json")!.data)));
+    const files = unpackArtifactArchive(source.data, 512), manifest = manifestSchema.parse(projectNativeManifest(files, summary.documentId) ?? JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(files.find(file => file.path === "canvas.json")!.data)));
+    if (manifest.contentFormat !== summary.contentFormat) throw new Error("Artifact source format does not match its fixed summary");
     if (manifest.documentId !== summary.documentId || JSON.stringify(summarizeDesignBoards(manifest)) !== JSON.stringify(summary.boards) ||
+      (manifest.contentFormat === "slides/v4" && summary.boardCount !== manifest.boards.length) ||
       authority && JSON.stringify(documents.authority(input.chatId, input.incarnationId)) !== JSON.stringify(authority)) throw new Error("Artifact reference authority changed");
     const version: DesignRevision = local ?? { authority: authority ?? { chatId: input.chatId, incarnationId: input.incarnationId, workspace: "", ownerId: "retained:" + input.chatId, authorityIdentity: source.record.remote ?? input.incarnationId }, manifest, path: `${manifest.format === "bottega-design-system" ? "design-systems" : "design"}/${manifest.documentId}`,
       revision: summary.revision, readSetDigest: summary.readSetDigest, snapshotRef: summary.snapshotRef, artifactId: input.artifactId,
@@ -67,12 +79,12 @@ export class ArtifactWorkspace {
     if (state !== "ready") throw new Error("artifact-" + state);
     if (answer.ok && input.generation !== answer.artifactStatus?.capability.generation) throw new Error("artifact-generation-expired");
   }
-  private async saveExport(input: WorkspaceCommand, windowId: number, result: { data: string; filename: string; [key: string]: unknown }) {
+  private async saveExport(input: WorkspaceCommand, windowId: number, result: { data: string; filename: string; [key: string]: unknown }, guard: () => void = () => {}) {
     if (!input.save) return result;
     const window = BrowserWindow.getAllWindows().find(window => window.webContents.id === windowId);
     if (!window || window.isDestroyed()) throw new Error("Original export window is unavailable");
-    const destination = await dialog.showSaveDialog(window, { defaultPath: result.filename });
-    if (!destination.canceled && destination.filePath) { await this.version(input); await writeFile(destination.filePath, Buffer.from(result.data, "base64")); }
+    guard(); const destination = await dialog.showSaveDialog(window, { defaultPath: result.filename });
+    if (!destination.canceled && destination.filePath) { guard(); await this.version(input); await writeFile(destination.filePath, Buffer.from(result.data, "base64")); }
     return { ...result, data: undefined, canceled: destination.canceled };
   }
   async dispatch(raw: unknown, windowId = 0, backend: string = DEFAULT_PROVIDER_ID): Promise<unknown> {
@@ -91,7 +103,7 @@ export class ArtifactWorkspace {
     }
     if (input.action === "reference-check") { await this.authorizeReference(input.chatId, input.incarnationId, designReferenceSchema.parse(input.reference)); return { available: true }; }
     if (input.action === "ack-disable") { this.checkpoints.ack(windowId, input.nonce!, input.viewId!, this.checkpoints.key(input.chatId, input.incarnationId, input.documentId!)); return { acknowledged: true }; }
-    if (input.action === "release-view") { this.checkpoints.releaseView(windowId, input.viewId!, this.checkpoints.key(input.chatId, input.incarnationId, input.documentId!)); return { released: true }; }
+    if (input.action === "release-view") { this.candidates.releaseView(input, windowId); this.checkpoints.releaseView(windowId, input.viewId!, this.checkpoints.key(input.chatId, input.incarnationId, input.documentId!)); return { released: true }; }
     if (input.action === "list") {
       try { return { ...await documents.status(input.chatId, input.incarnationId), generation: artifactGeneration(), enabled: artifactEnabled() }; }
       catch (cause) {
@@ -135,7 +147,31 @@ export class ArtifactWorkspace {
         } finally { signal.removeEventListener("abort", cancel); }
       });
     }
+    if (input.action === "native-download") return artifactRuntime()!.gateway.saveNativeDownload(input, windowId, (result, guard) => this.saveExport({ ...input, save: true }, windowId, result, guard));
     const snapshot = await this.version(input), version = snapshot.version;
+    if (input.action.startsWith("native-candidate") || input.action === "native-ai-rollback") {
+      if (snapshot.remote) throw new Error("Native remote candidate transport is not available yet");
+      return this.candidates.dispatch(input, windowId, snapshot);
+    }
+    if (input.action === "native-head") {
+      if (!version.manifest.contentFormat || snapshot.remote) throw new Error("Native current head is unavailable on this path");
+      const head = await documents.currentHead(input.chatId, input.incarnationId, version.manifest.documentId);
+      const headSnapshot = await this.version({ ...input, action: "read", artifactId: head.artifactRef.artifactId }), current = headSnapshot.version;
+      const accepted = documents.store.operation(requestKey(current.authority, current.requestId))?.sourceEdit?.input;
+      const aiRollback = accepted?.action === "native-candidate-accept" && accepted.baselineSnapshotRef ? { requestId: current.requestId } : undefined;
+      return { nativeComments: readNativeComments(headSnapshot.files), aiRollback, documentId: current.manifest.documentId, title: current.manifest.title, manifest: current.manifest, fence: current.fence,
+        revision: current.revision, latestRevision: current.revision, readSetDigest: current.readSetDigest, snapshotRef: current.snapshotRef,
+        generation: artifactGeneration(), enabled: artifactEnabled(), editable: true, dirty: head.dirty || head.pending, statusComplete: true, historyComplete: true,
+        previewEnabled: artifactEnabled(), undoRevision: null, redoRevision: null,
+        checkpoint: this.checkpoints.native(input.chatId, input.incarnationId, current.manifest.documentId, current.revision, current.manifest.launchBoard),
+        versions: [{ revision: current.revision, artifactId: current.artifactId, createdAt: current.createdAt }] };
+    }
+    if (input.action === "native-editor") {
+      if (snapshot.remote) throw new Error("Native remote editor transport is not available yet");
+      assertArtifactGeneration(input.generation);
+      if (input.expectedRevision !== version.revision || input.readSetDigest !== version.readSetDigest) throw new Error("Native editor source identity changed");
+      return artifactRuntime()!.gateway.issueNative(input, windowId, snapshot);
+    }
     if (input.action === "image") {
       if (input.image!.snapshotRef !== version.snapshotRef) throw new Error("Canvas image belongs to another snapshot");
       const bytes = readCanvasImage(snapshot.files, input.image!);
@@ -155,7 +191,8 @@ export class ArtifactWorkspace {
       const checkpointVersion = await this.checkpoints.save(input.chatId, input.incarnationId, input.checkpoint); return { saved: true, checkpointVersion };
     }
     if (input.action === "read") {
-      const versions = documents.store.versions(version.authority, version.manifest.documentId);
+      const native = Boolean(version.manifest.contentFormat);
+      const versions = native ? [] : documents.store.versions(version.authority, version.manifest.documentId);
       let live: { revision: number; dirty: boolean; undoRevision: number | null; redoRevision: number | null } | undefined, generation = artifactGeneration(), enabled = artifactEnabled();
       let statusComplete = !snapshot.remote, historyComplete = !snapshot.remote;
       let history = versions.map(value => ({ revision: value.revision, artifactId: value.artifactId, createdAt: value.createdAt }));
@@ -186,9 +223,12 @@ export class ArtifactWorkspace {
             if (cursors.has(answer.artifactHistory.cursor)) break; cursor = answer.artifactHistory.cursor; cursors.add(cursor);
           }
         } catch { /* Offline reading preserves frozen snapshots and recovery input. */ }
-      } else { try { live = (await documents.status(input.chatId, input.incarnationId)).documents.find(value => value.documentId === version.manifest.documentId); } catch { enabled = false; } }
+      } else { try {
+        if (native) { const head = await documents.currentHead(input.chatId, input.incarnationId, version.manifest.documentId); live = { revision: head.revision, dirty: head.dirty || head.pending, undoRevision: null, redoRevision: null }; }
+        else live = (await documents.status(input.chatId, input.incarnationId)).documents.find(value => value.documentId === version.manifest.documentId);
+      } catch { enabled = false; } }
       return { documentId: version.manifest.documentId, title: version.manifest.title, manifest: version.manifest, editable: snapshot.remote ? true : snapshot.editable,
-        canvas: readCanvas(version.manifest, snapshot.files),
+        ...(native ? { nativeComments: readNativeComments(snapshot.files) } : { canvas: readCanvas(version.manifest, snapshot.files) }),
         fence: version.fence,
         revision: version.revision, latestRevision: Math.max(live?.revision ?? 0, history.at(-1)?.revision ?? 0, version.revision), readSetDigest: version.readSetDigest, snapshotRef: version.snapshotRef,
         generation, enabled: enabled && statusComplete && historyComplete, statusComplete, historyComplete, previewEnabled: artifactEnabled(), dirty: live?.dirty ?? true,
@@ -213,7 +253,7 @@ export class ArtifactWorkspace {
       }
       return answer.artifactCanvasTarget ?? answer.artifactDifference ?? answer.artifactOperation;
     }
-    if (input.action === "operation-status") return documents.operationStatus({ ...input, documentId: version.manifest.documentId });
+    if (input.action === "operation-status") return input.nativeOperation ? this.candidates.recoverOperation(input, snapshot) : documents.operationStatus({ ...input, documentId: version.manifest.documentId });
     if (input.action === "export") {
       assertArtifactGeneration(input.generation);
       const result = await (await import("../../design/editing/export")).exportDesignRevision(input, snapshot);
@@ -256,9 +296,9 @@ export class ArtifactWorkspace {
       previewGuard!();
       if (snapshot.remote) assertArtifactAdmission(); else assertArtifactGeneration(input.generation);
       const nonce = randomUUID(), selectionNonce = randomUUID(), id = randomUUID();
-      const html = designFrameHtml(prepared.html.toString("utf8"), { id, nonce, selectionNonce, generation: input.generation!, boardId: prepared.metadata.boardId, boardDigest: prepared.metadata.boardDigest, navigation: prepared.metadata.navigation });
+      const html = designFrameHtml(prepared.html.toString("utf8"), { id, nonce, selectionNonce, generation: input.generation!, boardId: prepared.metadata.boardId, boardDigest: prepared.metadata.boardDigest, navigation: prepared.metadata.navigation }, Boolean(prepared.metadata.contentFormat));
       const gateway = artifactRuntime()!.gateway;
-      const lease = await gateway.issuePrepared({ chatId: input.chatId, incarnationId: input.incarnationId, artifactId: version.artifactId }, windowId, id, html);
+      const lease = await gateway.issuePrepared({ chatId: input.chatId, incarnationId: input.incarnationId, artifactId: version.artifactId }, windowId, id, html, prepared.metadata.contentFormat);
       try { previewGuard!(); return { ...lease, nonce, selectionNonce, generation: input.generation, ...prepared.metadata }; }
       catch (cause) { gateway.release(lease.id, windowId); throw cause; }
     }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses the work's actual Provider identity, product turn/input contracts, main-sealed ACP or native plans, execution references and ordered bridge events.
- * [OUTPUT]: Exports BridgedTurn with frozen configuration, approval/control forwarding, live exact-owner MCP consent eligibility, delivery evidence and cancellation-safe Chat background transfer with exact-item termination and exact-owner durable result commits.
+ * [OUTPUT]: Exports BridgedTurn with frozen configuration, approval/control forwarding, live exact-owner MCP consent eligibility, candidate background-transfer refusal, delivery evidence and cancellation-safe Chat background transfer with exact-item termination and exact-owner durable result commits.
  * [POS]: Main-side authorization and custody owner; protocol parsing remains in the pinned bridge driver.
  */
 import { randomUUID } from "node:crypto";
@@ -156,7 +156,7 @@ export class BridgedTurn implements AgentTurn {
         return this.native.nativeConfig;
       }
       case "native-background": {
-        if (!this.native || !this.owner || this.backgroundStaged) throw new Error("Native background ownership is unavailable");
+        if (!this.native || !this.owner || this.backgroundStaged || this.options.artifactCandidate) throw new Error("Native background ownership is unavailable");
         this.backgroundStaged = true;
         const owner = this.owner;
         if (!owner.recordDescendants) throw new Error("Native background custody requires durable descendant evidence");

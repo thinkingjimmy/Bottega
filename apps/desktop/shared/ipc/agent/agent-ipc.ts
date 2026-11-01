@@ -118,6 +118,8 @@ export type BackendCapabilities = {
   imageInput: boolean;
   planMode: boolean;
   headless: HeadlessPurpose[];
+  /** Separate ordinary-turn contract; never inferred from Chat or headless support. */
+  candidateEditing?: "native-candidate/v1";
   maintenance: boolean;
   builtinTools: "none" | "read" | "mutate";
   /** Login is an explicit terminal action even when auth status is unknowable. */

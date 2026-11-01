@@ -51,6 +51,7 @@ export type ResourceCommandPorts = AdmissionPorts & {
   apps?(): AppResourcePort | null;
   /** The owner request inbox; this port has no install-confirmation operation. */
   plugins?(): Pick<PluginInstallRequests, "request" | "status"> | null;
+  files?(userId: string): import("../../files/store").DesktopBlobStore;
   records?: RecordResourcePort;
   projects?: ProjectResourcePort;
   /** The account's name for a device, for the Edit Chat line that says where a decline came from. */
@@ -81,6 +82,7 @@ export class ResourceCommandRuntime {
   private readonly running = new Set<string>();
   private readonly refreshes = new Map<string, Promise<void>>();
   private watching: (() => void) | null = null;
+  private nativeArtifacts?: import("./native/sessions").NativeRemoteSessions;
   private scoped: (() => void) | null = null;
   private readonly releases: (() => void)[] = [];
   private readonly timer: ReturnType<typeof setInterval>;
@@ -107,7 +109,7 @@ export class ResourceCommandRuntime {
     for (const release of this.releases.splice(0)) release();
     await this.flight?.catch(() => undefined);
   }
-  private stop() { this.watching?.(); this.watching = null; this.scoped?.(); this.scoped = null; }
+  private stop() { void this.nativeArtifacts?.close(); this.nativeArtifacts = undefined; this.watching?.(); this.watching = null; this.scoped?.(); this.scoped = null; }
 
   private async pass() {
     const admission = accountScopeAdmission(this.ports);
@@ -166,6 +168,14 @@ export class ResourceCommandRuntime {
   /** The operator is the account and the device the server verified as sender, never a payload field (F10). */
   private async execute(command: EncryptedResourceCommand, body: ResourceCommandBody, operator: VerifiedOperator, current: () => void): Promise<ResourceResultBody> {
     const input = body.input as Record<string, unknown>;
+    if (command.resourceKind === "artifact" && body.action === "artifact-native") {
+      if (!this.ports.files || command.resourceId !== (body.input as { chatId: string }).chatId) throw new Refused("artifact-unavailable");
+      const admission = accountScopeAdmission(this.ports); if (admission.kind !== "admitted") throw new Refused("artifact-unavailable");
+      const accountCurrent = () => { const next = accountScopeAdmission(this.ports); if (this.closed || next.kind !== "admitted" || next.key !== admission.key) throw new Error("artifact-unavailable"); };
+      const { NativeRemoteSessions } = await import("./native/sessions"); accountCurrent();
+      this.nativeArtifacts ??= new NativeRemoteSessions({ config: this.ports.config, deviceId: this.ports.deviceId, files: this.ports.files });
+      return { ok: true, artifactNative: await this.nativeArtifacts.dispatch(body.input, operator, current, accountCurrent) };
+    }
     if (command.resourceKind === "artifact") return (await import("./artifacts")).artifactResourceAction(command.resourceId, body, current, this.ports.deviceId);
     if (command.resourceKind === "project") {
       if (!this.ports.projects) throw new Refused("project-git-unavailable");

@@ -76,4 +76,3 @@ export async function admitBundledProviderPackages(pin: (providerId: string) => 
     },
   };
 }
-export type BundledProviderPackages = Awaited<ReturnType<typeof admitBundledProviderPackages>>;

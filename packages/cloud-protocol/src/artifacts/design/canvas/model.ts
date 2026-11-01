@@ -84,5 +84,4 @@ export const canvasObjectChangesSchema = z.object({ bounds: canvasBoundsSchema.o
 }).strict().refine(value => Object.keys(value).length > 0, "Specify a changed object field");
 export type CanvasPage = z.infer<typeof canvasPageSchema>;
 export type CanvasObject = z.infer<typeof savedCanvasObjectSchema>;
-export type CanvasObjectInput = z.infer<typeof canvasObjectInputSchema>;
 export type CanvasStyle = z.infer<typeof canvasStyleSchema>;

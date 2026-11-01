@@ -25,8 +25,3 @@ export async function handoffLedgerTurn(ledger: RelayLedger, chats: ChatStore, i
   await ledger.confirmCloudHandoff(intentId, { operationId: receipt.operationId, requestHash: receipt.requestHash, ...value });
   return receipt;
 }
-export async function recoverLedgerHandoffs(ledger: RelayLedger, chats: ChatStore) {
-  for (const intent of Object.values(ledger.snapshot().manualIntents)) if (intent.cloudHandoff?.state === "pending") {
-    await handoffLedgerTurn(ledger, chats, intent.id, intent.cloudHandoff.command);
-  }
-}

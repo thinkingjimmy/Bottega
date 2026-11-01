@@ -45,6 +45,8 @@ the source operations reference; an unresolved file effect is not permission to 
 
 An inventoried component has captured source and a reason for its current mode. To attempt a
 mount, use `design_system_compile` for that exact component and entry, with supported props.
+Select value JSON target:dc for native Canvas or target:standalone for the separate React19 preview.
+A DC result lives in component.dc; its status and evidence are independent of legacy mode/evidence.
 The host uses its locked local toolchain. A static result remains static; a successful mount
 still needs image inspection and separate interaction checks. Use `design_render_check` only
 if it is actually issued, or inspect returned local evidence with an available image tool.

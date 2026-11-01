@@ -15,3 +15,7 @@ user-data/
 .env.*
 !.env.example
 *.log
+
+# Native editor reconstruction products.
+/packages/canvas-runtime/.build/
+/packages/slides-runtime/.build/

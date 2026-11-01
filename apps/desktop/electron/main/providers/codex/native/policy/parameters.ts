@@ -23,6 +23,7 @@ export function nativePolicy(mode: AgentPermissionMode, writableRoots: readonly 
 
 export type NativeTurnConfig = {
   contractId: "bb-native-v1";
+  purpose?: "artifact-candidate";
   continuation?: { threadId: string; lastTurnId: string };
   thread: ThreadStartParams;
   turn: Omit<TurnStartParams, "threadId" | "input">;

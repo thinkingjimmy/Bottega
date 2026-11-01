@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Captured ordinary CSS/JSON/TypeScript sources and the locked from-code/craft extraction method.
- * [OUTPUT]: Exact token/themes, aliases, font/component inventory, source baseline and every unsupported item.
+ * [OUTPUT]: Exact token/themes, aliases, complete bounded font/component inventory, source baseline and every unsupported item.
  * [POS]: Pure source interpretation; it neither executes source modules nor invents replacement values.
  */
 import postcss, { type Declaration } from "postcss";
@@ -79,7 +79,7 @@ export function extractCapturedSystem(capture: CapturedSources): DesignSystem {
     const target = posix.normalize(posix.join(posix.dirname(source.record.path), file)), resource = capture.files.find(item => item.record.path === target);
     if (!resource || !/\.(?:woff2?|ttf|otf)$/i.test(target)) { omit(source, "font", family, `Font bytes were not captured: ${file.slice(0, 200)}`); return; }
     const header = resource.data.subarray(0, 4).toString("latin1"), binaryHeader = resource.data.length >= 4 ? resource.data.readUInt32BE(0) : 0;
-    if (resource.data.length > 1024 * 1024 || !["wOFF", "wOF2", "OTTO", "ttcf"].includes(header) && binaryHeader !== 0x00010000) { omit(resource, "font", family, "Font is too large or its byte signature is invalid"); return; }
+    if (resource.data.length > 24 * 1024 * 1024 || !["wOFF", "wOF2", "OTTO", "ttcf"].includes(header) && binaryHeader !== 0x00010000) { omit(resource, "font", family, "Font is too large or its byte signature is invalid"); return; }
     if (!family || family.length > 200 || /[;{}<>\r\n]/.test(family) || !["normal", "italic", "oblique"].includes(style) ||
       !/^(?:(?:[1-9]\d{0,2}|1000)(?: (?:[1-9]\d{0,2}|1000))?|normal|bold)$/.test(weight)) { omit(source, "font", family, "Computed or unsupported font descriptors were not inferred"); return; }
     const font = { family, file: resource.record.capturedPath, sourceId: resource.record.id, definitionSourceId: source.record.id, sourceKey: key.slice(0, 240), weight, style: style as "normal" | "italic" | "oblique" };

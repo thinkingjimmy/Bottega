@@ -19,7 +19,7 @@ const createArtifactFenceSchema = () => z.object({
   identityKey: artifactRelativePathSchema.optional(),
   sha256: z.string().regex(/^[a-f0-9]{64}$/).optional(), bytes: z.number().int().min(0).max(MAX_BLOB_BYTES).optional(),
   mime: z.string().min(1).max(128).optional(), entry: artifactRelativePathSchema.optional(),
-  files: z.number().int().min(1).max(200).optional(), url: z.string().max(2048).refine(isClaudeArtifactUrl).optional(),
+  files: z.number().int().min(1).max(512).optional(), url: z.string().max(2048).refine(isClaudeArtifactUrl).optional(),
   rejected: z.enum(["path-denied", "too-large", "not-utf8", "symlink", "budget", "unsupported", "interrupted", "unavailable", "missing", "unreadable", "changed", "storage", "publish"]).optional(),
   location: z.enum(["artifacts", "workspace", "session"]).optional(),
   collection: z.enum(["tree", "dependencies", "entry-only"]).optional(),
@@ -29,6 +29,7 @@ const createArtifactFenceSchema = () => z.object({
     sessionId: z.string().min(1).max(128), executionDeviceId: z.string().max(128).optional() }).strict().optional(),
 }).strict().superRefine((value, ctx) => {
   if (value.rejected) return;
+  if ((value.files ?? 0) > 200 && !["design", "design-system"].includes(value.kind)) ctx.addIssue({ code: "custom", message: "artifact-file-count" });
   if (value.kind === "claude-artifact") { if (!value.url) ctx.addIssue({ code: "custom", message: "missing-artifact-url" }); return; }
   if (value.kind === "live-app") { if (!value.service) ctx.addIssue({ code: "custom", message: "missing-artifact-service" }); return; }
   if (!value.sha256 || value.bytes === undefined || !value.mime) ctx.addIssue({ code: "custom", message: "missing-artifact-snapshot" });

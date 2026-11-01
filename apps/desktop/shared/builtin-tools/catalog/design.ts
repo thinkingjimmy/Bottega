@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Zod, narrow shared system parameters and built-in tool platform annotations.
- * [OUTPUT]: Pure check, CAS commit, exact render and scoped system extract/diff/update/bind/compile wire specs.
+ * [OUTPUT]: Fixed font asset access, pure check, CAS commit, exact render and scoped system extract/diff/update/bind/compile wire specs.
  * [POS]: apps/desktop/shared/builtin-tools/catalog; Shared Design tool wire truth; rendering authority remains derived from the turn lease in main
  */
 
@@ -19,8 +19,11 @@ const systemEdit = systemCommand.pick({ artifactId: true, requestId: true, expec
   .required();
 
 export const DESIGN_TOOL_SPECS = [
+  { name: "design_fonts", domainId: "design", access: "read", manualTurnOnly: true,
+    description: "List the fixed offline OFL design font family, normal style, supported weights and coverage. Supply fontId to obtain verified physical font/license files that authorized local file tools can copy into the selected design source; paths remain local to this execution computer. Never changes a document or installs system fonts. Copy the license with the chosen font. Coverage alone is not actual output glyph verification; do not substitute an existing font without the user's concrete choice.",
+    inputSchema: z.object({ fontId: z.literal("noto-sans-sc-2.004").optional() }).strict(), annotations: read },
   { name: "design_check", domainId: "design", access: "read", manualTurnOnly: true,
-    description: "Read-only check of a design/<slug>/canvas.json document and its complete local file set. After all your writers have returned completion receipts, wait for 1s quiet at 500ms intervals, at most 10s. Return bounded issues, readSetDigest and current revision; never register or publish. Structure does not prove visual or JavaScript correctness.",
+    description: "Read-only check of a native Canvas canvas.json, native Slides deck.json or existing legacy design document and its complete local file set. After all your writers have returned completion receipts, wait for 1s quiet at 500ms intervals, at most 10s. Return bounded issues, readSetDigest and current revision; never register or publish. Structure does not prove visual or JavaScript correctness.",
     inputSchema: z.object({ path: documentPath }).strict(), annotations: read },
   { name: "design_commit", domainId: "design", access: "mutate", manualTurnOnly: true, planExcluded: true,
     description: "The only design document publication entry. Commit a checked complete file set to the current Chat/workspace using revision CAS. SOURCE_CHANGED commits nothing: recheck after writer completion; retry at most twice after 1s and 2s with new request IDs. REVISION_CONFLICT must be reported. Unknown or pending result: resend exactly the same parameters and requestId, at most three times 500ms apart; never create a second commit. Returns one complete archive Artifact v1 file reference.",

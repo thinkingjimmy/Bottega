@@ -1,13 +1,15 @@
 /**
- * [INPUT]: Depends on parse5 source spans, Electron BrowserWindow/CDP, an already authorized complete HTML canvas, a fixed viewport, AbortSignal, and an image byte target, and statusError from main/errors
- * [OUTPUT]: Hermetic live/static opaque srcdoc captures in two bounded in-memory profiles with optional hidden scrollbars, script-free static mode, bounded lifetime, teardown and exact-size PNG exports.
+ * [INPUT]: Depends on parse5 source spans, Electron BrowserWindow/CDP, an already authorized complete HTML canvas, a fixed viewport, AbortSignal, and an image byte target, and statusError from main/errors, native commit/font/image readiness and optional controlled mount selector with an exact opaque-child signal.
+ * [OUTPUT]: Hermetic live/static/native-DC opaque srcdoc captures in two bounded in-memory profiles with optional hidden scrollbars, script-free static mode, bounded lifetime, teardown and exact-size PNG exports, including actual component readiness when requested.
  * [POS]: Design's screenshot renderer; workspace authorization stays in the toolset and no renderer/user identity enters this process-owned window
  */
 
+import { randomUUID } from "node:crypto";
 import { compositionOverrides } from "../../startup/boot/composition-hooks";
 import { BrowserWindow } from "electron";
 import { statusError } from "../../ipc/errors";
 import { parse } from "parse5";
+import { nativePaintScript } from "./readiness";
 
 const VIEWPORTS = {
   desktop: { width: 1440, height: 900 },
@@ -26,6 +28,8 @@ type DesignRenderInput = Readonly<{
   format?: "jpeg" | "png";
   static?: boolean;
   hideScrollbars?: boolean;
+  native?: boolean;
+  readySelector?: string;
 }>;
 
 type DesignRenderWindow = Pick<BrowserWindow, "webContents" | "isDestroyed" | "destroy">;
@@ -106,14 +110,21 @@ export async function captureDesignCanvasWithRuntime(
   };
   contents.on("console-message", consoleError);
   try {
+    if (input.readySelector && (input.static || !input.native || !/^\[data-bottega-[a-z-]+="1"\]$/.test(input.readySelector)))
+      throw statusError(422, "Invalid controlled native render readiness selector");
     const raw = Buffer.isBuffer(input.html) ? input.html.toString("utf8") : input.html;
     const source = input.static ? staticHtml(raw) : raw;
-    const policy = "default-src 'none'; script-src 'unsafe-inline' data: blob:; style-src 'unsafe-inline' data: blob:; img-src data: blob:; font-src data: blob:; media-src data: blob:; connect-src data: blob:; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'";
+    const nativePaint = input.native && !input.static;
+    const readySelector = input.readySelector ?? (nativePaint && /<x-dc(?:\s|>)|id="bottega-slide-source"/i.test(source) ? '[data-bottega-document-mounted="1"]' : undefined);
+    const readyNonce = nativePaint ? randomUUID() : "";
+    const readyScript = nativePaint ? nativePaintScript(readySelector, readyNonce) : "";
+    const basePolicy = "default-src 'none'; script-src 'unsafe-inline' data: blob:; style-src 'unsafe-inline' data: blob:; img-src data: blob:; font-src data: blob:; media-src data: blob:; connect-src data: blob:; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'";
+    const policy = input.native && !input.static ? basePolicy.replace("script-src ", "script-src 'unsafe-eval' ") : basePolicy;
     // Install policy and the UDP-network backstop before any authored script, including scripts outside head.
     const guard = "for(const name of ['RTCPeerConnection','webkitRTCPeerConnection','RTCIceGatherer']){try{Object.defineProperty(globalThis,name,{value:undefined,writable:false,configurable:false})}catch{}}";
     // Apply thumbnail presentation inside the opaque child, not the capture shell.
     const scrollbars = input.hideScrollbars ? "<style>*{scrollbar-width:none!important}::-webkit-scrollbar{display:none!important}</style>" : "";
-    const guarded = source.replace(/<html\b[^>]*>/i, value => `${value}<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${scrollbars}${input.static ? "" : `<script>${guard}</script>`}</head>`);
+    const guarded = source.replace(/<html\b[^>]*>/i, value => `${value}<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${scrollbars}${readyScript}${input.static ? "" : `<script>${guard}</script>`}</head>`);
     const shell = `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style><body></body>`;
     trace("load");
     // The process-owned top document remains stable while authored HTML runs in
@@ -128,7 +139,7 @@ export async function captureDesignCanvasWithRuntime(
     await within(contents.debugger.sendCommand("Page.addScriptToEvaluateOnNewDocument", { source: guard }),
       2_000, "Design network isolation", input.signal);
     await within(contents.executeJavaScript(
-      `const frame=document.createElement('iframe');frame.id='canvas';frame.title='Design canvas';frame.setAttribute('sandbox',${JSON.stringify(input.static ? "" : "allow-scripts")});frame.onload=()=>{frame.dataset.ready='1'};frame.srcdoc=${JSON.stringify(guarded)};document.body.append(frame);`, true
+      `const frame=document.createElement('iframe');frame.id='canvas';frame.title='Design canvas';frame.setAttribute('sandbox',${JSON.stringify(input.static ? "" : "allow-scripts")});frame.onload=()=>{frame.dataset.ready='1'};window.addEventListener('message',event=>{if(event.source===frame.contentWindow&&event.origin==='null'&&event.data?.type==='bottega:render:mounted'&&event.data.nonce===${JSON.stringify(readyNonce)}){if(event.data.error)frame.dataset.paintError=String(event.data.error);else frame.dataset.mounted='1';window.dispatchEvent(new Event('bottega-render-mounted'))}});frame.srcdoc=${JSON.stringify(guarded)};document.body.append(frame);`, true
     ), 2_000, "Design child creation", input.signal);
     trace("settle");
     await within(
@@ -140,6 +151,17 @@ export async function captureDesignCanvasWithRuntime(
       "Design canvas visual settle",
       input.signal
     );
+    if (nativePaint) {
+      try {
+        // Sandboxed frames can be separate CDP targets. Observe their mounted signal through the exact original WindowProxy.
+        await within(contents.executeJavaScript(
+          "new Promise((resolve,reject)=>{const frame=document.getElementById('canvas');const check=()=>frame.dataset.paintError?reject(new Error(frame.dataset.paintError)):frame.dataset.mounted==='1'?resolve():addEventListener('bottega-render-mounted',check,{once:true});check()})", true
+        ), 10_000, "Design component mount readiness", input.signal);
+      } catch (cause) {
+        if (runtimeErrors.length) throw statusError(422, "Design component failed: " + runtimeErrors.join("; "));
+        throw cause;
+      }
+    }
     // Authored async fetch/XHR/media may remain pending after its document load;
     // those requests cannot own tool liveness once the visual settle point exists.
     contents.stop();

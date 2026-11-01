@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses validated native CLI discovery, bb-native-v1 launch policy, the pinned Provider bridge and model/auth/quota controls and the pinned official installer target.
- * [OUTPUT]: Exports codexBackend with exact-version native Chat, readiness, model options, quota and strict-role admission.
+ * [OUTPUT]: Exports codexBackend with exact-version native Chat, readiness, model options, quota and strict-role admission. Declares the separate isolated native candidate capability.
  * [POS]: Codex composition boundary; all subprocesses retain main authorization and custody.
  */
 
@@ -78,6 +78,7 @@ const capabilities: Omit<
   imageInput: true,
   planMode: true,
   headless: [],
+  candidateEditing: "native-candidate/v1",
   maintenance: false,
 };
 

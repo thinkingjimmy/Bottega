@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "transform": "excluded-editor-fonts/v1",
+  "families": [
+    "Anthropicons",
+    "FizzyLake",
+    "SplitCaret"
+  ],
+  "originalSelectedArchiveSha256": "3f70d6ee886cd42155372574993f4a448dc1b3c0449423a42252a2ffa312c059",
+  "productionSelectedArchiveSha256": "5efa2bbff7a5cb01d10a440f3f7251e402340bd694dd4b91109c1e373f34fdb0",
+  "files": [
+    {
+      "path": "packages/design-runtime/src/app.css",
+      "upstreamSha256": "2b063314eb84993e1483911365dfa65286793cbee359b446f6333040e77565f0",
+      "upstreamBlob": "5010abb6314ad8040f8c067d0d6f2d2e70b56eea",
+      "upstreamBytes": 511287,
+      "productionSha256": "ef969a0bb2690e74079219bc477866f7cdfc87f80cf3335d8456b7488c9409b6",
+      "productionBytes": 375568,
+      "removedBytes": 135719
+    }
+  ],
+  "reason": "Do not adopt editor font binaries. Original fixed source is retained only as private historical evidence; production uses system UI fonts and licensed SVG icons."
+}

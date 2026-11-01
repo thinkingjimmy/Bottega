@@ -1,11 +1,12 @@
 /**
  * [INPUT]: One-use capability, exact fixed design-view identity, pure snapshot preparation and host-observed activation.
- * [OUTPUT]: Opaque frames, fixed navigation and authenticated selection/hover/camera/key relay and transient display commands without source authority.
+ * [OUTPUT]: One-use fixed native editor entry with its unchanged restrictive policy, opaque authored frames, fixed navigation and authenticated selection/hover/camera/key relay and transient display commands without source authority.
  * [POS]: Credential-free trusted artifact wrapper, started by main.ts on artifact hosts; untrusted content has no hosting-origin or Service Worker authority.
  */
 import { artifactFenceSchema, artifactRelativePathSchema } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import { ARTIFACT_FRAGMENT_CSP } from "@ai-chat/cloud-protocol/artifacts/viewer-shell";
 import { ArtifactFollowUpGuard } from "@ai-chat/cloud-protocol/artifacts/frame-security";
+import { nativeBootstrap } from "@ai-chat/cloud-protocol/artifacts/design/remote/bootstrap";
 import { prepareContent, type ArtifactResource } from "./content";
 import { designFrameViewSchema as viewSchema } from "@ai-chat/cloud-protocol/artifacts/design/model";
 declare const __ARTIFACT_PARENT_ORIGIN__: string;
@@ -15,7 +16,13 @@ export function startArtifact() {
   if (!/^[a-f0-9-]{36}$/.test(nonce) || !host) throw new Error("artifact-capability-missing");
   let used = false;
   const receive = (event: MessageEvent) => {
-    if (used || event.source !== host || event.origin !== __ARTIFACT_PARENT_ORIGIN__ || event.data?.type !== "bottega:artifact:mount" || event.data.nonce !== nonce) return;
+    if (used || event.source !== host || event.origin !== __ARTIFACT_PARENT_ORIGIN__ || event.data?.nonce !== nonce) return;
+    if (params.get("native") === "1" && event.data.type === "bottega:artifact:native-mount") {
+      used = true;
+      // The fixed native policy stays narrower than the shell response policy; no app/header CSP is widened.
+      document.open(); document.write(nativeBootstrap(nonce, __ARTIFACT_PARENT_ORIGIN__)); document.close(); return;
+    }
+    if (event.data?.type !== "bottega:artifact:mount") return;
     used = true;
     const fence = artifactFenceSchema.parse(event.data.fence), files: unknown = event.data.files;
     if (!Array.isArray(files) || !files.length || files.length > 200) throw new Error("artifact-resource-budget");

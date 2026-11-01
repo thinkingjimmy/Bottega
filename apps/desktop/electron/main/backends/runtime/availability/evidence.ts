@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on shared availability contracts and an injected clock.
- * [OUTPUT]: Owns environment-scoped startup/authentication evidence (including a custom route, under which headless work is allowed without an official confirmation), check timestamps, cancellation and existing purpose authorization lifetimes; the allow conclusion follows the shared positiveAuth scope rule, so an unscoped confirmation authorizes a scoped operation target.
+ * [OUTPUT]: Owns environment-scoped startup/authentication evidence (including a custom route, under which headless work is allowed without an official confirmation), check timestamps, cancellation and separate candidate capability and existing purpose authorization lifetimes; the allow conclusion follows the shared positiveAuth scope rule, so an unscoped confirmation authorizes a scoped operation target.
  * [POS]: Registry-owned evidence memory; probes own global auth, turns own scoped operation evidence.
  */
-import type { BackendAuthStatus, BackendCapabilities, HeadlessPurpose, UsageLimitInfo } from "../../../../../shared/ipc/agent/agent-ipc";
+import type { BackendAuthStatus, BackendCapabilities, UsageLimitInfo } from "../../../../../shared/ipc/agent/agent-ipc";
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
 import { activeNegative, matchesTarget, positiveAuth } from "../../../../../shared/agent-availability/projection";
-import { AUTH_TTL_MS, TURN_EVIDENCE_TTL_MS, type AvailabilityDecision, type AvailabilityFacts, type ExecutionTarget, type TurnAvailabilityEvidence } from "../../../../../shared/agent-availability/types";
+import { AUTH_TTL_MS, TURN_EVIDENCE_TTL_MS, type ProviderOperationPurpose, type AvailabilityDecision, type AvailabilityFacts, type ExecutionTarget, type TurnAvailabilityEvidence } from "../../../../../shared/agent-availability/types";
 
 export type TurnEvidenceStart = Readonly<{
   conversationId: string;
@@ -131,9 +131,10 @@ export class AvailabilityEvidence {
   }
   discardRetry(requestId: string) { this.retries.delete(requestId); }
   recent(backend: ProviderId, conversationId: string) { return this.state(backend).turns.get(conversationId); }
-  eligibility(target: ExecutionTarget, capabilities: BackendCapabilities, purpose: HeadlessPurpose | "app-binding", runtimeInstalled: boolean): AvailabilityDecision & { expiresAt?: number } {
+  eligibility(target: ExecutionTarget, capabilities: BackendCapabilities, purpose: ProviderOperationPurpose, runtimeInstalled: boolean): AvailabilityDecision & { expiresAt?: number } {
     if (!runtimeInstalled) return { decision: "block", reason: "cannot-check" };
-    if (purpose !== "app-binding" && (!capabilities.headless.includes(purpose) ||
+    if (purpose === "artifact-candidate" && capabilities.candidateEditing !== "native-candidate/v1") return { decision: "block", reason: "unsupported" };
+    if (purpose !== "app-binding" && purpose !== "artifact-candidate" && (!capabilities.headless.includes(purpose) ||
       (["repair", "serve", "install-analysis"].includes(purpose) && !capabilities.maintenance))) return { decision: "block", reason: "unsupported" };
     const state = this.state(target.backend);
     if (state.facts.startup?.status === "cannot-start" && state.facts.startup.environmentGeneration === target.environmentGeneration) {

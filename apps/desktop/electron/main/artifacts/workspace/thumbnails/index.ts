@@ -16,7 +16,7 @@ import type { ArtifactWorkspace } from "../service";
 import { thumbnailCancelled, thumbnailRequestFacts, withThumbnailRequest } from "./lifetime";
 export { cancelThumbnailRequest, cancelThumbnailWindow, withThumbnailRequest } from "./lifetime";
 // Replace persistent image identities only when rendering or preview resolution changes.
-const THUMBNAIL_RENDER_VERSION = 4;
+const THUMBNAIL_RENDER_VERSION = 5;
 type Flight = { key: string; generation: string; controller: AbortController; consumers: Set<AbortSignal>; done: boolean; run(signal: AbortSignal): Promise<void>; promise: Promise<void>; resolve(): void; reject(cause: unknown): void };
 const flights = new Map<string, Flight>(), pending: Flight[] = [];
 let running: Flight | undefined, activeBytes = 0, capturePixels = 0;
@@ -69,7 +69,7 @@ export async function designThumbnail(input: WorkspaceCommand, workspace: Artifa
         const stores = new Set(snapshot.files.map(file => file.data.buffer)); activeBytes = [...stores].reduce((sum, store) => sum + store.byteLength, 0);
         const prepared = await prepareDesignSnapshot(snapshot, boardId); signal.throwIfAborted();
         if (!stores.has(prepared.html.buffer)) activeBytes += prepared.html.buffer.byteLength; capturePixels = prepared.size.width * prepared.size.height;
-        const captured = await captureDesignCanvas({ html: prepared.html, viewport: "desktop", size: prepared.size, hideScrollbars: true, maxImageBytes: 192 * 1024, signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }); signal.throwIfAborted();
+        const captured = await captureDesignCanvas({ html: prepared.html, viewport: "desktop", size: prepared.size, hideScrollbars: true, native: Boolean(prepared.metadata.contentFormat), maxImageBytes: 192 * 1024, signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }); signal.throwIfAborted();
         const image = nativeImage.createFromBuffer(Buffer.from(captured.data, "base64")), size = image.getSize(); let bytes: Buffer = Buffer.alloc(0);
         for (const width of [960, 640, 320]) { const ratio = Math.min(1, width / size.width, width * .75 / size.height); bytes = image.resize({ width: Math.max(1, Math.round(size.width * ratio)), height: Math.max(1, Math.round(size.height * ratio)) }).toJPEG(82); if (bytes.length <= 96 * 1024) break; }
         if (bytes.length > 96 * 1024) throw new Error("artifact-thumbnail-budget");

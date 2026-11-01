@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "fonts": [
+    {
+      "id": "noto-sans-sc-2.004",
+      "family": "Noto Sans SC",
+      "version": "2.004",
+      "style": "normal",
+      "weight": {
+        "min": 100,
+        "max": 900,
+        "default": 100
+      },
+      "file": {
+        "path": "NotoSansSC-VF.woff2",
+        "sha256": "a5822f9d6ef83d113dd94741221c16ba7a321f63033a02bd164968188995d547",
+        "bytes": 7779480
+      },
+      "license": {
+        "path": "LICENSE.txt",
+        "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+        "bytes": 4301,
+        "id": "OFL-1.1"
+      },
+      "coverage": {
+        "path": "cmap.json",
+        "sha256": "5040e6f7f95f2a0084f1a431177ecd50be1aa81aabfb56a62c5818beac3ce7bc",
+        "glyphs": 31036,
+        "codepoints": 30890
+      },
+      "embeddingFsType": 0,
+      "sourceHashes": [
+        "d68bafcb48a2707749396aa12bbbd833cb70401f3a9a689fd2902c7e0d295964",
+        "a5822f9d6ef83d113dd94741221c16ba7a321f63033a02bd164968188995d547"
+      ]
+    }
+  ]
+}

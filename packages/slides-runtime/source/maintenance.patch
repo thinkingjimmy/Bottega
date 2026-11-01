@@ -1,0 +1,836 @@
+--- a/packages/slides-runtime/src/delivery/provider.ts
++++ b/packages/slides-runtime/src/delivery/provider.ts
+@@ -1,3 +1,8 @@
++/**
++ * [INPUT]: Original host export entries and main-frozen native producer options.
++ * [OUTPUT]: Original export registration with exact fixed-job choices and bounded producer warnings.
++ * [POS]: Maintained Slides producer contract; source/capability admission remains with the native owner.
++ */
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -11,6 +16,7 @@
+ 
+ /** What an export producer is told about the request it answers. */
+ export interface ExportProduceOptions {
++  nativeOptions?: import("@ai-chat/cloud-protocol/artifacts/design/export/options").NativeExportOptions;
+   interactive: boolean;
+   bundle: boolean;
+   windowMs: number;
+@@ -21,6 +27,7 @@
+ 
+ /** The file an export producer made. */
+ export interface ExportedFile {
++  warnings?: string[];
+   data: ShellSaveFile;
+   filename: string;
+ }
+--- a/packages/slides-runtime/src/documents/slide-codec.ts
++++ b/packages/slides-runtime/src/documents/slide-codec.ts
+@@ -1,3 +1,8 @@
++/**
++ * [INPUT]: Original Slides source records, compiler bindings and the trusted native editor marker.
++ * [OUTPUT]: Native section decoding with source-preserving deck-root local resources.
++ * [POS]: Maintained upstream codec; the host validates the complete immutable resource closure.
++ */
+ /** Restored application module; prepare first, initialize in original order. */
+ import { bindRuntimeValue, type RuntimeBindings } from "../bindings";
+ import type {
+@@ -392,6 +397,7 @@
+ </body></html>`,
+             {
+               sectionId: value,
++              collectFiles: typeof document !== "undefined" && Boolean(document.querySelector('meta[name="bottega-native-token"]')),
+               ...(argument !== undefined
+                 ? {
+                     lists: argument,
+--- a/packages/slides-runtime/src/editor/app.ts
++++ b/packages/slides-runtime/src/editor/app.ts
+@@ -1,3 +1,12 @@
++/**
++ * [INPUT]: Original Slides editor/capture/export producers and main-frozen read-only native job options.
++ * [OUTPUT]: Main-frozen menu delegation and original PPTX/PDF/PNG/HTML exports with exact quality/scale/notes/theme choices and actual transformed-model/picture previews in fixed jobs.
++ * [POS]: Maintained original producer seam; authored source never gains editor or publication authority.
++ */
++import { nativeMainPresentation, nativePresentationHandlers, nativePresentationIndex, nativePresentationExit, nativePresentationFallback } from "../adapters/presentation";
++import { nativeSlidesResource } from "../adapters/asset-address";
++import { nativeMainExport, validateNativePptxMedia, nativeExportEditablePreview, nativeExportPicturePreviews } from "../adapters/export-runtime";
++import type { NativeExportOptions } from "@ai-chat/cloud-protocol/artifacts/design/export/options";
+ /** Restored application module; prepare first, initialize in original order. */
+ import type { ChangeEvent, DragEvent as ReactDragEvent, FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactElement, ReactNode, RefObject, WheelEvent as ReactWheelEvent } from "react";
+ import {
+@@ -6699,7 +6708,7 @@
+         );
+         exportNotesToastRef.current = value;
+       },
+-      renderPptxFile = async (input: PptxFontMode): Promise<ExportRender> => {
++      renderPptxFile = async (input: PptxFontMode, native?: NativeExportOptions): Promise<ExportRender> => {
+         let [
+             { measureDeck: value2 },
+             { deckToPptxBlob: value3, pptxFilename: value4 },
+@@ -6777,11 +6786,13 @@
+                   fontsReadyMs: Math.max(0, value11 - Date.now()),
+                 }),
+           value17 = extraExportFormats && input !== "google",
++          previewed = native ? await nativeExportEditablePreview(value15, value.assets, runtime) : undefined,
++          mediaChecked = native ? (previewed, validateNativePptxMedia(value16)) : undefined,
+           { blob: value18, warnings: value19 } = await value3(
+-            value16,
++            (mediaChecked, value16),
+             {
+-              theme: value17,
+-              titlePlaceholders: value17,
++              theme: native?.theme ?? value17,
++              titlePlaceholders: native?.titlePlaceholders ?? value17,
+             },
+           ),
+           value20 = !extraExportFormats
+@@ -6837,6 +6848,8 @@
+         }
+         setExporting(true);
+         try {
++          const fixed = await nativeMainExport({ format: "pptx", variant: input });
++          if (fixed) { await (0, runtime.saveThroughShell)(fixed.data, fixed.filename); return; }
+           let value =
+             await exportStateRef.current.renderPptxFile(input);
+           await downloadBasicPptx(value);
+@@ -7096,7 +7109,7 @@
+         return renderPdfFile(
+           value2(snapshot.meta.title),
+           (input, options) =>
+-            value(snapshot.meta.title, options, input),
++            (nativeExportPicturePreviews(input), value(snapshot.meta.title, options, input)),
+         );
+       },
+       renderWithImageBudget = async (
+@@ -7245,6 +7258,8 @@
+         }
+         setExporting(true);
+         try {
++          const fixed = await nativeMainExport({ format: "pdf", notes: value?.notes === true, ...(value?.quality ? { quality: value.quality } : {}) });
++          if (fixed) { await (0, runtime.saveThroughShell)(fixed.data, fixed.filename); return; }
+           let value2 = await exportStateRef.current.preparePdfRender(
+             value?.notes === true,
+           );
+@@ -7345,6 +7360,8 @@
+         }
+         setExporting(true);
+         try {
++          const fixed = await nativeMainExport({ format: "png", scale: 1 }, ["slides/" + getSlideToExport()!.id + ".html"]);
++          if (fixed) { await (0, runtime.saveThroughShell)(fixed.data, fixed.filename); return; }
+           await renderAndDownload(
+             await renderPngFile(),
+             runtime.PNG_MIME_TYPE,
+@@ -7416,6 +7433,8 @@
+         }
+         setExporting(true);
+         try {
++          const fixed = await nativeMainExport({ format: "html", shrinkImages: false });
++          if (fixed) { await (0, runtime.saveThroughShell)(fixed.data, fixed.filename); return; }
+           let value = await exportStateRef.current.renderHtmlFile({
+               fit: false,
+             }),
+@@ -7475,7 +7494,7 @@
+         }
+       },
+       createExportProducer =
+-        (input: ExportFileFormat, options: string, context: ExportRenderer) =>
++        (input: ExportFileFormat, options: string, context: ExportRenderer, variant: "current" | "basic" | "pictures" = "current") =>
+         async (input2: ExportProduceOptions): Promise<ExportedFile> => {
+           let value: PdfExportOptions | undefined;
+           if (input === "pdf" && extraExportFormats && input2.interactive) {
+@@ -7522,7 +7541,26 @@
+             value3 = extraExportFormats ? input2.signal : undefined,
+             value4: ExportRender;
+           try {
+-            value4 = await context(value, value3);
++            const native = input2.nativeOptions;
++            if (!native) {
++              const fixed = await nativeMainExport({ format: input, ...(input === "pptx" ? { variant } : {}),
++                ...(input === "pdf" ? { notes: value?.notes === true, ...(value?.quality ? { quality: value.quality } : {}) } : {}),
++                ...(input === "png" ? { scale: 1 } : {}), ...(input === "html" ? { shrinkImages: true } : {}) },
++                input === "png" ? ["slides/" + getSlideToExport()!.id + ".html"] : undefined);
++              if (fixed) return fixed;
++            }
++            if (native) {
++              if (input === "pptx" && native.variant !== "pictures") {
++                value4 = await renderPptxFile(native.variant === "basic" ? "basic" : "current", native);
++              } else if (input === "html") {
++                value4 = await renderHtmlFile({ fit: native.shrinkImages, deadline: Date.now() + 55_000 });
++              } else {
++                const prepared = input === "pdf" ? await preparePdfRender(native.notes) : input === "pptx" ? await preparePptxPicturesRender() : await renderPngFile();
++                const nth = native.quality === "good" ? prepared.tiers.length - 1 : native.quality === "better" ? Math.min(1, prepared.tiers.length - 1) : 0;
++                const tier = input === "png" ? { scale: native.scale, quality: 1 } : prepared.tiers[nth]!;
++                value4 = await prepared.renderAt(tier);
++              }
++            } else value4 = await context(value, value3);
+           } catch (value5: unknown) {
+             if (value3?.aborted === true) {
+               throw new runtime.ExportCancelledError();
+@@ -7545,6 +7583,7 @@
+           return {
+             filename: value4.filename,
+             data: value4.blob,
++            warnings: value4.warnings,
+           };
+         },
+       prepareExportWithNotesOption =
+@@ -7613,6 +7652,7 @@
+                 "pptx",
+                 "PPTX",
+                 () => exportStateRef.current.renderPptxFile("current"),
++                "current",
+               ),
+             },
+             {
+@@ -7622,6 +7662,7 @@
+                 "pptx",
+                 "PPTX",
+                 () => exportStateRef.current.renderPptxFile("basic"),
++                "basic",
+               ),
+             },
+             {
+@@ -7634,6 +7675,7 @@
+                   () =>
+                     exportStateRef.current.preparePptxPicturesRender(),
+                 ),
++                "pictures",
+               ),
+             },
+             {
+@@ -7734,16 +7776,29 @@
+         },
+       },
+     );
++    nativePresentationHandlers({
++      start: (id) => { const index = presentableSlides.findIndex(slide => slide.id === id); if (index < 0) return;
++        setDockSpeakerNotes(false); setFullscreenRequest(null); presentingRef.current = true; setPresentationStartIndex(index); },
++      returnTo: (id) => exitPresentation(id),
++      index: (id) => presentableSlides.findIndex(slide => slide.id === id),
++    });
+     let speakerNotesAvailable = (0, runtime.slidesHaveSpeakerNotes)(
+         presentableSlides,
+       ),
+       presentationButtonLabel = (0, runtime.fullscreenAvailable)()
+         ? "Present full screen"
+         : "Present",
+-      startPresentation = (input: boolean) => {
++      startPresentation = async (input: boolean) => {
+         if (presentationStartIndex !== null) {
+           return;
+         }
++        let nativeFullscreen = false, nativeHosted = false;
++        try {
++          const hosted = await nativeMainPresentation(currentSlide?.id, input);
++          if (hosted?.mode === "desktop") return;
++          nativeFullscreen = hosted?.fullscreen === true; nativeHosted = Boolean(hosted);
++          // The original player owns the persistent inline fallback message.
++        } catch (cause) { (0, runtime.showToast)(cause instanceof Error ? cause.message : "The presentation host is unavailable"); return; }
+         let index = 0;
+         for (
+           let index2 = 0;
+@@ -7758,7 +7813,7 @@
+         let flag = false,
+           flag2 = false;
+         if (input && speakerNotesSession === null) {
+-          let value2 = touchLayout
++          let value2 = nativeHosted || touchLayout
+             ? null
+             : (0, runtime.openSpeakerNotes)();
+           flag2 = value2?.kind === "opened";
+@@ -7771,7 +7826,7 @@
+           flag2 || navigator.userActivation?.isActive === false;
+         setDockSpeakerNotes(flag);
+         setFullscreenRequest(
+-          value ? "next" : (0, runtime.requestPresentationFullscreen)(),
++          nativeHosted || nativeFullscreen ? null : value ? "next" : (0, runtime.requestPresentationFullscreen)(),
+         );
+         presentingRef.current = true;
+         setPresentationStartIndex(
+@@ -9857,9 +9912,9 @@
+               startIndex: presentationStartIndex,
+               dockNotes: dockSpeakerNotes,
+               fullscreenRequest: fullscreenRequest,
+-              onIndexChange: setPresentationCurrentIndex,
+-              onExit: (input: number) =>
+-                exitPresentation(presentableSlides[input]?.id),
++              fallbackReason: nativePresentationFallback(),
++              onIndexChange: (index: number) => { setPresentationCurrentIndex(index); nativePresentationIndex(presentableSlides[index]?.id); },
++              onExit: (input: number) => { nativePresentationExit(); exitPresentation(presentableSlides[input]?.id); },
+             })
+           : null,
+         SlidesAppJsx.jsx(runtime.LiveAnnouncer, {}),
+@@ -10506,7 +10561,8 @@
+     });
+     isLocalEmbeddableResource = (url: string) =>
+       (0, runtime.isStoredBlobReference)(url) ||
+-      runtime.designSystemImagePathPattern.test(url);
++      runtime.designSystemImagePathPattern.test(url) ||
++      nativeSlidesResource(url);
+     DAMAGED_SLIDE_ACTION_MESSAGE =
+       "That slide can’t be edited until its saved content is fixed. Nothing changed.";
+     LOADING_PRESENTATION_PASTE_MESSAGE =
+--- a/packages/slides-runtime/src/export/deck-html.ts
++++ b/packages/slides-runtime/src/export/deck-html.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original captured Slides surfaces/resources and fixed-job output font admission.
++ * [OUTPUT]: Original offline HTML only after actual mounted text/face/glyph verification.
++ * [POS]: Maintained original native HTML producer; authored frames remain opaque.
++ */
++import { nativeExportFontAudit } from "../adapters/export-runtime";
+ /** Restored application module; prepare first, initialize in original order. */
+ import { bindRuntimeValue, type RuntimeBindings } from "../bindings";
+ import type {
+@@ -352,10 +358,10 @@
+       );
+       (0, runtime.labelUncapturedEmbeds)(host, slides, value3);
+       let items: string[] = [];
+-      for (let index = 0; index < slides.length; index++)
+-        items.push(
+-          serializeSlide(value.surface(index), value3.get(index), options),
+-        );
++      for (let index = 0; index < slides.length; index++) {
++        await nativeExportFontAudit(value.surface(index));
++        items.push(serializeSlide(value.surface(index), value3.get(index), options));
++      }
+       let value4 = getComputedStyle(host),
+         value5 =
+           "font:" +
+--- a/packages/slides-runtime/src/export/deck-measurement.ts
++++ b/packages/slides-runtime/src/export/deck-measurement.ts
+@@ -1,3 +1,10 @@
++/**
++ * [INPUT]: Original Slides runtime bindings, licensed SVG adapter and fixed mounted-output font admission.
++ * [OUTPUT]: Native Slides controls and authored vectors without UI font payloads.
++ * [POS]: Maintained upstream source; original layout, state and serialization remain authoritative.
++ */
++import { nativeExportFontAudit } from "../adapters/export-runtime";
++import { slidesIconData } from "../adapters/native-icon";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -1072,34 +1079,8 @@
+     rectangle: PptxRect,
+     opacity: number,
+   ): string | undefined {
+-    let value = Math.max(1, Math.round(rectangle.w)),
+-      value2 = Math.max(1, Math.round(rectangle.h)),
+-      value3 = Math.min(2, 2048 / Math.max(value, value2)),
+-      value4 = document.createElement("canvas");
+-    value4.width = Math.max(1, Math.round(value * value3));
+-    value4.height = Math.max(1, Math.round(value2 * value3));
+-    let value5 = value4.getContext("2d");
+-    if (!value5) {
+-      return;
+-    }
+-    let value6 = Math.min(value4.width, value4.height) * 0.9;
+-    value5.font = String(value6) + "px mc-anthropicons";
+-    value5.textAlign = "center";
+-    value5.textBaseline = "middle";
+-    value5.fillStyle =
+-      (0, runtime.resolveSlideColor)(element.color) ??
+-      (0, runtime.slideTextColor)(css);
+-    value5.fillText(
+-      runtime.iconFontGlyphs[element.icon]!,
+-      value4.width / 2,
+-      value4.height / 2 + value6 * 0.04,
+-    );
+-    multiplyCanvasOpacity(value5, opacity);
+-    try {
+-      return value4.toDataURL("image/png");
+-    } catch {
+-      return;
+-    }
++    return slidesIconData(element.icon,
++      (0, runtime.resolveSlideColor)(element.color) ?? (0, runtime.slideTextColor)(css), opacity);
+   }
+   function rasterizeShapeLeaf(
+     node: ShapeNode,
+@@ -1521,9 +1502,7 @@
+           document.fonts,
+           options?.fontsReadyMs,
+         ),
+-        value5 = document.fonts
+-          .load("90px mc-anthropicons")
+-          .catch((): void => {});
++        value5 = Promise.resolve();
+       await (value3 === undefined
+         ? value5
+         : (0, runtime.promiseWithTimeout)(
+@@ -1531,6 +1510,7 @@
+             Math.max(100, value3 - Date.now()),
+           ));
+       await waitForImages(value);
++      await nativeExportFontAudit(value);
+       if (document.visibilityState === "visible") {
+         await new Promise<void>((input): void => {
+           let value8 = setTimeout(input, 1000);
+--- a/packages/slides-runtime/src/export/pdf-capture.ts
++++ b/packages/slides-runtime/src/export/pdf-capture.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original native capture/font readiness, maintained SVG icons and fixed mounted-output font admission.
++ * [OUTPUT]: Original Slides capture without retired icon-font declarations or empty font fetches.
++ * [POS]: Maintained upstream native export readiness; authored graphics remain opaque.
++ */
++import { nativeExportFontAudit } from "../adapters/export-runtime";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -1890,9 +1896,7 @@
+           Math.max(0, value2 - Date.now()),
+         );
+       }
+-      let value5: Promise<FontFace[] | void> = document.fonts
+-        .load("90px mc-anthropicons")
+-        .catch((): void => {});
++      let value5: Promise<FontFace[] | void> = Promise.resolve();
+       await (value2 === undefined
+         ? value5
+         : (0, runtime.promiseWithTimeout)(
+@@ -2034,14 +2038,16 @@
+             (state: FontFace): boolean => state.status === "loading",
+           );
+         },
+-        raster: (input: number, options2: SlideRasterOptions): Promise<SlideRaster> =>
+-          rasterizeSlideSvg(
++        raster: async (input: number, options2: SlideRasterOptions): Promise<SlideRaster> => {
++          await nativeExportFontAudit(mounted.surface(input));
++          return rasterizeSlideSvg(
+             mounted.surface(input),
+             value6,
+             value2,
+             value.get(input),
+             options2,
+-          ),
++          );
++        },
+       };
+     } catch (value: unknown) {
+       throw (mounted.dispose(), value);
+--- a/packages/slides-runtime/src/files/browser-port.ts
++++ b/packages/slides-runtime/src/files/browser-port.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original file-port options and the fixed native module fetch adapter.
++ * [OUTPUT]: Original complete file reads through local HTTP or the authenticated private native channel.
++ * [POS]: Maintained upstream file-port default; global fetch and authored frames remain unchanged.
++ */
++import { nativeEditorFetch } from "../adapters/asset-address";
+ /** Restored application module; prepare first, initialize in original order. */
+ import { bindRuntimeValue, type RuntimeBindings } from "../bindings";
+ import type { FileSha } from "../deck-contracts";
+@@ -363,7 +369,7 @@
+     options: BrowserFilesPortOptions = {},
+   ): BrowserFilesPort {
+     let fetchFile: (path: string) => Promise<Response> =
+-        options.fetch ?? ((input) => globalThis.fetch(input)),
++        options.fetch ?? ((input) => nativeEditorFetch(input)),
+       fetchFresh: (path: string) => Promise<Response> =
+         options.fetchFresh ?? fetchFile,
+       freshReads: boolean = false,
+--- a/packages/slides-runtime/src/fonts/fetch.ts
++++ b/packages/slides-runtime/src/fonts/fetch.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original Slides font/theme bindings and the fixed native resource adapter.
++ * [OUTPUT]: Native font CSS/fetch URLs with unchanged stored face/source metadata.
++ * [POS]: Maintained upstream font composition; immutable resources remain owned by the host.
++ */
++import { slidesAssetAddress } from "../adapters/asset-address";
+ /** Restored application module; prepare first, initialize in original order. */
+ import { bindRuntimeValue, type RuntimeBindings } from "../bindings";
+ 
+@@ -167,14 +173,14 @@
+           signal: controller.signal,
+           credentials: options.credentials ?? "omit",
+         },
+-        value: Response = await fetch(url, {
++        value: Response = await fetch(slidesAssetAddress(url), {
+           ...state,
+           ...(options.cache !== undefined && {
+             cache: options.cache,
+           }),
+         });
+       if (!value.ok && options.cache === "force-cache") {
+-        value = await fetch(url, {
++        value = await fetch(slidesAssetAddress(url), {
+           ...state,
+           cache: "reload",
+         });
+--- a/packages/slides-runtime/src/model/deck.ts
++++ b/packages/slides-runtime/src/model/deck.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original Slides model rules and fixed native resource membership/path validation.
++ * [OUTPUT]: Source-preserving native image normalization without changing standalone or external resource rules.
++ * [POS]: Maintained upstream native model; complete source membership is validated by the host before publication.
++ */
++import { nativeSlidesResource } from "../adapters/asset-address";
+ /** Restored application module; prepare first, initialize in original order. */
+ import { bindRuntimeValue, type RuntimeBindings } from "../bindings";
+ import type {
+@@ -1106,6 +1112,7 @@
+     );
+   }
+   function isAllowedImageSource(src: string): boolean {
++    if (nativeSlidesResource(src)) return true;
+     if (isModelBlobReference(src) || designSystemImagePathPattern.test(src)) {
+       return true;
+     }
+@@ -1121,6 +1128,7 @@
+     return !svgDataUrlPattern.test(src) || src.length <= maxInlineSvgBytes;
+   }
+   function isRenderableImageSource(src: string): boolean {
++    if (nativeSlidesResource(src)) return true;
+     if (isModelBlobReference(src) || designSystemImagePathPattern.test(src)) {
+       return true;
+     }
+@@ -1177,6 +1185,7 @@
+     );
+   }
+   function isAllowedFontSource(src: string): boolean {
++    if (nativeSlidesResource(src)) return true;
+     return (
+       isEmbeddedFontDataUrl(src) ||
+       isModelBlobReference(src) ||
+--- a/packages/slides-runtime/src/presentation/player.ts
++++ b/packages/slides-runtime/src/presentation/player.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original slide/build/transition navigation and the main-owned trusted presentation adapter.
++ * [OUTPUT]: Original PresentationView with registered exact-page host navigation; authored embeds remain isolated.
++ * [POS]: Maintained original player seam; no popup, source write or private-note capability is added.
++ */
++import { nativePresentationPlayer } from "../adapters/presentation";
+ /** Restored application module; prepare first, initialize in original order. */
+ import type {
+   FocusEvent as ReactFocusEvent,
+@@ -71,6 +77,7 @@
+   heldSlide?: SlideDocumentCodec["slideHtmlHold"];
+   editNotes?: NotesEditGesture;
+   fullscreenRequest?: PresentationFullscreenRequest;
++  fallbackReason?: string;
+ }
+ export interface PresentationControlButtonProps {
+   icon: string;
+@@ -250,6 +257,7 @@
+     heldSlide: heldSlide,
+     editNotes: editNotes,
+     fullscreenRequest: fullscreenRequest,
++    fallbackReason: fallbackReason,
+   }: PresentationViewProps): ReactPortal | null {
+     let [value, value2] = ReactPresentation.useState<PresentationPosition>(
+         () => ({
+@@ -534,6 +542,7 @@
+     ref22.current = callback5;
+     let ref23 = ReactPresentation.useRef(callback6);
+     ref23.current = callback6;
++    nativePresentationPlayer(callback6);
+     let ref24 = ReactPresentation.useRef(onExit);
+     ref24.current = onExit;
+     ReactPresentation.useEffect(() => {
+@@ -1149,6 +1158,7 @@
+           callback5(input.clientX < bounds.left + bounds.width / 2 ? -1 : 1);
+         },
+         children: [
++          fallbackReason ? PresentationJsx.jsx("p", { role: "status", "data-bottega-presentation-fallback": "", style: { margin: 0, padding: "8px 16px", background: "#262626", color: "white", fontSize: "14px", flexShrink: 0 }, children: fallbackReason }) : null,
+           PresentationJsx.jsxs("div", {
+             ref: ref9,
+             tabIndex: -1,
+--- a/packages/slides-runtime/src/rendering/slides.ts
++++ b/packages/slides-runtime/src/rendering/slides.ts
+@@ -1,3 +1,10 @@
++/**
++ * [INPUT]: Original Slides runtime bindings and licensed native SVG adapter.
++ * [OUTPUT]: Native Slides controls and authored vectors without UI font payloads.
++ * [POS]: Maintained upstream source; original layout, state and serialization remain authoritative.
++ */
++import { slidesAssetAddress } from "../adapters/asset-address";
++import { SlidesSvgIcon } from "../adapters/native-icon";
+ /** Restored application module; prepare first, initialize in original order. */
+ import type {
+   ClipboardEvent as ReactClipboardEvent,
+@@ -1005,10 +1012,8 @@
+     node: ImageNodeData,
+     assets: SlideAssets,
+   ): string | undefined {
+-    if (node.asset !== undefined) {
+-      return assets.get(node.asset);
+-    }
+-    return node.src;
++    const source = node.asset !== undefined ? assets.get(node.asset) : node.src;
++    return source === undefined ? undefined : slidesAssetAddress(source);
+   }
+   function classifyRenderedLink(
+     href: string,
+@@ -1200,15 +1205,8 @@
+         ...value2,
+         ...nodeInlineStyleCss(node.style, "slides-icon"),
+       },
+-      children: SlideRendererJsx.jsx("text", {
+-        x: "50",
+-        y: "54",
+-        textAnchor: "middle",
+-        dominantBaseline: "central",
+-        fontFamily: "mc-anthropicons",
+-        fontSize: "90",
+-        fill: value,
+-        children: runtime.iconFontGlyphs[node.icon],
++      children: SlideRendererJsx.jsx(SlidesSvgIcon, {
++        name: node.icon, pixelSize: 90, x: 5, y: 5, style: { width: 90, height: 90, color: value },
+       }),
+     });
+   }
+@@ -3773,6 +3771,15 @@
+     clips: clips,
+     interactive: interactive,
+   }: SlideCanvasProps): ReactElement {
++    SlideRendererReact.useLayoutEffect(() => {
++      const host = window as Window & { __bottegaNativeReady?: (file: string, generation: number) => void };
++      if (!host.__bottegaNativeReady) return;
++      let active = true;
++      void document.fonts.ready.then(() => requestAnimationFrame(() => requestAnimationFrame(() => {
++        if (active) host.__bottegaNativeReady?.("slides/" + slide.id + ".html", Date.now());
++      })));
++      return () => { active = false; };
++    }, [slide.id]);
+     let value = interactive?.plainPress,
+       memo = SlideRendererReact.useMemo(
+         (): SlideLinkState => ({
+@@ -4224,14 +4231,7 @@
+     "shapeStylesCss",
+     () => shapeStylesCss,
+     (value) => {
+-      shapeStylesCss = value;
+-    },
+-  );
+-  bindRuntimeValue(
+-    runtime,
+-    "shapeClipPaths",
+-    () => shapeClipPaths,
+-    (value) => {
++      shapeStylesCss = "";
+       shapeClipPaths = value;
+     },
+   );
+@@ -4438,10 +4438,7 @@
+       slideEmbedContentSecurityPolicy = (0, runtime.embedContentSecurityPolicy)(
+         allowEmbedScripts,
+       );
+-      shapeStylesCss =
+-        "@font-face{font-family:'mc-anthropicons';src:url('" +
+-        runtime.iconFontCss +
+-        "') format('woff2');font-display:block}";
++      shapeStylesCss = "";
+       shapeClipPaths = {
+         diamond: "50,0 100,50 50,100 0,50",
+         "arrow-right": "0,30 60,30 60,10 100,50 60,90 60,70 0,70",
+--- a/packages/slides-runtime/src/rendering/theme.ts
++++ b/packages/slides-runtime/src/rendering/theme.ts
+@@ -1,3 +1,10 @@
++/**
++ * [INPUT]: Original Slides font/theme bindings and the fixed native resource adapter.
++ * [OUTPUT]: Native font CSS/fetch URLs with unchanged stored face/source metadata.
++ * [POS]: Maintained upstream font composition; immutable resources remain owned by the host.
++ */
++import { nativeFontCssString } from "@ai-chat/cloud-protocol/artifacts/design/native/font-face";
++import { slidesAssetAddress } from "../adapters/asset-address";
+ /** Restored application module; prepare first, initialize in original order. */
+ import type { CSSProperties } from "react";
+ import {
+@@ -187,10 +194,10 @@
+         }
+       } else {
+         text2 +=
+-          "@font-face{font-family:'" +
+-          value.family +
+-          "';src:url(" +
+-          value.src +
++          "@font-face{font-family:" +
++          nativeFontCssString(value.family) +
++          ";src:url(" +
++          nativeFontCssString(slidesAssetAddress(value.src)) +
+           ");font-weight:100 900;font-display:swap;}";
+       }
+     if (!theme) {
+@@ -210,13 +217,13 @@
+         text4 = ",'" + defaultThemeFontFamilies[value] + "'";
+       } else {
+         text2 +=
+-          "@font-face{font-family:'" +
+-          value2.family +
+-          "';src:url(" +
+-          value2.src +
++          "@font-face{font-family:" +
++          nativeFontCssString(value2.family) +
++          ";src:url(" +
++          nativeFontCssString(slidesAssetAddress(value2.src)) +
+           ");font-weight:100 900;font-display:swap;}";
+       }
+-      text3 += "--deck-" + value + ":'" + value2.family + "'" + text4 + ";";
++      text3 += "--deck-" + value + ":" + nativeFontCssString(value2.family) + text4 + ";";
+     }
+     text = addOptionalGoogleFontImports(text);
+     if (text3 === "") {
+--- a/packages/slides-runtime/src/ui/interactions.ts
++++ b/packages/slides-runtime/src/ui/interactions.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original Slides runtime bindings and licensed native SVG adapter.
++ * [OUTPUT]: Native Slides controls and authored vectors without UI font payloads.
++ * [POS]: Maintained upstream source; original layout, state and serialization remain authoritative.
++ */
++import { SlidesSvgIcon } from "../adapters/native-icon";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -2379,93 +2385,8 @@
+         ),
+       });
+     }
+-    let {
+-      bold: value11 = false,
+-      animated: value12 = false,
+-      alt: value2,
+-      className: value3,
+-      style: value4,
+-      name: value5,
+-      icon: value6,
+-      size: value7,
+-      customSize: value8,
+-      customIcon: value9,
+-      ...value10
+-    } = input;
+-    validateIconAccessibility(value2, value10);
+-    let value13 = input.name ?? input.icon.name,
+-      value14: number,
+-      value15: IconSizeName;
+-    if (value8 !== undefined) {
+-      value14 = value8;
+-      value15 = getClosestIconSize(value14);
+-    } else {
+-      value15 = resolveIconSize(value7 ?? DEFAULT_ICON_SIZE, value);
+-      value14 = iconSizeMetrics[value15].px;
+-    }
+-    let stroke = iconSizeMetrics[value15].stroke,
+-      value16 =
+-        value7 === "auto" || value7 === "auto-sm" || value7 === "auto-lg",
+-      value17 = value11 && !("strong" in stroke) && !value16,
+-      value18 = primaryIconGlyphs[value13],
+-      value19 =
+-        value18 === undefined ? undefined : secondaryIconGlyphs[value13],
+-      value20 = iconFontStyles[value15],
+-      value21 =
+-        value8 === undefined
+-          ? value11 && value20.strong !== undefined
+-            ? value20.strong
+-            : value20.regular
+-          : getCustomIconFontStyle(
+-              value14,
+-              value11 && "strong" in stroke ? stroke.strong : stroke.regular,
+-            ),
+-      value22 = value12 && animatedIcons.has(value13),
+-      value23 = value22 ? animationDurations[value13] : undefined,
+-      value24 = value22 ? animationExitDurations[value13] : undefined,
+-      value25 = value22 ? animationEasings[value13] : undefined,
+-      value26 = value22
+-        ? {
+-            ...value21,
+-            "--cds-opsz": value14,
+-            "--cds-wght": value21.fontWeight,
+-            ...(value23 !== undefined && {
+-              "--cds-anim-dur": `${value23}ms`,
+-            }),
+-            ...(value24 !== undefined && {
+-              "--cds-anim-dur-out": `${value24}ms`,
+-            }),
+-            ...(value25 !== undefined && {
+-              "--cds-anim-ease": value25,
+-            }),
+-          }
+-        : value21;
+-    return jsxIcons.jsxs("span", {
+-      "data-cds": "Icon",
+-      "data-cds-anim": value22 ? "" : undefined,
+-      "data-cds-anim-loop":
+-        value22 && loopingIcons.has(value13) ? "" : undefined,
+-      style: value4
+-        ? {
+-            ...value26,
+-            ...value4,
+-          }
+-        : value26,
+-      className: value3,
+-      ...value10,
+-      role: value10.role ?? (value2 ? "img" : undefined),
+-      "aria-hidden": value10["aria-hidden"] ?? (value2 ? undefined : true),
+-      "aria-label": value10["aria-label"] ?? (value2 || undefined),
+-      children: [
+-        value19 !== undefined &&
+-          jsxIcons.jsx("span", {
+-            "data-cds-icon-layer": "secondary",
+-            "aria-hidden": "true",
+-            children: String.fromCodePoint(value19),
+-          }),
+-        value18 !== undefined ? String.fromCodePoint(value18) : null,
+-      ],
+-    });
++    const size = input.customSize ?? iconSizeMetrics[resolveIconSize(input.size ?? DEFAULT_ICON_SIZE, value)].px;
++    return jsxIcons.jsx(SlidesSvgIcon, { ...input, pixelSize: pixelsToScaledRem(size) });
+   }
+   function isIconName(input: unknown): input is string {
+     return typeof input === "string";
+--- a/packages/slides-runtime/src/boot/bootstrap.ts
++++ b/packages/slides-runtime/src/boot/bootstrap.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original native file boot state and the editor-owned private file transport.
++ * [OUTPUT]: Original document bootstrap with consistent ordinary and fresh snapshot reads.
++ * [POS]: Maintained original bootstrap; no global fetch or write gate is replaced.
++ */
++import { nativeEditorFetch } from "../adapters/asset-address";
+ /** Restored application module; prepare first, initialize in original order. */
+ import type { ReactElement } from "react";
+ import {
+@@ -795,7 +801,7 @@
+       (slidesWriteAccessPromise ??= (0, runtime.determineSlidesWriteAccess)());
+     filesBootPortOptions = {
+       fetchFresh: (input) =>
+-        fetch(input, {
++        nativeEditorFetch(input, {
+           cache: "no-store",
+         }),
+       onRead: (input, options, context, value) =>
+--- a/packages/slides-runtime/src/comments/labels.ts
++++ b/packages/slides-runtime/src/comments/labels.ts
+@@ -1,4 +1,8 @@
+-/** Restored application module; prepare first, initialize in original order. */
++/**
++ * [INPUT]: Original source slide identity, selected frame/area and native comment formatting limits.
++ * [OUTPUT]: Human labels and canonical slides/<id>.html detail prefixes for exact host source binding.
++ * [POS]: Maintained original Slides comment metadata; labels and anchor geometry retain their upstream contract.
++ */
+ import { bindRuntimeValue, type RuntimeBindings } from "../bindings";
+ import type { HostCommentLabels } from "../../../slides/src/editor/slides-host";
+ import type { Frame, Slide, SlideNode, TextNode } from "../deck-contracts";
+@@ -308,7 +312,7 @@
+     anchor: CommentLabelAnchor,
+   ): string {
+     let prefix =
+-      "Slide " + String(slideNumber) + slideDiagnosticIdSuffix(slide);
++      "slides/" + slide.id + ".html: Slide " + String(slideNumber) + slideDiagnosticIdSuffix(slide);
+     if (anchor.kind === "slide") {
+       return buildCommentLabel(
+         prefix,
+@@ -482,7 +486,7 @@
+             ? callback2(area.within, input)
+             : null,
+           value3 =
+-            "Area on slide " +
++            "slides/" + slide.id + ".html: Area on slide " +
+             String(slideNumber) +
+             value +
+             (value2 !== null ? " in " + value2 : "") +

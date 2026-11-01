@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical public option schemas, the bounded Provider id and shared Agent option types
- * [OUTPUT]: Provides the exact option schema, factory defaults, pure default resolution, and the user provider-order normalizer; and
+ * [OUTPUT]: Provides the exact option schema, factory defaults and pure default resolution; and
  *           TASK-11 S3-b's Chat-side widening: ChatAgentId, builtinAgent / builtinOptions (the one narrowing back to a built-in), chatSyncExclusion (the one reason a Chat stays local-only), packageTurnOptionsSchema / PackageTurnOptions (the one shape a package
  *           Provider's turn options take) and chatTurnOptionsSchema / ChatTurnOptions (a built-in id only in its built-in shape)
  * [POS]: Shared Chat option authority; persistence remains owned by SQLite and Settings. The cloud-protocol schemas it re-exports stay
@@ -8,7 +8,7 @@
  * Factory-shaped New Chat drafts are aligned with live model catalogs; factory constants are not persisted as learned choices.
  */
 
-import { AGENT_BACKEND_ORDER, type AgentBackendId, type AgentTurnOptions, type CodexTurnOptions } from "../ipc/agent/agent-ipc";
+import type { AgentBackendId, AgentTurnOptions, CodexTurnOptions } from "../ipc/agent/agent-ipc";
 import type { DefaultChatOptionsByBackend } from "../ipc/settings/settings-ipc";
 
 export { turnOptionsSchema, defaultsSchema } from "@ai-chat/cloud-protocol/chats/options";
@@ -71,12 +71,4 @@ export function backendDefaults(defaults: DefaultChatOptionsByBackend, backend: 
   const builtin = agentBackendIdSchema.safeParse(backend);
   if (!builtin.success) return packageTurnOptionsSchema.parse({ backend, permissionMode: "ask-for-approval" });
   return structuredClone(turnOptionsSchema.parse(defaults[builtin.data] ?? DEFAULT_CHAT_OPTIONS_BY_BACKEND[builtin.data]));
-}
-
-/** The user's picker order: persisted ids first (deduplicated), then any backend the file predates. */
-export function normalizeProviderOrder(order: readonly AgentBackendId[]): AgentBackendId[] {
-  const known = new Set<AgentBackendId>();
-  for (const id of order) if (AGENT_BACKEND_ORDER.includes(id)) known.add(id);
-  for (const id of AGENT_BACKEND_ORDER) known.add(id);
-  return [...known];
 }

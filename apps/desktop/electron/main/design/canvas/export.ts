@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Exact immutable manifest/resources, explicit page identity and existing isolated board capture.
- * [OUTPUT]: Bounded static page/object compositions and document-local font/image closure for exports.
+ * [OUTPUT]: Bounded static page/object compositions with scrollbar-free board rasters and document-local font/image closure for exports.
  * [POS]: Frozen Canvas export adapter; neither live source nor the editor camera enters exported bytes.
  */
 import { canvasObjectMarkup, escapeCanvasText } from "@ai-chat/cloud-protocol/artifacts/design/canvas/markup";
@@ -21,7 +21,7 @@ export async function prepareCanvasPage(snapshot: Snapshot, pageId: string, sign
   const markup: string[] = []; let bytes = 0;
   for (const board of boards) {
     signal.throwIfAborted(); const prepared = await prepareDesignSnapshot(snapshot, board.id);
-    const image = await captureDesignCanvas({ html: prepared.html, viewport: "desktop", size: board.viewport, format: "png", maxImageBytes: DESIGN_LIMITS.archive, signal });
+    const image = await captureDesignCanvas({ html: prepared.html, viewport: "desktop", size: board.viewport, format: "png", hideScrollbars: true, maxImageBytes: DESIGN_LIMITS.archive, signal, native: prepared.metadata.contentFormat === "canvas-dc/v3" });
     const item = `<img alt="${escapeCanvasText(board.title)}" src="data:image/png;base64,${image.data}" style="position:absolute;left:${board.position.x}px;top:${board.position.y}px;width:${board.viewport.width}px;height:${board.viewport.height}px">`;
     bytes += Buffer.byteLength(item); if (bytes > DESIGN_LIMITS.archive) throw new DesignDocumentError("BUDGET_EXCEEDED", "Complete page exceeds the export budget"); markup.push(item);
   }

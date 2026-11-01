@@ -4,6 +4,7 @@
  * [POS]: Extension of the existing document checker; no registry or second commit owner.
  */
 import { designDigest, manifestSchema, type DesignIssue, type DesignReadSet } from "../documents/model";
+import { projectNativeManifest } from "@ai-chat/cloud-protocol/artifacts/design/native/source";
 import { systemSourcesSchema } from "@ai-chat/cloud-protocol/artifacts/design/system/model";
 import { inspectDesignSystem } from "@ai-chat/cloud-protocol/artifacts/design/system/validation";
 import { generatedSystemCss } from "@ai-chat/cloud-protocol/artifacts/design/system/tokens";
@@ -43,6 +44,15 @@ export function validateDesignSystem(readSet: DesignReadSet): DesignIssue[] {
       if (evidence && designDigest(evidence.data) !== component.evidence?.digest) issue("components.json", `Mount evidence digest does not match ${component.name}`);
       const styles = readSet.files.find(file => file.path === "tokens.css");
       if (component.mode === "mounted" && styles && designDigest(styles.data) !== component.evidence?.styleDigest) issue("components.json", `Mount evidence has stale system values: ${component.name}`);
+      if (component.dc?.status === "ready") {
+        const dc = component.dc;
+        if (dc.systemId !== manifest.documentId) issue("components.json", "DC evidence belongs to another system: " + component.name);
+        for (const [path, digest] of [[dc.bundle, dc.bundleDigest], [dc.preview, dc.previewDigest], [dc.runtimeFile, dc.runtimeDigest], [dc.stylesheet, dc.stylesheetDigest], [dc.evidence.file, dc.evidence.digest]]) {
+          const file = readSet.files.find(file => file.path === path);
+          if (path && (!file || designDigest(file.data) !== digest)) issue("components.json", "DC resource identity does not match " + component.name + ": " + path);
+        }
+        if (!styles || designDigest(styles.data) !== dc.evidence.styleDigest) issue("components.json", "DC evidence has stale system values: " + component.name);
+      }
     }
     const css = readSet.files.find(file => file.path === "tokens.css");
     if (!css || new TextDecoder("utf-8", { fatal: true }).decode(css.data) !== generatedSystemCss(result.system, manifest.title)) issue("tokens.css", "Generated CSS is missing or stale. Generate it from the current tokens and aliases; do not edit a second copy of token values.");
@@ -53,7 +63,7 @@ export function inertSystemSources(readSet: DesignReadSet): Set<string> {
   const result = new Set<string>(), files = new Map(readSet.files.map(file => [file.path, file]));
   const inertCode = /\.(?:css|[cm]?js|jsx|tsx?)$/i;
   try {
-    const manifest = manifestSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(files.get("canvas.json")!.data)));
+    const manifest = projectNativeManifest(readSet.files, readSet.path.split("/")[1]!) ?? manifestSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(files.get("canvas.json")!.data)));
     const addSources = (bytes: Uint8Array, prefix: string, allowed?: ReadonlySet<string>) => {
       if (bytes.length > 1024 * 1024) return;
       const parsed = systemSourcesSchema.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));

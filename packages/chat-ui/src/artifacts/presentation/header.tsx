@@ -4,6 +4,8 @@
  * [POS]: Lightweight shared chrome for lazy and loaded design workspaces in native and Web hosts.
  */
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { panelChromeClassName } from "@ai-chat/ui/components/workspace/page";
 import { Expand, Minimize2, X } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { toastClearanceRef } from "@ai-chat/ui/components/ui/sonner";
@@ -26,6 +28,14 @@ export function ArtifactHeader({ title, status, titleMenu, children }: { title: 
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
   }, [host?.desktop, presentation?.full]);
   const full = fullLabel(locale, presentation?.full), close = closeLabel(locale);
+  if (presentation?.tabChrome) {
+    const chrome = presentation.tabChrome;
+    const label = <span data-artifact-title="" className="truncate" title={status ? `${title} · ${status}` : title}>{title}</span>;
+    return <>{chrome.title && createPortal(titleMenu ? titleMenu(label) : label, chrome.title)}{chrome.actions && createPortal(<>
+      {status && <span role="status" className="sr-only">{status}</span>}{children}
+      {presentation.canExpand && <Button type="button" variant="ghost" size="icon-lg" data-artifact-expand="" className={`shrink-0 cursor-pointer ${host?.desktop ? panelChromeClassName : "max-lg:min-h-11 max-lg:min-w-11"}`} aria-label={full} title={full} onClick={() => presentation.setFull(!presentation.full)}>{presentation.full ? <Minimize2 className="size-4" /> : <Expand className="size-4" />}</Button>}
+    </>, chrome.actions)}</>;
+  }
   const titleText = titleMenu ? <span data-artifact-title="" className="block truncate text-sm font-medium" title={title}>{title}</span> : <h2 data-artifact-title="" className="truncate text-sm font-medium" title={title}>{title}</h2>;
   const statusText = status && <span role="status" className="block truncate text-xs text-muted-foreground" title={status}>{status}</span>;
   return <header ref={headerRef} data-artifact-header="" data-toast-clearance="" style={leftInset ? { paddingLeft: leftInset } : undefined} className={`flex min-h-[60px] shrink-0 items-center gap-1 border-b bg-background px-3 ${host?.desktop ? "[-webkit-app-region:drag]" : ""}`}>

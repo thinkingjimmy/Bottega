@@ -19,13 +19,13 @@ function previewFailure(current: RefObject<HeldPreview | null>, token: object, u
     held.lease.fail(url);
   };
 }
-export function usePreviewResource(root: RefObject<HTMLDivElement | null>, kind: "thumbnail" | "image", key: string, load: (signal: AbortSignal) => Promise<Blob>, controller?: CanvasCameraController) {
+export function usePreviewResource(root: RefObject<HTMLDivElement | null>, kind: "thumbnail" | "image", key: string, load: (signal: AbortSignal) => Promise<Blob>, controller?: CanvasCameraController, fit: "contain" | "cover" = "contain") {
   const host = useArtifactHost()!, [admission, setAdmission] = useState({ active: false, epoch: 0, retry: false }), [visible, setVisible] = useState(false);
   const [result, setResult] = useState<{ host: typeof host; kind: typeof kind; key: string; epoch: number; token: object; url: string; failed: boolean } | null>(null);
-  const visibilityRef = useRef(visible), movingRef = useRef(false);
+  const fitRef = useRef(fit), visibilityRef = useRef(visible), movingRef = useRef(false);
   const held = useRef<HeldPreview | null>(null), imageOwners = useRef(new WeakMap<HTMLImageElement, object>());
   const zoom = useSyncExternalStore(controller?.subscribe ?? idle, () => controller?.snapshot().zoom ?? 1, () => 1);
-  const demand = (): PreviewDemand => { const bounds = root.current?.getBoundingClientRect(); return { width: Math.max(1, Math.ceil((bounds?.width ?? 1) * devicePixelRatio)), height: Math.max(1, Math.ceil((bounds?.height ?? 1) * devicePixelRatio)), visible: visibilityRef.current, moving: movingRef.current }; };
+  const demand = (): PreviewDemand => { const bounds = root.current?.getBoundingClientRect(); return { width: Math.max(1, Math.ceil((bounds?.width ?? 1) * devicePixelRatio)), height: Math.max(1, Math.ceil((bounds?.height ?? 1) * devicePixelRatio)), visible: visibilityRef.current, moving: movingRef.current, fit: fitRef.current }; };
   useEffect(() => {
     const node = root.current; if (!node || !key) return;
     const viewportRoot = node.closest("[data-canvas-stage]");
@@ -53,10 +53,10 @@ export function usePreviewResource(root: RefObject<HTMLDivElement | null>, kind:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, kind, key, admission]);
   useEffect(() => controller?.motionTo(active => { movingRef.current = active; held.current?.lease.motion(active); }), [controller]);
-  useLayoutEffect(() => { visibilityRef.current = visible; held.current?.lease.update(demand());
+  useLayoutEffect(() => { visibilityRef.current = visible; fitRef.current = fit; held.current?.lease.update(demand());
     // Pan changes position only; demand follows visibility, zoom and ResizeObserver.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, zoom, root]);
+  }, [visible, zoom, root, fit]);
   const matches = admission.active && result?.host === host && result.kind === kind && result.key === key && result.epoch === admission.epoch;
   const url = matches ? result.url : "";
   useLayoutEffect(() => {

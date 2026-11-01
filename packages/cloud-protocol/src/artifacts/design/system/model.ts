@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Zod and the shared bounded document paths and digests.
- * [OUTPUT]: Closed token, alias, source, component and three-way update contracts.
+ * [OUTPUT]: Closed token, alias, source, separate standalone/DC component evidence and three-way update contracts.
  * [POS]: Design-system data shared by the main owner and desktop/Web readers.
  */
 import { z } from "zod";
@@ -23,20 +23,28 @@ export const systemTokensSchema = z.object({ schemaVersion: z.literal(1), themes
   tokens: z.array(systemTokenSchema).max(512), fonts: z.array(systemFontSchema).max(32) }).strict();
 export const systemAliasesSchema = z.object({ schemaVersion: z.literal(1), aliases: z.array(systemAliasSchema).max(512) }).strict();
 export const systemSourceSchema = z.object({ id: systemName, path: sourcePath, capturedPath: sourcePath, digest: digestSchema,
-  bytes: z.number().int().nonnegative().max(8 * 1024 * 1024),
+  bytes: z.number().int().nonnegative().max(24 * 1024 * 1024),
   version: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("git"), commit: z.string().regex(/^[a-f0-9]{40,64}$/), workingTree: z.boolean() }).strict(),
     z.object({ kind: z.literal("digest"), digest: digestSchema }).strict(),
-  ]), retained: z.boolean().optional() }).strict();
+  ]), retained: z.boolean().optional() }).strict().refine(value => value.bytes <= (/\.(?:woff2?|ttf|otf)$/i.test(value.path) && /\.(?:woff2?|ttf|otf)$/i.test(value.capturedPath) ? 24 : 8) * 1024 * 1024, "Captured resource exceeds its exact file-type byte budget");
 export const systemUnsyncedSchema = z.object({ path: sourcePath, kind: z.enum(["token", "component", "font", "asset", "source", "usage"]),
   name: z.string().max(240).optional(), reason: z.string().min(1).max(500) }).strict();
+export const systemDcComponentSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("unsupported"), reason: z.string().min(1).max(500), runtime: z.literal("react@18.3.1") }).strict(),
+  z.object({ status: z.literal("ready"), systemId: systemName, reason: z.string().min(1).max(500), runtime: z.literal("react@18.3.1"), compiler: z.literal("esbuild@0.28.1"),
+    graphDigest: digestSchema, runtimeFile: sourcePath, runtimeDigest: digestSchema, bundle: sourcePath, bundleDigest: digestSchema,
+    exportName: systemName, globalName: z.string().min(1).max(128), preview: sourcePath, previewDigest: digestSchema, propsDigest: digestSchema, stylesheet: sourcePath.optional(), stylesheetDigest: digestSchema.optional(),
+    evidence: z.object({ file: sourcePath, digest: digestSchema, styleDigest: digestSchema, width: z.number().int().positive(), height: z.number().int().positive() }).strict(),
+  }).strict(),
+]);
 export const systemComponentSchema = z.object({ name: systemName, exportName: z.string().regex(/^(?:default|[A-Z][A-Za-z0-9_]*)$/),
   sourceId: systemName, entry: sourcePath, sourceDigest: digestSchema, closureDigest: digestSchema, closure: z.array(sourcePath).min(1).max(52),
   mode: z.enum(["static", "mounted"]), reason: z.string().max(500),
   preview: sourcePath.optional(), bundle: sourcePath.optional(), bundleDigest: digestSchema.optional(),
   evidence: z.object({ file: sourcePath, digest: digestSchema, styleDigest: digestSchema, width: z.number().int().positive(), height: z.number().int().positive(),
     runtime: z.literal("react@19.2.4"), compiler: z.literal("esbuild@0.28.1") }).strict().optional(),
-  override: z.boolean().optional() }).strict();
+  dc: systemDcComponentSchema.optional(), override: z.boolean().optional() }).strict();
 export const systemComponentsSchema = z.object({ schemaVersion: z.literal(1), components: z.array(systemComponentSchema).max(128) }).strict();
 export const systemBaselineSchema = z.object({ tokens: z.array(systemTokenSchema).max(512), aliases: z.array(systemAliasSchema).max(512),
   components: z.array(systemComponentSchema).max(128) }).strict();
@@ -47,7 +55,7 @@ export const designSystemSchema = z.object({ tokens: systemTokensSchema, aliases
   sources: systemSourcesSchema, components: systemComponentsSchema }).strict();
 export const systemOverrideSchema = z.object({ token: systemName, theme: systemName.max(32), value: z.string().min(1).max(1000),
   usage: z.string().max(1000).optional() }).strict();
-export const systemCompileSchema = z.object({ component: systemName, props: z.record(z.string().max(80), z.unknown()).optional() }).strict();
+export const systemCompileSchema = z.object({ component: systemName, target: z.enum(["standalone", "dc"]).default("standalone"), props: z.record(z.string().max(80), z.unknown()).optional() }).strict();
 export type SystemToken = z.infer<typeof systemTokenSchema>;
 export type SystemAlias = z.infer<typeof systemAliasSchema>;
 export type SystemSource = z.infer<typeof systemSourceSchema>;
@@ -58,4 +66,3 @@ export type SystemEntry = SystemToken | SystemAlias | SystemComponent;
 export type SystemChange = { key: string; family: "token" | "alias" | "component";
   kind: "added" | "changed" | "removed" | "conflict"; base: SystemEntry | null; current: SystemEntry | null; incoming: SystemEntry | null;
   requiresDecision: boolean };
-export type SystemDifference = { sourceDigest: string; changes: SystemChange[]; unsynced: SystemUnsynced[] };

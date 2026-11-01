@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Main Chat identities, effective workspace authority, canonical message publication and Artifact v1 custody.
- * [OUTPUT]: Initialized document owner, canonical Artifact delivery and exact Chat retention/Fork wiring under main workspace authority.
+ * [OUTPUT]: Initialized document owner, canonical Artifact delivery and quiet parent-retained native source/system updates, autosaves, candidate acceptance and AI rollback and exact Chat retention/Fork wiring under main workspace authority.
  * [POS]: Startup document composition; no renderer-supplied owner or automatic old ledger loading.
  */
 import { join, relative, resolve as resolvePath, sep } from "node:path";
@@ -11,7 +11,7 @@ import type { ChatsService } from "../../chats/service/chats-service";
 import type { EffectiveWorkspaceResolver } from "../../workspace/files/workspace-resolver";
 import { artifactRuntime } from "../../artifacts/core/runtime";
 import { assertArtifactAdmission } from "../../artifacts/admission/state";
-import { DesignDocumentError } from "./model";
+import { DesignDocumentError, requestKey } from "./model";
 import { DesignDocuments } from "./service";
 
 let current: DesignDocuments | undefined;
@@ -34,6 +34,15 @@ export async function initializeDesignDocuments(userData: string, chats: ChatSto
       const artifacts = artifactRuntime();
       if (!artifacts) throw new Error("Artifact custody is unavailable");
       const ref = { chatId: revision.authority.chatId, incarnationId: revision.authority.incarnationId, artifactId: revision.artifactId };
+      const original = current?.store.operation(requestKey(revision.authority, revision.requestId))?.sourceEdit?.input;
+      const previous = revision.manifest.contentFormat ? current?.store.latest(revision.authority.ownerId, revision.manifest.documentId, revision.authority) : undefined;
+      const nativeParent = original?.artifactId ?? previous?.artifactId;
+      if (revision.manifest.contentFormat && nativeParent) {
+        await artifacts.retainNativeHead({ ...ref, artifactId: nativeParent }, revision.fence, data);
+        if (JSON.stringify(resolve(ref.chatId, ref.incarnationId)) !== JSON.stringify(revision.authority))
+          throw new DesignDocumentError("PATH_DENIED", "Chat workspace authority changed before native head delivery");
+        return;
+      }
       await artifacts.retainDocument(ref, revision.fence, revision.messageId, data);
       if (JSON.stringify(resolve(ref.chatId, ref.incarnationId)) !== JSON.stringify(revision.authority))
         throw new DesignDocumentError("PATH_DENIED", "Chat workspace authority changed before document delivery");

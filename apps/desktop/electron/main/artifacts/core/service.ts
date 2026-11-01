@@ -139,13 +139,25 @@ export class ArtifactService {
     await this.custody.retain({ ref, fence, messageId, committed: true }, data);
     await this.publisher.enqueue(ref, fence);
   }
+  /** Manual native saves retain one canonical work card and immutable derived heads. */
+  async retainNativeHead(parent: ArtifactRef, fence: ArtifactFence, data: Uint8Array) {
+    const source = await this.metadata(parent), native = source.fence.design;
+    if (!native?.contentFormat || fence.design?.documentId !== native.documentId || fence.design.contentFormat !== native.contentFormat)
+      throw new Error("artifact-native-parent");
+    const anchor = source.derivedFrom ?? { artifactId: parent.artifactId, sha256: source.fence.sha256! };
+    const root = await this.metadata({ ...parent, artifactId: anchor.artifactId });
+    if (root.derivedFrom || root.fence.sha256 !== anchor.sha256 || root.fence.design?.documentId !== native.documentId) throw new Error("artifact-native-parent");
+    const ref = { ...parent, artifactId: fence.id };
+    await this.custody.retain({ ref, fence, messageId: root.messageId, committed: true, derivedFrom: anchor }, data);
+    await this.publisher.enqueue(ref, fence); await this.metadata(parent);
+  }
   /** An export keeps its frozen parent's authority and the existing custody/outbox lifetime. */
   async retainExport(parent: ArtifactRef, fence: ArtifactFence, data: Uint8Array) {
     const source = await this.resolve(parent);
-    if (!source.record.fence.design || source.record.derivedFrom) throw new Error("artifact-export-parent");
+    if (!source.record.fence.design || source.record.derivedFrom && !source.record.fence.design.contentFormat) throw new Error("artifact-export-parent");
+    const anchor = source.record.derivedFrom ?? { artifactId: parent.artifactId, sha256: source.record.fence.sha256! };
     const ref = { ...parent, artifactId: fence.id };
-    await this.custody.retain({ ref, fence, messageId: source.record.messageId, committed: true,
-      derivedFrom: { artifactId: parent.artifactId, sha256: source.record.fence.sha256! } }, data);
+    await this.custody.retain({ ref, fence, messageId: source.record.messageId, committed: true, derivedFrom: anchor }, data);
     await this.publisher.enqueue(ref, fence);
     await this.resolve(parent); return fence;
   }

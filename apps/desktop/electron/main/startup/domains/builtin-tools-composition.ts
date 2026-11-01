@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Domain tool factory/registry, Agent plugin inventory, main document/workspace owners and composition hooks.
- * [OUTPUT]: Document/workspace initialization followed by one exact product tool registry and its composition event.
+ * [OUTPUT]: Document/workspace initialization with original-Chat candidate selection followed by one exact product tool registry and its composition event.
  * [POS]: Composition-root helper for index.ts; the registry's members and their order are a single fact, not a sequence the entry file re-narrates
  */
 
@@ -22,7 +22,11 @@ export async function composeBuiltinTools(input: {
   incarnationOf(chatId: string): string | undefined;
 }) {
   await initializeDesignDocuments(input.userData, input.services.chatStore, input.services.chatsService, input.resolveEffectiveWorkspace);
-  await initializeArtifactWorkspace(join(input.userData, "artifact-design"));
+  await initializeArtifactWorkspace(join(input.userData, "artifact-design"), (chatId, incarnationId) => {
+    const metadata = input.services.chatStore.getMetadata(chatId);
+    if (!metadata || metadata.incarnationId !== incarnationId) throw new Error("Original candidate Chat expired");
+    return metadata.options;
+  });
   const registry = new BuiltinToolRegistry(
     ...createBuiltinToolsets({
       ...input.services,

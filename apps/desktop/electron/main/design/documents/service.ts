@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Main Chat/workspace facts, admission/generation guards, complete capture, canonical Canvas keys and durable storage.
- * [OUTPUT]: Serializes initial revision reservations across request IDs; Check/status, guarded source/Canvas CAS, durable conflicts, semantic history, bounded recovery and exact Fork/Chat lifecycle.
+ * [INPUT]: Main Chat/workspace facts, admission/generation guards, exact mounted-view final-save admission, complete capture, canonical Canvas keys and durable storage.
+ * [OUTPUT]: Serializes initial reservations and fixed file-effect plans; source CAS, durable recovery under original ownership, conflicts, history, completed-revision subscriptions and Fork/Chat lifecycle.
  * [POS]: One document journal for Agent/source/Canvas/restore/system changes; no second registry or legacy App index.
  */
 import { artifactGeneration } from "../../artifacts/admission/state";
@@ -17,7 +17,7 @@ import { DESIGN_LIMITS, DesignDocumentError, designDigest, requestKey, type Desi
 import { readDesignSet, stableDesignSet } from "./read-set";
 import { DESIGN_UNCHECKED, requireValidDesignSet, validateDesignSet } from "./resources/validation";
 import { DesignDocumentStore, type DesignOperation, type DesignRevision } from "./store";
-import { applyPreparedDesignEdit, transformedDesignSet } from "./edits";
+import { applyPreparedDesignEdit, designSourceEffects, transformedDesignSet } from "./edits";
 import { summarizeDesignBoards, type WorkspaceCommand } from "@ai-chat/cloud-protocol/artifacts/design/model";
 import type { DesignReadSet, DesignManifest } from "./model";
 import { canonicalJson } from "@bottega/contracts/core/canonical-json";
@@ -38,7 +38,9 @@ export class DesignDocuments {
   private readonly recovering = new Map<string, RecoveryState>();
   private readonly recoveryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private closed = false;
+  private readonly listeners = new Set<(revision: DesignRevision) => void>();
   constructor(root: string, private readonly ports: DesignDocumentPorts) { this.store = new DesignDocumentStore(root); }
+  subscribe(listener: (revision: DesignRevision) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   async initialize() {
     await this.store.initialize();
     // Recovery owns prepared bytes even while the plugin is off; it cannot admit new work.
@@ -124,11 +126,15 @@ export class DesignDocuments {
     });
   }
   edit(input: WorkspaceCommand, version: DesignRevision,
-    transform: (source: DesignReadSet) => Promise<readonly { path: string; data: Uint8Array }[]>, assertExecution: () => void) {
-    this.ports.assertAdmission();
+    transform: (source: DesignReadSet) => Promise<readonly { path: string; data: Uint8Array }[]>, assertExecution: () => void,
+    finalFlush?: Readonly<{ kind: "native-final-flush"; assert(): void }>) {
+    if (finalFlush) {
+      if (input.action !== "native-publish" || finalFlush.kind !== "native-final-flush") throw new DesignDocumentError("PATH_DENIED", "Final save requires the native mounted view");
+      finalFlush.assert();
+    } else this.ports.assertAdmission();
     if (this.closed) throw new DesignDocumentError("NOT_READY", "Document storage is closed. Reopen the application before saving.");
     if (!input.requestId || input.expectedRevision === undefined || !input.readSetDigest) throw new DesignDocumentError("INVALID_DOCUMENT", "Edit requires a request ID, revision and digest");
-    const authority = this.authority(input.chatId, input.incarnationId), admission = this.admissionGuard();
+    const authority = this.authority(input.chatId, input.incarnationId), admission = finalFlush?.assert ?? this.admissionGuard();
     return this.queue.enqueue(async () => {
       assertExecution(); admission();
       this.assertAuthority(authority);
@@ -164,7 +170,7 @@ export class DesignDocuments {
       assertExecution(); admission();
       this.assertAuthority(authority);
       return this.publish(authority, previous.backend, { path: previous.path, requestId: input.requestId!, expectedRevision: previous.revision, readSetDigest: baseline.readSetDigest },
-        source, manifest, key, parameterDigest, { input, baseline: baseline.files.map(file => ({ path: file.path, digest: file.digest })), writes: [], applied: false }, () => { assertExecution(); admission(); });
+        source, manifest, key, parameterDigest, { input, baseline: baseline.files.map(file => ({ path: file.path, digest: file.digest, stamp: file.stamp })), directories: baseline.directories?.map(directory => ({ ...directory })), writes: [], applied: false }, () => { assertExecution(); admission(); });
     });
   }
   initializeSource(input: WorkspaceCommand, backend: string, files: readonly { path: string; data: Uint8Array }[], assertExecution: () => void) {
@@ -195,7 +201,6 @@ export class DesignDocuments {
     if (operation.state === "complete") return Promise.resolve(receipt(operation.revision));
     if (operation.conflict) return Promise.resolve(this.conflictReceipt(operation));
     if (!retry || this.recovering.get(key)?.status === "retrying") return Promise.resolve(this.pendingReceipt(operation));
-    this.ports.assertAdmission();
     return this.queue.enqueue(async () => { this.recovering.delete(key); return this.resume(operation); });
   }
   resolveConflict(input: WorkspaceCommand, assertExecution: () => void) {
@@ -211,7 +216,7 @@ export class DesignDocuments {
   }
   private async publish(authority: DesignAuthority, backend: string, input: DesignCommitInput, source: DesignReadSet,
     manifest: DesignManifest, key: string, parameterDigest: string, sourceEdit: DesignOperation["sourceEdit"] | undefined, assertExecution: () => void) {
-      const archive = packArtifactArchive(source.files.map(file => ({ path: file.path, data: file.data })));
+      const archive = packArtifactArchive(source.files.map(file => ({ path: file.path, data: file.data })), 512);
       if (archive.length > DESIGN_LIMITS.archive) throw new DesignDocumentError("BUDGET_EXCEEDED", "Complete archive exceeds the transfer budget");
       const snapshotRef = designDigest(archive), artifactId = randomUUID(), createdAt = Date.now();
       const suffix = ` · v${input.expectedRevision + 1}`;
@@ -222,12 +227,13 @@ export class DesignDocuments {
         readSetDigest: source.readSetDigest, snapshotRef, requestId: input.requestId, createdAt, artifactId,
         messageId: "design-" + designDigest(key).slice(7, 39), backend,
         fence: { v: 1, id: artifactId, kind: manifest.format === "bottega-design-system" ? "design-system" : "design", title: title + suffix,
-          identityKey: `${input.path}/canvas.json`, location: "workspace", sha256: snapshotRef.slice(7),
+          identityKey: `${input.path}/${manifest.contentFormat === "slides/v4" ? "deck.json" : "canvas.json"}`, location: "workspace", sha256: snapshotRef.slice(7),
           bytes: archive.length, mime: "application/x-tar", createdAt,
           design: { documentId: manifest.documentId, revision: input.expectedRevision + 1, readSetDigest: source.readSetDigest,
-            snapshotRef, format: manifest.format, launchBoard: manifest.launchBoard, boards: summarizeDesignBoards(manifest) } } };
+            snapshotRef, format: manifest.format, ...(manifest.contentFormat ? { contentFormat: manifest.contentFormat } : {}), ...(manifest.contentFormat === "slides/v4" ? { boardCount: manifest.boards.length } : {}), launchBoard: manifest.launchBoard, boards: summarizeDesignBoards(manifest) } } };
       await this.store.archive(snapshotRef, archive);
       assertExecution(); this.assertAuthority(authority);
+      if (sourceEdit) sourceEdit = { ...sourceEdit, effects: designSourceEffects(sourceEdit.baseline, source) };
       const operation: DesignOperation = { key, parameterDigest, state: "prepared", revision, ...(sourceEdit ? { sourceEdit } : {}) };
       await this.store.prepare(operation);
       // Cancellation after prepare cannot turn an admitted durable commit into a second operation.
@@ -255,7 +261,7 @@ export class DesignDocuments {
         message: blocked ? "The prepared operation's Chat/workspace authority changed." : "Prepared archive delivery or journal completion failed.",
         action: blocked ? "Restore the original Chat/workspace authority, then retry design_commit with the original arguments. An expired Chat cannot publish this operation." :
           retrying ? "Wait for the bounded host retry; keep the original operation reference." :
-            "Resolve the storage/delivery failure, enable Artifact, then retry design_commit with the original arguments. Reopening the application also resumes its saved journal." });
+            "Resolve the storage/delivery failure, then resume the original operation. Reopening the application also resumes its saved journal." });
       this.clearRecoveryTimer(operation.key);
       if (retrying) {
         const timer = setTimeout(() => {
@@ -302,7 +308,7 @@ export class DesignDocuments {
     this.assertAuthority(operation.revision.authority);
     if (operation.sourceEdit && !operation.sourceEdit.applied) {
       try {
-        await applyPreparedDesignEdit(operation, data, () => this.assertAuthority(operation.revision.authority), (path, state) => this.store.sourceWrite(operation.key, path, state));
+        await applyPreparedDesignEdit(operation, data, () => this.assertAuthority(operation.revision.authority), (path, state, details) => this.store.sourceWrite(operation.key, path, state, details));
       } catch (cause) {
         if (!(cause instanceof DesignDocumentError) || cause.code !== "SOURCE_CHANGED") throw cause;
         const conflict = await this.store.sourceConflict(operation.key, cause.issues.map(issue => issue.file), cause.message);
@@ -315,6 +321,10 @@ export class DesignDocuments {
     this.assertAuthority(operation.revision.authority);
     interruptionPoint("document-commit", "delivered");
     await this.store.complete(operation.key);
+    for (const listener of this.listeners) {
+      // A closed consumer cannot roll back a completed journal.
+      try { listener(operation.revision); } catch { /* The next admitted read still resolves the canonical head. */ }
+    }
     this.clearRecoveryTimer(operation.key);
     this.recovering.delete(operation.key);
   }
@@ -330,24 +340,25 @@ export class DesignDocuments {
       operation.revision.authority.ownerId === authority.ownerId && operation.revision.authority.chatId === chatId &&
       operation.revision.authority.incarnationId === incarnationId).map(operation => receipt(operation.revision));
   }
+  async currentHead(chatId: string, incarnationId: string, documentId: string) {
+    const authority = this.authority(chatId, incarnationId), version = this.store.latest(authority.ownerId, documentId, authority);
+    if (!version || version.authority.chatId !== chatId || version.authority.incarnationId !== incarnationId) throw new DesignDocumentError("PATH_DENIED", "Current document head is unavailable");
+    const source = await readDesignSet(authority.workspace, version.path).catch(() => null); this.assertAuthority(authority);
+    return { ...receipt(version), dirty: source?.readSetDigest !== version.readSetDigest,
+      pending: this.store.blocking().some(operation => operation.revision.authority.ownerId === authority.ownerId && operation.revision.manifest.documentId === documentId) };
+  }
   async status(chatId: string, incarnationId: string) {
     const authority = this.authority(chatId, incarnationId);
-    const latest = new Map<string, DesignRevision>();
-    for (const operation of this.store.operations()) {
-      const version = operation.revision;
-      if (operation.state !== "complete" || version.authority.ownerId !== authority.ownerId ||
-        version.authority.chatId !== chatId || version.authority.incarnationId !== incarnationId) continue;
-      const previous = latest.get(version.manifest.documentId);
-      if (!previous || previous.revision < version.revision) latest.set(version.manifest.documentId, version);
-    }
-    const documents = await Promise.all([...latest.values()].map(async version => {
+    const latest = this.store.heads(authority);
+    const documents = await Promise.all(latest.map(async version => {
       const current = await readDesignSet(authority.workspace, version.path).catch(() => null);
-      return { ...receipt(version), ...this.store.navigation(authority, version.manifest.documentId), path: version.path, dirty: current?.readSetDigest !== version.readSetDigest };
+      const navigation = version.manifest.contentFormat ? { undoRevision: null, redoRevision: null } : this.store.navigation(authority, version.manifest.documentId);
+      return { ...receipt(version), ...navigation, path: version.path, dirty: current?.readSetDigest !== version.readSetDigest };
     }));
     const root = join(await realpath(authority.workspace), "design");
     const safeRoot = await lstat(root).then(value => value.isDirectory() && !value.isSymbolicLink()).catch(() => false);
     const candidates = safeRoot ? (await readdir(root, { withFileTypes: true })).filter(entry => entry.isDirectory() &&
-      /^[a-z0-9][a-z0-9_-]{0,63}$/.test(entry.name) && !latest.has(entry.name)).slice(0, 64).map(entry => `design/${entry.name}`) : [];
+      /^[a-z0-9][a-z0-9_-]{0,63}$/.test(entry.name) && !latest.some(version => version.manifest.documentId === entry.name)).slice(0, 64).map(entry => `design/${entry.name}`) : [];
     this.assertAuthority(authority);
     return { documents, candidates, recovery: this.recoveryStatus(authority) };
   }
@@ -364,17 +375,18 @@ export class DesignDocuments {
   }
   async readRevision(chatId: string, incarnationId: string, documentId: string, revision: number) {
     const authority = this.authority(chatId, incarnationId);
-    const version = this.store.versions(authority, documentId).find(value => value.revision === revision);
+    const version = this.store.revision(authority, documentId, revision);
     if (!version) throw new DesignDocumentError("PATH_DENIED", "Document revision is not available to this Chat");
     const bytes = await this.store.read(version.snapshotRef);
     this.assertAuthority(authority);
-    return { version, files: unpackArtifactArchive(bytes) };
+    return { version, files: unpackArtifactArchive(bytes, 512) };
   }
   private assertAuthority(authority: DesignAuthority) {
     const current = this.authority(authority.chatId, authority.incarnationId);
     if (JSON.stringify(current) !== JSON.stringify(authority)) throw new DesignDocumentError("PATH_DENIED", "Chat workspace authority changed");
   }
   async close() {
+    this.listeners.clear();
     if (this.closed) return;
     this.closed = true;
     for (const key of this.recoveryTimers.keys()) this.clearRecoveryTimer(key);

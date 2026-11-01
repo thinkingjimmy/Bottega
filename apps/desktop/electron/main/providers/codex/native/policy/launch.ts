@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Uses canonical built-in Provider identity, Codex runtime discovery, main-owned turn authorization, MCP lease/configuration and verified Git roots.
+ * [INPUT]: Uses canonical built-in Provider identity, Codex runtime discovery, main-owned turn authorization, MCP lease/configuration, verified Git roots and a separate main-only candidate purpose.
  * [OUTPUT]: Exports nativeCodexTurnPlan and NativeSpawnConfig.
  * [POS]: Main-only native startup authority; bridge receives a sealed process and requests frozen config once.
  */
@@ -16,6 +16,7 @@ import { assertUniqueMcpBackendAliases } from "../../../../../../shared/ipc/sett
 export type NativeSpawnConfig = { protocol: "codex-app-server"; launch: AgentProcessLaunch; nativeConfig: NativeTurnConfig };
 
 export async function nativeCodexTurnPlan(options: BackendTurnOptions): Promise<NativeSpawnConfig> {
+  if (options.artifactCandidate) return (await import("./candidate-plan")).nativeCandidateTurnPlan(options);
   assertUniqueMcpBackendAliases(options.thirdPartyMcpPlan?.entries ?? []);
   if (options.filesystemAccess?.mode === "read-only" || options.filesystemAccess?.network === "off" || options.skillIsolation?.deniedRoots.length) {
     throw new Error("Codex bb-native-v1 chat does not enforce this role's read-only, network-off or Skill disk-isolation requirement");

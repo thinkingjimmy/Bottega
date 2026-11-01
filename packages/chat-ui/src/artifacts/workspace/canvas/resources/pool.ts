@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Abortable immutable owner-bound image readers, validated source dimensions, readback-optimized Canvas2D encoding, display-size demands and gesture activity.
- * [OUTPUT]: Shared Blob previews, bounded immutable dimension metadata, display-sized serial image decoding and byte/pixel ownership with budget-reserved offscreen and gesture-deferred quality replacement.
+ * [OUTPUT]: Shared Blob previews, bounded immutable dimension metadata, display-sized serial image decoding and byte/pixel ownership with budget-reserved offscreen and gesture-deferred quality replacement and growth without shrink hysteresis.
  * [POS]: Canvas preview resource owner; original saved bytes stay with the host/export service.
  */
 import type { ArtifactHost } from "../../../context";
 import { cameraTrace } from "../editor/stage/state/diagnostics";
-export type PreviewDemand = { width: number; height: number; visible: boolean; moving: boolean };
+export type PreviewDemand = { width: number; height: number; visible: boolean; moving: boolean; fit?: "contain" | "cover" };
 type Consumer = PreviewDemand & { committed?: string; notify(url: string, failed: boolean): void };
 type Version = { bytes: number; pixels: number };
 type Entry = {
@@ -81,7 +81,7 @@ export class PreviewPool {
       const maxBytes = Math.max(1024, Math.min(this.encodedBudget / 4, this.encodedBudget / 2 / weight * priority));
       if (maxBytes > entry.maxBytes) entry.limitWidth = entry.limitHeight = 0;
       entry.maxBytes = maxBytes;
-      const fit = entry.sourceWidth ? Math.min(1, width / entry.sourceWidth, height / entry.sourceHeight) : 1;
+      const fit = entry.sourceWidth ? Math.min(1, Math.max(...users.map(user => (user.fit === "cover" ? Math.max : Math.min)(user.width / entry.sourceWidth, user.height / entry.sourceHeight)))) : 1;
       const desiredWidth = entry.sourceWidth ? entry.sourceWidth * fit : width, desiredHeight = entry.sourceHeight ? entry.sourceHeight * fit : height;
       const ratio = Math.min(1, Math.sqrt(pixels * priority / (desiredWidth * desiredHeight)), this.kind === "thumbnail" ? 960 / desiredWidth : 8000 / desiredWidth, this.kind === "thumbnail" ? 720 / desiredHeight : 8000 / desiredHeight,
         entry.limitWidth ? entry.limitWidth / desiredWidth : 1, entry.limitHeight ? entry.limitHeight / desiredHeight : 1);
@@ -95,7 +95,7 @@ export class PreviewPool {
   private needsOutput(entry: Entry) {
     if (!entry.url) return true;
     const target = this.outputSize(entry, false);
-    return Math.abs(target.width - entry.width) > 16 || Math.abs(target.height - entry.height) > 16;
+    return target.width > entry.width || target.height > entry.height || entry.width - target.width > 16 || entry.height - target.height > 16;
   }
   private outputSize(entry: Entry, lowQuality = entry.low) {
     const low = lowQuality ? Math.min(1, 128 / Math.max(entry.targetWidth, entry.targetHeight)) : 1;

@@ -205,6 +205,7 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
     ...ui.remote, ...ui.turns, forks: ui.events.chats, execution, own: activity => scope.own(activity) });
   /* P13 R-24 / R-32: a phone or Web asks this computer to act on its workflows or read a Provider's quota again. */
   const resources = new ResourceCommandRuntime({ memoryBarrier, config, deviceId, binding, account: service, transport, crypto: contentCrypto, workflows: workflowResourcePort, apps: appResourcePort(() => ui.apps?.() ?? null),
+    files: userId => new DesktopBlobStore(userData, { ...config, userId }, desktopFileTransport({ config, userId, transport, crypto: contentCrypto, token: () => http.getToken() })),
     projects: projectResourcePort({ projects: ui.projectGate, deviceId, environment: config.environmentId }),
     records: recordResourcePort({ bases: owners.bases, records: () => ui.recordPlugins?.() ?? null, environment: config.environmentId,
       current: userId => { const active = binding.snapshot(), account = service.snapshot();

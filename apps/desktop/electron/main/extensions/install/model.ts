@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Extension admission, source provenance, scope, trust and migration identity contracts.
- * [OUTPUT]: ExtensionSourceFetcher, ExtensionAffectedApp, ExtensionAppMigrationPort, ExtensionCapabilityDiff, ExtensionInstallPreflight, HeldPreflight, ExtensionInstallRequest.
+ * [OUTPUT]: ExtensionSourceFetcher, ExtensionAffectedApp, ExtensionAppMigrationPort, ExtensionInstallPreflight, HeldPreflight, ExtensionInstallRequest.
  * [POS]: Extension installation contracts; mutable authorization remains in installer.ts.
  */
 import type { ExtensionPackageGenerationRef, Sha256Digest } from "../../../../shared/ipc/settings/extensions-ipc";
@@ -27,7 +27,7 @@ export type ExtensionAppMigrationPort = Readonly<{
   migrate(appId: string, migrationId: string): Promise<void>;
 }>;
 
-export type ExtensionCapabilityDiff = Readonly<{
+type ExtensionCapabilityDiff = Readonly<{
   previousGenerationId: string;
   added: readonly string[];
   removed: readonly string[];

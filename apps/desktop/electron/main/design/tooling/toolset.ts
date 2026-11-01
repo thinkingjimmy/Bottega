@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Current issued turn lease/generation, source/document/workspace owners, advisory lint and bounded opaque capture.
- * [OUTPUT]: Scoped check/commit/render and system tools with bounded failures and Bottega-authored capture guidance.
+ * [OUTPUT]: Fixed-font source assets, scoped check/commit/render and system tools with bounded failures and Bottega-authored capture guidance.
  * [POS]: Design-to-built-in-tools adapter; it cannot select another chat, workspace, or unauthorized file
  */
 
@@ -28,6 +28,15 @@ export function createDesignToolset(ports: DesignToolsetPorts): BuiltinToolset {
   return {
     design_system_extract: systemAction("system-extract"), design_system_diff: systemAction("system-diff"),
     design_system_update: systemAction("system-update"), design_system_bind: systemAction("system-bind"), design_system_compile: systemAction("system-compile"),
+    design_fonts: async (args, context) => {
+      assertArtifactGeneration(context.lease.artifactGeneration); context.signal.throwIfAborted();
+      try {
+        const font = await (await import("../native/fonts/catalog")).fixedDesignFont();
+        const result = args.fontId ? await (await import("../native/fonts/cache")).materializeDesignFont(designDocuments().store.root, context.signal)
+          : { fonts: [(await import("../native/fonts/catalog")).designFontCatalog(font)] };
+        assertArtifactGeneration(context.lease.artifactGeneration); context.signal.throwIfAborted(); return result;
+      } catch (cause) { return documentFailure(cause); }
+    },
     design_check: async (args, context) => {
       assertArtifactGeneration(context.lease.artifactGeneration);
       try { return await designDocuments().check(context.lease.chatId, context.lease.incarnationId, args.path as string, context.signal); }
@@ -56,6 +65,7 @@ export function createDesignToolset(ports: DesignToolsetPorts): BuiltinToolset {
       const screenshot = await captureDesignCanvas({
         html,
         viewport,
+        native: Boolean(prepared?.metadata.contentFormat),
         maxImageBytes,
         signal: context.signal,
         ...(prepared && !args.viewport ? { size: prepared.size } : {}),

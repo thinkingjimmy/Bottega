@@ -1,17 +1,24 @@
 /**
  * [INPUT]: Main-authorized workspace roots, source limits and no-follow Node filesystem handles.
- * [OUTPUT]: Captures stable no-follow source sets and preserves missing, permission, storage and authority distinctions.
+ * [OUTPUT]: Stable no-follow source sets with directory identities, bounded intermediate effect captures and distinct capture failures.
  * [POS]: Document source capture; filesystem quiet never substitutes for writer completion or commit CAS.
  */
 import { constants, type Stats } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { DESIGN_LIMITS, DesignDocumentError, designDigest, sourcePath,
+import { DESIGN_LIMITS, DESIGN_SLIDES_LIMITS, DESIGN_EFFECT_LIMITS, DesignDocumentError, designDigest, sourcePath,
   type DesignReadSet, type DesignSourceFile } from "./model";
 
 const stamp = (value: Stats) => `${value.dev}:${value.ino}:${value.size}:${value.mtimeMs}:${value.ctimeMs}`;
 export async function readDesignSet(workspace: string, path: string): Promise<DesignReadSet> {
+  return captureDesignSet(workspace, path, DESIGN_SLIDES_LIMITS, true);
+}
+/** A prepared batch can temporarily contain both bounded file sets, without a valid manifest. */
+export async function readPreparedDesignSet(workspace: string, path: string): Promise<DesignReadSet> {
+  return captureDesignSet(workspace, path, DESIGN_EFFECT_LIMITS);
+}
+async function captureDesignSet(workspace: string, path: string, budget: Readonly<{ files: number; source: number }>, formal = false): Promise<DesignReadSet> {
   if (!/^(?:design|design-systems)\/[a-z0-9][a-z0-9_-]{0,63}$/.test(path)) throw new DesignDocumentError("PATH_DENIED", "Invalid document directory");
   const workspaceRoot = await realpath(workspace), root = join(workspaceRoot, path);
   try {
@@ -22,6 +29,7 @@ export async function readDesignSet(workspace: string, path: string): Promise<De
     }
     const files: DesignSourceFile[] = [];
     const directories = new Map<string, string>();
+    const identities: { path: string; identity: string }[] = [];
     let total = 0, nodes = 0;
     const walk = async (directory: string, prefix: string, depth: number): Promise<void> => {
       if (depth > 3) throw new DesignDocumentError("PATH_DENIED", "Document path depth exceeds the archive contract");
@@ -29,8 +37,9 @@ export async function readDesignSet(workspace: string, path: string): Promise<De
       if (before.isSymbolicLink() || !before.isDirectory() || await realpath(directory) !== directory)
         throw new DesignDocumentError("PATH_DENIED", "Symbolic links are not document resources");
       directories.set(directory, stamp(before));
+      identities.push({ path: prefix.replace(/\/$/, ""), identity: `${before.dev}:${before.ino}` });
       for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : 1)) {
-        if (++nodes > 256) throw new DesignDocumentError("BUDGET_EXCEEDED", "Document directory count exceeds its capture budget");
+        if (++nodes > budget.files * 4) throw new DesignDocumentError("BUDGET_EXCEEDED", "Document directory count exceeds its capture budget");
         const name = prefix + entry.name, absolute = join(directory, entry.name);
         if (!sourcePath.safeParse(name).success) throw new DesignDocumentError("PATH_DENIED", `Invalid resource path: ${name.slice(0, 240)}`);
         const metadata = await lstat(absolute);
@@ -38,8 +47,8 @@ export async function readDesignSet(workspace: string, path: string): Promise<De
         if (metadata.isDirectory()) { await walk(absolute, name + "/", depth + 1); continue; }
         if (!metadata.isFile() || await realpath(absolute) !== absolute)
           throw new DesignDocumentError("PATH_DENIED", "Document resources must be regular files");
-        const limit = name === "canvas.json" ? DESIGN_LIMITS.manifest : /\.html$/i.test(name) ? DESIGN_LIMITS.html : DESIGN_LIMITS.source;
-        if (files.length >= DESIGN_LIMITS.files || metadata.size > limit || total + metadata.size > DESIGN_LIMITS.source)
+        const limit = ["canvas.json", "deck.json"].includes(name) ? DESIGN_LIMITS.manifest : /\.html$/i.test(name) ? DESIGN_LIMITS.html : DESIGN_LIMITS.source;
+        if (files.length >= budget.files || metadata.size > limit || total + metadata.size > budget.source)
           throw new DesignDocumentError("BUDGET_EXCEEDED", "Document exceeds its file or byte budget");
         const handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
         try {
@@ -63,8 +72,10 @@ export async function readDesignSet(workspace: string, path: string): Promise<De
       if (stamp(await lstat(directory)) !== prior || await realpath(directory) !== directory)
         throw new DesignDocumentError("SOURCE_CHANGED", "Source directory changed during capture");
     }
+    if (formal && !files.some(file => file.path === "deck.json") && files.length > DESIGN_LIMITS.files)
+      throw new DesignDocumentError("BUDGET_EXCEEDED", "This document format permits at most 64 source files");
     const sorted = files.sort((a, b) => a.path < b.path ? -1 : 1);
-    return { path, files: sorted, bytes: total,
+    return { path, files: sorted, bytes: total, directories: identities,
       readSetDigest: designDigest(JSON.stringify(sorted.map(file => [file.path, file.data.length, file.digest]))) };
   } catch (cause) {
     if (cause instanceof DesignDocumentError) throw cause;

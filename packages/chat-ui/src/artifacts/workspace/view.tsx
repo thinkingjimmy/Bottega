@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Fixed Artifact scope, actual owner chrome measurements, guarded navigation/checkpoints, trusted mounted-view lifetime, failed-save barriers, local input/navigation epochs, exact-revision same-page live-camera handoff and explicit UI text-input intent; catalog-owned labels use the shared formatCopy formatter.
+ * [INPUT]: Fixed Artifact scope, actual owner chrome measurements, guarded navigation/checkpoints, trusted mounted-view lifetime, failed-save barriers, local input/navigation epochs, exact-revision same-page live-camera handoff, Canvas-only selection continuity and explicit UI text-input intent; catalog-owned labels use the shared formatCopy formatter.
  * [OUTPUT]: Canvas workspace with title-owned navigation, full-body Canvas behind floating history, measured inspector clearance, target comments confirmed into the original Chat draft and original-owner input/checkpoint guards and camera continuity for same-page object creation/duplication.
  * [POS]: Shared design workbench; main owns source mutations, history, custody and authorization.
  */
@@ -184,12 +184,14 @@ export function ArtifactWorkspaceView({ fence }: { fence: ArtifactFence }) {
     const camera = captureCamera(source, host.scope);
     cameraTrace("camera-handoff", { artifactId: id, sourceArtifactId: source.artifactId, revision: source.state!.revision, pageId: currentCanvas?.pageId, camera });
     commitIntent.current = { artifactId: id, operations, previous: source.state!, source, scope: host.scope, navigation: navigationEpoch.current, pageId: currentCanvas?.pageId, camera, navigationCanvas };
-    setReselect(anchor?.selector ?? null); setArtifactId(id); setAnchor(null);
+    // Property completion requires a fresh target; Canvas edits retain their inline selection.
+    setReselect(operations ? anchor?.selector ?? null : null); setArtifactId(id); setAnchor(null);
   } });
   useEffect(() => {
     let current = true;
     const viewId = crypto.randomUUID();
     const unsubscribe = host.workspaceEvents?.(async event => {
+      if (event.type === "source-changed") return;
       if (event.type === "before-disable") {
         if (!host.desktop || event.scope !== viewId) return;
         try {

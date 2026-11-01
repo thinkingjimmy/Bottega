@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.11"><img alt="0.2.11 stable" src="https://img.shields.io/badge/release-0.2.11%20stable-blue"></a>
+  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12"><img alt="0.2.11 stable" src="https://img.shields.io/badge/release-0.2.11%20stable-blue"></a>
   <a href="https://github.com/thinkingjimmy/Bottega/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/thinkingjimmy/Bottega?style=flat&amp;logo=github"></a>
   <a href="./LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
@@ -21,7 +21,7 @@
   <a href="https://www.getbottega.app">Website</a> ·
   <a href="./docs/README.md">Docs</a> ·
   <a href="./docs/getting-started/README.md">Quickstart</a> ·
-  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.11">Download</a> ·
+  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12">Download</a> ·
   <a href="./docs/features/README.md">Features</a> ·
   <a href="./docs/changelog/README.md">Changelog</a> ·
   <a href="https://x.com/hellojimmywong">X</a>
@@ -57,11 +57,11 @@ Choose a prebuilt desktop release or run Bottega directly from source. Before la
 
 ## Download
 
-[Download 0.2.11 →](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.11)
+[Download 0.2.11 →](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12)
 
 | Platform | Download |
 | --- | --- |
-| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.11) |
+| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12) |
 
 0.2.11 is an **official stable release for macOS on Apple silicon only**. Automatic updates are enabled for this release and follow the official stable channel.
 
@@ -97,16 +97,24 @@ pnpm build
 pnpm dist
 ```
 
-A signed distribution requires your own Apple signing configuration. Official release installers are available from the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.11). See the [getting-started guide](./docs/getting-started/README.md) for requirements, supported Agent CLIs, and build commands.
+A signed distribution requires your own Apple signing configuration. Official release installers are available from the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12). See the [getting-started guide](./docs/getting-started/README.md) for requirements, supported Agent CLIs, and build commands.
 
 ## Build provenance
 
 The [macOS candidate workflow](./.github/workflows/build-macos.yml) builds the production source in this repository. Its [Actions runs](https://github.com/thinkingjimmy/Bottega/actions/workflows/build-macos.yml) record the exact source commit, pinned tools, installer hashes and GitHub provenance. Published installers keep the original GitHub build bytes and their recorded hashes.
 
-Build-only candidates validate this build process and expire after one day. Official stable downloads are published on the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.11). Personal installers use manual updates; official 0.2.11 installers enable the stable automatic-update channel.
+Build-only candidates validate this build process and expire after one day. Official stable downloads are published on the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12). Personal installers use manual updates; official 0.2.12 installers enable the stable automatic-update channel.
 
 # Collaboration
 
 Please use [GitHub Issues](https://github.com/thinkingjimmy/Bottega/issues) for bugs, feedback, and proposals. Pull requests are not accepted during this early, fast-moving stage and will be closed without review.
 
-Bottega is available under the [MIT License](./LICENSE).
+## Component licenses
+
+The [MIT License](https://github.com/thinkingjimmy/Bottega/blob/main/LICENSE) applies to Bottega's first-party code unless a file or component states another license. Bundled third-party components retain their own terms.
+
+Native Canvas and Slides use modified BaoCut editor forks, adapted for Bottega with baoyu-design 2.3 as the behavior and appearance reference. They are source-available components under the [Canvas BaoCut Community License](https://github.com/thinkingjimmy/Bottega/blob/main/packages/canvas-runtime/LICENSE) and [Slides BaoCut Community License](https://github.com/thinkingjimmy/Bottega/blob/main/packages/slides-runtime/LICENSE). They are modified versions, separate from official upstream releases, and are not relicensed under MIT.
+
+The Community License permits personal, research and internal use, including paid internal development, and redistribution for noncommercial purposes under its conditions. Commercial redistribution, incorporation in commercial software supplied to others, or commercial hosted access to covered code requires a separate written license from the applicable rights holders. Publishing source or distributing a free feature does not itself grant those rights. Creative outputs follow the Content provisions and any applicable asset licenses.
+
+Full original licenses, copyright notices and third-party notices remain with the source and bundled runtime resources.

@@ -1,0 +1,49 @@
+{
+  "status": "passed",
+  "fontTools": "4.60.2",
+  "sourceSha256": "d68bafcb48a2707749396aa12bbbd833cb70401f3a9a689fd2902c7e0d295964",
+  "woff2Sha256": "a5822f9d6ef83d113dd94741221c16ba7a321f63033a02bd164968188995d547",
+  "glyphs": 31036,
+  "mappedCodepoints": 30890,
+  "equalGlyphCoordinatesContoursFlags": true,
+  "equalPerGlyphInstructions": true,
+  "equalDecodedTables": [
+    "name",
+    "cmap",
+    "OS/2",
+    "hhea",
+    "hmtx",
+    "vhea",
+    "vmtx",
+    "fvar",
+    "gvar",
+    "GSUB",
+    "GPOS"
+  ],
+  "fsType": 0,
+  "axes": [
+    {
+      "tag": "wght",
+      "min": 100.0,
+      "default": 100.0,
+      "max": 900.0
+    }
+  ],
+  "elapsedSeconds": 13.367,
+  "scope": "Read-only independent verification of derived WOFF2 glyph and hint semantics before production font adoption.",
+  "rebuild": {
+    "sourceSha256": "d68bafcb48a2707749396aa12bbbd833cb70401f3a9a689fd2902c7e0d295964",
+    "outputSha256": "a5822f9d6ef83d113dd94741221c16ba7a321f63033a02bd164968188995d547",
+    "expectedSha256": "a5822f9d6ef83d113dd94741221c16ba7a321f63033a02bd164968188995d547",
+    "bytes": 7779480,
+    "elapsedSeconds": 27.824,
+    "options": {
+      "recalcTimestamp": false,
+      "flavor": "woff2",
+      "reorderTables": true
+    },
+    "byteIdentical": true
+  },
+  "brotli": "1.2.0",
+  "productionScope": "Fixed source font resource. Explicit selection and strict per-output glyph/weight/style validation remain separate."
+}

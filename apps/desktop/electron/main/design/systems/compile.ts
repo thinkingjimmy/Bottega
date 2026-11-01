@@ -1,20 +1,17 @@
 /**
- * [INPUT]: One captured component closure, fixed local React/esbuild and the existing opaque offline renderer.
- * [OUTPUT]: Controlled bundle/style/preview bytes and a verified mounted receipt, or an honest static failure.
+ * [INPUT]: Digest-verified captured component inputs, explicit target, fixed local React/esbuild and the existing opaque offline renderer.
+ * [OUTPUT]: Separate standalone React19 or native DC React18 compilation, fixed bundle/style/preview bytes and actual mount evidence.
  * [POS]: System component compiler; source modules never execute in the main process or install dependencies.
  */
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { dirname, posix, resolve, sep } from "node:path";
-import postcss from "postcss";
-import valueParser from "postcss-value-parser";
 import type { Plugin, Loader } from "esbuild";
 import type { DesignSystem, SystemComponent } from "@ai-chat/cloud-protocol/artifacts/design/system/model";
-import { resolvedSystemToken, validTokenValue } from "@ai-chat/cloud-protocol/artifacts/design/system/tokens";
 import { designDigest, DesignDocumentError, sourcePath } from "../documents/model";
 import { captureDesignCanvas } from "../tooling/render-check";
-import { cssDeclarationTheme } from "./extract";
+import { capturedComponentInputs, capturedComponentProps } from "./components/captured";
 import { escapeHtml } from "./files";
 
 const require = createRequire(import.meta.url);
@@ -28,7 +25,8 @@ function loaderFor(path: string): Loader {
   return ({ ".tsx": "tsx", ".ts": "ts", ".jsx": "jsx", ".js": "js", ".mjs": "js", ".cjs": "js", ".json": "json", ".css": "css" } as Record<string, Loader>)[extension] ?? "dataurl";
 }
 export async function compileSystemComponent(system: DesignSystem, component: SystemComponent,
-  archive: readonly { path: string; data: Uint8Array }[], props: Record<string, unknown> = {}) {
+  archive: readonly { path: string; data: Uint8Array }[], props: Record<string, unknown> = {}, target: "standalone" | "dc" = "standalone", systemId = "") {
+  if (target === "dc") return (await import("./components/dc")).compileDcComponent(system, component, archive, props, systemId);
   const esbuild = await import("esbuild");
   const versions = ["react", "react-dom", "esbuild"] as const, expected = ["19.2.4", "19.2.4", "0.28.1"];
   const trustedRoots: string[] = [];
@@ -41,30 +39,7 @@ export async function compileSystemComponent(system: DesignSystem, component: Sy
   const reactDomRequire = createRequire(require.resolve("react-dom/package.json"));
   trustedRoots.push(await realpath(dirname(dependencyPath(reactDomRequire.resolve("scheduler/package.json")))));
   const trusted = (path: string) => trustedRoots.some(root => path === root || path.startsWith(root + sep));
-  const sourceMap = new Map(system.sources.files.filter(source => component.closure.includes(source.capturedPath)).map(source => [source.path, source]));
-  const fileMap = new Map(archive.map(file => [file.path, Buffer.from(file.data)]));
-  if (!sourceMap.has(component.entry) || component.closure.some(path => !fileMap.has(path))) throw new DesignDocumentError("INVALID_DOCUMENT", "Component captured closure is incomplete");
-  const factNames = new Set([...system.tokens.tokens.map(value => value.name), ...system.aliases.aliases.map(value => value.name)]);
-  const sourceLoader = (path: string) => {
-    const source = sourceMap.get(path), bytes = source && fileMap.get(source.capturedPath);
-    if (!source || !bytes || designDigest(bytes) !== source.digest) throw new DesignDocumentError("INVALID_DOCUMENT", "Captured component source digest changed");
-    if (!/\.css$/i.test(path)) return bytes;
-    const ast = postcss.parse(bytes.toString("utf8"), { from: path });
-    ast.walkDecls(declaration => {
-      const name = declaration.prop.replace(/^--/, "").replaceAll("\\.", ".").replaceAll("/", "-");
-      if (declaration.prop.startsWith("--") && factNames.has(name) && cssDeclarationTheme(declaration)) declaration.remove();
-    });
-    ast.walkDecls(declaration => { valueParser(declaration.value).walk(node => {
-      if (node.type !== "function" || node.value !== "var") return;
-      const first = node.nodes[0]; if (first?.type !== "word" || !first.value.startsWith("--")) return;
-      const name = first.value.slice(2).replaceAll("\\.", "."); if (!factNames.has(name)) return;
-      for (const theme of system.tokens.themes) {
-        const target = resolvedSystemToken(system, name, theme.id);
-        if (target && !validTokenValue(target.token.kind, target.value)) throw new DesignDocumentError("INVALID_DOCUMENT", `Cannot preserve exact ${name} (${theme.id}) in the component's generated stylesheet; source value remains static data`);
-      }
-    }); });
-    return Buffer.from(ast.toString());
-  };
+  const { sources: sourceMap, files: fileMap, load: sourceLoader } = capturedComponentInputs(system, [component], archive);
   const plugin: Plugin = {
     name: "captured-design-system",
     setup(build) {
@@ -107,7 +82,7 @@ export async function compileSystemComponent(system: DesignSystem, component: Sy
     "import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';",
     "import * as Source from '__bottega_captured_component__';",
     `const Component = Source[${JSON.stringify(component.exportName)}];`,
-    `const props = ${JSON.stringify(props).replaceAll("<", "\\u003c")};`,
+    `const props = ${capturedComponentProps(props).literal};`,
     "if(!Component) throw new Error('Selected component export is missing');",
     "const mount=document.getElementById('system-component-root');",
     "try{flushSync(()=>createRoot(mount,{onUncaughtError:error=>console.error(String(error))}).render(React.createElement(Component,props)));",
@@ -139,7 +114,7 @@ export async function compileSystemComponent(system: DesignSystem, component: Sy
     const rendered = await captureDesignCanvas({ html: renderHtml, viewport: "desktop", size: { width: 1200, height: 900 },
       format: "png", maxImageBytes: 4 * 1024 * 1024, signal: AbortSignal.timeout(30000) });
     const png = Buffer.from(rendered.data, "base64"); files.push({ path: evidence, data: png });
-    return { component: { ...component, mode: "mounted" as const, reason: "Actual source export mounted in the opaque no-network renderer", bundle, preview,
+    return { preview, component: { ...component, mode: "mounted" as const, reason: "Actual source export mounted in the opaque no-network renderer", bundle, preview,
       bundleDigest: designDigest(script.contents), evidence: { file: evidence, digest: designDigest(png), styleDigest: designDigest(tokensCss), width: rendered.width, height: rendered.height,
         runtime: "react@19.2.4" as const, compiler: "esbuild@0.28.1" as const } }, files };
   } finally { clearTimeout(timer); await context.dispose(); }

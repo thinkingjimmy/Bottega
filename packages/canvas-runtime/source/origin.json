@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/JimLiu/baocut",
+  "commit": "e2864776f8bf97617af75f5b94ab3dbdd007634e",
+  "acceptanceRepository": "https://github.com/JimLiu/baoyu-design",
+  "acceptanceCommit": "cc297a5625baa65e3bc56cf45d8b6bc09187f5d8",
+  "sourceSha256": "5efa2bbff7a5cb01d10a440f3f7251e402340bd694dd4b91109c1e373f34fdb0",
+  "sourceFiles": 691,
+  "adoption": "Internal development approved by Jimmy on 2026-10-31; commercial distribution requires separate clearance.",
+  "sourceDerivation": "exclusions.json"
+}

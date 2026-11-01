@@ -59,10 +59,26 @@ existing theme/name and literal value, records the override and regenerates CSS 
 Do not maintain tokens.css as another authority.
 
 For a captured component, design_system_compile uses those identity fields, entry and value
-JSON `{component,props?}`. Read the source API first. Compilation can produce mount evidence,
+JSON `{component,target,props?}`. Set target to dc for native Canvas; standalone is the
+separate React19 target and remains the default for existing requests. Read the source API first. Compilation can produce mount evidence,
 a static reason, or retain a prior valid result with an unsynced failed attempt. Check the actual
 saved record; see [system review](craft.md).
+
+The DC target uses the document React18 singleton, named/global exports and no automatic root.
+Connected components share one captured graph/Context; Portal targets must stay inside the board.
+React19-only APIs, react-dom/client and escaping Portals return explicit unsupported results.
+Read component.dc.status/reason and runtime/graph/bundle/preview/props/style digests. A ready
+standalone result cannot prove DC compatibility. Separate target boards remain selectable.
+
+A kept component retains its original complete dependency closure even when another component
+adopts newer source at the same path. Do not merge those snapshots by path. A changed token or
+generated preview expires its evidence; recompilation is explicit. Fixed consumers do not drift.
 
 These operations use the [document transaction and recovery](../../design/references/formats/document.md).
 The host supplies Chat/incarnation/generation from the issued turn lease. A retained reference,
 stored repository path or mutation-shaped JSON cannot grant a missing capability.
+
+
+Native consumers
+
+Capture font bytes and their applicable LICENSE/OFL/NOTICE text from the selected source. Complete font files may use up to24MiB; ordinary files retain8MiB and the full selected capture retains24MiB. Bind an exact system revision. Canvas keeps native CSS/DC resources; compile the DC component target before use. Slides installs native palettes/faces/images and a deterministic systems/<systemId>/conversion.json report, without React source execution. For Slides, keep literal valid styles before binding and use the explicit data-system-tokens property=token and data-system-asset markers documented in the design Slides reference. Required unsupported mappings refuse instead of choosing a replacement.

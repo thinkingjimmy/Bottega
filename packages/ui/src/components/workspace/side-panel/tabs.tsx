@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Host-projected tabs, selection/close commands and localized labels.
+ * [INPUT]: Host-projected tabs with optional title content, selection/close commands and localized labels.
  * [OUTPUT]: SidePanelTabs with roving keyboard navigation and shared tab chrome; a tab without a close command carries no close control, and the strip's own flow is overridable.
  * [POS]: Shared tablist; hosts retain ownership of tab identities and close succession.
  */
@@ -8,7 +8,7 @@ import { XIcon } from "lucide-react";
 import { cn } from "../../../lib/utils";
 export type SidePanelTab = {
   key: string; label: string; icon: ReactNode; selected: boolean; panelId: string;
-  widthClass?: string; closeLabel?: string; hint?: string; dim?: boolean; actions?: ReactNode;
+  labelContent?: ReactNode; widthClass?: string; closeLabel?: string; hint?: string; dim?: boolean; actions?: ReactNode;
   select(): void;
   /** Omitted by a tablist whose tabs are a fixed set — a computer is not something the viewer closes. */
   close?(): void;
@@ -86,7 +86,7 @@ export function SidePanelTabs({ items, label, closeLabel, onClose, refs, classNa
                 title={item.hint}
               >
                 {item.icon}
-                <span className="truncate">{item.label}</span>
+                <span className="truncate">{item.labelContent ?? item.label}</span>
                 {item.actions}
                 {(item.close ?? onClose) && (
                   <button

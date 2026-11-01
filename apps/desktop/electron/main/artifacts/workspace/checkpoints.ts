@@ -1,9 +1,11 @@
 /**
- * [INPUT]: DurableJson, trusted window/view/document lifetimes and bounded review checkpoints.
- * [OUTPUT]: Stores revision-bound checkpoint CAS versions and preserves conflicting view input.
+ * [INPUT]: DurableJson, trusted local or main-issued authenticated remote window/view/document lifetime verification and bounded review checkpoints.
+ * [OUTPUT]: Stores revision-bound checkpoint CAS input, carries latest native input across own head advancement, preserves conflicts and notifies exact native consumers after source completion and bounds final native saves by the pending window/view/document acknowledgement.
  * [POS]: Recovery input custody; not a second permanent comment store.
  */
 import { z } from "zod";
+import type { DesignRevision } from "../../design/documents/store";
+import { artifactWorkspaceEventSchema } from "@ai-chat/cloud-protocol/artifacts/design/events/model";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { checkpointSchema, type DesignCheckpoint } from "@ai-chat/cloud-protocol/artifacts/design/review";
@@ -17,12 +19,23 @@ const schema = z.object({ schemaVersion: z.literal(1), inputs: z.record(z.string
 export class ArtifactCheckpoints {
   private readonly file: DurableJson<z.infer<typeof schema>>;
   private readonly windows = new Map<number, Map<string, string>>();
+  private readonly remote = new Map<number, { viewId: string; scope: string; current(): void; send(event: unknown): void }>();
   private readonly waits = new Map<string, { windowId: number; viewId: string; scope: string; resolve(): void }>();
   fault = false;
   constructor(root: string) { this.file = new DurableJson(join(root, "review-checkpoints.json"), schema, () => ({ schemaVersion: 1, inputs: {}, conflicts: {}, commands: {} })); }
   initialize() { return this.file.initialize(); }
   key(chatId: string, incarnationId: string, documentId: string) { return JSON.stringify([chatId, incarnationId, documentId]); }
   read(chatId: string, incarnationId: string, documentId: string, revision?: number) { return this.file.read(state => state.inputs[this.key(chatId, incarnationId, documentId) + ":" + revision] ?? null); }
+  native(chatId: string, incarnationId: string, documentId: string, revision: number, boardId: string) {
+    const prefix = this.key(chatId, incarnationId, documentId) + ":";
+    return this.file.read(state => {
+      const current = state.inputs[prefix + revision];
+      const latest = Object.entries(state.inputs).filter(([key, value]) => key.startsWith(prefix) && value.revision <= revision && value.native !== undefined)
+        .sort((a, b) => b[1].revision - a[1].revision)[0]?.[1];
+      if (!latest) return current ?? null;
+      return { ...(current ?? { documentId, revision, boardId, notes: [] }), native: latest.native };
+    });
+  }
   conflicts(chatId: string, incarnationId: string, documentId: string, revision: number) { return this.file.read(state => state.conflicts[this.key(chatId, incarnationId, documentId) + ":" + revision] ?? []); }
   async save(chatId: string, incarnationId: string, input: DesignCheckpoint) {
     if (this.fault) throw new Error("Artifact checkpoint could not be saved. Retry before closing.");
@@ -68,17 +81,34 @@ export class ArtifactCheckpoints {
       for (const key of Object.keys(state.commands)) { const value = JSON.parse(key.slice(0, key.lastIndexOf("]") + 1)) as string[]; if (value[0] === chatId && value[1] === incarnationId) delete state.commands[key]; }
     });
   }
+  observeRemote(windowId: number, viewId: string, scope: string, current: () => void, send: (event: unknown) => void) {
+    current();
+    if (!Number.isSafeInteger(windowId) || windowId >= 0 || this.remote.has(windowId) || this.remote.size >= 8) throw new Error("Invalid remote Artifact view");
+    this.remote.set(windowId, { viewId, scope, current, send });
+  }
   observe(windowId: number, viewId: string, scope: string) {
     const window = BrowserWindow.getAllWindows().find(window => window.webContents.id === windowId);
-    if (!window || window.isDestroyed()) throw new Error("Original Artifact workspace window is unavailable");
+    const remote = this.remote.get(windowId);
+    if (remote) { remote.current(); if (remote.viewId !== viewId || remote.scope !== scope) throw new Error("Remote Artifact workspace scope changed"); }
+    else if (!window || window.isDestroyed()) throw new Error("Original Artifact workspace window is unavailable");
     const views = this.windows.get(windowId) ?? new Map<string, string>();
     if (views.has(viewId) && views.get(viewId) !== scope) throw new Error("Artifact workspace view scope changed");
     views.set(viewId, scope); this.windows.set(windowId, views);
   }
+  ownsView(windowId: number, viewId: string, scope: string) {
+    if (this.windows.get(windowId)?.get(viewId) !== scope) return false;
+    const remote = this.remote.get(windowId);
+    if (remote) { try { remote.current(); return remote.viewId === viewId && remote.scope === scope; } catch { return false; } }
+    return BrowserWindow.getAllWindows().some(window => window.webContents.id === windowId && !window.isDestroyed());
+  }
   releaseView(windowId: number, viewId: string, scope: string) {
     const views = this.windows.get(windowId); if (!views?.has(viewId)) return;
     if (views.get(viewId) !== scope) throw new Error("Artifact workspace view scope changed");
-    views.delete(viewId); if (!views.size) this.windows.delete(windowId);
+    views.delete(viewId); if (!views.size) { this.windows.delete(windowId); this.remote.delete(windowId); }
+  }
+  allowsFinalFlush(windowId: number, nonce: string, viewId: string, scope: string) {
+    const wait = this.waits.get(nonce);
+    return Boolean(wait && wait.windowId === windowId && wait.viewId === viewId && wait.scope === scope && this.ownsView(windowId, viewId, scope));
   }
   ack(windowId: number, nonce: string, viewId: string, scope: string) {
     const wait = this.waits.get(nonce);
@@ -90,22 +120,37 @@ export class ArtifactCheckpoints {
     const pending: Promise<void>[] = [];
     for (const [windowId, views] of this.windows) {
       const window = BrowserWindow.getAllWindows().find(window => window.webContents.id === windowId);
-      if (!window || window.isDestroyed()) { this.windows.delete(windowId); continue; }
+      const remote = this.remote.get(windowId);
+      if (!remote && (!window || window.isDestroyed())) { this.windows.delete(windowId); continue; }
       for (const [viewId, scope] of views) {
         const nonce = randomUUID();
         pending.push(new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => { this.waits.delete(nonce); reject(new Error("Artifact checkpoint timed out. Keep your input and retry.")); }, 5_000);
+          const timer = setTimeout(() => { this.waits.delete(nonce); reject(new Error("Artifact checkpoint timed out. Keep your input and retry.")); }, 12_000);
           this.waits.set(nonce, { windowId, viewId, scope, resolve: () => { clearTimeout(timer); resolve(); } });
         }));
-        window.webContents.send(ARTIFACT_IPC.workspaceEvent, { type: "before-disable", nonce, generation, scope: viewId });
+        const event = { type: "before-disable", nonce, generation, scope: viewId };
+        if (remote) remote.send(event); else window!.webContents.send(ARTIFACT_IPC.workspaceEvent, event);
       }
     }
     await Promise.all(pending);
   }
+  sourceChanged(version: DesignRevision, generation: string) {
+    if (!version.manifest.contentFormat) return;
+    const scope = this.key(version.authority.chatId, version.authority.incarnationId, version.manifest.documentId);
+    for (const [windowId, views] of this.windows) for (const [viewId, target] of views) {
+      if (target !== scope || !this.ownsView(windowId, viewId, scope)) continue;
+      const event = artifactWorkspaceEventSchema.parse({ type: "source-changed", generation, scope: viewId,
+        documentId: version.manifest.documentId, revision: version.revision, snapshotRef: version.snapshotRef });
+      const remote = this.remote.get(windowId);
+      if (remote) remote.send(event);
+      else BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.id === windowId)?.webContents.send(ARTIFACT_IPC.workspaceEvent, event);
+    }
+  }
   changed(generation: string, enabled: boolean) {
+    for (const remote of this.remote.values()) remote.send({ type: "changed", generation, enabled });
     for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed())
       window.webContents.send(ARTIFACT_IPC.workspaceEvent, { type: "changed", generation, enabled });
   }
-  release(windowId: number) { this.windows.delete(windowId); }
+  release(windowId: number) { this.windows.delete(windowId); this.remote.delete(windowId); }
   close() { return this.file.closeAndFlush(); }
 }

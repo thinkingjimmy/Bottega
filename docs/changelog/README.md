@@ -4,6 +4,22 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+
+## 2026-11-01 — v0.2.12
+
+[Download 0.2.12](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12) for macOS on Apple silicon (ARM64).
+
+- **Edit native Canvas and Slides.** Keep the original document structure, multiple pages, notes and manual Undo/Redo. Open current work in the existing third-column tabs, with full view and work switching in the tab strip.
+- **Review before applying AI changes.** Save element or area comments, reply, resolve and reopen threads. The supported Codex path works on a separate candidate. Preview, accept, discard or continue editing it; one AI rollback restores the complete previous file set without another model call.
+- **Keep the controls consistent.** SVG icons and compact floating review controls follow light and dark appearances. Touch controls retain larger targets. Encrypted browser editing preserves unsent input and asks which draft to keep after a conflict.
+- **Export and present.** Use the original Canvas PNG, PDF and offline HTML exports. Slides includes PPTX font-fallback previews and explicit confirmation. Present with a separate read-only notes window; closing the source releases the presentation windows.
+
+**Compatibility.** This release uses protocol 23. Update connected desktops and reload Bottega Web after the coordinated service update. Existing content, sync passwords and account keys remain; no data reset is required.
+
+**Validation limits.** Physical iPhone/iPad, system clipboard/drop, complete 2.3 operation parity and Keynote/PowerPoint reopening remain unverified. Uninterrupted real Slides creation-to-comment-AI acceptance and all cold concurrent thumbnail starts remain separate acceptance items.
+
+**Licenses.** Bottega first-party code remains MIT. The modified Canvas/Slides editor forks retain the BaoCut Community License and their original notices. Commercial distribution or hosting of covered code requires separate written rights; the root MIT license does not replace those terms.
+
 ## 2026-10-30 — v0.2.11
 
 [Download 0.2.11](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.11) for macOS on Apple silicon (ARM64).

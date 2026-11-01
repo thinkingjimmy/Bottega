@@ -1,0 +1,32 @@
+{
+  "name": "@bottega/slides-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "scripts": {
+    "build": "node build/index.mjs",
+    "typecheck": "node --check build/index.mjs && node --check build/compile.mjs"
+  },
+  "devDependencies": {
+    "@base-ui/react": "1.6.0",
+    "@tanstack/react-virtual": "3.14.9",
+    "@tanstack/virtual-core": "3.17.7",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "1.24.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "scheduler": "0.28.0",
+    "tailwind-merge": "3.6.0",
+    "esbuild": "0.25.12",
+    "vite": "7.3.6",
+    "jszip": "3.10.1",
+    "pptxgenjs": "3.12.0",
+    "@babel/generator": "8.0.6",
+    "@babel/parser": "8.0.7",
+    "@babel/traverse": "8.0.7",
+    "@babel/types": "8.0.6",
+    "@ai-chat/cloud-protocol": "workspace:*"
+  }
+}

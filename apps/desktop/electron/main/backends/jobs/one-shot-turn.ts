@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on a ProviderBackend's createTurn/validateTurnOptions, the factory chat-option defaults, the per-backend process lease and credential reservation
- * [OUTPUT]: Provides runOneShotTurn: one prompt, one process, the assistant text it produced, with every approval denied, a hard deadline and guaranteed process termination through the turn's process owner (host custody; a reported process with no owner fails closed)
+ * [OUTPUT]: Provides runOneShotTurn for read-only titles or main-admitted independent candidates: one prompt, one process, the assistant text it produced, with every approval denied, a hard deadline and guaranteed process termination through the turn's process owner (host custody; a reported process with no owner fails closed)
  * [POS]: Sibling of backends/jobs/executor.ts for backends that have no headless path at all; it runs the product's ordinary interactive turn (bridged, like every turn) exactly once instead of a CLI print mode
  */
 
@@ -16,12 +16,14 @@ import {
   reportAgentCleanupFailure,
   reserveAgentCredentialUse,
 } from "../../agent-process-supervisor";
+import { waitForSignal } from "../runtime/availability/runtime";
 import { asError } from "../../ipc/errors";
 import type {
   AgentTurn,
   ProviderBackend,
   BackendTurnOptions,
   ResolvedRuntime,
+  TrustedTurnAuthority,
 } from "../contracts/types";
 
 export type OneShotTurnJob = {
@@ -34,6 +36,7 @@ export type OneShotTurnJob = {
   model?: string | null;
   timeoutMs: number;
   signal?: AbortSignal;
+  candidate?: { chatId: string; incarnationId: string; authority: TrustedTurnAuthority; options?: ChatTurnOptions };
 };
 
 /** Shape-complete but inert: nothing outside this module observes the input. */
@@ -60,10 +63,12 @@ const controlRootFor = (workspace: string) =>
  */
 function oneShotTurnOptions(
   descriptor: ProviderBackend,
-  model: string | null | undefined
+  model: string | null | undefined,
+  selected?: ChatTurnOptions
 ): ChatTurnOptions {
   const options = {
     ...backendDefaults(DEFAULT_CHAT_OPTIONS_BY_BACKEND, descriptor.id),
+    ...selected,
     permissionMode: "ask-for-approval",
     ...(model ? { model } : {}),
   } as ChatTurnOptions;
@@ -79,9 +84,13 @@ function oneShotTurnOptions(
  */
 export async function runOneShotTurn(job: OneShotTurnJob): Promise<string> {
   const { descriptor, workspace, requestId } = job;
-  const turnOptions = oneShotTurnOptions(descriptor, job.model);
+  job.signal?.throwIfAborted();
+  if (job.candidate && descriptor.id !== "codex") throw new Error("Artifact candidate execution currently requires Codex");
+  await job.candidate?.authority.validate();
+  const turnOptions = oneShotTurnOptions(descriptor, job.model, job.candidate?.options);
   const credentialUse = reserveAgentCredentialUse(descriptor.id);
-  await credentialUse.ready;
+  try { await waitForSignal(credentialUse.ready, job.signal); }
+  catch (cause) { credentialUse.release(); throw cause; }
   const lease = await acquireAgentProcessLease(
     descriptor.id,
     "background",
@@ -157,14 +166,20 @@ export async function runOneShotTurn(job: OneShotTurnJob): Promise<string> {
   };
   job.signal?.addEventListener("abort", onAbort, { once: true });
 
+  let answer = "", failure: Error | undefined;
   try {
+    job.signal?.throwIfAborted();
+    await job.candidate?.authority.validate();
+    job.candidate?.authority.current();
     turn = descriptor.createTurn({
       payload: {
         requestId,
-        scope: { conversationId: requestId },
+        scope: { conversationId: job.candidate?.chatId ?? requestId },
         input: [],
         turnOptions,
       },
+      ...(job.candidate ? { chatIncarnationId: job.candidate.incarnationId, trustedAuthority: job.candidate.authority,
+        artifactCandidate: { root: workspace }, disableProviderMemory: true } : {}),
       input: idleInput(job.prompt),
       callbacks,
       runtime: job.runtime,
@@ -174,7 +189,8 @@ export async function runOneShotTurn(job: OneShotTurnJob): Promise<string> {
          background title exactly as it does to the user's own work. */
       filesystemAccess: {
         workspace,
-        mode: "read-only",
+        mode: job.candidate ? "workspace-write" : "read-only",
+        ...(job.candidate ? { network: "off" as const } : {}),
         readOnlyRoots: [],
         controlRoot: controlRootFor(workspace),
       },
@@ -185,20 +201,26 @@ export async function runOneShotTurn(job: OneShotTurnJob): Promise<string> {
     });
     const result = await outcome;
     if ("error" in result) throw result.error;
-    return result.text;
-  } finally {
+    job.candidate?.authority.current();
+    answer = result.text;
+  } catch (cause) { failure = asError(cause); } finally {
     clearTimeout(deadline);
     job.signal?.removeEventListener("abort", onAbort);
     turn?.markStopped();
     /* The turn runs on its Provider's bridge and its process belongs to host custody (D7): the owner settles it. A turn that reported a
        process without an owner cannot be proven ours and fails closed. */
     const owner = turn?.processOwner?.();
-    const cleanup = owner
-      ? await owner.settle().then((verdict) => verdict === "released" ? { ok: true } as const
-        : { ok: false as const, error: new Error(`process ${owner.identity.pid} was not confirmed ended`) })
-      : turn?.pid ? { ok: false as const, error: new Error(`process ${turn.pid} has no owner`) } : ({ ok: true } as const);
-    if (!cleanup.ok) reportAgentCleanupFailure(descriptor.id, cleanup.error);
-    lease.release();
-    credentialUse.release();
+    let cleanupError: Error | undefined;
+    try {
+      if (owner && await owner.settle() !== "released") cleanupError = new Error(`process ${owner.identity.pid} was not confirmed ended`);
+      else if (!owner && turn?.pid) cleanupError = new Error(`process ${turn.pid} has no owner`);
+    } catch (cause) { cleanupError = asError(cause); }
+    finally { lease.release(); credentialUse.release(); }
+    if (cleanupError) {
+      reportAgentCleanupFailure(descriptor.id, cleanupError);
+      if (job.candidate) failure = Object.assign(cleanupError, { code: "ARTIFACT_CANDIDATE_CLEANUP_REQUIRED" });
+    }
   }
+  if (failure) throw failure;
+  return answer;
 }

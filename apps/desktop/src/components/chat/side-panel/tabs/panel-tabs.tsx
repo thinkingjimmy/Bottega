@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React tabs, shared localized panel copy, session eligibility, session-only Artifact tabs and close guards, durable slots, Browser tabs, App authorization, Base projections and image pins
- * [OUTPUT]: One Base/App/Browser/Image/Subagent/Artifact tablist with guarded Artifact navigation, active-only preview leases, explicit full view and localized recovery
+ * [OUTPUT]: One Base/App/Browser/Image/Subagent/Artifact tablist with guarded Artifact navigation, active-only preview leases, tab-hosted full view and work switching with localized recovery
  * [POS]: apps/desktop/src/components/chat/side-panel/tabs; Native panel data/effect adapter; shared PanelHost owns tab chrome and retained regions
  */
 
@@ -15,7 +15,7 @@ import {
   useState,
 } from "react";
 import { PanelHost, type PanelLeaf } from "@ai-chat/chat-ui/side-panel/frame";
-import { ArtifactTab, isArtifactTab, rememberArtifactTab, useArtifactTabs, useArtifactTabGuard } from "@ai-chat/chat-ui/artifact-tabs";
+import { ArtifactTab, isArtifactTab, rememberArtifactTab, useArtifactTabs, useArtifactTabGuard, useArtifactTabChrome } from "@ai-chat/chat-ui/artifact-tabs";
 import { artifactCopy, useArtifactHost } from "@ai-chat/chat-ui/artifacts";
 import { sidePanelCopy } from "@ai-chat/chat-ui/side-panel-copy";
 const BaseWorkbench = lazy(() => import("@/components/bases/base-workbench").then(module => ({ default: module.BaseWorkbench })));
@@ -124,6 +124,7 @@ export function PanelTabs({
   const activeTabId = slots.active;
   const artifactHost = useArtifactHost(), artifactScope = artifactHost?.scope ?? `${chatId}:${incarnationId}`;
   const artifacts = useArtifactTabs(artifactScope);
+  const artifactChrome = useArtifactTabChrome();
   const navigationOwner = useMemo(() => ({ artifactScope, activeTabId }), [artifactScope, activeTabId]);
   const { beforeClose, close: guardClose, failed: closeFailed } = useArtifactTabGuard(navigationOwner);
   const navigate = useCallback((action: () => void) => {
@@ -410,6 +411,7 @@ export function PanelTabs({
         key: id,
         region: id,
         label,
+        ...(isArtifactTab(id) && activeTabId === id ? { labelContent: artifactChrome.title } : {}),
         icon: <Icon className="size-3.5 shrink-0" />,
         selected: activeTabId === id,
         panelId: `panel-tab-${id}`,
@@ -492,7 +494,7 @@ export function PanelTabs({
 
   const leaves: PanelLeaf[] = [
     ...(isArtifactTab(activeTabId) ? [{ id: activeTabId, view: artifacts.has(activeTabId) ? <ArtifactTab key={activeTabId} value={artifacts.get(activeTabId)!}
-      presentation={{ full, canExpand: true, setFull: onFullChange, beforeClose, close: () => closeAt(items.findIndex(item => item.key === activeTabId)) }} />
+      presentation={{ full, canExpand: true, setFull: onFullChange, beforeClose, tabChrome: artifactChrome.value, close: () => closeAt(items.findIndex(item => item.key === activeTabId)) }} />
       : <p role="status" className="p-4 text-sm">{artifactCopy(artifactHost?.locale ?? "en").unavailable}</p> }] : []),
     ...(productRef && tabs.includes("base") ? [{ id: "base", view: effectiveBaseOwnerKey ? (
             <Suspense fallback={null}><BaseWorkbench
@@ -549,7 +551,7 @@ export function PanelTabs({
       labelledBy: browser.snapshot.selectedTabId ? `panel-tab-${browser.snapshot.selectedTabId}-trigger` : undefined,
       view: <BrowserPanel controller={browser} visible={activeTabId === "browser"} /> }] : []),
   ];
-  return <PanelHost native close={() => navigate(onClose)} copy={{ close: t("chat.sidePanel.closePanel") }} actions={activeHeaderActions}
+  return <PanelHost native extraActions={isArtifactTab(activeTabId) ? artifactChrome.actions : undefined} close={() => navigate(onClose)} copy={{ close: t("chat.sidePanel.closePanel") }} actions={activeHeaderActions}
     items={items} refs={tabRefs} onCloseTab={closeAt} tabsLabel={t("chat.sidePanel.tabsAriaLabel")} closeTabLabel={t("chat.sidePanel.closeTab")}
     active={activeTabId} leaves={leaves}
     add={<AddPanelMenu appsDisabled={!productRef} disabledFor={catalogDisabled} disabledReasonFor={catalogDisabledReason}

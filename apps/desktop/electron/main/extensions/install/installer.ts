@@ -4,7 +4,7 @@
  * [POS]: Extension install ordering and trust boundary; confirm accepts only the frozen preflight identity/content receipt and never accepts scope
  */
 import { type ExtensionAppMigrationPort, type ExtensionInstallPreflight, type HeldPreflight, type ExtensionInstallRequest } from "./model";
-export { type ExtensionSourceFetcher, type ExtensionAffectedApp, type ExtensionAppMigrationPort, type ExtensionCapabilityDiff, type ExtensionInstallPreflight, type ExtensionInstallRequest } from "./model";
+export { type ExtensionSourceFetcher, type ExtensionAffectedApp, type ExtensionAppMigrationPort, type ExtensionInstallPreflight, type ExtensionInstallRequest } from "./model";
 
 
 import { randomUUID } from "node:crypto";

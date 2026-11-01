@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on electron-vite, Vite React/Tailwind plugins, esbuild, Node paths, Rollup diagnostics, cloud assembly configuration and the native Keychain build plugin
+ * [INPUT]: Depends on electron-vite, Vite React/Tailwind plugins, esbuild, Node paths, Rollup diagnostics, cloud assembly configuration and the native Keychain/maintained Canvas build plugins
  * [OUTPUT]: Provides the fixed production desktop assembly, out entry selection, CSP, renderer module reports, and utility workers.
  * [POS]: Electron build entry coordinating main/preload rebuilds, process restarts, and renderer output
  */
@@ -14,6 +14,7 @@ import { relative, resolve, sep } from "node:path";
 import { build, type Plugin, type Rollup } from "vite";
 import { resolveCloudAssembly, workbenchUiFor } from "./config/cloud-assembly";
 import { NODE_ENTRY_FILES, NODE_PACKAGES, type NodeEntry } from "./electron/main/runtime/model";
+import { canvasRuntime } from "./config/native/canvas-runtime";
 import { keychainPolicy } from "./config/native/keychain-policy";
 const cloudAssembly = resolveCloudAssembly("production");
 /* Keep offline test defaults separate from the default-on development and production UI. */
@@ -258,7 +259,7 @@ const onwarn: Rollup.WarningHandlerWithDefault = (warning, defaultHandler) => {
 };
 export default defineConfig({
     main: {
-        plugins: [keychainPolicy(), runtimeEntries(), buildFlavor()],
+        plugins: [keychainPolicy(), runtimeEntries(), buildFlavor(), canvasRuntime(resolve(__dirname, "../../packages/canvas-runtime"))],
         define: { ...cloudDefines,
             /* Non-production mains may load the private entries built beside them; production compiles the loader out. */
             __BOTTEGA_PRIVATE_ENTRIES__: JSON.stringify(cloudAssembly.flavor !== "production"),

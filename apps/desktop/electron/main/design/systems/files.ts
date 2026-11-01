@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Checked design-system data, exact captured sources and existing document bytes.
- * [OUTPUT]: Canonical JSON, derived CSS and an offline overview; unrelated user files remain untouched.
+ * [OUTPUT]: Canonical JSON, derived CSS, separate standalone/native preview status and expiry, and an offline overview; unrelated user files remain untouched.
  * [POS]: System file projection for the single document commit/edit journal.
  */
 import type { DesignSystem } from "@ai-chat/cloud-protocol/artifacts/design/system/model";
@@ -13,7 +13,7 @@ export const escapeHtml = (value: string) => value.replaceAll("&", "&amp;").repl
 export function systemOverview(system: DesignSystem, title: string) {
   const html: string[] = ["<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">", `<title>${escapeHtml(title)}</title><link rel="stylesheet" href="tokens.css">`,
     "<style>body{font:15px system-ui,sans-serif;margin:24px;color:#202020;background:#fff}table{border-collapse:collapse;width:100%;margin-bottom:24px}th,td{text-align:left;padding:12px;border-bottom:1px solid #ddd;vertical-align:top}code{overflow-wrap:anywhere}caption{text-align:left;font-size:20px;font-weight:600;padding:12px 0}.swatch{display:inline-block;width:44px;height:32px;border:1px solid #777;vertical-align:middle;margin-right:8px}p{max-width:72ch}</style></head><body>",
-    `<h1>${escapeHtml(title)}</h1><p>Values are copied from captured source files. Unsupported values remain visible as text. Components marked static have not been mounted.</p>`];
+    `<h1>${escapeHtml(title)}</h1><p>Values are copied from captured source files. Unsupported values remain visible as text. Standalone and native Canvas previews have separate verification.</p>`];
   for (const theme of system.tokens.themes) {
     html.push(`<section data-theme="${theme.id}"><table><caption>${escapeHtml(theme.name)}</caption><thead><tr><th>Token</th><th>Exact value</th><th>Usage</th></tr></thead><tbody>`);
     for (const token of system.tokens.tokens) {
@@ -24,7 +24,13 @@ export function systemOverview(system: DesignSystem, title: string) {
     html.push("</tbody></table></section>");
   }
   html.push("<h2>Components</h2><ul>");
-  for (const component of system.components.components) html.push(`<li><strong>${escapeHtml(component.name)}</strong> · ${component.mode === "mounted" ? "Mounted in the controlled renderer" : "Static source inventory"} · ${escapeHtml(component.reason)}${component.preview ? ` · <a href="${component.preview}">Preview</a>` : ""}</li>`);
+  for (const component of system.components.components) {
+    const standalone = component.mode === "mounted" ? "Standalone preview available" : "Standalone source inventory";
+    const dc = component.dc;
+    const native = dc?.status === "ready" ? ' · <a href="' + dc.preview + '">Native Canvas preview</a>' : dc ? " · " + escapeHtml(dc.reason) : "";
+    html.push('<li><strong>' + escapeHtml(component.name) + "</strong> · " + standalone + " · " + escapeHtml(component.reason) +
+      (component.preview ? ' · <a href="' + component.preview + '">Standalone preview</a>' : "") + native + "</li>");
+  }
   html.push("</ul><h2>Not synced</h2><ul>");
   for (const value of system.sources.unsynced) html.push(`<li><code>${escapeHtml(value.path)}${value.name ? " · " + escapeHtml(value.name) : ""}</code>: ${escapeHtml(value.reason)}</li>`);
   return html.join("\n") + "</ul></body></html>\n";
@@ -38,15 +44,25 @@ export function projectSystemFiles(system: DesignSystem, manifest: DesignManifes
   const files = new Map<string, Buffer>(existing.map(file => [file.path, Buffer.from(file.data)]));
   const css = generatedSystemCss(system, manifest.title), currentStyles = designDigest(css);
   system.components.components = system.components.components.map(component => {
-    if (component.mode !== "mounted" || component.evidence?.styleDigest === currentStyles) return component;
+    let next = component;
+    if (component.dc?.status === "ready" && component.dc.evidence.styleDigest !== currentStyles) {
+      const reason = "Native Canvas preview expired because system values changed. Compile the DC target again.";
+      next = { ...next, dc: { status: "unsupported", runtime: "react@18.3.1", reason } };
+      if (!system.sources.unsynced.some(item => item.kind === "component" && item.name === component.name && item.reason === reason))
+        system.sources.unsynced.push({ path: component.entry, kind: "component", name: component.name, reason });
+    }
+    if (component.mode !== "mounted" || component.evidence?.styleDigest === currentStyles) return next;
     const reason = "Static inventory: system values changed after the recorded mount. Mount this exact component again.";
     if (!system.sources.unsynced.some(item => item.kind === "component" && item.name === component.name && item.reason === reason)) system.sources.unsynced.push({ path: component.entry, kind: "component", name: component.name, reason });
-    return { ...component, mode: "static", reason, preview: undefined, bundle: undefined, bundleDigest: undefined, evidence: undefined };
+    return { ...next, mode: "static" as const, reason, preview: undefined, bundle: undefined, bundleDigest: undefined, evidence: undefined };
   });
   let previousPreviews: string[] = [];
-  try { previousPreviews = (JSON.parse(files.get(manifest.system!.components)?.toString("utf8") ?? "{}").components ?? []).map((component: { preview?: string }) => component.preview).filter(Boolean); }
-  catch { /* The caller's structural check reports invalid prior data. */ }
-  const activePreviews = new Set(system.components.components.filter(component => component.mode === "mounted").map(component => component.preview));
+  try {
+    previousPreviews = (JSON.parse(files.get(manifest.system!.components)?.toString("utf8") ?? "{}").components ?? [])
+      .flatMap((component: { preview?: string; dc?: { preview?: string } }) => [component.preview, component.dc?.preview]).filter(Boolean);
+  } catch { /* The caller's structural check reports invalid prior data. */ }
+  const activePreviews = new Set(system.components.components.flatMap(component =>
+    [component.mode === "mounted" ? component.preview : undefined, component.dc?.status === "ready" ? component.dc.preview : undefined]).filter(Boolean));
   const stalePreviews = new Set(previousPreviews.filter(path => !activePreviews.has(path)));
   const projectedManifest = { ...manifest, boards: manifest.boards.filter(board => !board.id.startsWith("c_") || !stalePreviews.has(board.file)) };
   for (const source of capture?.files ?? []) files.set(source.record.capturedPath, source.data);
@@ -62,6 +78,7 @@ export function projectSystemFiles(system: DesignSystem, manifest: DesignManifes
     "", ...system.tokens.tokens.map(token => `- Use \`${token.name}\` as documented in its source usage field. ${token.kind}.`),
     "", "Read sources.json for precise file digests and Git versions. A workingTree source differs from the named commit; the captured file digest identifies the actual value.",
     "", "Read components.json before using a component. Static entries are inventories; only mounted entries have a controlled-renderer PNG and pinned compiler/runtime evidence.",
+    "", "For native Canvas, compile target dc and load the ready dc.bundle/exportName from components.json. A standalone bundle is a different target. DC exports share the document React18 and do not create a root. Keep Portal targets inside the board.",
     "", "Bind the system with its document ID and exact revision. The consumer keeps its own immutable dependency closure. Updating this system does not change existing works.", "",
   ].join("\n")));
   return [...files].map(([path, data]) => ({ path, data }));

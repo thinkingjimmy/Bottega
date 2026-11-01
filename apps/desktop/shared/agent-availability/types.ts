@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared backend and usage-limit identities.
- * [OUTPUT]: Provides independent startup/authentication facts, check issues, asymmetric lifetimes and scoped execution decisions.
+ * [OUTPUT]: Provides independent startup/authentication facts, check issues, asymmetric lifetimes and scoped execution decisions including the separate candidate purpose.
  * [POS]: Serializable availability contract shared by registry and renderer projections.
  */
 import type { HeadlessPurpose, UsageLimitInfo } from "../ipc/agent/agent-ipc";
@@ -57,7 +57,8 @@ export type AvailabilityDecision = {
   decision: "allow" | "wait" | "block";
   reason?: "checking" | "missing" | "unsupported" | "cannot-check" | "cannot-start" | "auth-required" | "auth-unknown" | "usage-limit";
 };
-export type PurposeEligibility = Partial<Record<HeadlessPurpose | "app-binding", AvailabilityDecision & { expiresAt?: number }>>;
+export type ProviderOperationPurpose = HeadlessPurpose | "app-binding" | "artifact-candidate";
+export type PurposeEligibility = Partial<Record<ProviderOperationPurpose, AvailabilityDecision & { expiresAt?: number }>>;
 export type AvailabilityFacts = {
   revision: number;
   environmentGeneration: number;

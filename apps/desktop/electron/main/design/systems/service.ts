@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Current main Chat/workspace authority, the canonical Provider default, closed system commands and the single document journal.
- * [OUTPUT]: Exact source extraction, paged three-way review, finite overrides, fixed consumption and controlled mounts.
+ * [OUTPUT]: Exact source extraction, paged three-way review, finite overrides, fixed consumption and separate controlled standalone/DC mounts.
  * [POS]: Design-system main adapter; no new registry, commit protocol or comment store.
  */
 import { unpackArtifactArchive } from "@ai-chat/cloud-protocol/artifacts/archive";
@@ -48,6 +48,11 @@ async function capture(input: WorkspaceCommand) {
   const captured = await captureSystemSources(authority, input.sources, assertAuthority), system = extractCapturedSystem(captured);
   assertAuthority(); assertArtifactGeneration(input.generation);
   return { authority, assertAuthority, captured, system, sourceDigest: extractionDigest(system) };
+}
+function componentFailure(error: unknown) {
+  const errors = error && typeof error === "object" && "errors" in error ? error.errors : undefined;
+  const message = Array.isArray(errors) && typeof errors[0]?.text === "string" ? errors[0].text : error instanceof Error ? error.message : "Component could not be mounted";
+  return message.split(";")[0]!.replace(/data:[^\s;)]+/g, "[embedded runtime]").slice(0, 400);
 }
 function display(value: SystemEntry | null) {
   if (!value) return null;
@@ -205,20 +210,22 @@ export async function designSystemAction(input: WorkspaceCommand, snapshot: Snap
       const component = current.components.components.find(value => value.name === selection.component && value.entry === input.entry);
       if (!component) throw new DesignDocumentError("PATH_DENIED", "Component is not in this exact system revision");
       try {
-        const compiled = await compileSystemComponent(current, component, source.files, selection.props);
+        const compiled = await compileSystemComponent(current, component, source.files, selection.props, selection.target, snapshot.version.manifest.documentId);
         assertArtifactGeneration(input.generation);
         current.components.components = current.components.components.map(value => value.name === component.name ? compiled.component : value);
         current.sources.unsynced = current.sources.unsynced.filter(value => value.kind !== "component" || value.name !== component.name || value.path !== component.entry);
-        const boardId = "c_" + designDigest(JSON.stringify([component.name, component.entry])).slice(7, 27);
+        const boardId = (selection.target === "dc" ? "c_dc_" : "c_") + designDigest(JSON.stringify([component.name, component.entry])).slice(7, 27);
         const manifest = { ...snapshot.version.manifest, boards: [...snapshot.version.manifest.boards.filter(board => board.id !== boardId),
-          { id: boardId, title: component.name, file: compiled.component.preview!, mode: "responsive" as const, viewport: { width: 1200, height: 900 } }] };
+          { id: boardId, title: component.name, file: compiled.preview, mode: "responsive" as const, viewport: { width: 1200, height: 900 } }] };
         const files = new Map(source.files.map(file => [file.path, file.data])); for (const file of compiled.files) files.set(file.path, file.data);
         return checkedFiles(source.path, projectSystemFiles(current, manifest, [...files].map(([path, data]) => ({ path, data }))));
       } catch (error) {
         if (error instanceof DesignDocumentError && ["PATH_DENIED", "BUDGET_EXCEEDED", "ARTIFACT_DISABLED"].includes(error.code)) throw error;
         assertArtifactGeneration(input.generation);
-        const reason = `Static representation: ${error instanceof Error ? error.message : "Component could not be mounted"}`.slice(0, 500);
-        current.components.components = current.components.components.map(value => value.name === component.name && value.mode !== "mounted" ? { ...value, mode: "static", reason,
+        const reason = ((selection.target === "dc" ? "Native Canvas unavailable: " : "Static representation: ") + componentFailure(error)).slice(0, 500);
+        current.components.components = selection.target === "dc"
+          ? current.components.components.map(value => value.name === component.name ? { ...value, dc: { status: "unsupported" as const, reason, runtime: "react@18.3.1" as const } } : value)
+          : current.components.components.map(value => value.name === component.name && value.mode !== "mounted" ? { ...value, mode: "static", reason,
           preview: undefined, bundle: undefined, bundleDigest: undefined, evidence: undefined } : value);
         current.sources.unsynced = current.sources.unsynced.filter(value => value.kind !== "component" || value.name !== component.name || value.path !== component.entry);
         current.sources.unsynced.push({ path: component.entry, kind: "component", name: component.name, reason });

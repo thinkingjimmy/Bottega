@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Shared closed design/system schemas and Node content hashing; no App identity or renderer authority.
- * [OUTPUT]: Design/system manifest types, strict source limits/read sets and bounded domain errors.
+ * [OUTPUT]: Design/system manifest types, strict source/effect limits, captured directory identities and bounded domain errors.
  * [POS]: Artifact document contract shared by the checker, journal and snapshot renderer.
  */
 import { createHash } from "node:crypto";
@@ -9,11 +9,14 @@ export { designId, sourcePath, manifestSchema, type DesignManifest } from "@ai-c
 export const DESIGN_LIMITS = Object.freeze({ boards: 16, files: 64, manifest: 64 * 1024,
   html: 8 * 1024 * 1024, source: 32 * 1024 * 1024, archive: 50_000_000,
   issues: 32, stableMs: 1_000, intervalMs: 500, waitMs: 10_000 });
+export const DESIGN_SLIDES_LIMITS = Object.freeze({ ...DESIGN_LIMITS, boards: 256, files: 512 });
+export const DESIGN_EFFECT_LIMITS = Object.freeze({ files: DESIGN_SLIDES_LIMITS.files * 2, source: DESIGN_LIMITS.source * 2 });
+export const designFileLimit = (files: readonly { path: string }[]) => files.some(file => file.path === "deck.json") ? DESIGN_SLIDES_LIMITS.files : DESIGN_LIMITS.files;
 export type DesignAuthority = Readonly<{ chatId: string; incarnationId: string; workspace: string;
   ownerId: string; authorityIdentity: string }>;
 export type DesignSourceFile = Readonly<{ path: string; data: Buffer; digest: string; stamp: string }>;
 export type DesignReadSet = Readonly<{ path: string; files: readonly DesignSourceFile[];
-  readSetDigest: string; bytes: number }>;
+  readSetDigest: string; bytes: number; directories?: readonly { path: string; identity: string }[] }>;
 export type DesignIssue = Readonly<{ file: string; message: string }>;
 export type DesignErrorCode = "NOT_READY" | "SOURCE_CHANGED" | "REVISION_CONFLICT" | "REQUEST_MISMATCH" |
   "UNREADABLE" | "STORAGE_FAILED" | "INVALID_DOCUMENT" | "PATH_DENIED" | "BUDGET_EXCEEDED" | "ARTIFACT_DISABLED";

@@ -49,4 +49,3 @@ export const appBuildReceiptSchema = z.discriminatedUnion("status", [
   z.object({ operationId: id, status: z.literal("applied"), revision: version.positive() }).strict(),
   z.object({ operationId: id, status: z.literal("conflicted"), current: z.object({ revision: version.positive() }).strict().nullable() }).strict(),
 ]);
-export type AppBuildReceipt = z.infer<typeof appBuildReceiptSchema>;

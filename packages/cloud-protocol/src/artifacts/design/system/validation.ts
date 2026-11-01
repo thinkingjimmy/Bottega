@@ -54,6 +54,13 @@ export function inspectDesignSystem(raw: unknown, files?: ReadonlySet<string>) {
     if (files && component.closure.some(path => !files.has(path))) issue("components.json", `Incomplete captured closure: ${component.name}`);
     if (component.mode === "mounted" && (!component.evidence || !component.bundle || !component.bundleDigest || !component.preview)) issue("components.json", `Mounted component ${component.name} has no render evidence`);
     for (const path of [component.bundle, component.preview, component.evidence?.file]) { if (path && files && !files.has(path)) issue("components.json", `Missing component file: ${path}`); }
+    if (component.dc?.status === "ready") {
+      const dc = component.dc;
+      if (Boolean(dc.stylesheet) !== Boolean(dc.stylesheetDigest)) issue("components.json", "DC stylesheet identity is incomplete: " + component.name);
+      for (const path of [dc.bundle, dc.preview, dc.runtimeFile, dc.stylesheet, dc.evidence.file]) {
+        if (path && files && !files.has(path)) issue("components.json", "Missing DC component file: " + path);
+      }
+    }
   }
   return { system: system as DesignSystem, issues, advisories };
 }

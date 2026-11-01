@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on descriptors (including their credential-safe check claim), supervised runtime probes (versions through runtime-version-cache.ts), filesystem identity, bounded leases, the host Provider traits (which sign-in checks queue for a lease, which answers are workspace-scoped), each descriptor's route (under a custom one an official "logged out" is no evidence) and the registry-owned availability ledger.
- * [OUTPUT]: Owns 60-second runtime and five-minute full checks, cancellation-preserved evidence, independent startup facts, scoped purpose eligibility and a read-only per-CLI account fingerprint, for any Provider id its resolver runs (a built-in or an available package Provider; an id it does not is refused by name and stores nothing): discovery bounded by the flight's own deadline, the version run on the backend's declared arguments, the list over the resolver's ids and forget for a package Provider that stopped being available.
+ * [OUTPUT]: Owns 60-second runtime and five-minute full checks, cancellation-preserved evidence, independent startup facts, separate candidate and scoped purpose eligibility and a read-only per-CLI account fingerprint, for any Provider id its resolver runs (a built-in or an available package Provider; an id it does not is refused by name and stores nothing): discovery bounded by the flight's own deadline, the version run on the backend's declared arguments, the list over the resolver's ids and forget for a package Provider that stopped being available.
  * [POS]: The only owner of the backends running time and discovery/auth subprocess; Chat, Section, Settings and Background tasks cannot detect CLI on their own
  * Warm installed/unsupported snapshots revalidate executable identity; discovered versions carry versionIdentity.
  * Full checks authenticate installed and unsupported versions independently; unsupported versions remain blocked for execution and quota reads.
@@ -10,8 +10,8 @@ import { inspectRuntimeCandidate, optionalRuntimeIdentity } from "./runtime-insp
 import type { BackendInfo } from "../../../../shared/ipc/agent/agent-ipc";
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
 import { createHash } from "node:crypto";
-import { AGENT_BACKEND_ORDER, type HeadlessPurpose } from "../../../../shared/ipc/agent/agent-ipc";
-import { AUTH_TTL_MS, RUNTIME_TTL_MS, type RuntimeIssue, type ExecutionTarget } from "../../../../shared/agent-availability/types";
+import { AGENT_BACKEND_ORDER } from "../../../../shared/ipc/agent/agent-ipc";
+import { AUTH_TTL_MS, RUNTIME_TTL_MS, type ProviderOperationPurpose, type RuntimeIssue, type ExecutionTarget } from "../../../../shared/agent-availability/types";
 import { CHECK_QUEUE_MS, MAX_RUNTIME_CANDIDATES, RUNTIME_DISCOVERY_MS, FULL_CHECK_MS } from "./availability/budgets";
 import { expireLoginShellPath } from "./runtime-probe";
 import { AvailabilityEvidence, type TurnEvidenceStart } from "./availability/evidence";
@@ -427,7 +427,7 @@ export class BackendRuntimeRegistry {
     return { backend, environmentGeneration: snapshot.generation, scopeKey, ...(plan.model ? { model: plan.model } : {}) };
   }
 
-  async operationEligibility(backend: ProviderId, purpose: HeadlessPurpose | "app-binding", plan: ScopePlan = {}, snapshot = this.snapshot(backend)) {
+  async operationEligibility(backend: ProviderId, purpose: ProviderOperationPurpose, plan: ScopePlan = {}, snapshot = this.snapshot(backend)) {
     const target = await this.executionTarget(backend, snapshot, plan);
     return this.evidence.eligibility(target, snapshot.capabilities, purpose, snapshot.runtimeStatus === "installed");
   }
@@ -471,7 +471,7 @@ export class BackendRuntimeRegistry {
       capabilities: snapshot.capabilities,
       availability: {
         ...(snapshot.availability ?? this.evidence.facts(backend)),
-        purposeEligibility: Object.fromEntries((["title", "subagent", "install-analysis", "repair", "serve", "app-binding"] as const).map((purpose) => {
+        purposeEligibility: Object.fromEntries((["title", "subagent", "install-analysis", "repair", "serve", "app-binding", "artifact-candidate"] as const).map((purpose) => {
           const target = this.purposeTargets.get(backend)?.[purpose === "subagent" || purpose === "app-binding" ? "regular" : "isolated"] ?? { backend, environmentGeneration: snapshot.generation };
           return [purpose, this.evidence.eligibility(target, snapshot.capabilities, purpose, snapshot.runtimeStatus === "installed")];
         })),

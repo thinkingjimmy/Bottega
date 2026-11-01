@@ -1,12 +1,15 @@
 /**
- * [INPUT]: Prepared board HTML, owner-issued frame identity, transient UI edit sessions and an optional measurement observer.
- * [OUTPUT]: Opaque preview with trusted editor wheel panning, native Preview scrolling, session-owned text and authenticated one-use deferred element selection.
+ * [INPUT]: Prepared board HTML, owner-issued frame identity, transient UI edit sessions and an optional measurement observer and main-verified native-runtime permission.
+ * [OUTPUT]: Opaque preview with fixed-runtime CSP, trusted editor wheel panning, native Preview scrolling, session-owned text and authenticated one-use deferred element selection.
  * [POS]: Canvas frame interaction bridge; source authority and shared schemas remain with the owner service.
  */
 import { DESIGN_PROPERTIES } from "./canvas/model";
 export const DESIGN_FRAME_CSP = "default-src 'none'; script-src 'unsafe-inline' data: blob:; style-src 'unsafe-inline' data: blob:; img-src data: blob:; font-src data: blob:; media-src data: blob:; connect-src data: blob:; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'";
+export function designFramePolicy(nativeRuntime = false) {
+  return nativeRuntime ? DESIGN_FRAME_CSP.replace("script-src ", "script-src 'unsafe-eval' ") : DESIGN_FRAME_CSP;
+}
 export type DesignFrameIdentity = { id: string; nonce: string; selectionNonce: string; generation: string; boardId: string; boardDigest: string; navigation?: Record<string, string> };
-export function designFrameHtml(html: string, identity: DesignFrameIdentity) {
+export function designFrameHtml(html: string, identity: DesignFrameIdentity, nativeRuntime = false) {
   const seed = JSON.stringify(identity).replace(/</g, "\\u003c");
   const script = `(()=>{
     let messageSequence=0;const identity=${seed};document.currentScript?.remove();const send=parent.postMessage.bind(parent);
@@ -142,5 +145,5 @@ export function designFrameHtml(html: string, identity: DesignFrameIdentity) {
       if(!event.isTrusted||tool!=='preview'||selecting||!identity.navigation||!Object.hasOwn(identity.navigation,href))return;send({...stamp('bottega:design:navigate'),boardId:identity.navigation[href]},'*');
     },true);
   })();`;
-  return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${DESIGN_FRAME_CSP}"><script>${script}</script>` + html.replace(/<!doctype[^>]*>/i, "");
+  return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${designFramePolicy(nativeRuntime)}"><script>${script}</script>` + html.replace(/<!doctype[^>]*>/i, "");
 }

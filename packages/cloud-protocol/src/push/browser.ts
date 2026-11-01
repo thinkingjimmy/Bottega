@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Zod scalar validation and the supported browser push service origins.
- * [OUTPUT]: Bounded Web Push subscriptions and the endpoint admission shared by registration and delivery.
+ * [OUTPUT]: Bounded Web Push endpoint and subscription schemas shared by registration and delivery.
  * [POS]: Browser transport of the existing push protocol; endpoint possession is proved through R-36.
  */
 import { z } from "zod";
 
-export function allowedPushEndpoint(value: string) {
+function allowedPushEndpoint(value: string) {
   try {
     const url = new URL(value), host = url.hostname;
     return url.protocol === "https:" && !url.username && !url.password && !url.port && !url.hash &&

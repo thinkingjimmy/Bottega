@@ -1,0 +1,20 @@
+{
+  "repository": "https://github.com/JimLiu/baocut",
+  "commit": "e2864776f8bf97617af75f5b94ab3dbdd007634e",
+  "acceptanceRepository": "https://github.com/JimLiu/baoyu-design",
+  "acceptanceCommit": "cc297a5625baa65e3bc56cf45d8b6bc09187f5d8",
+  "sourceSha256": "37bd4be7574e9c5eeb1667d487af4e706544eb993ec8fa459d52a5d0f4139f17",
+  "sourceFiles": 322,
+  "upstreamArchiveSha256": "7eabb7b62043614aab66589580612a27ab2054930655c6b301dbbf1f7d1a7d73",
+  "lineExceptionsSha256": "be27b66c30a92177671cfb9b2d5fd120680a2912f6ef6e3bd0428fea151f6abe",
+  "lineExceptions": 81,
+  "sharedSourceFiles": 24,
+  "license": "BaoCut Community License 1.0; internal development only",
+  "publicSourceFilter": {
+    "schema": "bottega.native-public-source/v1",
+    "originalSourceSha256": "39838f97568ff81715cbc91a4a338a74d75faa7cd622ee626fad4a59b80248dd",
+    "excludedPaths": [
+      "packages/slides-runtime/README.md"
+    ]
+  }
+}

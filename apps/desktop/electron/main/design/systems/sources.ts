@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Main Chat/workspace authority and an explicit bounded source selection.
- * [OUTPUT]: No-follow immutable source bytes, exact Git/digest versions and a complete omission list.
+ * [OUTPUT]: No-follow immutable source bytes and captured license text/complete fonts within the original total budget, exact Git/digest versions and a complete omission list.
  * [POS]: Read-only source boundary; source code and repository metadata never become instructions.
  */
 import { constants, type Stats } from "node:fs";
@@ -15,10 +15,10 @@ import type { SystemSource, SystemUnsynced } from "@ai-chat/cloud-protocol/artif
 
 export type CapturedSource = { record: SystemSource; data: Buffer };
 export type CapturedSources = { files: CapturedSource[]; unsynced: SystemUnsynced[]; digest: string };
-const LIMIT = { files: 52, bytes: 24 * 1024 * 1024, file: 8 * 1024 * 1024, nodes: 256 };
+const LIMIT = { files: 52, bytes: 24 * 1024 * 1024, file: 8 * 1024 * 1024, font: 24 * 1024 * 1024, nodes: 256 };
 const stamp = (value: Stats) => `${value.dev}:${value.ino}:${value.size}:${value.mtimeMs}:${value.ctimeMs}`;
 const textFile = /\.(?:css|json|[cm]?js|jsx|tsx?|mdx?|svg)$/i;
-const allowedFile = /\.(?:css|json|[cm]?js|jsx|tsx?|mdx?|svg|png|jpe?g|webp|gif|woff2?|ttf|otf)$/i;
+const allowedFile = /\.(?:css|json|[cm]?js|jsx|tsx?|mdx?|txt|svg|png|jpe?g|webp|gif|woff2?|ttf|otf)$/i;
 const toolchainFile = /^(?:package\.json|(?:pnpm|package|yarn|bun).*lock.*|tsconfig.*\.json|AGENTS\.md|CLAUDE\.md|SKILL\.md)$/i;
 function boundedGit(workspace: string, args: string[], maxBuffer = 1024) {
   return new Promise<Buffer>((resolve, reject) => execFile("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "-C", workspace, ...args],
@@ -29,7 +29,7 @@ async function sourceVersion(workspace: string, path: string, data: Buffer, comm
   if (!commit || !repository) return { kind: "digest" as const, digest };
   const name = relative(repository, join(workspace, path)).split("\\").join("/");
   if (!sourcePath.safeParse(name).success) return { kind: "digest" as const, digest };
-  const committed = await boundedGit(repository, ["cat-file", "blob", `${commit}:${name}`], LIMIT.file).catch(() => null);
+  const committed = await boundedGit(repository, ["cat-file", "blob", `${commit}:${name}`], Math.max(LIMIT.file, data.length)).catch(() => null);
   return { kind: "git" as const, commit, workingTree: !committed || designDigest(committed) !== digest };
 }
 function localReferences(path: string, data: Buffer) {
@@ -100,7 +100,7 @@ export async function captureSystemSources(authority: DesignAuthority, requested
     }
     if (!before.isFile() || await realpath(target) !== target) throw new DesignDocumentError("PATH_DENIED", "Source must be an ordinary local file");
     if (toolchainFile.test(posix.basename(path)) || !allowedFile.test(path)) { omit(path, "Not a token, component, usage or local resource file"); return; }
-    if (files.size >= LIMIT.files || before.size > LIMIT.file || bytes + before.size > LIMIT.bytes) throw new DesignDocumentError("BUDGET_EXCEEDED", "Complete source capture exceeds its file or byte budget");
+    if (files.size >= LIMIT.files || before.size > (/\.(?:woff2?|ttf|otf)$/i.test(path) ? LIMIT.font : LIMIT.file) || bytes + before.size > LIMIT.bytes) throw new DesignDocumentError("BUDGET_EXCEEDED", "Complete source capture exceeds its file or byte budget");
     const handle = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
     let data: Buffer;
     try {

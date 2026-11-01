@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Validated artifact fences and current host capabilities, including the active draft callback.
- * [OUTPUT]: Scope-bound capture recovery, preview-first design cards, expanded workspace chrome and file actions.
+ * [OUTPUT]: Scope-bound capture recovery, preview-first design cards, format-dispatched expanded workspace chrome and file actions.
  * [POS]: Shared artifact presentation; native file paths and account keys stay outside the renderer.
  */
 import { File, Expand, Minimize2 } from "lucide-react";
@@ -15,6 +15,7 @@ import { LivePreviewCard } from "./live/card";
 import { DesignArtifactCard } from "./presentation/design-card";
 import { ArtifactHeader, ArtifactLoading, fullLabel } from "./presentation/header";
 const inlineKinds = new Set(["html-fragment", "html-document", "static-site", "svg", "markdown"]);
+const NativeWorkspace = lazy(() => import("./native/view").then(module => ({ default: module.NativeArtifactWorkspace })));
 const Workspace = lazy(() => import("./workspace/view").then(module => ({ default: module.ArtifactWorkspaceView })));
 export function ArtifactCard({ fence: original, expanded = false }: { fence: ArtifactFence; expanded?: boolean }) {
   const [recovered, setRecovered] = useState<{ scope: string; fence: ArtifactFence } | null>(null);
@@ -34,7 +35,7 @@ export function ArtifactCard({ fence: original, expanded = false }: { fence: Art
   };
   useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 2000); return () => clearTimeout(timer); }, [copied]);
   if (fence.rejected || !host) return <>{design && expanded && <ArtifactHeader title={fence.title} />}<div role="status" className="my-3 rounded-lg border p-4 text-sm">{fence.rejected && ["missing", "unreadable", "changed", "storage", "publish"].includes(fence.rejected) ? copy[fence.rejected as "missing" | "unreadable" | "changed" | "storage" | "publish"] : fence.rejected === "interrupted" ? copy.interrupted : fence.rejected === "budget" ? copy.budget : fence.rejected === "too-large" ? copy.tooLarge : fence.rejected === "not-utf8" ? copy.encoding : fence.rejected === "symlink" || fence.rejected === "path-denied" ? copy.pathDenied : copy.unavailable}{host?.recover && fence.rejected && ["missing", "changed", "storage", "publish", "unavailable"].includes(fence.rejected) && <Button disabled={busy} onClick={() => void retryCapture()}>{copy.retry}</Button>}{error && <p role="alert">{copy.failed}</p>}</div></>;
-  if (design && expanded) return host.workspace ? <Suspense fallback={<ArtifactLoading title={fence.title} />}><Workspace fence={fence} /></Suspense> : <div className="flex min-h-0 flex-1 flex-col"><ArtifactHeader title={fence.title} /><p role="status" className="p-4 text-sm">{copy.unavailable}</p></div>;
+  if (design && expanded) return host.workspace ? <Suspense fallback={<ArtifactLoading title={fence.title} />}>{fence.design?.contentFormat ? <NativeWorkspace fence={fence} /> : <Workspace fence={fence} />}</Suspense> : <div className="flex min-h-0 flex-1 flex-col"><ArtifactHeader title={fence.title} /><p role="status" className="p-4 text-sm">{copy.unavailable}</p></div>;
   const open = () => { setError(false); void Promise.resolve().then(() => host.open(fence, host.followUp)).catch(() => setError(true)); };
   if (design) return <DesignArtifactCard fence={fence} busy={busy} error={error} open={open} save={() => void run("save")} />;
   const copyText = (value: string) => { void navigator.clipboard.writeText(value).then(() => setCopied(true)).catch(() => setError(true)); };
@@ -42,9 +43,10 @@ export function ArtifactCard({ fence: original, expanded = false }: { fence: Art
   const inline = inlineKinds.has(fence.kind), top = fence.kind === "static-site" && host.directoryTopLevel;
   const action = (name: "quick-look" | "reveal" | "open" | "save", label: string) => <Button variant="ghost" size="sm" type="button" disabled={busy} className="relative touch-target-44" onClick={() => void run(name)}>{label}</Button>;
   return <section aria-label={`${fence.title} · ${inline ? copy.visualization : copy.file}`} className={expanded ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-card text-card-foreground" : "my-3 overflow-hidden rounded-lg border bg-card text-card-foreground"} data-artifact-id={fence.id}>
+    {expanded && presentation?.tabChrome && <ArtifactHeader title={fence.title} />}
     <header className="flex flex-wrap items-center gap-2 border-b px-3 py-1">
-      <strong className="flex min-w-0 flex-1 items-center gap-2 text-sm">{!inline && <File aria-hidden className="size-4 shrink-0" />}<span className="truncate">{fence.title}</span></strong>
-      {expanded && presentation?.canExpand && <Button variant="ghost" size="sm" type="button" className="min-h-[44px]" aria-label={presentation.full ? fullLabel(host.locale, true) : fullLabel(host.locale)} onClick={() => presentation.setFull(!presentation.full)}>{presentation.full ? <Minimize2 className="size-4" /> : <Expand className="size-4" />}</Button>}
+      {!(expanded && presentation?.tabChrome) && <strong className="flex min-w-0 flex-1 items-center gap-2 text-sm">{!inline && <File aria-hidden className="size-4 shrink-0" />}<span className="truncate">{fence.title}</span></strong>}
+      {expanded && presentation?.canExpand && !presentation.tabChrome && <Button variant="ghost" size="sm" type="button" className="min-h-[44px]" aria-label={presentation.full ? fullLabel(host.locale, true) : fullLabel(host.locale)} onClick={() => presentation.setFull(!presentation.full)}>{presentation.full ? <Minimize2 className="size-4" /> : <Expand className="size-4" />}</Button>}
       {(inline || media) && !expanded && <Button variant="ghost" size="sm" type="button" className="relative touch-target-44" onClick={open}>{top ? copy.browser : host.sidePanel ? copy.panel : copy.preview}</Button>}
       {fence.kind === "claude-artifact" ? <Button variant="ghost" size="sm" type="button" className="relative touch-target-44" onClick={open}>{copy.browser}</Button> : fence.kind !== "live-app" && action("save", copy.save)}
     </header>

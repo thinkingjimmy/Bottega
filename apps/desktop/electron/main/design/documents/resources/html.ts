@@ -1,6 +1,6 @@
 /**
  * [INPUT]: parse5 markup/source locations, entity-position mapping and CSS/JavaScript syntax scanners.
- * [OUTPUT]: Real HTML/SVG loading ranges and distinct local navigation ranges.
+ * [OUTPUT]: Real HTML/SVG/DC-import loading ranges (including multiple literal from/import targets) and distinct local navigation ranges.
  * [POS]: Markup dependency analysis; comments/prose/script literals never become markup references.
  */
 import { parse, parseFragment, type DefaultTreeAdapterMap } from "parse5";
@@ -8,7 +8,7 @@ import { cssReferences } from "./css";
 import { scriptReferences } from "./script";
 import { decodedHtml, mappedReferences, type DesignReference } from "./types";
 import { DesignDocumentError } from "../model";
-const SOURCE_TAGS = new Set(["img", "script", "iframe", "audio", "video", "source", "track", "input", "embed"]);
+const SOURCE_TAGS = new Set(["img", "script", "iframe", "audio", "video", "source", "track", "input", "embed", "x-import"]);
 function sourceSet(text: string): DesignReference[] {
   const result: DesignReference[] = []; let cursor = 0;
   while (cursor < text.length) {
@@ -49,7 +49,9 @@ export function htmlReferences(text: string): DesignReference[] {
         if (decoded.value !== attribute.value) throw new DesignDocumentError("INVALID_DOCUMENT", "Inline resource entity positions could not be verified");
         result.push(...mappedReferences(references, decoded.offsets, start));
       };
-      if (key === "style") mapped(cssReferences(attribute.value));
+      if (name === "x-import" && ["from", "src", "import"].includes(key))
+        mapped([...attribute.value.matchAll(/\S+/g)].map(match => ({ kind: "load" as const, url: match[0], start: match.index!, end: match.index! + match[0].length })));
+      else if (key === "style") mapped(cssReferences(attribute.value));
       else if (key.startsWith("on")) mapped(scriptReferences(attribute.value));
       else if (key === "srcset" && (name === "img" || name === "source")) mapped(sourceSet(attribute.value));
       else {

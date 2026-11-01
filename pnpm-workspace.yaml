@@ -13,6 +13,8 @@ allowBuilds:
   unrs-resolver: true
 
 overrides:
+  # Preserve the measured App GUI graph independently of the native compiler's newer codec.
+  '@jridgewell/gen-mapping@0.3.13>@jridgewell/sourcemap-codec': 1.5.5
   # Mermaid only consumes marked's paragraph/inline lexer; list-renderer changes in 17 do not affect it.
   'mermaid>marked': 17.0.6
   # Sankey consumes max/min/sum and linkHorizontal; verified against the shared D3 7 geometry runtime.
