@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses the work's actual Provider identity, product turn/input contracts, main-sealed ACP or native plans, execution references and ordered bridge events.
- * [OUTPUT]: Exports BridgedTurn with frozen configuration, approval/control forwarding, live exact-owner MCP consent eligibility, candidate background-transfer refusal, delivery evidence and cancellation-safe Chat background transfer with exact-item termination and exact-owner durable result commits.
+ * [OUTPUT]: Exports BridgedTurn with frozen configuration, approval/control forwarding, live exact-owner MCP consent eligibility, pre-launch candidate native-purpose admission, candidate background-transfer refusal, delivery evidence and cancellation-safe Chat background transfer with exact-item termination and exact-owner durable result commits.
  * [POS]: Main-side authorization and custody owner; protocol parsing remains in the pinned bridge driver.
  */
 import { randomUUID } from "node:crypto";
@@ -63,6 +63,8 @@ export class BridgedTurn implements AgentTurn {
     startupSignal?.throwIfAborted();
     if ("protocol" in this.config) this.native = await this.config.prepare();
     startupSignal?.throwIfAborted();
+    if (this.options.artifactCandidate && this.native?.nativeConfig.purpose !== "artifact-candidate")
+      throw new Error("Candidate execution requires its prepared native plan");
     if (this.closed) throw new Error("Turn stopped before launch preparation completed");
     const baseLaunch = this.native ? this.native.launch : turnLaunch(this.options, this.config as AcpSpawnConfig);
     const launch = this.prepareLaunch ? await this.prepareLaunch({ ...baseLaunch, args: [...baseLaunch.args] }) : baseLaunch;

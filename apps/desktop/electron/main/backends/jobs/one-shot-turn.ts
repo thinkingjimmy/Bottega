@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on a ProviderBackend's createTurn/validateTurnOptions, the factory chat-option defaults, the per-backend process lease and credential reservation
+ * [INPUT]: Depends on a ProviderBackend's ordinary and optional candidate factories, candidate capability, option validator, factory chat-option defaults, per-backend process lease and credential reservation
  * [OUTPUT]: Provides runOneShotTurn for read-only titles or main-admitted independent candidates: one prompt, one process, the assistant text it produced, with every approval denied, a hard deadline and guaranteed process termination through the turn's process owner (host custody; a reported process with no owner fails closed)
  * [POS]: Sibling of backends/jobs/executor.ts for backends that have no headless path at all; it runs the product's ordinary interactive turn (bridged, like every turn) exactly once instead of a CLI print mode
  */
@@ -85,7 +85,11 @@ function oneShotTurnOptions(
 export async function runOneShotTurn(job: OneShotTurnJob): Promise<string> {
   const { descriptor, workspace, requestId } = job;
   job.signal?.throwIfAborted();
-  if (job.candidate && descriptor.id !== "codex") throw new Error("Artifact candidate execution currently requires Codex");
+  const createTurn = job.candidate ? descriptor.createCandidateTurn : descriptor.createTurn;
+  if (!createTurn || job.candidate && descriptor.capabilitiesFor(job.runtime).candidateEditing !== "native-candidate/v1")
+    throw new Error("This Provider does not support isolated candidate editing yet");
+  if (job.candidate?.options && job.candidate.options.backend !== descriptor.id)
+    throw new Error("Candidate editing requires its original Provider selection");
   await job.candidate?.authority.validate();
   const turnOptions = oneShotTurnOptions(descriptor, job.model, job.candidate?.options);
   const credentialUse = reserveAgentCredentialUse(descriptor.id);
@@ -171,7 +175,7 @@ export async function runOneShotTurn(job: OneShotTurnJob): Promise<string> {
     job.signal?.throwIfAborted();
     await job.candidate?.authority.validate();
     job.candidate?.authority.current();
-    turn = descriptor.createTurn({
+    turn = createTurn.call(descriptor, {
       payload: {
         requestId,
         scope: { conversationId: job.candidate?.chatId ?? requestId },

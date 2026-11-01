@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses validated native CLI discovery, bb-native-v1 launch policy, the pinned Provider bridge and model/auth/quota controls and the pinned official installer target.
- * [OUTPUT]: Exports codexBackend with exact-version native Chat, readiness, model options, quota and strict-role admission. Declares the separate isolated native candidate capability.
+ * [OUTPUT]: Exports codexBackend with exact-version native Chat, readiness, model options, quota and strict-role admission. Declares the separate isolated native candidate capability and explicit candidate factory; ordinary Chat refuses that purpose.
  * [POS]: Codex composition boundary; all subprocesses retain main authorization and custody.
  */
 
@@ -118,11 +118,21 @@ export const codexBackend: BackendDescriptor = {
     invalidate: codexModels.invalidate,
   },
   createTurn: (options) => {
+    if (options.artifactCandidate) throw new Error("An isolated candidate must use its candidate factory");
     assertCodexOptions(options.payload.turnOptions);
     return new BridgedTurn(options, {
       protocol: "codex-app-server",
       env: codexEnvironment(options.runtime),
       prepare: async () => (await import("./native/policy/launch")).nativeCodexTurnPlan(options),
+    }, requireProviderBridge());
+  },
+  createCandidateTurn: (options) => {
+    if (!options.artifactCandidate) throw new Error("Candidate execution requires its independent purpose");
+    assertCodexOptions(options.payload.turnOptions);
+    return new BridgedTurn(options, {
+      protocol: "codex-app-server",
+      env: codexEnvironment(options.runtime),
+      prepare: async () => (await import("./native/policy/candidate-plan")).nativeCandidateTurnPlan(options),
     }, requireProviderBridge());
   },
   skills: {

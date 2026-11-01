@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Main-authored native Skill-purpose guidance, original Chat selection, mounted-view custody, immutable snapshots and the existing document journal/gateway.
+ * [INPUT]: Main-authored native Skill-purpose guidance, installed Provider candidate capability/port qualification, original Chat selection, mounted-view custody, immutable snapshots and the existing document journal/gateway.
  * [OUTPUT]: NativeCandidates provides bounded isolated generation, per-consumer fixed preview identity, exact acceptance, existing-only prepared recovery and full-source AI rollback.
  * [POS]: Temporary task owner; prepared writes belong to the document journal and never depend on this registry surviving.
  */
@@ -102,8 +102,10 @@ export class NativeCandidates {
           if (old.version.readSetDigest !== snapshot.version.readSetDigest || old.version.revision !== snapshot.version.revision) throw new Error("The original source changed. Start a new candidate from the current source.");
           files = unpackArtifactArchive(old.archive, 512);
         }
-        const selection = this.optionsFor(input.chatId, input.incarnationId);
-        if (selection.backend !== "codex") throw new Error("This Provider does not support isolated candidate editing yet");
+        const selection = structuredClone(this.optionsFor(input.chatId, input.incarnationId));
+        const { requireNativeCandidateProvider } = await import("../../../design/native/candidate-job");
+        await requireNativeCandidateProvider(selection);
+        await this.baseline(input, snapshot.version); guard();
         if (previous) { previous.controller.abort(); previous.archive = undefined; if (!["accepting", "pending", "committed"].includes(previous.phase)) previous.phase = "cancelled"; } if (previous) this.releasePreviews(previous);
         const record: Candidate = { id: randomUUID(), requestId: input.requestId!, input, parameters, windowId, version: snapshot.version,
           controller: new AbortController(), guard, phase: "queued", previews: new Map(), createdAt: Date.now() };

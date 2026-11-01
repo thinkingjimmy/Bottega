@@ -10,7 +10,7 @@ This file records product milestones, not internal implementation iterations. Da
 [Download 0.2.12](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12) for macOS on Apple silicon (ARM64).
 
 - **Edit native Canvas and Slides.** Keep the original document structure, multiple pages, notes and manual Undo/Redo. Open current work in the existing third-column tabs, with full view and work switching in the tab strip.
-- **Review before applying AI changes.** Save element or area comments, reply, resolve and reopen threads. The supported Codex path works on a separate candidate. Preview, accept, discard or continue editing it; one AI rollback restores the complete previous file set without another model call.
+- **Review before applying AI changes.** Save element or area comments, reply, resolve and reopen threads. The supported Codex path works on a separate candidate. If the selected Agent cannot provide isolated editing, the request stays unavailable. Preview, accept, discard or continue editing it; one AI rollback restores the complete previous file set without another model call.
 - **Keep the controls consistent.** SVG icons and compact floating review controls follow light and dark appearances. Touch controls retain larger targets. Encrypted browser editing preserves unsent input and asks which draft to keep after a conflict.
 - **Export and present.** Use the original Canvas PNG, PDF and offline HTML exports. Slides includes PPTX font-fallback previews and explicit confirmation. Present with a separate read-only notes window; closing the source releases the presentation windows.
 

@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Main-admitted independent candidate purpose, fixed Codex runtime and live original-owner authority.
+ * [INPUT]: Canonical built-in Provider identity, main-admitted independent candidate purpose, fixed Codex runtime and live original-owner authority.
  * [OUTPUT]: nativeCandidateTurnPlan seals a fresh ephemeral native thread and candidate-only filesystem policy.
  * [POS]: Isolated branch of the existing native launch plan; ordinary Chat grants and continuation are refused.
  */
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import { lstat, realpath } from "node:fs/promises";
 import type { BackendTurnOptions } from "../../../../backends/contracts/types";
 import { SUPPORTED_CODEX_VERSION } from "../../version";
@@ -12,7 +13,7 @@ import type { NativeSpawnConfig } from "./launch";
 import type { CodexTurnOptions } from "../../../../../../shared/ipc/agent/codex-ipc";
 export async function nativeCandidateTurnPlan(options: BackendTurnOptions): Promise<NativeSpawnConfig> {
   const root = options.artifactCandidate?.root, turn = options.payload.turnOptions as CodexTurnOptions;
-  if (!root || root !== options.workspace || turn.backend !== "codex" || !options.trustedAuthority ||
+  if (!root || root !== options.workspace || turn.backend !== BUILTIN_PROVIDER_IDS.codex || !options.trustedAuthority ||
     options.runtime.version.replace(/^codex-cli\s+/, "") !== SUPPORTED_CODEX_VERSION ||
     options.payload.session || options.sessionRecovery || options.artifactDirectory || options.builtinMcp ||
     options.thirdPartyMcpPlan?.entries.length || options.processEnv || options.productContext || options.sensitiveContribution ||
