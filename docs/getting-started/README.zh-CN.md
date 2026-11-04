@@ -51,7 +51,7 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 0.3.0 使用协议 25。服务协调升级后，请更新已连接的桌面端并刷新 Bottega Web；旧客户端访问 Cloud 时需要更新。已有内容、同步密码与账号密钥保留，无需清空数据。更新前请备份 Bottega 文件夹与应用数据。macOS Apple 芯片正式版使用稳定更新渠道；0.2.5 个人版需要手动安装。
 
-Canvas v3、Slides v4、Design System 与 Dashboard 各有专用编辑器。退役 Artifact 文件与快照保持原样，其卡片显示“不支持此格式”，不会恢复编辑权限。受支持的当前作品可以使用 History 或完整项目 ZIP 导出。Dock 仍为 Alpha，要求 macOS 27.x 与 Apple 芯片。能力与验收边界见 [0.3.0 里程碑](../changelog/README.zh-CN.md#2026-11-04--v030)。
+Canvas v3、Slides v4、Design System 与 Dashboard 各有专用编辑器。退役 Artifact 文件与快照保持原样，其卡片显示“不支持此格式”，不会恢复编辑权限。受支持的当前作品可以使用 History 或完整项目 ZIP 导出。Dock 仍为 Alpha，要求 macOS 27.x 与 Apple 芯片。能力与验收边界见 [0.3.0 里程碑](../changelog/README.zh-CN.md#2026-11-05--v030)。
 
 ### 升级到 0.2.12
 

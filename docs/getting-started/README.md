@@ -51,7 +51,7 @@ See the [features guide](../features/README.md) for the product model and its fo
 
 0.3.0 uses protocol 25. After the coordinated service update, update connected desktops and reload Bottega Web. Earlier clients require an update for Cloud access. Existing content, sync passwords and account keys remain; no data reset is required. Back up the Bottega folder and application data before updating. Official macOS Apple silicon builds use the stable update channel; the 0.2.5 personal build requires manual installation.
 
-Canvas v3, Slides v4, Design System and Dashboard have dedicated editors. Retired Artifact files and snapshots remain unchanged. Their cards show an unsupported-format message and do not regain editor access. Use History or complete-project ZIP export for supported current work. Dock remains Alpha on macOS 27.x with Apple silicon. See the [0.3.0 milestone](../changelog/README.md#2026-11-04--v030) for capabilities and validation limits.
+Canvas v3, Slides v4, Design System and Dashboard have dedicated editors. Retired Artifact files and snapshots remain unchanged. Their cards show an unsupported-format message and do not regain editor access. Use History or complete-project ZIP export for supported current work. Dock remains Alpha on macOS 27.x with Apple silicon. See the [0.3.0 milestone](../changelog/README.md#2026-11-05--v030) for capabilities and validation limits.
 
 ### Upgrading to 0.2.12
 

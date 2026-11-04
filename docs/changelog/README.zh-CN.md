@@ -5,7 +5,7 @@
 本文件只记录产品里程碑，不记录内部实现的逐次迭代。日期表示对应能力首次形成完整产品形态的时间。
 
 
-## 2026-11-04 — v0.3.0
+## 2026-11-05 — v0.3.0
 
 [下载 0.3.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.3.0)，适用于 macOS Apple 芯片（ARM64）。
 

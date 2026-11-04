@@ -5,7 +5,7 @@
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
 
-## 2026-11-04 — v0.3.0
+## 2026-11-05 — v0.3.0
 
 [Download 0.3.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.3.0) for macOS on Apple silicon (ARM64).
 
