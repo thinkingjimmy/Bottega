@@ -19,3 +19,4 @@ user-data/
 # Native editor reconstruction products.
 /packages/canvas-runtime/.build/
 /packages/slides-runtime/.build/
+/packages/design-system-runtime/.build/
