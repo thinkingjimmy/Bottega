@@ -57,6 +57,7 @@
     "./contracts/provider-id": "./src/contracts/provider/provider-id.ts",
     "./remote/memory-status": "./src/remote/memory/memory-status.ts",
     "./remote/memory": "./src/remote/memory/memory.ts",
+    "./remote/quota-policy": "./src/remote/quota/quota-policy.ts",
     "./remote/quota-view": "./src/remote/quota/quota-view.ts",
     "./remote/quota": "./src/remote/quota/quota.ts",
     "./artifacts/design/anchors": "./src/artifacts/design/core/anchors.ts",

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Main Chat/workspace facts, admission/generation guards, exact mounted-view final-save admission, complete current-format capture and durable storage.
+ * [INPUT]: Main Chat/workspace facts, canonical Provider identities, admission/generation guards, exact mounted-view final-save admission, complete current-format capture and durable storage.
  * [OUTPUT]: Serializes initial reservations and fixed file-effect plans; source CAS, durable recovery under original ownership, conflicts, completed-revision subscriptions and Fork/Chat lifecycle and atomic parent-owned complete project imports.
  * [POS]: One document journal for native source and system changes; unsupported formats and commands cannot replay.
  */
@@ -9,6 +9,7 @@ import { lstat, readdir, realpath } from "node:fs/promises";
 import { watch } from "node:fs";
 import { join } from "node:path";
 import { packArtifactArchive, unpackArtifactArchive } from "@ai-chat/cloud-protocol/artifacts/archive";
+import { BUILTIN_PROVIDER_IDS } from "@ai-chat/cloud-protocol/chats/backend-id";
 import { SerialQueue } from "../../persistence/serial-queue";
 import { interruptionPoint } from "../../startup/boot/composition-hooks";
 import { readArtifactSource } from "../../artifacts/storage/guarded-read";
@@ -211,7 +212,7 @@ export class DesignDocuments {
       for (const [index, version] of project.versions.entries()) {
         if (version.source.path !== project.path || version.manifest.documentId !== documentId) throw new DesignDocumentError("INVALID_DOCUMENT", "Imported source identity changed before admission");
         const requestId = index === project.versions.length - 1 ? input.requestId! : "import-" + designDigest(JSON.stringify([key, index])).slice(7, 55), childKey = requestKey(authority, requestId);
-        const { archive, revision } = savedRevision(authority, "codex", { path: project.path, requestId, expectedRevision: index, readSetDigest: version.source.readSetDigest }, version.source, version.manifest, childKey);
+        const { archive, revision } = savedRevision(authority, BUILTIN_PROVIDER_IDS.codex, { path: project.path, requestId, expectedRevision: index, readSetDigest: version.source.readSetDigest }, version.source, version.manifest, childKey);
         revision.messageId = messageId; await this.store.archive(revision.snapshotRef, archive); admission(); assertExecution(); this.assertAuthority(authority);
         operations.push({ key: childKey, parameterDigest, state: "prepared", revision, imported: { author: version.author, at: version.at,
           ...(version.restoredFrom ? { restoredFrom: version.restoredFrom, restoredPart: version.restoredPart ?? false } : {}) } });

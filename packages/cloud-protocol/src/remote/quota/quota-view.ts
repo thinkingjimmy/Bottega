@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the quota contract's types only (type imports erase at build).
+ * [INPUT]: Depends on quota contract types only (erased at build).
  * [OUTPUT]: Provides LIMITS_TIMING and the pure quota readers: remainingPercent, quotaWindowExpired, quotaStale (drives refreshes only, never hides a reading), currentRemaining (a window past its reset reads as renewed), sortQuotaPools, generalQuotaWindows, generalRemaining, emptyAgentLimits.
- * [POS]: packages/cloud-protocol/src/remote/quota; Zod-free half of the quota contract (OPT-34 step 2a), so the Dock panel and composer badges read quotas without bundling the schemas; quota.ts re-exports everything here.
+ * [POS]: Type-only quota reader entry for native and remote surfaces; quota.ts re-exports its readers and time budgets, while quota-policy owns Provider policy.
  */
 import type { AgentQuotaPool, AgentQuotaWindow, AgentUsageLimits } from "./quota";
 

@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on main-only title admission, the qualified Codex runtime, canonical directory checks and title-only native settings.
+ * [INPUT]: Depends on main-only title admission, canonical Provider identities, the qualified Codex runtime, canonical directory checks and title-only native settings.
  * [OUTPUT]: Provides nativeTitleTurnPlan for a fresh read-only ephemeral thread with the exact selected model and no ambient tools or instructions.
  * [POS]: Dedicated native title factory policy; ordinary Chat and candidate permissions cannot enter this path.
  */
 import { lstat, realpath } from "node:fs/promises";
+import { BUILTIN_PROVIDER_IDS } from "@ai-chat/cloud-protocol/chats/backend-id";
 import type { BackendTurnOptions } from "../../../../../backends/contracts/types";
 import type { CodexTurnOptions } from "../../../../../../../shared/ipc/agent/codex-ipc";
 import { SUPPORTED_CODEX_VERSION } from "../../../version";
@@ -13,7 +14,7 @@ import { nativeTitleConfig } from "./config";
 
 export async function nativeTitleTurnPlan(options: BackendTurnOptions): Promise<NativeSpawnConfig> {
   const turn = options.payload.turnOptions as CodexTurnOptions;
-  if (!options.titleOnly || turn.backend !== "codex" || options.artifactCandidate || options.payload.session ||
+  if (!options.titleOnly || turn.backend !== BUILTIN_PROVIDER_IDS.codex || options.artifactCandidate || options.payload.session ||
     options.sessionRecovery || options.builtinMcp || options.thirdPartyMcpPlan?.entries.length || options.artifactDirectory ||
     options.processEnv || options.productContext || options.sensitiveContribution ||
     options.runtime.version.replace(/^codex-cli\s+/, "") !== SUPPORTED_CODEX_VERSION ||

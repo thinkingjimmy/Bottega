@@ -160,7 +160,7 @@ export class ArtifactWorkspace {
       if (input.action === "native-project-choose") {
         const window = BrowserWindow.getAllWindows().find(window => window.webContents.id === windowId);
         if (!window || window.isDestroyed()) throw new Error("The original project import window is unavailable");
-        const selected = await dialog.showOpenDialog(window, { properties: ["openFile"], filters: [{ name: "Artifact project ZIP", extensions: ["zip"] }] });
+        const selected = await dialog.showOpenDialog(window, { properties: ["openFile"], filters: [{ name: "ZIP", extensions: ["zip"] }] });
         current(); if (window.isDestroyed()) throw new Error("The original project import window closed");
         if (selected.canceled || selected.filePaths.length !== 1) return { canceled: true };
         bytes = await (await import("../../design/projects/source")).readProjectFile(selected.filePaths[0]!, AbortSignal.timeout(60000));

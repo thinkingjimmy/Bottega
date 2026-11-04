@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Explicit product translation module paths, including shared App enablement, project branch and portable conversation copy.
+ * [INPUT]: Exact product translation leaves, including Artifact History/import/System, Settings palette, App enablement and portable conversation copy.
  * [OUTPUT]: translationCatalogFiles, the closed set of complete locale dictionaries.
  * [POS]: Copy-audit policy data; UI and execution modules remain subject to sink checks.
  */
@@ -13,6 +13,10 @@ export const translationCatalogFiles = new Set([
   "apps/desktop/electron/main/preview/session/copy.ts",
   "packages/base-ui/src/ui/workflow/details/copy.ts",
   "packages/chat-ui/src/artifacts/live/copy.ts",
+  "packages/chat-ui/src/artifacts/history/copy.ts",
+  "packages/chat-ui/src/artifacts/projects/copy.ts",
+  "packages/chat-ui/src/artifacts/system/display/browser/copy.ts",
+  "apps/desktop/src/components/settings/tools/palette-copy.ts",
   "apps/cloud-web/src/routes/settings/memory/copy.ts",
   "packages/chat-ui/src/deletion/copy.ts",
   "packages/chat-ui/src/i18n/messages/failure.ts",
