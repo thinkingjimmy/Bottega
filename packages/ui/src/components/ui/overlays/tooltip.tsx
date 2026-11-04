@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, the radix-ui Tooltip primitive and cn of lib/utils.
- * [OUTPUT]: Provides TooltipProvider (zero default delay), Tooltip, TooltipTrigger and a portalled TooltipContent with an arrow.
+ * [OUTPUT]: Provides TooltipProvider (zero default delay), Tooltip with nearest-provider reuse and a standalone fallback, TooltipTrigger and a portalled TooltipContent with an arrow.
  * [POS]: packages/ui/src/components/ui/overlays; components/ui's single hover/focus hint primitive; it never carries content a disabled trigger would have to announce.
  */
 import * as React from "react"
@@ -8,23 +8,27 @@ import { Tooltip as TooltipPrimitive } from "radix-ui"
 
 import { cn } from "@ai-chat/ui/lib/utils"
 
+const TooltipScope = React.createContext(false);
+
 function TooltipProvider({
   delayDuration = 0,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return (
-    <TooltipPrimitive.Provider
+    <TooltipScope.Provider value={true}><TooltipPrimitive.Provider
       data-slot="tooltip-provider"
       delayDuration={delayDuration}
       {...props}
-    />
+    /></TooltipScope.Provider>
   )
 }
 
 function Tooltip({
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+  const shared = React.useContext(TooltipScope);
+  const root = <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
+  return shared ? root : <TooltipProvider>{root}</TooltipProvider>
 }
 
 function TooltipTrigger({

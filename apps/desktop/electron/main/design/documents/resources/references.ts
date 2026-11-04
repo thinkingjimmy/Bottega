@@ -1,6 +1,6 @@
 /**
  * [INPUT]: File-kind scanners and the strict document-local source path contract.
- * [OUTPUT]: Classified source spans and one safe resolver shared by validation/rendering.
+ * [OUTPUT]: Classified source spans, one safe local resolver and syntax-position CSP-safe fixed text-resource inlining.
  * [POS]: Resource graph boundary; navigation is validated but never recursively embedded.
  */
 import { posix } from "node:path";
@@ -20,3 +20,5 @@ export function designResourceTarget(path: string, reference: string) {
   if (!sourcePath.safeParse(target).success || target.startsWith("../")) throw new Error("Resource is outside the document");
   return target;
 }
+
+export async function inlineDesignTextResources(html: string) { return (await import("./html")).inlineDesignTextResources(html); }

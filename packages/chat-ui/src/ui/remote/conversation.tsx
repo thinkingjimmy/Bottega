@@ -4,7 +4,9 @@
  * Design draft/send uses this original durable owner, one target chip without repeated title text, exact reference/computer checks and existing unknown-command recovery. Durable follow-ups schedule composer focus after takeover ends only while the original conversation and focus origin remain current.
  * [POS]: Shared Web and desktop mirror host; transcript, composer and sibling panels read one published live projection without another subscription.
  */
+import { designReferenceKey } from "@ai-chat/cloud-protocol/artifacts/design/reference/draft";
 import { ChatConversation, type ConversationRegions } from "../page/conversation";
+import { revealTimelineMessage } from "../conversation/timeline/highlight";
 import { useArtifactHost, ArtifactHostProvider, type ArtifactHost } from "../../artifacts/context";
 import { lazy, Suspense, useLayoutEffect, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ComposerDock, ComposerForm, ComposerToolbar, ComposerActions } from "../composer/layout";
@@ -109,7 +111,11 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
     }
   });
   const reviewSend = useRef<NonNullable<ArtifactHost["sendReview"]>>(async () => { throw new Error("Original Chat is unavailable"); });
-  const artifactComposer = useMemo(() => artifactHost ? { ...artifactHost, sendReview: (value: Parameters<NonNullable<ArtifactHost["sendReview"]>>[0]) => reviewSend.current(value),
+  const artifactComposer = useMemo(() => artifactHost ? { ...artifactHost,
+    hasDraftComment: (documentId: string, commentId: string) => store.snapshot().references.some(item => item.value.kind === "design" && item.value.documentId === documentId && item.value.native?.kind === "native-comment" && item.value.native.commentId === commentId),
+    subscribeDraft: store.subscribe,
+    revealMessage: (messageId: string) => revealTimelineMessage(`${head.chat.id}/${head.chat.incarnationId}`, messageId),
+    sendReview: (value: Parameters<NonNullable<ArtifactHost["sendReview"]>>[0]) => reviewSend.current(value),
     followUp: async (value: Parameters<NonNullable<ArtifactHost["followUp"]>>[0]) => {
       const focusOwner = conversationElement.current, focusOrigin = document.activeElement;
       const current = composerLatest.current, block = artifactFollowUpBlock(current.text, value.design ? { prompt: value.prompt } : value);
@@ -120,11 +126,13 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
         await artifactHost.workspace?.({ action: "reference-check", reference: value.design, generation: value.design.generation });
         const reference = { ...value.design, kind: "design" as const, deviceId: artifactHost.executionDeviceId, incarnationId: head.chat.incarnationId };
         const held = store.snapshot().references;
-        if (!held.some(item => JSON.stringify(item.value) === JSON.stringify(reference))) store.update({ references: [...held, { id: crypto.randomUUID(), label: value.title ?? value.design.documentId, value: reference }] });
+        const index = held.findIndex(item => item.value.kind === "design" && designReferenceKey(item.value) === designReferenceKey(reference));
+        if (index < 0) store.update({ references: [...held, { id: crypto.randomUUID(), label: value.title ?? value.design.documentId, value: reference }] });
+        else store.update({ references: held.map((item, at) => at === index ? { ...item, label: value.title ?? value.design!.documentId, value: reference } : item) });
       }
       current.text = next; current.change(next); await store.checkpoint?.flushStrict();
       if (focusOwner?.isConnected && conversationElement.current === focusOwner && document.activeElement === focusOrigin) setFocusRequest(value => value + 1);
-    } } : null, [artifactHost, store, head.ownerDeviceId, head.chat.incarnationId]);
+    } } : null, [artifactHost, store, head.ownerDeviceId, head.chat.id, head.chat.incarnationId]);
   const [pendingAgent, setPendingAgent] = useState<{ backend: CloudChatHead["chat"]["agent"]; head: CloudChatHead } | null>(null);
   const [preparing, setPreparing] = useState(false), [outcome, setOutcome] = useState<Outcome | null>(null);
   const [operationPending, setOperationPending] = useState(false);
@@ -567,7 +575,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
         <ComposerForm className="chat-remote-form" onSubmit={event => { event.preventDefault(); act(); }} {...controls.events}>
         {controls.files}
         {referenceMismatch && <p role="alert" className="chat-remote-hint">{input.referenceChanged}</p>}
-        <RemoteEditor onWorkspaceFileClick={node => {
+        <RemoteEditor onDesignClick={artifactHost ? node => { void import("../../artifacts/native/review/reveal").then(module => module.openDesignReference(artifactHost, node.reference)).catch(() => feedback.notSent("The original Artifact target is unavailable. Compare its saved version before continuing.")); } : undefined} onWorkspaceFileClick={node => {
           const reference = completeDraft.references.find(item => item.value.kind === "file" && item.value.path === node.path)?.value;
           if (!onOpenWorkspaceFile || reference?.kind !== "file" || !commands.session) return;
           const session = commands.session;
@@ -577,7 +585,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
             if (result.kind !== "workspace-text") throw new Error("workspace-text-unavailable"); return result.content;
           } });
         }} references={completeDraft.references} suggestions={referenceSuggestions} removeReference={key => store.update({ references: completeDraft.references.filter(item =>
-          (item.value.kind === "file" ? `file:${item.value.path}` : item.value.kind === "design" ? `design:${item.value.artifactId}` : `library:${item.value.libraryId}`) !== key) })} ref={composerElement} text={text} change={change} files={completeDraft.files} remove={id => store.remove(id)} placeholder={copy.placeholder} label={copy.draft}
+          (item.value.kind === "file" ? `file:${item.value.path}` : item.value.kind === "design" ? `design:${designReferenceKey(item.value)}` : `library:${item.value.libraryId}`) !== key) })} ref={composerElement} text={text} change={change} files={completeDraft.files} remove={id => store.remove(id)} placeholder={copy.placeholder} label={copy.draft}
           disabled={draft ? !draft.ready : false} previewTitle={input.previewFile} onFileClick={controls.openFile} fileStates={controls.fileStates} />
         <ComposerToolbar><PromptInputTools>{controls.tools}
           {budget && <span role="alert" className="chat-remote-budget">{budget}</span>}

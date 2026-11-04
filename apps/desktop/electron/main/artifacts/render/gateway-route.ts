@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Authorized immutable snapshots, native source sessions, exact caller windows/generation, prepared design HTML and existing loopback origin factory.
- * [OUTPUT]: Revalidates prepared-preview metadata without rereading source bytes, pins generation/window lifetime and budgets unique backing stores with bounded release diagnostics and exact-view native download saving and pending-nonce remote final-save admission.
+ * [INPUT]: Authorized immutable snapshots, native source sessions, exact caller windows/generation, trusted editor form events with blocked navigation, prepared design HTML and existing loopback origin factory.
+ * [OUTPUT]: Revalidates prepared-preview metadata without rereading source bytes, admits only closed theme/native-locale navigation, pins generation/window lifetime and budgets unique backing stores with bounded release diagnostics and exact-view native download saving and pending-nonce remote final-save admission.
  * [POS]: Artifact HTTP boundary; never resolves request paths against a workspace or filesystem root.
  */
 import type { WorkspaceCommand } from "@ai-chat/cloud-protocol/artifacts/design/model";
@@ -16,7 +16,7 @@ import type { ArtifactService } from "../core/service";
 import { assertArtifactAdmission, artifactGeneration, artifactEnabled } from "../admission/state";
 import { designFramePolicy } from "@ai-chat/cloud-protocol/artifacts/design/frame";
 type Lease = { lease: ArtifactLease; ref: ArtifactRef; windowId: number; source: { record: Awaited<ReturnType<ArtifactService["resolve"]>>["record"]; data?: Uint8Array };
-  files: Map<string, Uint8Array>; entry: string; generation?: string; prepared?: boolean; nativeRuntime?: "canvas-dc/v3" | "slides/v4"; native?: NativeEditorSession; finalFlush?: (nonce: string) => void };
+  files: Map<string, Uint8Array>; entry: string; generation?: string; prepared?: boolean; nativeRuntime?: "canvas-dc/v3" | "slides/v4" | "dashboard/v1"; native?: NativeEditorSession; finalFlush?: (nonce: string) => void };
 export class ArtifactGateway {
   private readonly leases = new Map<string, Lease>();
   private readonly lifetimes = new Map<number, number>();
@@ -48,7 +48,7 @@ export class ArtifactGateway {
   facts() { this.purge(); return { count: this.leases.size, released: { ...this.released }, bytes: this.retainedBytes(), leases: [...this.leases.values()].map(value => ({ id: value.lease.id,
     windowId: value.windowId, chatId: value.ref.chatId, artifactId: value.ref.artifactId, generation: value.generation,
     archiveBytes: value.source.data?.byteLength ?? 0, fileBytes: [...value.files.values()].reduce((sum, bytes) => sum + bytes.byteLength, 0), prepared: Boolean(value.prepared) })) }; }
-  async issuePrepared(ref: ArtifactRef, windowId: number, id: string, html: string, nativeRuntime?: "canvas-dc/v3" | "slides/v4") {
+  async issuePrepared(ref: ArtifactRef, windowId: number, id: string, html: string, nativeRuntime?: "canvas-dc/v3" | "slides/v4" | "dashboard/v1") {
     assertArtifactAdmission(); this.purge();
     const generation = artifactGeneration(), check = this.guard(windowId);
     if (!this.origin || this.leases.size >= 8) throw new Error("artifact-lease-budget");
@@ -78,7 +78,7 @@ export class ArtifactGateway {
     const ref = { chatId: input.chatId, incarnationId: input.incarnationId, artifactId: input.artifactId! };
     const record = await this.service.metadata(ref); check();
     const origin = this.origin("art-" + id), entry = "editor/index.html";
-    const lease: ArtifactLease = { id, origin, expiresAt: Date.now() + 30 * 60_000, url: `${origin}/_artifact/${id}/${entry}`, sandbox: "allow-scripts allow-same-origin" };
+    const lease: ArtifactLease = { id, origin, expiresAt: Date.now() + 30 * 60_000, url: `${origin}/_artifact/${id}/${entry}`, sandbox: "allow-scripts allow-same-origin allow-forms" };
     this.admit({ lease, ref, windowId, source: { record }, files: native.files, entry, generation, native, finalFlush }); issued = true;
     return { ...lease, nativeToken: native.token };
   }
@@ -121,7 +121,7 @@ export class ArtifactGateway {
       if (lease.generation && lease.generation !== artifactGeneration()) return false;
       this.service.assert(lease.ref);
       return url.origin === lease.lease.origin && url.pathname === new URL(lease.lease.url).pathname &&
-        [...url.searchParams].every(([key, value]) => key === "theme" && ["light", "dark"].includes(value));
+        [...url.searchParams].every(([key, value]) => key === "theme" && ["light", "dark"].includes(value) || key === "lang" && Boolean(lease.native) && ["en", "zh-CN", "ja", "es", "fr"].includes(value));
     } catch { return false; }
   }
   ownsOrigin(value: string) { try { const origin = new URL(value).origin; return [...this.leases.values()].some(value => value.lease.origin === origin); } catch { return false; } }
@@ -153,7 +153,7 @@ export class ArtifactGateway {
     const fence = lease.source.record.fence, directory = fence.kind === "static-site";
     let body = bytes, mime = directory || lease.native ? artifactMime(filename) : fence.mime!;
     if (lease.native) mime = lease.native.mime(filename);
-    const csp = lease.native ? "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'self' 'unsafe-inline' data: blob:; img-src 'self' data: blob:; font-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' data: blob:; frame-src 'self' data: blob:; worker-src 'self' blob:; form-action 'none'; base-uri 'self'" : lease.prepared ? designFramePolicy(Boolean(lease.nativeRuntime)) : directory ? artifactDirectoryCsp(lease.lease.origin) : ARTIFACT_FRAGMENT_CSP;
+    const csp = lease.native ? "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'self' 'unsafe-inline' data: blob:; img-src 'self' data: blob:; font-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' data: blob:; frame-src 'self' data: blob:; worker-src 'self' blob:; form-action 'none'; base-uri 'self'" : lease.prepared ? designFramePolicy(lease.nativeRuntime === "canvas-dc/v3" || lease.nativeRuntime === "slides/v4") : directory ? artifactDirectoryCsp(lease.lease.origin) : ARTIFACT_FRAGMENT_CSP;
     const shell = !lease.native && !lease.prepared && (mime === "text/html" || fence.kind === "svg");
     if (lease.prepared) mime = "text/html";
     if (shell) {

@@ -123,19 +123,24 @@
                  let value286: Dynamic = value86?.boot;
 --- a/packages/design-runtime/src/canvas/design-canvas.tsx
 +++ b/packages/design-runtime/src/canvas/design-canvas.tsx
-@@ -1,4 +1,11 @@
+@@ -1,4 +1,16 @@
++/**
++ * [INPUT]: Maintained original toolbar runtime and the trusted native project download owner.
++ * [OUTPUT]: Existing native controls with the source-bound complete-project Export entry.
++ * [POS]: Maintained editor chrome; authored frames cannot invoke this module.
++ */
 +/**
 + * [INPUT]: Original Canvas state/capture producers, complete HTML preview readiness and main-frozen native output choices.
 + * [OUTPUT]: Main-frozen menu delegation and original HTML/HTML-ZIP/PDF/PNG production; fixed jobs audit every selected HTML board and use exact chosen ranges/scales.
 + * [POS]: Maintained native export seam; read-only job source stays separate from the working editor.
 + */
  /** Restored application module; prepare first, initialize in original order. */
-+import { nativeMainExport, nativeExportCanvasHtmlFontAudit, nativeExportBundleJob } from "../adapters/export-runtime";
++import { nativeHistoryLabel, openNativeHistory, nativeProjectExportAvailable, nativeProjectExportLabel, nativeWholeFolderLabel, nativeWholeFolderDescription, openNativeProjectExport, nativeMainExport, nativeExportCanvasHtmlFontAudit, nativeExportBundleJob } from "../adapters/export-runtime";
 +import { nativeExportZipResources } from "../adapters/asset-address";
  import {
    bindRuntimeValue,
    type Dynamic,
-@@ -16374,6 +16381,8 @@
+@@ -16374,6 +16386,8 @@
              }
              value479(true);
              try {
@@ -144,7 +149,7 @@
                let value653: Dynamic = await value483(input),
                  value654: Dynamic = value653
                    ? (0, runtime.createPreviewHandle)(value653)
-@@ -16827,7 +16836,7 @@
+@@ -16827,7 +16841,7 @@
          ],
        ),
        value507: Dynamic = (0, runtime.reactChromeTheme.useCallback)(
@@ -153,7 +158,7 @@
            if (!value493) {
              if (value480) {
                showToast(runtime.DownloadsArenTAvailableToYouForMessage);
-@@ -16842,7 +16851,10 @@
+@@ -16842,7 +16856,10 @@
                  );
                  return;
                }
@@ -164,7 +169,7 @@
                let files: Dynamic = doc.content().files,
                  callback15: Dynamic = async (
                    input2?: Dynamic,
-@@ -16966,9 +16978,11 @@
+@@ -16966,9 +16983,11 @@
                    value654,
                  ),
                });
@@ -178,7 +183,7 @@
                    value656,
                    value657,
                  ),
-@@ -17027,6 +17041,7 @@
+@@ -17027,6 +17046,7 @@
                  runtime.designAnalyticsEvents.exported.zip,
                );
              } catch (value653: Dynamic) {
@@ -186,7 +191,7 @@
                runtime.healthReporter.report(
                  ...(0, runtime.classifyExportFailure)("zip"),
                );
-@@ -17039,7 +17054,7 @@
+@@ -17039,7 +17059,7 @@
              }
            }
          },
@@ -195,7 +200,7 @@
        ),
        value508: Dynamic = (0, runtime.reactChromeTheme.useCallback)(
          async (input?: Dynamic): Promise<Dynamic> => {
-@@ -17090,8 +17105,15 @@
+@@ -17090,8 +17110,15 @@
              value73.current,
              value80.current,
              value346.current,
@@ -213,7 +218,7 @@
              ? await value508(
                  value655.artboards.map(
                    (input?: Dynamic): Dynamic => input.file,
-@@ -17131,12 +17153,15 @@
+@@ -17131,12 +17158,15 @@
            filename: value657.filename,
            data: value657.blob,
          };
@@ -230,7 +235,7 @@
            let value653: Dynamic = await value509();
            (0, runtime.reportExportEvent)("htmlBuilt");
            return value653;
-@@ -17202,6 +17227,8 @@
+@@ -17202,6 +17232,8 @@
            if (value653) {
              value479(true);
              try {
@@ -239,7 +244,7 @@
                let value654: Dynamic = await value483(input);
                if (!value654 || value654.getBoundingClientRect().width === 0) {
                  showToast(
-@@ -17325,6 +17352,8 @@
+@@ -17325,6 +17357,8 @@
            }
            value479(true);
            try {
@@ -248,7 +253,7 @@
              let value654: Dynamic;
              await value495(
                value653.printable,
-@@ -17458,6 +17487,8 @@
+@@ -17458,6 +17492,8 @@
                  ) || "design") + "-selection";
            value479(true);
            try {
@@ -257,7 +262,7 @@
              let { blob: value659, ...value660 }: Dynamic = await value495(
                value654.printable,
                (): Dynamic =>
-@@ -17598,6 +17629,8 @@
+@@ -17598,6 +17634,8 @@
              index: Dynamic = 0;
            value479(true);
            try {
@@ -266,7 +271,7 @@
              let value657: Dynamic = await (0, runtime.captureExportArtboards)(
                items,
                async (input?: Dynamic): Promise<Dynamic> => {
-@@ -17776,7 +17809,7 @@
+@@ -17776,7 +17814,7 @@
            let value654: Dynamic,
              value655: Dynamic,
              value656: Dynamic = null;
@@ -275,7 +280,7 @@
              let value660: Dynamic = input.bundle ? "pngs" : "png",
                value661: Dynamic = (0, runtime.initialExportPickedFiles)(
                  value660,
-@@ -17788,7 +17821,7 @@
+@@ -17788,7 +17826,7 @@
                value662: Dynamic = value484.filter(
                  (input2?: Dynamic): Dynamic => value661.has(input2.file),
                );
@@ -284,7 +289,7 @@
                value660,
                {
                  picked: value661,
-@@ -17851,6 +17884,8 @@
+@@ -17851,6 +17889,8 @@
              value659: Dynamic = Date.now() + 55e3;
            value479(true);
            try {
@@ -293,7 +298,7 @@
              let value660: Dynamic = await value483(value654.file);
              if (value656?.signal.aborted) throw new runtime.ExportCancelled();
              let value661: Dynamic = value660
-@@ -17876,10 +17911,10 @@
+@@ -17876,10 +17916,10 @@
                )
                  .filter(
                    (input2?: Dynamic): Dynamic =>
@@ -306,7 +311,7 @@
                  ? value656.scale === 2 && value662.includes(2)
                    ? [2, 1]
                    : [1]
-@@ -18105,7 +18140,8 @@
+@@ -18105,7 +18145,8 @@
        : [
            {
              format: "html",
@@ -316,6 +321,95 @@
            },
            {
              format: "pdf",
+@@ -18139,7 +18180,7 @@
+     // would. baocutToolbarExports counts that button's requests until they finish (picking artboards included), for its
+     // spinner; value476 covers the exports that start elsewhere.
+     let baocutStandalonePage: Dynamic =
+-        typeof window !== "undefined" && window.parent === window,
++        typeof window !== "undefined" && (window.parent === window || nativeProjectExportAvailable()),
+       [baocutToolbarExports, setBaocutToolbarExports]: Dynamic = (0,
+       runtime.reactChromeTheme.useState)(0),
+       baocutStartToolbarExport: Dynamic = (entry?: Dynamic): Dynamic => {
+@@ -20775,35 +20816,27 @@
+             ) : (
+               <runtime.SessionStripPopover
+                 icon={"Download"}
+-                label={"Export"}
++                label={nativeProjectExportLabel()}
+                 iconOnly={true}
+-                tip={"Export the design"}
++                tip={nativeProjectExportLabel()}
+                 disabled={baocutExportFormats === null}
+                 disabledTip={runtime.DownloadsArenTAvailableToYouForMessage}
+                 align={"end"}
+                 data-testid={"dc-export"}
+               >
+-                {(0, runtime.renderMenuItems)(
+-                  (baocutExportFormats ?? []).map(
+-                    (entry?: Dynamic): Dynamic => ({
+-                      label: entry.format.toUpperCase(),
+-                      description:
+-                        entry.format === "html"
+-                          ? "Standalone web page"
+-                          : entry.format === "pdf"
+-                            ? "Document for printing and sharing"
+-                            : "Image",
+-                      disabled: entry.disabled === true,
+-                      disabledReason:
+-                        entry.disabled === true
+-                          ? pageHasNoArtboardsMessage
+-                          : undefined,
+-                      onSelect: (): Dynamic => baocutStartToolbarExport(entry),
+-                    }),
+-                  ),
+-                )}
++                <div data-native-export-region=""><h2>{nativeProjectExportLabel()}</h2>{[
++                  ...(baocutExportFormats ?? []).map((entry?: Dynamic): Dynamic => ({
++                    label: entry.format.toUpperCase(), icon: entry.format === "html" ? "Code" : entry.format === "png" ? "Image" : "File",
++                    description: entry.format === "html" ? "Standalone web page" : entry.format === "pdf" ? "Document for printing and sharing" : "Image",
++                    trailing: <runtime.Icon name={"Download"} size={"sm"} />,
++                    disabled: entry.disabled === true, disabledReason: entry.disabled === true ? pageHasNoArtboardsMessage : undefined,
++                    onSelect: (): Dynamic => baocutStartToolbarExport(entry),
++                  })),
++                  ...(nativeProjectExportAvailable() ? [{ label: nativeWholeFolderLabel(), description: nativeWholeFolderDescription(), icon: "Folder", trailing: <runtime.Icon name={"Download"} size={"sm"} />, onSelect: () => openNativeProjectExport(true) }] : []),
++                ].map((entry: Dynamic, index: number) => <runtime.MenuMenuAssignValue.Item key={index} aria-label={entry.label} icon={entry.icon} description={entry.description} trailing={entry.trailing} disabled={entry.disabled} disabledReason={entry.disabledReason} onClick={entry.onSelect}>{entry.label}</runtime.MenuMenuAssignValue.Item>)}</div>
+               </runtime.SessionStripPopover>
+             )}
++            {nativeProjectExportAvailable() && <runtime.Button iconOnly={true} variant={"ghost"} icon={"History"} aria-label={nativeHistoryLabel()} title={nativeHistoryLabel()} onClick={openNativeHistory} />}
+           </span>
+         ),
+       value643: Dynamic = value347 ? (
+@@ -20822,7 +20855,7 @@
+                 data-testid={"mega-export"}
+               >
+                 {(0, runtime.renderMenuItems)(
+-                  (0, runtime.artboardExportMenuItems)(
++                  [...(nativeProjectExportAvailable() ? [{ label: nativeWholeFolderLabel(), icon: "Folder", onSelect: () => openNativeProjectExport(true) }] : []), ...(0, runtime.artboardExportMenuItems)(
+                     value347.file,
+                     value86.artboards,
+                     {
+@@ -20850,9 +20883,10 @@
+                     },
+                     undefined,
+                     value93,
+-                  ),
++                  )],
+                 )}
+               </runtime.SessionStripPopover>
++              {nativeProjectExportAvailable() && <runtime.Button iconOnly={true} variant={"ghost"} icon={"History"} aria-label={nativeHistoryLabel()} title={nativeHistoryLabel()} onClick={openNativeHistory} />}
+               <span
+                 data-testid={"mega-fit"}
+                 data-view-control={""}
+@@ -21028,8 +21062,8 @@
+                             }
+                           />
+                         )}
++                        {baocutExportButton}
+                         {value642}
+-                        {baocutExportButton}
+                       </runtime.jsx_Gn.Fragment>
+                     )
+                   }
 --- a/packages/design-runtime/src/canvas/key-routing.tsx
 +++ b/packages/design-runtime/src/canvas/key-routing.tsx
 @@ -5,9 +5,13 @@
@@ -483,6 +577,43 @@
    function isIconName(input?: Dynamic): Dynamic {
      return typeof input == "string";
    }
+--- a/packages/design-runtime/src/editor/color/picker.tsx
++++ b/packages/design-runtime/src/editor/color/picker.tsx
+@@ -1,3 +1,4 @@
++import { nativeSystemBrowserLabel, nativeSystemBrowserAvailable, openNativeSystemBrowser } from "../../adapters/export-runtime";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -42,6 +43,7 @@
+           <runtime.TabsTabsRootListTabConfig.Tab value={"custom"}>
+             {"Custom"}
+           </runtime.TabsTabsRootListTabConfig.Tab>
++        {nativeSystemBrowserAvailable() && <button type="button" className="ml-auto rounded-md px-2 text-xs text-fg-secondary hover:bg-bg-secondary focus-visible:outline focus-visible:outline-2" onClick={openNativeSystemBrowser}>{nativeSystemBrowserLabel()}</button>}
+         </runtime.TabsTabsRootListTabConfig.List>
+       </runtime.TabsTabsRootListTabConfig.Root>
+     );
+--- a/packages/design-runtime/src/editor/properties/asset-picker.tsx
++++ b/packages/design-runtime/src/editor/properties/asset-picker.tsx
+@@ -1,4 +1,9 @@
+-/** Restored application module; prepare first, initialize in original order. */
++/**
++ * [INPUT]: Original property controls and project resources, with the trusted native source/blob address adapter.
++ * [OUTPUT]: Installs original image pickers with current-source image previews in local and encrypted editors.
++ * [POS]: Maintained original editor properties module; source values and upload/Undo behavior remain native.
++ */
++import { nativeEditorAssetAddress } from "../../adapters/asset-address";
+ import {
+   bindRuntimeValue,
+   type Dynamic,
+@@ -275,6 +280,8 @@
+   }
+   function resolveAssetPreviewUrl(input?: Dynamic, options?: Dynamic): Dynamic {
+     let value: Dynamic = (options ?? "").trim();
++    const native = nativeEditorAssetAddress(value);
++    if (native) return native;
+     return value
+       ? /^(https?:|data:|blob:)/i.test(value) ||
+         runtime.blobAssetPathPattern.test(value)
 --- a/packages/design-runtime/src/export/font-usage.ts
 +++ b/packages/design-runtime/src/export/font-usage.ts
 @@ -1,3 +1,9 @@
@@ -840,25 +971,37 @@
      value_ch.port1.onmessage = function (
        this: Dynamic,
        input?: Dynamic,
---- a/packages/design-runtime/src/editor/properties/asset-picker.tsx
-+++ b/packages/design-runtime/src/editor/properties/asset-picker.tsx
-@@ -1,4 +1,9 @@
--/** Restored application module; prepare first, initialize in original order. */
+--- a/packages/slides/src/editor/comments-bridge.ts
++++ b/packages/slides/src/editor/comments-bridge.ts
+@@ -1,3 +1,8 @@
 +/**
-+ * [INPUT]: Original property controls and project resources, with the trusted native source/blob address adapter.
-+ * [OUTPUT]: Installs original image pickers with current-source image previews in local and encrypted editors.
-+ * [POS]: Maintained original editor properties module; source values and upload/Undo behavior remain native.
++ * [INPUT]: Authenticated parent link, native runtime comment handlers and trusted non-editing keyboard input.
++ * [OUTPUT]: One CommentsBridge mode/thread/compose owner with truthful mode messages and Escape teardown.
++ * [POS]: Shared maintained Canvas/Slides comment bridge; authored opaque frames receive no parent capability.
 + */
-+import { nativeEditorAssetAddress } from "../../adapters/asset-address";
- import {
-   bindRuntimeValue,
-   type Dynamic,
-@@ -275,6 +280,8 @@
-   }
-   function resolveAssetPreviewUrl(input?: Dynamic, options?: Dynamic): Dynamic {
-     let value: Dynamic = (options ?? "").trim();
-+    const native = nativeEditorAssetAddress(value);
-+    if (native) return native;
-     return value
-       ? /^(https?:|data:|blob:)/i.test(value) ||
-         runtime.blobAssetPathPattern.test(value)
+ /**
+  * 标注的桥（docs/design/slides §8.2）：运行时的 `comments.customAnchors` 在 iframe 里，批注框与草稿在父窗口。
+  *
+@@ -120,6 +125,14 @@
+     else pins.clear();
+     link.post({ type: 'editor:mode', on });
+   };
++  const exitOnEscape = (event: KeyboardEvent) => {
++    if (!event.isTrusted || event.key !== "Escape" || event.defaultPrevented || event.isComposing || !mode) return;
++    const target = event.target;
++    if (target instanceof Element && target.closest('input,textarea,select,[contenteditable="true"],[role="dialog"],[role="alertdialog"]')) return;
++    if (document.querySelector('[data-mc-popover],[data-mc-scrim]')) return;
++    event.preventDefault(); setMode(false);
++  };
++  window.addEventListener("keydown", exitOnEscape, true);
+   const settle = (requestId: string, opened: boolean) => {
+     const resolve = pending.get(requestId);
+     if (!resolve) return;
+@@ -213,6 +226,7 @@
+       return mode;
+     },
+     dispose() {
++      window.removeEventListener("keydown", exitOnEscape, true);
+       stop();
+       for (const id of [...pending.keys()]) settle(id, false);
+       pins.clear();

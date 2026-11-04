@@ -3,6 +3,7 @@
  * [OUTPUT]: Web/mirror editor with atomic file/design chips, existing text ownership, removal and submit behavior.
  * [POS]: Remote input view; the original draft store owns all references/files/text and their durable lifecycle.
  */
+import { designReferenceKey } from "@ai-chat/cloud-protocol/artifacts/design/reference/draft";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { RichInput, type RichInputHandle, type RichInputProps } from "@ai-chat/ui/components/ai-elements/rich-input";
 import type { RichNode, RichValue } from "@ai-chat/ui/components/ai-elements/prompt-input";
@@ -18,13 +19,17 @@ const withTrailingText = (value: RichValue): RichValue => value.at(-1)?.type ===
 const referenceNode = (reference: DraftReference): RichNode => reference.value.kind === "file"
   ? { id: reference.id, type: "workspace-file", path: reference.value.path, entryKind: reference.value.entryKind }
   : reference.value.kind === "design" ? { id: reference.id, type: "design", name: reference.label, reference: { artifactId: reference.value.artifactId,
-    documentId: reference.value.documentId, revision: reference.value.revision, readSetDigest: reference.value.readSetDigest, generation: reference.value.generation } }
+    documentId: reference.value.documentId, revision: reference.value.revision, readSetDigest: reference.value.readSetDigest, generation: reference.value.generation, ...(reference.value.purpose ? { purpose: reference.value.purpose, native: reference.value.native } : {}), ...(reference.value.anchors ? { anchors: reference.value.anchors } : {}) } }
   : { id: reference.id, type: "skill", ref: `library:${reference.value.libraryId}`, name: reference.label, label: reference.label };
-const referenceKey = (node: RichNode) => node.type === "workspace-file" ? `file:${node.path}` : node.type === "skill" ? node.ref : node.type === "design" ? `design:${node.reference.artifactId}` : null;
+const referenceKey = (node: RichNode) => node.type === "workspace-file" ? `file:${node.path}` : node.type === "skill" ? node.ref : node.type === "design" ? `design:${designReferenceKey(node.reference)}` : null;
 function reconcile(value: RichValue, text: string, files: readonly DraftFile[], references: readonly DraftReference[]): RichValue {
   const present = new Set(files.map(file => file.id));
   const keys = new Set(references.map(reference => referenceKey(referenceNode(reference))));
   let next: RichValue = value.filter(node => (node.type !== "file" || present.has(node.ref)) && (referenceKey(node) === null || keys.has(referenceKey(node))));
+  next = next.map(node => {
+    const incoming = references.map(referenceNode).find(value => referenceKey(value) !== null && referenceKey(value) === referenceKey(node));
+    return incoming ? { ...incoming, id: node.id } : node;
+  });
   const existing = new Set(next.map(referenceKey));
   next.push(...references.map(referenceNode).filter(node => !existing.has(referenceKey(node))));
   const known = new Set(next.filter(node => node.type === "file").map(node => node.ref));
@@ -36,10 +41,11 @@ function reconcile(value: RichValue, text: string, files: readonly DraftFile[], 
 export type RemoteFileState = { kind: "busy" | "bad"; title?: string };
 export const RemoteEditor = forwardRef<RemoteEditorHandle, {
   references?: readonly DraftReference[]; removeReference?(key: string): void; suggestions?: Pick<RichInputProps, "suggestions" | "onQueryChange" | "onSuggestionSelect" | "suggestionCopy">;
+  onDesignClick?: RichInputProps["onDesignClick"];
   onWorkspaceFileClick?: RichInputProps["onWorkspaceFileClick"];
   text: string; change(text: string): void; files: readonly DraftFile[]; remove(id: string): void; disabled?: boolean; placeholder: string;
   label: string; previewTitle: string; onFileClick(id: string): void; fileStates?: Readonly<Record<string, RemoteFileState>>;
-}>(function RemoteEditor({ references = [], removeReference, suggestions, onWorkspaceFileClick, text, change, files, remove, disabled, placeholder, label, previewTitle, onFileClick, fileStates }, ref) {
+}>(function RemoteEditor({ references = [], removeReference, suggestions, onDesignClick, onWorkspaceFileClick, text, change, files, remove, disabled, placeholder, label, previewTitle, onFileClick, fileStates }, ref) {
   const chips = files.filter(file => !isImageFile(file));
   const [value, setValue] = useState<RichValue>(() => reconcile([], text, chips, references));
   const editor = useRef<RichInputHandle>(null);
@@ -48,10 +54,10 @@ export const RemoteEditor = forwardRef<RemoteEditorHandle, {
   useEffect(() => { setValue(current => { const next = reconcile(current, text, chips, references); return next === current || sameValue(next, current) ? current : next; }); }, [text, chipKey, references]); // eslint-disable-line react-hooks/exhaustive-deps
   const onChange = useCallback((next: RichValue) => { setValue(withTrailingText(next)); const typed = textOf(next); if (typed !== text) change(typed); }, [change, text]);
   return <div className="chat-remote-editor" aria-label={label} role="group">
-    <RichInput ref={editor} value={value} onChange={onChange} placeholder={placeholder} disabled={disabled} queries={Boolean(suggestions)} {...suggestions} onWorkspaceFileClick={onWorkspaceFileClick} fileClickTitle={previewTitle} fileStates={fileStates}
+    <RichInput ref={editor} value={value} onChange={onChange} placeholder={placeholder} disabled={disabled} queries={Boolean(suggestions)} {...suggestions} onDesignClick={onDesignClick} onWorkspaceFileClick={onWorkspaceFileClick} fileClickTitle={previewTitle} fileStates={fileStates}
       onNodeDiscarded={node => { if (node.type === "file") remove(node.ref); else if (referenceKey(node)) removeReference?.(referenceKey(node)!); }} onFileClick={node => onFileClick(node.ref)} className="chat-remote-text" />
   </div>;
 });
 function sameValue(a: RichValue, b: RichValue) {
-  return a.length === b.length && a.every((node, index) => { const other = b[index]!; return node.type === other.type && node.id === other.id && (node.type !== "text" || node.value === (other as typeof node).value); });
+  return a.length === b.length && a.every((node, index) => { const other = b[index]!; return node.type === other.type && node.id === other.id && (node.type !== "text" || node.value === (other as typeof node).value) && (node.type !== "design" || JSON.stringify(node.reference) === JSON.stringify((other as typeof node).reference)); });
 }

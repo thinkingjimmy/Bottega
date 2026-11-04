@@ -55,9 +55,10 @@ const required = new Set([...Object.keys(JSON.parse(registry[1]).icons), ...Obje
 for (const name of required) if (!declared.has(name)) throw new Error("Missing Slides SVG icon: " + name);
 const bridges = ["host.ts", "comments.ts", "downloads.ts", "transport.ts"].map(name => {
   const path = resolve(root, "../canvas-runtime/build", name), data = readFileSync(path);
-  writeFileSync(join(root, ".build", name), data.toString().replaceAll("../.build/source/", "./source/"));
+  writeFileSync(join(root, ".build", name), data.toString().replaceAll("../.build/source/", "./source/").replaceAll("./projects/ui", resolve(root, "../canvas-runtime/build/projects/ui")));
   return { path: "../canvas-runtime/build/" + name, sha256: sha(data) };
 });
+bridges.push(...["projects/ui.ts", "projects/copy.ts"].map(name => ({ path: "../canvas-runtime/build/" + name, sha256: sha(readFileSync(resolve(root, "../canvas-runtime/build", name))) })));
 const outputs = await compile(root, source);
 const identities = folder => readdirSync(join(root, folder)).filter(name => /\.(?:mjs|[jt]sx?)$/.test(name)).sort()
   .map(path => ({ path, sha256: sha(readFileSync(join(root, folder, path))) }));

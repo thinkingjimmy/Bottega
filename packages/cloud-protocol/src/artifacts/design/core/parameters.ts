@@ -1,12 +1,13 @@
 /**
  * [INPUT]: Zod; no preview, checkpoint or browser dependencies.
- * [OUTPUT]: Closed source identifiers, finite design properties, bounded source conflicts and system tool parameters.
+ * [OUTPUT]: Closed source identifiers, read-only computed property hints, bounded source conflicts and system tool parameters.
  * [POS]: Shared validation used by workspace commands and standalone tool helpers.
  */
 import { z } from "zod";
 import { designId, digestSchema, artifactIdSchema } from "../reference/identifiers";
 import { sourcePath } from "../reference/path";
-export { designPropertySchema } from "../canvas/model";
+export const DESIGN_PROPERTIES = ["text", "color", "background-color", "font-size", "padding", "gap", "width", "height",
+  "font-family", "font-weight", "font-style", "text-decoration", "text-align", "line-height", "letter-spacing", "left", "top"] as const;
 export { designId, digestSchema } from "../reference/identifiers";
 export { sourcePath } from "../reference/path";
 const writeCount = z.number().int().min(0).max(64);

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on streamdown Plugin type with dynamic input from @streamdown/code/math/mermaid
+ * [INPUT]: Depends on streamdown Plugin type with the shared code worker and dynamic input from @streamdown/math/mermaid
  * [OUTPUT]: Provides detectOptionalPlugins (Markdown feature detection), selectOptionalPlugins, createOptionalPluginLoader — a single-flight, process-wide-shared loader for the code/math/mermaid plugins whose failures retry after a 30 s→5 min backoff or when the network returns (E-20), with subscribe/revision to wake renderers — and preloadMessagePlugins for idle warmup
  * [POS]: Runtime plugin-selection layer for ai-elements/message's rich-text rendering; manages plugin load state only and never touches React rendering itself
  */
@@ -143,7 +143,7 @@ export function createOptionalPluginLoader(
 
 export const messagePluginLoader = createOptionalPluginLoader(
   {
-    code: () => import("@streamdown/code").then((module) => module.code),
+    code: () => import("./highlighting/client").then((module) => module.loadCodeHighlighter()),
     math: () => import("@streamdown/math").then((module) => module.math),
     mermaid: () =>
       import("@streamdown/mermaid").then((module) => module.mermaid),

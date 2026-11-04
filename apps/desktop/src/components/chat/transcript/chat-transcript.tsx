@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on shared conversation column geometry, Conversation primitives, bounded Chat reads, backend identity, localized copy, canonical assistant turns, focused fork/static-row/divider/skeleton siblings, Find, Outline, revision actions, and side-panel Plan/Image commands
- * [OUTPUT]: Provides the localized canonical transcript (rows bind a stable onFork to their own message, D-02) with paged imported/native segments, a named gap where the window lacks rows before newer ones (D-05), the live reply only at the newest messages with a way back from older pages (D-16), immutable-prefix-aware native revisions, Fork boundaries, native streaming, scroll compensation, a reading position the cloud port re-enters on, backend failures, fenced anchors, Plan expansion, and Find/Outline A failed first history read keeps the newest turns with "Earlier messages not loaded" and Retry (review 0929 F07). Edit is offered only on the Chat's own last user message, never on an older page's (review 0929 F08).
+ * [INPUT]: Depends on shared conversation column geometry, Conversation primitives, idle message-plugin preloading, bounded Chat reads, backend identity, localized copy, canonical assistant turns, focused fork/static-row/divider/skeleton siblings, Find, Outline, revision actions, and side-panel Plan/Image commands
+ * [OUTPUT]: Provides the localized canonical transcript (rows bind a stable onFork to their own message, D-02) with paged imported/native segments, a named gap where the window lacks rows before newer ones (D-05), the live reply only at the newest messages with a way back from older pages (D-16), immutable-prefix-aware native revisions, Fork boundaries, native streaming, scroll compensation, a reading position the cloud port re-enters on, backend failures, fenced anchors, leaf-owned draft/Plan subscriptions, and Find/Outline A failed first history read keeps the newest turns with "Earlier messages not loaded" and Retry (review 0929 F07). Edit is offered only on the Chat's own last user message, never on an older page's (review 0929 F08).
  * Partial initial reads preserve readable messages and expose an explicit retry notice.
  * [POS]: The top-level chat/transcript projection for native and imported SQLite timeline segments
  */
@@ -9,13 +9,15 @@ import {
   Fragment,
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useState,
 } from "react";
 import { TimelineNotice, TimelineView } from "@ai-chat/chat-ui/timeline/view";
 import { chatCopy, gapLabel } from "@ai-chat/chat-ui/copy";
-import { projectDraftPlan } from "../../../../shared/chats/model/chat-turn-reducer";
+import { detectOptionalPlugins, preloadMessagePlugins } from "@ai-chat/ui/components/ai-elements/message/plugin-loader";
+import { prefetchWhenIdle } from "@/lib/platform/idle-prefetch";
 import type {
   AssistantChatMessage,
 } from "../../../../shared/ipc/content/chats-ipc";
@@ -146,7 +148,7 @@ function TranscriptRows({
     backendDisplayName,
     backendId,
     messages: projected,
-    draft,
+    hasDraft,
     assistantSeq,
     chatId,
     incarnationId,
@@ -193,7 +195,13 @@ function TranscriptRows({
      every loaded message; what it stops rendering is forgotten once the list itself changes. */
   const [subagentProjector] = useState(createMessageSubagentProjector);
   useLayoutEffect(() => { subagentProjector.retain(messages); }, [messages, subagentProjector]);
-  const draftPlan = draft ? projectDraftPlan(draft) : null;
+  useEffect(() => {
+    if (!messages.length) return;
+    return prefetchWhenIdle(async () => {
+      const keys = new Set(["code" as const, ...messages.slice(-60).flatMap(message => detectOptionalPlugins(message.content))]);
+      preloadMessagePlugins([...keys]);
+    });
+  }, [messages]);
   /* The Chat's own last user message (review 0929 F08): the projection always holds its newest turns, while the window may be an older
      page reached by Find or the outline, whose last user message the submit would refuse as stale. */
   const lastUserId = projected.findLast((message) => message.role === "user")?.id;
@@ -320,12 +328,12 @@ function TranscriptRows({
     memoryKey={incarnationId ? `${chatId}/${incarnationId}` : undefined}
     earlier={earlier} materialize={materialize} routeSearch={routeSearch} row={renderRow}
     copy={{ earlier: t("chat.transcript.loadEarlier"), loading: t("chat.transcript.loadingEarlier"), imported: t("history.importedHistoryLabel"), loaded: count => t("chat.transcript.loadedEarlier", { count }) }}
-    navigation={jumpTo => <><TranscriptFind chatId={chatId} jumpTo={jumpTo} surfaceVisible={surfaceVisible} />{showOutline && <ChatOutline canonicalItems={outline.items} messages={messages} onJump={jumpTo} />}</>}
+    navigation={jumpTo => <><TranscriptFind chatId={chatId} jumpTo={jumpTo} surfaceVisible={surfaceVisible} />{showOutline && <ChatOutline streaming={hasDraft && controller.draftActive} visible={surfaceVisible} canonicalItems={outline.items} messages={messages} onJump={jumpTo} />}</>}
     gap={gap ? { before: gap.before, content: <TimelineNotice data-transcript-gap="" label={gapLabel(locale, gap.count)} action={chatCopy(locale).gapLoad} onAction={transcript.latest} busy={transcript.snapshot.busy} /> }
       /* F07: the first history read failed, so only the newest turns (the projection) are shown; say so and read again on request. */
       : readFailed ? { before: messages[0]!.id, content: <TimelineNotice data-transcript-read-failed="" label={chatCopy(locale).gapNotLoadedEarlier} action={chatCopy(locale).retry} onAction={transcript.latest} busy={transcript.snapshot.busy} /> }
       : undefined}
-    live={draft && !olderPage ? { seq: assistantSeq, content: (
+    live={hasDraft && !olderPage ? { seq: assistantSeq, content: (
             <ChatTurnDraft
               backendDisplayName={backendDisplayName}
               backendId={backendId}
@@ -333,23 +341,17 @@ function TranscriptRows({
               incarnationId={incarnationId}
               assistantSeq={assistantSeq}
               active={controller.draftActive}
-              draft={draft}
               hasPendingApproval={hasPendingApproval}
               queued={queued}
-              isPlanExpanded={expandedPlanId === draftPlan?.itemId}
+              expandedPlanId={expandedPlanId}
+              onClosePlan={onClosePlan}
               onOpenSubagent={enableSidePanel ? openSubagent : undefined}
               onOpenImage={enableSidePanel ? openImage : undefined}
-              onTogglePlan={
-                enableSidePanel && draftPlan
-                  ? expandedPlanId === draftPlan.itemId
-                    ? onClosePlan
-                    : openDraftPlanPanel
-                  : undefined
-              }
+              onTogglePlan={enableSidePanel ? openDraftPlanPanel : undefined}
               subagents={subagents}
             />) } : undefined}
     after={<>          {olderPage && (
-            <TimelineNotice data-transcript-latest="" label={draft ? chatCopy(locale).replyInProgress : undefined} action={chatCopy(locale).latest} onAction={transcript.latest} busy={transcript.snapshot.busy} />
+            <TimelineNotice data-transcript-latest="" label={hasDraft ? chatCopy(locale).replyInProgress : undefined} action={chatCopy(locale).latest} onAction={transcript.latest} busy={transcript.snapshot.busy} />
           )}
           {forkAnchor && forkContext && (
             <ForkChatDialog

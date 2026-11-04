@@ -1,9 +1,10 @@
 /**
- * [INPUT]: React, explicit local-file failure translation keys, localized panel copy, session identity, Browser/Plan/Subagent projections and scoped workspace/file-link readers
+ * [INPUT]: React, explicit local-file failure translation keys, localized panel copy, session identity, an open-Plan-only draft subscription, Browser/Plan/Subagent projections and scoped workspace/file-link readers
  * [OUTPUT]: Stable panel commands including Artifact tabs and generation-fenced previews shared by composer references and message file links
  * [POS]: apps/desktop/src/components/chat/runtime/session/panels; The sole side-panel state owner in chat/runtime/session
  */
 
+import { useTurnDraft } from "@/lib/chat/state/turn/draft-store";
 import {
   useCallback,
   useEffect,
@@ -62,7 +63,7 @@ declare global {
 type SidePanelInput = {
   conversationId: string;
   panelContext: PanelSessionContext;
-  draft: TurnDraft | null;
+  draft?: TurnDraft | null;
   messages: ChatMessage[];
   status: ChatStatus;
   subagents: Record<string, ProjectedSubagent>;
@@ -110,7 +111,7 @@ export function reconcilePlanPanel(
 export function useSessionSidePanel({
   conversationId,
   panelContext,
-  draft,
+  draft: suppliedDraft,
   messages,
   status,
   subagents,
@@ -214,6 +215,8 @@ export function useSessionSidePanel({
     if (!detached) rememberSidePanel(scopedState.context, scopedState.state);
   }, [detached, scopedState]);
 
+  const liveDraft = useTurnDraft(conversationId, generationKey || null, scopedState.state.kind === "plan" && Boolean(scopedState.state.planItemId));
+  const draft = suppliedDraft === undefined ? liveDraft : suppliedDraft;
   useEffect(() => {
     setState((current) =>
       reconcilePlanPanel(current, draft, messages, status, planTitles)

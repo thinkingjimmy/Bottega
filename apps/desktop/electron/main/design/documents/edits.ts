@@ -25,7 +25,7 @@ export function transformedDesignSet(path: string, input: readonly { path: strin
     throw new DesignDocumentError("BUDGET_EXCEEDED", "Edit exceeds the document file budget");
   const files = input.map(file => {
     sourcePath.parse(file.path);
-    if (["canvas.json", "deck.json"].includes(file.path) && file.data.length > DESIGN_LIMITS.manifest || /\.html$/i.test(file.path) && file.data.length > DESIGN_LIMITS.html)
+    if (["canvas.json", "deck.json", "dashboard.json"].includes(file.path) && file.data.length > DESIGN_LIMITS.manifest || /\.html$/i.test(file.path) && file.data.length > DESIGN_LIMITS.html)
       throw new DesignDocumentError("BUDGET_EXCEEDED", "Edited file exceeds its budget");
     return { path: file.path, data: Buffer.from(file.data), digest: designDigest(file.data), stamp: "prepared-edit" };
   }).sort((a, b) => a.path < b.path ? -1 : 1);

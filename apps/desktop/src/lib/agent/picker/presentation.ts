@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Shared canonical history-source catalog; Provider catalog entries, History source identifiers, independent runtime/auth facts and shared native/remote picker presentation.
+ * [INPUT]: Shared history-source catalog, Provider quota version policy, catalog entries, independent runtime/auth facts and shared native/remote picker presentation.
  * [OUTPUT]: Installed-provider visibility for Composer and History import, quota-demand eligibility and login-first, quota-first picker presentation
  * [POS]: Pure Agent picker policy; UI rendering and main-process execution admission remain separate consumers of the facts.
  */
@@ -8,9 +8,10 @@ import type { ProviderCatalogSnapshot } from "../../../../shared/providers/catal
 import type { AvailabilityState } from "../../../../shared/agent-availability/types";
 import { activeNegative } from "../../../../shared/agent-availability/projection";
 import { projectAgentPickerPresentation } from "@ai-chat/chat-ui/agent-picker/presentation";
+import { quotaVersionIndependent } from "../../../../shared/usage-limits/policy";
 import type { AgentUsageLimits } from "../../../../shared/usage-limits/types";
 import { historySourceCatalog } from "../../../../shared/ipc/content/history-import-ipc";
-type PickerBackend = Pick<BackendInfo, "runtimeStatus" | "authStatus" | "availability" | "updateAvailable">;
+type PickerBackend = Pick<BackendInfo, "runtimeStatus" | "authStatus" | "availability" | "updateAvailable"> & Partial<Pick<BackendInfo, "id">>;
 
 export function installedPickerProvider(entry: Pick<ProviderCatalogSnapshot["entries"][number], "source" | "unavailableReason">, backend?: PickerBackend) {
   return entry.source === "package" ? entry.unavailableReason !== "package-removed"
@@ -28,11 +29,12 @@ function signedOut(backend?: PickerBackend) {
 }
 
 export function pickerQuotaEligible(backend?: PickerBackend) {
-  return backend?.runtimeStatus === "installed" && !signedOut(backend) && backend.availability?.route !== "custom";
+  const runtimeAvailable = backend?.runtimeStatus === "installed" || backend?.runtimeStatus === "unsupported" && quotaVersionIndependent(backend.id);
+  return runtimeAvailable && !signedOut(backend) && backend?.availability?.route !== "custom";
 }
 
 export function projectPickerPresentation(backend: PickerBackend | undefined, state: AvailabilityState, limits?: AgentUsageLimits) {
   return projectAgentPickerPresentation({ state, limits, signedOut: signedOut(backend),
     checking: backend?.authStatus === "checking" && !backend.availability?.lastConfirmedAuth,
-    updateAvailable: backend?.updateAvailable });
+    updateAvailable: backend?.updateAvailable, quotaVersionIndependent: quotaVersionIndependent(backend?.id ?? limits?.backend) });
 }

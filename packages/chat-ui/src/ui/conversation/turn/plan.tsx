@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on AI Elements message primitives, localized Plan controls, injected clipboard, ResizeObserver, and controlled side-panel expansion state
+ * [INPUT]: Depends on AI Elements message primitives, localized Plan controls, injected clipboard, visible-row-gated and frame-coalesced ResizeObserver, and controlled side-panel expansion state
  * [OUTPUT]: Provides ConversationPlan with a bounded preview, localized editing/copy/expand controls, and keyboard-equivalent activation
  * [POS]: Shared conversation/turn Plan view, shared by final and streaming turns while the side panel owns full-content display
  */
@@ -19,6 +19,7 @@ import {
   Minimize2Icon,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { observeVisibleRow } from "@ai-chat/ui/components/conversation/rows/visibility";
 import { capMarkdown } from "./projection";
 
 
@@ -52,19 +53,18 @@ export function ConversationPlan({
   useLayoutEffect(() => {
     const preview = previewRef.current;
     if (!preview) return;
-    const update = () =>
-      setHasMore(preview.scrollHeight > preview.clientHeight + 1);
-    const frame = window.requestAnimationFrame(update);
-    if (typeof ResizeObserver === "undefined") {
-      return () => window.cancelAnimationFrame(frame);
-    }
-    const observer = new ResizeObserver(update);
-    observer.observe(preview);
-    if (preview.firstElementChild) observer.observe(preview.firstElementChild);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
+    return observeVisibleRow(preview, () => {
+      let frame = 0;
+      const schedule = () => {
+        if (frame) return;
+        frame = window.requestAnimationFrame(() => { frame = 0; setHasMore(preview.scrollHeight > preview.clientHeight + 1); });
+      };
+      schedule();
+      const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(schedule);
+      observer?.observe(preview);
+      if (preview.firstElementChild) observer?.observe(preview.firstElementChild);
+      return () => { window.cancelAnimationFrame(frame); observer?.disconnect(); };
+    });
   }, [content]);
 
   const activate = () => onToggle?.();

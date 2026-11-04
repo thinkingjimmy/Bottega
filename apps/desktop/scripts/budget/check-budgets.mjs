@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the closed output-root parser, the shared main-closure walker, Node fs/path/zlib and surface-budgets.json
- * [OUTPUT]: Measures every listed surface (reading the build's flavour marker; preload and main gate only production, renderers every build; `--production` and `--resample` require production): three renderer entries' eager JS/CSS, three preloads including isolated Dock details, the main eager closure and each worker/host closure. Gates raw/gzip-9/brotli-11 for renderers and raw/two-byte chunk counts for Node; `--resample --reason` records ceiling changes.
+ * [INPUT]: Depends on the closed output-root parser, the shared main-closure walker, Node fs/path/zlib and surface-budgets.json (v2)
+ * [OUTPUT]: Measures every listed surface (reading the build's flavour marker; preload and main gate only production, renderers every build; `--production` and `--resample` require production): three renderer entries' eager JS/CSS, three preloads including isolated Dock details, the main eager closure and each worker/host closure with its eager external packages. Gates each surface against its release baseline: renderer raw blocks above the renderer line; Node raw warns above the Node warning line and blocks above its block line; a new two-byte chunk or a new eager external package blocks. Renderer gzip/brotli are reported only. `--resample --reason` moves every baseline to the measured build and records why.
  * [POS]: The one byte gate for every desktop surface (OPT-30); check-renderer-bundle keeps the lazy boundaries and check-main-bundle keeps the banned-package boundaries, this file owns the numbers
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -9,7 +9,7 @@ import console from "node:console";
 import process from "node:process";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 import { resolveOutputRoot } from "../assembly/output-root.mjs";
-import { eagerClosure } from "../assembly/main-closure.mjs";
+import { eagerClosure, eagerExternalPackages } from "../assembly/main-closure.mjs";
 
 const LEDGER = resolve(import.meta.dirname, "surface-budgets.json");
 const RENDERER_ENTRIES = ["index", "system-dock-bar", "system-dock-panel"];
@@ -63,73 +63,95 @@ export function measureSurfaces(outputRoot) {
     surfaces[`renderer/${entry}/js`] = measureFiles(js);
     if (css.length) surfaces[`renderer/${entry}/css`] = measureFiles(css);
   }
-  for (const name of PRELOADS) surfaces[`preload/${name}`] = measureFiles([resolve(base, "preload", `${name}.js`)]);
+  for (const name of PRELOADS) {
+    const path = resolve(base, "preload", `${name}.js`);
+    surfaces[`preload/${name}`] = { ...measureFiles([path]), eagerPackages: [...eagerExternalPackages(readFileSync(path, "utf8"))].sort() };
+  }
   const mainRoot = resolve(base, "main");
   for (const entry of NODE_ENTRIES) {
     const file = `${entry}.js`;
     if (!existsSync(resolve(mainRoot, file))) throw new Error(`main entry missing: ${file}`);
     /* The main index is a two-KB doorway whose dynamic edges are startup cost; every other entry follows static edges only. */
     const { chunks } = eagerClosure({ entry: file, read: name => readFileSync(resolve(mainRoot, name), "utf8"), entryFollowsDynamic: entry === "index" });
-    surfaces[`main/${entry}`] = measureFiles([...chunks.keys()].map(name => resolve(mainRoot, name)));
+    const paths = [...chunks.keys()].map(name => resolve(mainRoot, name));
+    const packages = new Set(paths.flatMap(path => [...eagerExternalPackages(readFileSync(path, "utf8"))]));
+    surfaces[`main/${entry}`] = { ...measureFiles(paths), eagerPackages: [...packages].sort() };
   }
   return surfaces;
 }
 
-/** Which metrics gate a surface: renderer bytes are also transfer and parse cost; Node bytes are resident source. */
-const gatedMetrics = (surface) => surface.startsWith("renderer/") ? ["raw", "gzip", "brotli", "twoByteChunks"] : ["raw", "twoByteChunks"];
+const isRenderer = (surface) => surface.startsWith("renderer/");
 /* Node surfaces (preload, main) gate only the build that ships: non-production inputs such as e2e-entry re-split shared chunks. */
-const gatesInFlavor = (surface, flavor) => surface.startsWith("renderer/") || flavor === "production";
+const gatesInFlavor = (surface, flavor) => isRenderer(surface) || flavor === "production";
 export const requireProduction = (flavor) => flavor === "production" ? [] : [`the production gate needs a production build; this output was built as ${flavor}`];
+const lineOf = (baseline, fraction) => Math.ceil(baseline * (1 + fraction));
+const share = (fraction) => `${Math.round(fraction * 100)}%`;
+const bytes = (value) => value.toLocaleString("en-US");
+const growth = (actual, baseline) => `${actual >= baseline ? "+" : ""}${((actual / baseline - 1) * 100).toFixed(2)}%`;
 
+/* Raw bytes are what a desktop process reads and parses; renderer gzip and brotli are kept in the baseline for the record only,
+   because the desktop loads local files and never transfers compressed bytes. */
 export function compare(ledger, measured, flavor = "production") {
-  const failures = [];
+  const failures = [], warnings = [];
   for (const surface of Object.keys({ ...ledger.surfaces, ...measured })) {
-    const limit = ledger.surfaces[surface], actual = measured[surface];
-    if (!limit) { failures.push(`${surface}: measured but has no ceiling in the ledger`); continue; }
-    if (!actual) { failures.push(`${surface}: has a ceiling but was not built`); continue; }
+    const entry = ledger.surfaces[surface], actual = measured[surface];
+    if (!entry) { failures.push(`${surface}: measured but has no baseline in the ledger`); continue; }
+    if (!actual) { failures.push(`${surface}: has a baseline but was not built`); continue; }
     if (!gatesInFlavor(surface, flavor)) continue;
-    for (const metric of gatedMetrics(surface)) {
-      if (actual[metric] > limit[metric]) failures.push(`${surface} ${metric}: ${actual[metric].toLocaleString("en-US")} > ${limit[metric].toLocaleString("en-US")}`);
+    const { warn, block } = ledger.policy[isRenderer(surface) ? "renderer" : "node"], baseline = entry.baseline.raw;
+    const size = `${bytes(actual.raw)} raw is ${growth(actual.raw, baseline)} against the ${bytes(baseline)} baseline`;
+    if (actual.raw > lineOf(baseline, block)) failures.push(`${surface}: ${size} (blocks above +${share(block)})`);
+    else if (warn !== undefined && actual.raw > lineOf(baseline, warn)) warnings.push(`${surface}: ${size} (warns above +${share(warn)}, blocks above +${share(block)})`);
+    if (actual.twoByteChunks > entry.twoByteChunks) failures.push(`${surface}: ${actual.twoByteChunks} two-byte chunks > ${entry.twoByteChunks}`);
+    if (isRenderer(surface)) continue;
+    if (!Array.isArray(entry.eagerPackages)) { failures.push(`${surface}: no recorded eager packages; resample to record them`); continue; }
+    for (const name of actual.eagerPackages ?? []) {
+      if (!entry.eagerPackages.includes(name)) failures.push(`${surface}: new eager external package ${name} now loads when the process starts`);
     }
   }
-  return failures;
+  return { failures, warnings };
 }
 
-/* Ceiling = measured + headroom, rounded up, for the metrics that gate the surface only: a Node surface's gzip and brotli are recorded
-   under `measured` for information and never written as a ceiling nothing enforces. Two-byte chunk counts get no headroom. */
+/* A baseline is the measured build of a formal release (or an approved exception), so the lines bound the growth of a whole release
+   cycle rather than of one change. Two-byte chunk counts and eager packages are exact: they have no headroom. */
 export function resample(ledger, measured, reason, date) {
-  const headroom = ledger.policy.headroom;
-  const surfaces = Object.fromEntries(Object.entries(measured).map(([surface, value]) => {
-    const gated = gatedMetrics(surface);
-    const ceiling = Object.fromEntries(["raw", "gzip", "brotli"].filter(metric => gated.includes(metric)).map(metric => [metric, Math.ceil(value[metric] * (1 + headroom))]));
-    return [surface, { ...ceiling, twoByteChunks: value.twoByteChunks, measured: { raw: value.raw, gzip: value.gzip, brotli: value.brotli } }];
-  }));
+  const surfaces = Object.fromEntries(Object.entries(measured).map(([surface, value]) => [surface, {
+    baseline: { raw: value.raw, gzip: value.gzip, brotli: value.brotli }, twoByteChunks: value.twoByteChunks,
+    ...(isRenderer(surface) ? {} : { eagerPackages: [...value.eagerPackages].sort() }),
+  }]));
   return { ...ledger, surfaces, history: [...ledger.history, { date, reason }] };
 }
 
 function selfTest() {
-  const ledger = { policy: { headroom: 0.02 }, history: [], surfaces: {} };
+  const ledger = { policy: { renderer: { block: 0.02 }, node: { warn: 0.02, block: 0.05 } }, history: [], surfaces: {} };
   const one = { raw: 1000, gzip: 400, brotli: 350, twoByteChunks: 1, files: 1 };
-  const frozen = resample(ledger, { "renderer/index/js": one, "main/index": one }, "self-test", "2026-01-01");
-  if (frozen.surfaces["renderer/index/js"].gzip !== 408) throw new Error("self-test: headroom not applied");
-  if (compare(frozen, { "renderer/index/js": one, "main/index": one }).length) throw new Error("self-test: a fresh sample failed its own ceiling");
+  const node = { ...one, eagerPackages: ["react"] };
+  const frozen = resample(ledger, { "renderer/index/js": one, "main/index": node }, "self-test", "2026-01-01");
+  const run = (sample, flavor) => compare(frozen, sample, flavor);
+  const fresh = run({ "renderer/index/js": one, "main/index": node });
+  if (fresh.failures.length || fresh.warnings.length) throw new Error("self-test: a fresh sample did not pass silently");
   const cases = [
-    [{ "renderer/index/js": { ...one, gzip: 409 }, "main/index": one }, "renderer gzip over ceiling"],
-    [{ "renderer/index/js": one, "main/index": { ...one, raw: 1021 } }, "main raw over ceiling"],
-    [{ "renderer/index/js": { ...one, twoByteChunks: 2 }, "main/index": one }, "a new two-byte chunk"],
+    [{ "renderer/index/js": { ...one, raw: 1021 }, "main/index": node }, "renderer raw over +2 %"],
+    [{ "renderer/index/js": one, "main/index": { ...node, raw: 1051 } }, "main raw over +5 %"],
+    [{ "renderer/index/js": { ...one, twoByteChunks: 2 }, "main/index": node }, "a new two-byte chunk"],
+    [{ "renderer/index/js": one, "main/index": { ...node, eagerPackages: ["lodash", "react"] } }, "a new eager external package"],
     [{ "renderer/index/js": one }, "a surface that disappeared"],
-    [{ "renderer/index/js": one, "main/index": one, "renderer/new/js": one }, "a surface without a ceiling"],
+    [{ "renderer/index/js": one, "main/index": node, "renderer/new/js": one }, "a surface without a baseline"],
   ];
-  for (const [sample, name] of cases) if (!compare(frozen, sample).length) throw new Error(`self-test: ${name} did not fail`);
-  /* gzip and brotli do not gate Node surfaces: they are never transferred. */
-  if (compare(frozen, { "renderer/index/js": one, "main/index": { ...one, gzip: 10_000 } }).length) throw new Error("self-test: main gzip gated");
-  if ("gzip" in frozen.surfaces["main/index"] || "brotli" in frozen.surfaces["main/index"]) throw new Error("self-test: a Node surface got a compressed ceiling nothing enforces");
+  for (const [sample, name] of cases) if (!run(sample).failures.length) throw new Error(`self-test: ${name} did not fail`);
+  const warned = run({ "renderer/index/js": one, "main/index": { ...node, raw: 1050 } });
+  if (warned.failures.length || warned.warnings.length !== 1) throw new Error("self-test: main raw between +2 % and +5 % must warn without failing");
+  if (run({ "renderer/index/js": one, "main/index": { ...node, raw: 1020 } }).warnings.length) throw new Error("self-test: main raw at +2 % warned");
+  if (run({ "renderer/index/js": { ...one, gzip: 10_000, brotli: 10_000 }, "main/index": node }).failures.length) throw new Error("self-test: desktop renderer gzip or brotli gated");
+  if (run({ "renderer/index/js": one, "main/index": { ...node, eagerPackages: [] } }).failures.length) throw new Error("self-test: dropping an eager package failed");
+  const unrecorded = { ...frozen, surfaces: { ...frozen.surfaces, "main/index": { ...frozen.surfaces["main/index"], eagerPackages: undefined } } };
+  if (!compare(unrecorded, { "renderer/index/js": one, "main/index": node }).failures.length) throw new Error("self-test: a Node surface without recorded eager packages passed");
   /* Doc ruling 2026-09-26: Node surfaces gate the shipped (production) build only; e2e-entry and other non-production inputs re-split
      shared chunks, so a staging or stable build reports its Node deltas without failing. Renderer surfaces gate every flavour. */
-  const overNode = { "renderer/index/js": one, "main/index": { ...one, raw: 5_000 } };
-  if (!compare(frozen, overNode, "production").length) throw new Error("self-test: a production Node surface over its ceiling passed");
-  if (compare(frozen, overNode, "staging").length) throw new Error("self-test: a staging Node surface failed although it only reports");
-  if (!compare(frozen, { "renderer/index/js": { ...one, raw: 5_000 }, "main/index": one }, "staging").length) throw new Error("self-test: a staging renderer surface stopped gating");
+  const overNode = { "renderer/index/js": one, "main/index": { ...node, raw: 5_000 } };
+  if (!run(overNode, "production").failures.length) throw new Error("self-test: a production Node surface over its block line passed");
+  if (run(overNode, "staging").failures.length) throw new Error("self-test: a staging Node surface failed although it only reports");
+  if (!run({ "renderer/index/js": { ...one, raw: 5_000 }, "main/index": node }, "staging").failures.length) throw new Error("self-test: a staging renderer surface stopped gating");
   if (!requireProduction("staging").length || requireProduction("production").length) throw new Error("self-test: --production does not insist on a production build");
 }
 
@@ -151,19 +173,21 @@ try {
   if (production || doResample) { const refused = requireProduction(flavor); if (refused.length) throw new Error(refused[0]); }
   const measured = measureSurfaces(outputRoot);
   for (const [surface, value] of Object.entries(measured)) {
-    const limit = ledger.surfaces[surface];
-    console.log(`[surface-budget] ${surface}: ${value.raw.toLocaleString("en-US")} raw / ${value.gzip.toLocaleString("en-US")} gzip / ${value.brotli.toLocaleString("en-US")} br, ${value.twoByteChunks} two-byte of ${value.files}${limit ? ` (ceiling ${gatedMetrics(surface).filter(metric => metric !== "twoByteChunks").map(metric => `${limit[metric].toLocaleString("en-US")} ${metric}`).join(" / ")})` : ""}`);
+    const entry = ledger.surfaces[surface];
+    console.log(`[surface-budget] ${surface}: ${bytes(value.raw)} raw / ${bytes(value.gzip)} gzip / ${bytes(value.brotli)} br, ${value.twoByteChunks} two-byte of ${value.files}${entry ? ` (${growth(value.raw, entry.baseline.raw)} against the ${bytes(entry.baseline.raw)} baseline)` : ""}`);
   }
   if (doResample) {
-    if (!reason) throw new Error("--resample needs --reason: every ceiling change is recorded in the ledger history");
+    if (!reason) throw new Error("--resample needs --reason: every baseline change is recorded in the ledger history");
     writeFileSync(LEDGER, `${JSON.stringify(resample(ledger, measured, reason, new Date().toISOString().slice(0, 10)), null, 2)}\n`);
-    console.log(`[surface-budget] ledger resampled from ${outputRoot}`);
+    console.log(`[surface-budget] baselines resampled from ${outputRoot}`);
   } else {
     if (flavor !== "production") console.log(`[surface-budget] ${flavor} build: preload and main deltas are reported, not gated (they gate the production build)`);
-    const failures = compare(ledger, measured, flavor);
-    for (const over of compare(ledger, measured).filter(line => !failures.includes(line))) console.log(`[surface-budget] reported, not gated: ${over}`);
+    const { failures, warnings } = compare(ledger, measured, flavor), shipped = compare(ledger, measured);
+    for (const line of [...shipped.failures, ...shipped.warnings].filter(line => !failures.includes(line) && !warnings.includes(line))) console.log(`[surface-budget] reported, not gated: ${line}`);
+    for (const warning of warnings) console.warn(`[surface-budget] warning: ${warning}`);
+    if (warnings.length) console.warn(`[surface-budget] ${warnings.length} surface(s) grew past the warning line. This does not block; record the reason in this week's CHANGLOGS entry.`);
     for (const failure of failures) console.error(`[surface-budget] ${failure}`);
-    if (failures.length) throw new Error("surface budget exceeded; reclaim bytes, or resample with a recorded reason after review");
+    if (failures.length) throw new Error("surface budget exceeded; reclaim bytes, or rebaseline with --resample and an approved, recorded reason");
   }
 } catch (cause) {
   console.error(`[surface-budget] ${cause instanceof Error ? cause.message : String(cause)}`);

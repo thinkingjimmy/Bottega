@@ -15,7 +15,7 @@ export async function requireNativeCandidateProvider(selection: ChatTurnOptions)
   return { descriptor, snapshot };
 }
 export async function runNativeCandidateJob(input: { chatId: string; incarnationId: string; requestId: string; root: string;
-  prompt: string; options: ChatTurnOptions; guard(): void; signal: AbortSignal }) {
+  prompt: string; options: ChatTurnOptions; guard(): void; signal: AbortSignal; extraInput?: readonly import("../../backends/contracts/types").ResolvedAgentInputItem[]; onPromptHandoff?(value: Promise<import("../../../../shared/ipc/agent/agent-ipc").PromptHandoff>): void }) {
   const signal = AbortSignal.any([input.signal, AbortSignal.timeout(180_000)]);
   const selection = structuredClone(input.options);
   const registry = backendRuntimeRegistry;
@@ -37,7 +37,7 @@ export async function runNativeCandidateJob(input: { chatId: string; incarnation
   const evidence = registry.evidence.beginTurn("artifact-candidate:" + input.requestId, input.requestId, await registry.executionTarget(descriptor.id, snapshot, plan));
   try {
     const answer = await runOneShotTurn({ descriptor, runtime: snapshot.runtime, workspace: input.root,
-      requestId: input.requestId, prompt: input.prompt, model: selection.model, timeoutMs: 180_000, signal,
+      requestId: input.requestId, prompt: input.prompt, extraInput: input.extraInput, onPromptHandoff: input.onPromptHandoff, model: selection.model, timeoutMs: 180_000, signal,
       candidate: { chatId: input.chatId, incarnationId: input.incarnationId, authority: { validate, current }, options: selection } });
     await validate(); registry.evidence.finish(evidence, "success"); return { answer, provider: descriptor.id, model: selection.model };
   } catch (cause) {

@@ -4,9 +4,10 @@
  * [POS]: Lightweight input contract for draft, queue and remote command readers.
  */
 import { z } from "zod";
+import { nativeEditEvidenceSchema } from "../chat/evidence";
 import { designId, digestSchema, artifactIdSchema } from "./identifiers";
 import { boardSummarySchema } from "../core/summary";
-import { DESIGN_PROPERTIES } from "../canvas/model";
+import { DESIGN_PROPERTIES } from "../core/parameters";
 const boundsSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().positive().max(1), height: z.number().positive().max(1) }).strict().refine(value => value.x + value.width <= 1.001 && value.y + value.height <= 1.001);
 export const anchorSchema = z.object({ boardId: designId,
   boardDigest: digestSchema, selector: z.string().min(1).max(500).nullable(),
@@ -19,5 +20,6 @@ export const anchorSchema = z.object({ boardId: designId,
 export type DesignAnchor = z.infer<typeof anchorSchema>;
 export const designReferenceSchema = z.object({ artifactId: artifactIdSchema, documentId: designId,
   revision: z.number().int().positive(), readSetDigest: digestSchema, generation: z.string().min(1).max(128),
-  anchors: z.record(z.string().regex(/^(?:[1-9]|[12][0-9]|3[0-2])$/), anchorSchema.nullable()).refine(value => Object.keys(value).length <= 32).optional() }).strict();
+  purpose: z.literal("edit").optional(), native: nativeEditEvidenceSchema.optional(),
+  anchors: z.record(z.string().regex(/^(?:[1-9]|[12][0-9]|3[0-2])$/), anchorSchema.nullable()).refine(value => Object.keys(value).length <= 32).optional() }).strict().refine(value => Boolean(value.purpose) === Boolean(value.native), "Explicit native edit evidence requires its purpose");
 export type DesignReference = import("@bottega/contracts/model/artifacts/design").DesignReference;

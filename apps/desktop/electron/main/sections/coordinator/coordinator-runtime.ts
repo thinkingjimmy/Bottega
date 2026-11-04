@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Agent/Chat/Settings/Relay ledger narrow ports, Project Tools runtime-identity resolution, Notice outbox, and stable ID/expectation pure functions
- * [OUTPUT]: Defines coordinator runtime ports, including shared manual availability admission and runtime-only queue dispatch qualification.
+ * [OUTPUT]: Defines coordinator runtime ports, including shared manual availability admission and runtime-only queue dispatch qualification and its eligibility-change subscription.
  * [POS]: Composition-root port surface for sections/coordinator; keeps ConversationCoordinator's dependency wiring and derived side effects (cleanup, relay finish, availability) out of its scheduling core
  */
 
@@ -82,6 +82,7 @@ export type CoordinatorDependencies = {
   hasActivity(conversationIds: Iterable<string>): boolean;
   reconcileMemory?: (ledger: RelayLedger) => Promise<void>;
   canDispatchManual?: (turn: Omit<AgentSendPayload, "input">) => Promise<boolean>;
+  subscribeDispatchEligibility?: (wake: () => void) => () => void;
   assertManualAvailability?: (submission: ManualTurnSubmission) => Promise<void>;
   prepareManual?: (
     submission: ManualTurnSubmission

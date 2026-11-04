@@ -16,6 +16,7 @@ export const uiTextEs = {
   resizeSidebarHint: "Arrastra para cambiar el tamaño de la barra lateral",
   attachment: "Archivo adjunto",
   previewAttachment: "Previsualizar archivo adjunto",
+  removeDesignReference: "Quitar referencia",
   removeAttachment: "Eliminar archivo adjunto",
   stop: "Detener",
   submit: "Enviar",

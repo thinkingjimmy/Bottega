@@ -32,7 +32,7 @@ async function captureDesignSet(workspace: string, path: string, budget: Readonl
     const identities: { path: string; identity: string }[] = [];
     let total = 0, nodes = 0;
     const walk = async (directory: string, prefix: string, depth: number): Promise<void> => {
-      if (depth > 3) throw new DesignDocumentError("PATH_DENIED", "Document path depth exceeds the archive contract");
+      if (depth > 3 && prefix !== "db/data/users/local/") throw new DesignDocumentError("PATH_DENIED", "Document path depth exceeds the archive contract");
       const before = await lstat(directory);
       if (before.isSymbolicLink() || !before.isDirectory() || await realpath(directory) !== directory)
         throw new DesignDocumentError("PATH_DENIED", "Symbolic links are not document resources");
@@ -47,7 +47,7 @@ async function captureDesignSet(workspace: string, path: string, budget: Readonl
         if (metadata.isDirectory()) { await walk(absolute, name + "/", depth + 1); continue; }
         if (!metadata.isFile() || await realpath(absolute) !== absolute)
           throw new DesignDocumentError("PATH_DENIED", "Document resources must be regular files");
-        const limit = ["canvas.json", "deck.json"].includes(name) ? DESIGN_LIMITS.manifest : /\.html$/i.test(name) ? DESIGN_LIMITS.html : DESIGN_LIMITS.source;
+        const limit = ["canvas.json", "deck.json", "dashboard.json"].includes(name) ? DESIGN_LIMITS.manifest : /\.html$/i.test(name) ? DESIGN_LIMITS.html : DESIGN_LIMITS.source;
         if (files.length >= budget.files || metadata.size > limit || total + metadata.size > budget.source)
           throw new DesignDocumentError("BUDGET_EXCEEDED", "Document exceeds its file or byte budget");
         const handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -72,7 +72,7 @@ async function captureDesignSet(workspace: string, path: string, budget: Readonl
       if (stamp(await lstat(directory)) !== prior || await realpath(directory) !== directory)
         throw new DesignDocumentError("SOURCE_CHANGED", "Source directory changed during capture");
     }
-    if (formal && !files.some(file => file.path === "deck.json") && files.length > DESIGN_LIMITS.files)
+    if (formal && !files.some(file => ["deck.json", "dashboard.json"].includes(file.path)) && files.length > DESIGN_LIMITS.files)
       throw new DesignDocumentError("BUDGET_EXCEEDED", "This document format permits at most 64 source files");
     const sorted = files.sort((a, b) => a.path < b.path ? -1 : 1);
     return { path, files: sorted, bytes: total, directories: identities,

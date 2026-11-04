@@ -11,6 +11,8 @@ export function validTokenValue(kind: SystemToken["kind"], value: string) {
     /^(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|color)\([a-z\d.%+\-\s/,]+\)$/i.test(value);
   if (kind === "font-family") return value.length <= 200 && !/[()]/.test(value) &&
     (value.match(/"/g)?.length ?? 0) % 2 === 0 && (value.match(/'/g)?.length ?? 0) % 2 === 0;
+  if (kind === "font-style") return /^(?:normal|italic|oblique)$/.test(value);
+  if (kind === "font-optical-size") return /^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value) && Number(value) <= 1000;
   if (kind === "font-weight") return /^(?:[1-9]\d{0,2}|1000)(?: (?:[1-9]\d{0,2}|1000))?$/.test(value) || /^(?:normal|bold)$/.test(value);
   if (kind === "shadow") return value.length <= 400 && /^[A-Za-z\d #%(),./+_-]+$/.test(value) &&
     (value.match(/\(/g)?.length ?? 0) === (value.match(/\)/g)?.length ?? 0);

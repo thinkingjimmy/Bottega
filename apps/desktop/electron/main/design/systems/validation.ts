@@ -4,7 +4,7 @@
  * [POS]: Extension of the existing document checker; no registry or second commit owner.
  */
 import { designDigest, manifestSchema, type DesignIssue, type DesignReadSet } from "../documents/model";
-import { projectNativeManifest } from "@ai-chat/cloud-protocol/artifacts/design/native/source";
+import { readDesignManifest } from "@ai-chat/cloud-protocol/artifacts/design/core/source";
 import { systemSourcesSchema } from "@ai-chat/cloud-protocol/artifacts/design/system/model";
 import { inspectDesignSystem } from "@ai-chat/cloud-protocol/artifacts/design/system/validation";
 import { generatedSystemCss } from "@ai-chat/cloud-protocol/artifacts/design/system/tokens";
@@ -33,6 +33,10 @@ export function validateDesignSystem(readSet: DesignReadSet): DesignIssue[] {
       const file = readSet.files.find(file => file.path === source.capturedPath);
       if (file && (file.data.length !== source.bytes || designDigest(file.data) !== source.digest)) issue("sources.json", `Captured source digest does not match ${source.path}`);
       if (source.version.kind === "digest" && source.version.digest !== source.digest) issue("sources.json", `Source version does not match captured bytes: ${source.path}`);
+    }
+    for (const font of result.system.tokens.fonts) {
+      const source = result.system.sources.files.find(source => source.id === font.sourceId), file = readSet.files.find(file => file.path === font.file);
+      if (source && file && designDigest(file.data) !== source.digest) issue("tokens.json", "Font bytes differ from the captured source: " + font.family);
     }
     for (const component of result.system.components.components) {
       const source = result.system.sources.files.find(source => source.id === component.sourceId);
@@ -63,7 +67,7 @@ export function inertSystemSources(readSet: DesignReadSet): Set<string> {
   const result = new Set<string>(), files = new Map(readSet.files.map(file => [file.path, file]));
   const inertCode = /\.(?:css|[cm]?js|jsx|tsx?)$/i;
   try {
-    const manifest = projectNativeManifest(readSet.files, readSet.path.split("/")[1]!) ?? manifestSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(files.get("canvas.json")!.data)));
+    const manifest = readDesignManifest(readSet.files, readSet.path.split("/")[1]!);
     const addSources = (bytes: Uint8Array, prefix: string, allowed?: ReadonlySet<string>) => {
       if (bytes.length > 1024 * 1024) return;
       const parsed = systemSourcesSchema.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));

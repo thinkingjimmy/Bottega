@@ -1,5 +1,18 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index a81a2bce32c943bc0aa3f678b1793491df75d5fb..932d0a1441d5c0652079da86ec8319d672374311 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -42,6 +42,8 @@ interface CodeHighlighterPlugin {
+  * Options for creating a code plugin
+  */
+ interface CodePluginOptions {
++    /** Maximum cached results; zero lets a worker caller own the result cache. Default: 500. */
++    cacheSize?: number;
+     /**
+      * Default themes for syntax highlighting [light, dark]
+      * @default ["github-light", "github-dark"]
 diff --git a/dist/index.js b/dist/index.js
-index 1fcb536121ccb3c40a4bd2acf44f03b4836ae3cc..6ffd7fe2f2731a163f3df81e28c1a2508d9251ad 100644
+index 1fcb536121ccb3c40a4bd2acf44f03b4836ae3cc..dee7e3cbcf77a33dc709374f68341393f4b363a4 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -1 +1,86 @@
@@ -7,8 +20,7 @@ index 1fcb536121ccb3c40a4bd2acf44f03b4836ae3cc..6ffd7fe2f2731a163f3df81e28c1a250
 \ No newline at end of file
 +/* Bottega patch (OPT-24): shiki/core with the JavaScript regex engine, languages loaded on demand from shiki/langs, and only the
 +   two GitHub themes, instead of the shiki root entry (bundle-full, the Oniguruma WASM and every theme). The token cache is keyed by
-+   a hash of the whole code — blocks of equal length that differ in the middle no longer share tokens — and is a bounded LRU; an
-+   evicted entry takes its pending callbacks with it. */
++   a hash of the whole code — blocks of equal length that differ in the middle no longer share tokens — and is a bounded LRU; concurrent requests share one tokenization. Worker callers can disable the result cache because the UI owns it. */
 +import { createHighlighterCore } from "shiki/core";
 +import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 +import { bundledLanguages, bundledLanguagesInfo } from "shiki/langs";
@@ -51,15 +63,15 @@ index 1fcb536121ccb3c40a4bd2acf44f03b4836ae3cc..6ffd7fe2f2731a163f3df81e28c1a250
 +
 +function createCodePlugin(options = {}) {
 +  const themes = options.themes ?? ["github-light", "github-dark"];
++  const cacheSize = Math.max(0, options.cacheSize ?? TOKEN_CACHE_LIMIT);
 +  const tokens = new Map();
 +  const pending = new Map();
 +  const remember = (key, value) => {
 +    tokens.delete(key);
 +    tokens.set(key, value);
-+    while (tokens.size > TOKEN_CACHE_LIMIT) {
++    while (tokens.size > cacheSize) {
 +      const oldest = tokens.keys().next().value;
 +      tokens.delete(oldest);
-+      pending.delete(oldest);
 +    }
 +  };
 +  return {
@@ -72,7 +84,8 @@ index 1fcb536121ccb3c40a4bd2acf44f03b4836ae3cc..6ffd7fe2f2731a163f3df81e28c1a250
 +      const lang = canonical(language), names = [themeName(requested[0]), themeName(requested[1])];
 +      const key = `${lang}:${names[0]}:${names[1]}:${code.length}:${hash(code)}`;
 +      if (tokens.has(key)) { const value = tokens.get(key); remember(key, value); return value; }
-+      if (callback) { if (!pending.has(key)) pending.set(key, new Set()); pending.get(key).add(callback); }
++      if (pending.has(key)) { if (callback) pending.get(key).add(callback); return null; }
++      pending.set(key, new Set(callback ? [callback] : []));
 +      const effective = languages.has(lang) ? lang : "text";
 +      withLanguage(requested, effective).then((highlighter) => {
 +        const result = highlighter.codeToTokens(code, { lang: effective, themes: { light: names[0], dark: names[1] } });

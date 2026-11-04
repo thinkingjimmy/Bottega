@@ -1,0 +1,55 @@
+/**
+ * [INPUT]: Exact owned native download bridge, fixed cut context and parent locale/appearance.
+ * [OUTPUT]: Original-style format rows and working whole-folder Export region with fixed progress-control geometry, real cancel, immutable retry and actual private save outcomes.
+ * [POS]: Shared trusted Canvas/Slides/System/Dashboard Export UI; authored child frames cannot invoke its host capabilities.
+ */
+import type { nativeDownloads } from "../downloads";
+import { projectExportCopy } from "./copy";
+type Downloads = ReturnType<typeof nativeDownloads>;
+// Lucide Folder, Download and X geometry. ISC notice: ../../licenses/lucide-ISC.txt.
+function icon(kind: "folder" | "download" | "close") {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); for (const [name, value] of Object.entries({ viewBox: "0 0 24 24", width: "18", height: "18", fill: "none", stroke: "currentColor", "stroke-width": "1.7", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" })) svg.setAttribute(name, value);
+  const paths = kind === "folder" ? ["M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2Z"] : kind === "download" ? ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "m7 10 5 5 5-5", "M12 15V3"] : ["M18 6 6 18", "m6 6 12 12"];
+  for (const value of paths) { const path = document.createElementNS(svg.namespaceURI, "path"); path.setAttribute("d", value); svg.append(path); } return svg;
+}
+export function installProjectExport(downloads: Downloads, token: string) {
+  const menuStyle = document.createElement("style"); menuStyle.dataset.nativeExportStyle = "";
+  menuStyle.textContent = `[role=menu]:has([data-native-export-region]),[data-cds=Menu]:has([data-native-export-region]){padding:0;border-radius:16px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 72px);overflow-y:auto}[data-native-export-region]{box-sizing:border-box;width:min(460px,calc(100vw - 24px));padding:12px}[data-native-export-region] h2{margin:0;padding:8px 8px 14px;font:600 16px/1.4 system-ui,sans-serif}[data-native-export-region] [role=menuitem]{min-height:52px;padding:8px;gap:12px;border-radius:8px}[data-native-export-region] [role=menuitem]>span:has(>[data-bottega-icon]):not(:has(>[data-bottega-icon=Download])){box-sizing:border-box;width:36px;height:36px;padding:8px;border:1px solid color-mix(in srgb,currentColor 12%,transparent);border-radius:10px}[data-native-export-region] [role=menuitem]>span>[data-bottega-icon]{width:18px!important;height:18px!important}[data-native-export-region] [role=menuitem] .truncate{white-space:normal;overflow:visible;text-overflow:clip}[data-native-export-region] [data-bottega-icon=Download]{opacity:.65}[data-native-export-region] [role=separator]{display:none}@media(pointer:coarse){[data-native-export-region] [role=menuitem]{min-height:56px}}`;
+  document.head.append(menuStyle);
+  let dialog: HTMLDialogElement | undefined;
+  const appearance = (value: unknown) => { if (value === "light" || value === "dark") document.documentElement.dataset.bottegaProjectTheme = value; };
+  appearance(new URL(location.href).searchParams.get("theme"));
+  const show = (start = false) => {
+    if (dialog?.isConnected) { dialog.focus(); return; }
+    const locale = document.documentElement.lang || new URL(location.href).searchParams.get("lang") || navigator.language, copy = projectExportCopy(locale), previous = document.activeElement;
+    const node = document.createElement("dialog"); dialog = node; node.setAttribute("aria-label", copy.title); node.dataset.projectExport = "";
+    const style = document.createElement("style"); style.textContent = `[data-project-export]{position:fixed;inset:48px 12px auto auto;margin:0;width:min(460px,calc(100vw - 24px));max-height:calc(100dvh - 64px);overflow:auto;padding:0;border:1px solid #d8d8d8;border-radius:16px;background:#fff;color:#262626;box-shadow:0 16px 40px #0003;font:14px/1.45 system-ui,sans-serif}[data-project-export]::backdrop{background:transparent}[data-project-export] button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent}[data-project-export] button:focus-visible{outline:2px solid #3978cf;outline-offset:-2px}[data-project-export] button:disabled{cursor:default;opacity:.55}[data-project-export] header{height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 20px}[data-project-export] header strong{font-size:16px;font-weight:600}[data-project-export] header button{display:grid;place-items:center;width:32px;height:32px;border-radius:6px}[data-project-export] button:hover{background:#f2f2f2}[data-project-export] .project-folder{display:flex;align-items:flex-start;text-align:left;gap:12px;width:calc(100% - 24px);margin:0 12px 12px;padding:12px;border-radius:10px}[data-project-export] .project-folder>svg{flex:none;margin-top:2px}.project-folder>svg:first-child{box-sizing:content-box;border:1px solid #e6e4df;border-radius:10px;padding:9px}[data-project-export] .project-folder>span{flex:1;min-width:0}[data-project-export] .project-folder strong{display:block;font-size:14px;font-weight:500}[data-project-export] small{display:block;margin-top:5px;color:#737373;font-size:12px;line-height:1.5}[data-project-export] .project-result{padding:0 24px 20px}[data-project-export] .project-result:empty{display:none}[data-project-export] progress{display:block;width:100%;height:4px;margin:10px 0;accent-color:#316dca}[data-project-export] .project-controls{display:flex;justify-content:flex-end;gap:6px;margin-top:12px}[data-project-export] .project-controls button{min-height:32px;padding:4px 10px;border:1px solid #ddd;border-radius:6px}html[data-bottega-project-theme=dark] [data-project-export]{background:#262626;color:#eee;border-color:#474747}html[data-bottega-project-theme=dark] [data-project-export] header{border-color:#444}html[data-bottega-project-theme=dark] [data-project-export] button:hover{background:#383838}html[data-bottega-project-theme=dark] [data-project-export] small{color:#aaa}@media(pointer:coarse){[data-project-export] header{height:48px}[data-project-export] header button,[data-project-export] .project-controls button{min-width:44px;min-height:44px}}`;
+    const header = document.createElement("header"), title = document.createElement("strong"), close = document.createElement("button"); title.textContent = copy.title; close.type = "button"; close.setAttribute("aria-label", copy.close); close.append(icon("close")); header.append(title, close);
+    const row = document.createElement("button"), text = document.createElement("span"), label = document.createElement("strong"), description = document.createElement("small"); row.type = "button"; row.className = "project-folder"; label.textContent = copy.folder; description.textContent = copy.description; text.append(label, description); row.append(icon("folder"), text, icon("download"));
+    const result = document.createElement("div"); result.className = "project-result"; result.setAttribute("aria-live", "polite");
+    const context: Parameters<Downloads["project"]>[0] = {}; let busy = false, retry = false, controller: AbortController | undefined;
+    const end = () => { controller?.abort(new Error("The project Export dialog closed")); node.remove(); style.remove(); dialog = undefined; if (previous instanceof HTMLElement) previous.focus(); };
+    close.onclick = end; node.addEventListener("cancel", event => { event.preventDefault(); end(); }); node.addEventListener("click", event => { if (event.target === node) { const bounds = node.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) end(); } });
+    const run = async () => {
+      if (busy) return; busy = true; row.disabled = true; controller = new AbortController(); result.replaceChildren();
+      const message = document.createElement("p"), version = document.createElement("small"), bar = document.createElement("progress"), controls = document.createElement("div"), cancel = document.createElement("button"); message.textContent = copy.preparing; message.style.margin = "0"; message.style.minHeight = "2.9em"; version.style.minHeight = "1.5em"; controls.className = "project-controls"; cancel.type = "button"; cancel.textContent = copy.cancel; cancel.onclick = () => controller?.abort(new Error(copy.cancelled)); controls.append(cancel); result.append(message, version, bar, controls);
+      try {
+        const output = await downloads.project(context, controller.signal, value => { if (!node.isConnected) return; message.textContent = copy[value.stage as keyof typeof copy] ?? copy.preparing; version.textContent = context.cut ? `${copy.cut} · v${context.cut.revision}` : ""; if (value.total && value.stage !== "archive") { bar.max = value.total; bar.value = value.completed; } else bar.removeAttribute("value"); }, retry);
+        retry = false; controller.signal.throwIfAborted(); message.textContent = copy.complete; await downloads.save(output); message.textContent = copy.saved; result.replaceChildren(message, version); context.requestId = undefined;
+      } catch (cause) {
+        if (!node.isConnected) return;
+        const declined = (cause as { code?: string }).code === "declined", cancelled = controller.signal.aborted;
+        message.textContent = declined ? copy.declined : cancelled ? copy.cancelled : `${copy.failed}: ${cause instanceof Error ? cause.message : ""}`;
+        if (declined || cancelled) { context.requestId = undefined; retry = false; } else retry = true;
+        const again = document.createElement("button"); again.type = "button"; again.textContent = declined ? copy.save : copy.retry; again.onclick = () => void run(); controls.replaceChildren(again); result.replaceChildren(message, version, controls);
+      } finally { busy = false; row.disabled = false; controller = undefined; }
+    };
+    row.onclick = () => void run(); node.append(header, row, result); document.head.append(style); document.body.append(node); node.showModal(); row.focus(); if (start) void run();
+  };
+  Object.defineProperty(window, "__bottegaNativeProjectExport", { value: Object.assign(show, { label: () => projectExportCopy(document.documentElement.lang || new URL(location.href).searchParams.get("lang") || "en").title, folder: () => projectExportCopy(document.documentElement.lang || new URL(location.href).searchParams.get("lang") || "en").folder, description: () => projectExportCopy(document.documentElement.lang || new URL(location.href).searchParams.get("lang") || "en").description }) });
+  window.addEventListener("message", event => {
+    if (!event.isTrusted || event.source !== window.parent || event.data?.token !== token) return;
+    if (event.data.type === "bottega:native:project-export") show();
+    if (event.data.type === "bottega:native:theme") { appearance(event.data.theme); if (typeof event.data.locale === "string" && event.data.locale.length <= 40) document.documentElement.lang = event.data.locale; }
+  });
+}

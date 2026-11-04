@@ -16,6 +16,7 @@ export const uiTextJa = {
   resizeSidebarHint: "ドラッグしてサイドバーの幅を変更",
   attachment: "添付ファイル",
   previewAttachment: "添付ファイルをプレビュー",
+  removeDesignReference: "参照を削除",
   removeAttachment: "添付ファイルを削除",
   stop: "停止",
   submit: "送信",

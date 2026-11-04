@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on BackendDescriptor, HeadlessExecutor, the one-shot turn runner, the user-default credential contract, the no-tool read-only profile, and the shared UTF-8 budgets
- * [OUTPUT]: Provides source-Chat-bound ephemeral title jobs over either a headless job or a single Agent turn, the one title prompt, sanitizeTitle, and the shutdown/reopen drain barrier
+ * [OUTPUT]: Provides source-Chat-bound ephemeral title jobs over either a headless job or a single Agent turn, the one title prompt, sanitizeTitle, credential/lease-inclusive native cancellation and the shutdown/reopen drain barrier
  * [POS]: apps/desktop/electron/main/chats/projection; Thin title policy of the chats module; untrusted text, tool denial, process budgets, cancellation, and cleanup all belong to the HeadlessExecutor or the one-shot turn runner
  */
 
@@ -106,7 +106,7 @@ export class TitleGenerator {
         prompt: `${TITLE_INSTRUCTION}\n<untrusted>\n${truncateInput(firstMessage, TITLE_INPUT_BYTE_LIMIT)}\n</untrusted>`,
         model,
         timeoutMs: TITLE_TIMEOUT_MS,
-        signal: controller.signal,
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(TITLE_TIMEOUT_MS)]),
       })
     );
     const settled = text.then(

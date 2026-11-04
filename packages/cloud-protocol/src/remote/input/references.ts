@@ -14,7 +14,7 @@ export const remoteRelativePathSchema = z.string().min(1).max(4096).refine(value
 export const remoteFileReferenceSchema = z.object({ kind: z.literal("file"), deviceId: cloudIdSchema, workspaceDigest: sha256Schema,
   path: remoteRelativePathSchema, entryKind: z.enum(["file", "dir"]) }).strict();
 export const remoteSkillReferenceSchema = z.object({ kind: z.literal("skill"), libraryId: skillObjectIdSchema }).strict();
-export const remoteDesignReferenceSchema = designReferenceSchema.extend({ kind: z.literal("design"), deviceId: cloudIdSchema, incarnationId: cloudIdSchema }).strict();
+export const remoteDesignReferenceSchema = designReferenceSchema.safeExtend({ kind: z.literal("design"), deviceId: cloudIdSchema, incarnationId: cloudIdSchema }).strict();
 export const remoteReferencesSchema = z.array(z.discriminatedUnion("kind", [remoteFileReferenceSchema, remoteSkillReferenceSchema, remoteDesignReferenceSchema])).max(32)
   .refine(values => new Set(values.map(value => JSON.stringify(value))).size === values.length, "duplicate-reference");
 export type RemoteReference = z.infer<typeof remoteReferencesSchema>[number];

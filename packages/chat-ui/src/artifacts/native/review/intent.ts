@@ -20,6 +20,12 @@ export function commentIntent(document: NativeComments, input: NativeInput, inte
       messages: [{ id: "m_" + draft.requestId, author: { kind: "user", name: "You" }, text: draft.text.trim(), at }] }] });
   }
   if (!existing) return;
+  if (kind === "delete") return nativeCommentsSchema.parse({ version: 1, threads: document.threads.filter(thread => thread.id !== threadId) });
+  if (kind === "edit") {
+    if (input.edit?.threadId !== threadId || !input.edit.text.trim() || !existing.messages.length) return;
+    return nativeCommentsSchema.parse({ version: 1, threads: document.threads.map(thread => thread.id === threadId ? { ...thread, updatedAt: at,
+      messages: thread.messages.map((message, index) => index === 0 ? { ...message, text: input.edit!.text.trim(), editedAt: at } : message) } : thread) });
+  }
   if (kind === "reply") {
     const reply = input.reply; if (reply?.threadId !== threadId || !reply.text.trim()) return;
     if (existing.messages.some(message => message.id === "m_" + requestId)) return document;

@@ -83,7 +83,7 @@ export function ConversationActions({
     <MessageActions
       data-slot="conversation-actions"
       className={cn(
-        "text-muted-foreground opacity-0 transition-opacity has-[:focus-visible]:opacity-100 group-hover:opacity-100 no-hover:opacity-100 max-md:opacity-100 max-md:[&>button]:size-11 max-md:[&>a]:size-11",
+        "text-muted-foreground opacity-0 transition-opacity has-[:focus-visible]:opacity-100 group-hover:opacity-100 no-hover:opacity-100 max-md:opacity-100 max-md:[&_[data-message-action]]:size-11 max-md:[&>a]:size-11",
         role === "user" && "ml-auto flex-row-reverse",
       )}
     >

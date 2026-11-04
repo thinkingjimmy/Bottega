@@ -46,6 +46,14 @@ export function desktopArtifactActions(chatId: string, incarnationId: string, lo
           requestKey: { id: value.requestId, createdAt: value.createdAt } });
         if (!(await flushDurableDrafts()).saved) throw new Error("Original queue checkpoint could not be saved");
       },
+      importProject: async (input, signal) => {
+        signal?.throwIfAborted();
+        if (current().transcript.chatId !== chatId || current().transcript.incarnationId !== incarnationId) throw new Error("The original Chat changed");
+        const status = await bridge().workspace({ action: "list", chatId, incarnationId }) as { generation: string; enabled: boolean };
+        if (!status.enabled) throw new Error("Artifact is unavailable"); signal?.throwIfAborted();
+        return bridge().workspace({ action: input.fence ? "native-project-import" : "native-project-choose", chatId, incarnationId, generation: status.generation, requestId: input.requestId,
+          ...(input.fence ? { projectFileId: input.fence.id, sourceDigest: "sha256:" + input.fence.sha256 } : {}) });
+      },
       importBase: async (fence, sheet, confirmed) => {
         const receipt = await bridge().importBase(ref(fence.id), sheet, confirmed);
         if (enableSidePanel) current().sidePanel.openTabs({ target: "base" });

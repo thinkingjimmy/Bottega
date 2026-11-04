@@ -139,10 +139,27 @@ export class ArtifactService {
     await this.custody.retain({ ref, fence, messageId, committed: true }, data);
     await this.publisher.enqueue(ref, fence);
   }
+  /** One journal import publishes one card only after all fixed historical custody is present. */
+  async retainDocumentHistory(ref: ArtifactRef, fence: ArtifactFence, messageId: string, data: Uint8Array, history: readonly { fence: ArtifactFence; data: Uint8Array }[]) {
+    this.assert(ref); const design = fence.design;
+    if (!design || ref.artifactId !== fence.id || !fence.sha256 || history.length + 1 !== design.revision || history.length >= 500 ||
+      new Set([fence.id, ...history.map(value => value.fence.id)]).size !== history.length + 1 || data.length + history.reduce((total, value) => total + value.data.length, 0) > 128 * 1024 * 1024) throw new Error("artifact-import-history");
+    for (const [index, value] of history.entries()) {
+      const fixed = value.fence.design;
+      if (!fixed || fixed.documentId !== design.documentId || fixed.format !== design.format || fixed.contentFormat !== design.contentFormat || fixed.revision !== index + 1 || !value.fence.sha256 || value.fence.bytes !== value.data.length)
+        throw new Error("artifact-import-history");
+    }
+    await this.retainDocument(ref, fence, messageId, data);
+    for (const value of history) {
+      const child = { ...ref, artifactId: value.fence.id }; this.assert(child);
+      await this.custody.retain({ ref: child, fence: value.fence, messageId, committed: true, derivedFrom: { artifactId: fence.id, sha256: fence.sha256 } }, value.data);
+      await this.publisher.enqueue(child, value.fence);
+    }
+  }
   /** Manual native saves retain one canonical work card and immutable derived heads. */
   async retainNativeHead(parent: ArtifactRef, fence: ArtifactFence, data: Uint8Array) {
     const source = await this.metadata(parent), native = source.fence.design;
-    if (!native?.contentFormat || fence.design?.documentId !== native.documentId || fence.design.contentFormat !== native.contentFormat)
+    if (!native || !native.contentFormat && native.format !== "bottega-design-system" || fence.design?.documentId !== native.documentId || fence.design.format !== native.format || fence.design.contentFormat !== native.contentFormat)
       throw new Error("artifact-native-parent");
     const anchor = source.derivedFrom ?? { artifactId: parent.artifactId, sha256: source.fence.sha256! };
     const root = await this.metadata({ ...parent, artifactId: anchor.artifactId });
@@ -154,7 +171,7 @@ export class ArtifactService {
   /** An export keeps its frozen parent's authority and the existing custody/outbox lifetime. */
   async retainExport(parent: ArtifactRef, fence: ArtifactFence, data: Uint8Array) {
     const source = await this.resolve(parent);
-    if (!source.record.fence.design || source.record.derivedFrom && !source.record.fence.design.contentFormat) throw new Error("artifact-export-parent");
+    if (!source.record.fence.design || source.record.derivedFrom && !source.record.fence.design.contentFormat && source.record.fence.design.format !== "bottega-design-system") throw new Error("artifact-export-parent");
     const anchor = source.record.derivedFrom ?? { artifactId: parent.artifactId, sha256: source.record.fence.sha256! };
     const ref = { ...parent, artifactId: fence.id };
     await this.custody.retain({ ref, fence, messageId: source.record.messageId, committed: true, derivedFrom: anchor }, data);

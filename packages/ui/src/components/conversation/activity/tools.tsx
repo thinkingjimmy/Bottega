@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on shared activity data, optional host execution context, Marker, Collapsible, Markdown and Terminal surfaces.
+ * [INPUT]: Depends on stable item/group disclosure keys, shared activity data, optional host execution context, Marker, Collapsible, Markdown and Terminal surfaces.
  * [OUTPUT]: Provides collapsed single-line tool and reasoning previews, bounded detail and grouped activity for every host.
  * [POS]: Presentation only; tool execution, file access and subagent navigation stay with callers.
  */
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { BrainIcon, ChevronRightIcon, CircleQuestionMarkIcon, CircleXIcon, FilePenIcon, FileSearchIcon, GlobeIcon, ImageIcon, TerminalIcon, TriangleAlertIcon, WrenchIcon } from "lucide-react";
+import { useRowDisclosure } from "../rows/state";
 import { useScrollLockRelease } from "../../ai-elements/conversation";
 import { MessageResponse } from "../../ai-elements/message";
 import { MessageRendererProvider } from "../../ai-elements/message/renderer-context";
@@ -19,8 +20,8 @@ import type { CustomRenderer } from "streamdown";
 
 /* D-14: one shared empty list, so tool output never hands MessageResponse a new context value on each render. */
 const NO_RENDERERS: CustomRenderer[] = [];
-function useFoldState() {
-  const [open, setOpen] = useState(false);
+function useFoldState(key: string) {
+  const [open, setOpen] = useRowDisclosure(key);
   const stopScroll = useScrollLockRelease();
   return [open, (next: boolean) => { if (next) stopScroll(); setOpen(next); }] as const;
 }
@@ -133,7 +134,7 @@ export function ToolRow({ part: original }: { part: GroupedToolPart }) {
   const resolve = useToolActivity();
   const runtime = resolve(original);
   const part = runtime ? { ...original, status: runtime.status, detail: runtime.detail } : original;
-  const [open, onOpenChange] = useFoldState();
+  const [open, onOpenChange] = useFoldState(`tool:${part.itemId}`);
   const row = (
     <ToolMarker
       icon={statusIcon(part)}
@@ -180,7 +181,7 @@ function groupIcon(parts: readonly ActivityTool[]) {
 export function ToolGroup({ parts }: { parts: readonly ActivityTool[] }) {
   const resolve = useToolActivity();
   const current = parts.map(part => { const runtime = resolve(part); return runtime ? { ...part, status: runtime.status } : part; });
-  const [open, onOpenChange] = useFoldState();
+  const [open, onOpenChange] = useFoldState(`group:${JSON.stringify(parts.map(part => part.itemId))}`);
   return (
     <Collapsible
       className="w-full min-w-0 max-w-full"

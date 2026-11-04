@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Verified maintained Canvas and Slides source builds and its digest-bound output receipt.
+ * [INPUT]: Verified maintained Canvas, Slides, System and Dashboard builds and their digest-bound output receipts.
  * [OUTPUT]: Emits lazy native editor resources and complete licenses beside main.
  * [POS]: Desktop build composition; native editor code never enters the host startup bundle.
  */
@@ -10,11 +10,11 @@ import { resolve } from "node:path";
 import type { Plugin } from "vite";
 export function canvasRuntime(root: string): Plugin {
   return { name: "maintained-canvas-runtime", async buildStart() {
-    for (const directory of [root, resolve(root, "../slides-runtime")])
+    for (const directory of [root, resolve(root, "../slides-runtime"), resolve(root, "../design-system-runtime"), resolve(root, "../dashboard-runtime")])
       execFileSync(process.execPath, [resolve(directory, "build/index.mjs")], { cwd: directory, stdio: "pipe" });
     for (const directory of ["source", "adapters", "build", "fonts"]) this.addWatchFile(resolve(root, directory));
   }, generateBundle() {
-    for (const kind of ["canvas-runtime", "slides-runtime"]) {
+    for (const kind of ["canvas-runtime", "slides-runtime", "design-system-runtime", "dashboard-runtime"]) {
     const directory = resolve(root, "..", kind);
     const receipt = readFileSync(resolve(directory, "dist/build.json"));
     const files = JSON.parse(receipt.toString()).outputs as { path: string; sha256: string }[];

@@ -1,73 +1,33 @@
 <!--
-  [INPUT]: Bottega Canvas/review checkpoints, semantic document history, original-Chat handoff and normalized exports
-  [OUTPUT]: Operation guidance that preserves input and distinguishes saved source from recovery/view state
-  [POS]: Bottega workspace reference; all source mutations stay with the existing owner journal
+  [INPUT]: Current native/system source, checkpoints, exact original requests and immutable exports
+  [OUTPUT]: Save, recovery, Undo/Redo, export and original-Chat handoff guidance
+  [POS]: Current workspace reference independent of the retired Canvas model
 -->
 
 # Workspace operations
 
-Identify the persistence owner before describing an action:
+Native Canvas v3 and Slides v4 keep their own source and manual Undo/Redo in the mounted editor.
+Source-backed comments live in comments.json. Checkpoints retain unfinished native instructions
+or design-system forms; they do not provide another permanent history or object model.
 
-| State | Owner and effect |
-| --- | --- |
-| HTML, manifest, pages/objects and resources | Complete saved document revision |
-| Current Page/tool/selection/camera/preview | Canvas recovery checkpoint; no source revision from viewing alone |
-| Unsubmitted property/model input | Retained draft/checkpoint until explicit save or cancel |
-| Review opinions and pending annotation | Review checkpoint with fixed target evidence |
-| Unknown admitted mutation | Original request and durable journal state |
-| Undo/Redo cursor | Semantic history derived by the journal owner |
+Source saves and system changes share the original document journal and revision/read-set CAS.
+Keep the original request after an unknown outcome. Query that operation and resume only its
+original parameters. Possible partial file writes require the explicit keep-current-source
+resolution. A zero-effect source conflict permits a new checked save.
 
-Canvas notes are text-bearing document objects. They are not the review opinions that can be
-added to the Chat draft. A selection change must not turn either kind into the other.
+Artifact disable stops new admission after mounted views persist their input. Prepared current
+operations retain their original identity. Re-enable rotates the generation. No old view can
+renew its write authority. Unsupported formats and retired commands are never resumed.
 
-## Save or recover source
+Use the original native editor's export controls for Canvas/Slides. They export fixed saved
+source with explicit resource and font choices. Exporting never creates a source revision.
+Design-system exports support a saved board or complete document as HTML, PNG, fixed-page PDF
+or flow PDF. PNG requires one board. Flow PDF uses A4 or Letter paper.
 
-A finite property edit, Canvas batch, system change or restore uses the same document journal
-and current revision/read-set CAS. A batch validates in memory before prepare, but durable file
-effects do not promise filesystem rollback. Preserve raw invalid input and pending requests
-when the host blocks navigation, close, disable or another mutation.
+Manual native Undo/Redo and the latest AI rollback are separate. The AI rollback restores the
+complete source set from the accepted operation's exact baseline; it does not create arbitrary
+historical restoration or a permanent version browser.
 
-For unknown outcomes, query the original request's status and use its original resume operation.
-Do not retarget it, edit its parameters or allocate a new ID to hide uncertainty.
-A confirmed zero-effect source conflict is terminal. Possible started/applied effects require
-the explicit keep-current-source resolution exposed by the owner. Resolution itself saves no
-source, revision or card. See [the source transaction](../formats/document.md).
-
-For existing legacy documents, Undo/Redo follows the owner's displayed target revision and current CAS. It saves navigation
-without adding a new edit step. A normal edit truncates redo. Opening an older card only views
-its archive; it does not perform Undo or authorize editing that historical snapshot.
-Removing a Page/board/object does not remove prior versions or physically delete retained files.
-
-Artifact disable stops new admission. Saved archives and recovery input remain available;
-prepared work retains its original recovery identity. Re-enable creates a new generation, so an
-old view or reference cannot authorize a new write.
-
-Native current-head documents keep manual Undo in the mounted editor and one separate latest
-AI rollback. Read [native source](../formats/native.md) and [candidate purpose](candidates.md).
-
-## Export a saved range
-
-The host export action accepts html, png, pdf-fixed or pdf-flow. Select an explicit range:
-
-| scope | Required target |
-| --- | --- |
-| board | A board in the fixed manifest; omission defaults to launchBoard |
-| page | pageId in that fixed manifest |
-| document | The saved document; unavailable for PNG |
-
-If scope is omitted, PNG defaults to board and other formats default to document. Every supplied
-Page/board ID is validated even if irrelevant to the chosen range. A Page/board in another
-revision is invalid. The range, format and paper are normalized before cache or concurrent work.
-
-Page export uses static board captures and actual standalone objects; it does not retain board
-interaction or searchable board text. Document HTML retains board prototypes and local
-navigation, with separate Page-object views. Document PDF includes boards and Page-only sheets.
-Flow PDF uses A4/Letter paper; fixed PDF uses the prepared viewport. See
-[print composition](../authoring/print.md) for the inspection boundary.
-
-## Transfer review intentionally
-
-Add to draft and Send are distinct explicit user actions in the original Chat. Keep the original
-execution computer and document reference. A failed transfer retains notes; an unknown send
-queries the same request. Do not send automatically, replace unrelated draft text, switch Agents
-or use a private preview address/clipboard operation as a substitute for the host handoff.
+Review handoff is an explicit user action in the original Chat. Keep that Chat, document and
+execution computer. Preserve input after a refusal and never replace unrelated draft content.
+See [the source transaction](../formats/document.md) and [candidate purpose](candidates.md).

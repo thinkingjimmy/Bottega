@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React contenteditable, SlimScroller, host-injected UI text, RichInput public types, PromptInput RichValue, and the pure document/history model
- * [OUTPUT]: Provides RichInput and public types with localized default suggestion copy, atomic chips, undo/redo, multi-kind grouping, unified scrolling, and single-flight asynchronous consume
+ * [OUTPUT]: Provides RichInput and public types with localized default suggestion copy, atomic chips with reference removal, undo/redo, multi-kind grouping, unified scrolling, and single-flight asynchronous consume
  * [POS]: packages/ui/src/components/ai-elements/rich; RichInput editing state machine; types, candidate projection, node DOM, and IME adaptation remain in sibling modules
  */
 
@@ -71,6 +71,7 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
       value,
       onChange,
       onNodeDiscarded,
+      onDesignClick,
       onFileClick,
       onWorkspaceFileClick,
       invalidSkillRefs,
@@ -93,6 +94,7 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
   ) {
     const messageLabel = useUiText("message", "Message");
     const loadingLabel = useUiText("loading", "Loading");
+    const removeDesignLabel = useUiText("removeDesignReference", "Remove reference");
     const skillEmpty = useUiText("skillSuggestionsEmpty", "No Skills available");
     const skillNoMatch = useUiText("skillSuggestionsNoMatch", "No matching Skills");
     const mentionEmpty = useUiText("mentionSuggestionsEmpty", "No references available");
@@ -759,6 +761,14 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
           >
             <RichInputNodes
               fileClickTitle={fileClickTitle}
+              onDesignClick={onDesignClick}
+              designRemoveTitle={removeDesignLabel}
+              onDesignRemove={disabled ? undefined : node => {
+                const current = valueRef.current, index = current.findIndex(value => value.id === node.id);
+                if (index < 0) return;
+                const start = richValueLength(current.slice(0, index)), next = replaceRichRange(current, { start, end: start + 1 }, "");
+                updateQuery(null); apply(next.value, pointAtRichOffset(next.value, next.caret)); editorRef.current?.focus();
+              }}
               onFileClick={onFileClick}
               onWorkspaceFileClick={onWorkspaceFileClick}
               invalidSkillRefs={invalidSkillRefs}

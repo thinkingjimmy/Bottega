@@ -1,15 +1,17 @@
 diff --git a/dist/useStickToBottom.js b/dist/useStickToBottom.js
+index 7d659edac..ff6b0ba47 100644
 --- a/dist/useStickToBottom.js
 +++ b/dist/useStickToBottom.js
-@@ -43,6 +43,7 @@
+@@ -43,6 +43,8 @@ export const useStickToBottom = (options = {}) => {
      const [isAtBottom, updateIsAtBottom] = useState(options.initial !== false);
      const [isNearBottom, setIsNearBottom] = useState(false);
      const optionsRef = useRef(null);
 +    const viewport = useRef({ element: undefined, height: 0, observer: undefined });
++    const contentResizeFrame = useRef(0);
      optionsRef.current = options;
      const isSelecting = useCallback(() => {
          if (!mouseDown) {
-@@ -231,6 +232,10 @@
+@@ -231,6 +233,10 @@ export const useStickToBottom = (options = {}) => {
              return;
          }
          const { scrollTop, ignoreScrollToTop } = state;
@@ -20,7 +22,7 @@ diff --git a/dist/useStickToBottom.js b/dist/useStickToBottom.js
          let { lastScrollTop = scrollTop } = state;
          state.lastScrollTop = scrollTop;
          state.ignoreScrollToTop = undefined;
-@@ -262,6 +267,11 @@
+@@ -262,6 +268,11 @@ export const useStickToBottom = (options = {}) => {
                  setIsAtBottom(false);
                  return;
              }
@@ -32,7 +34,7 @@ diff --git a/dist/useStickToBottom.js b/dist/useStickToBottom.js
              const isScrollingDown = scrollTop > lastScrollTop;
              const isScrollingUp = scrollTop < lastScrollTop;
              if (state.animation?.ignoreEscapes) {
-@@ -302,6 +312,32 @@
+@@ -302,12 +313,40 @@ export const useStickToBottom = (options = {}) => {
          }
      }, [setEscapedFromLock, setIsAtBottom, state]);
      const scrollRef = useRefCallback((scroll) => {
@@ -65,7 +67,28 @@ diff --git a/dist/useStickToBottom.js b/dist/useStickToBottom.js
          scrollRef.current?.removeEventListener("scroll", handleScroll);
          scrollRef.current?.removeEventListener("wheel", handleWheel);
          scroll?.addEventListener("scroll", handleScroll, { passive: true });
-@@ -326,11 +362,9 @@
+         scroll?.addEventListener("wheel", handleWheel, { passive: true });
+     }, []);
+     const contentRef = useRefCallback((content) => {
++        cancelAnimationFrame(contentResizeFrame.current);
++        contentResizeFrame.current = 0;
+         state.resizeObserver?.disconnect();
+         state.resizeObserver = undefined;
+         if (!content) {
+@@ -318,6 +357,12 @@ export const useStickToBottom = (options = {}) => {
+             const { height } = entry.contentRect;
+             const difference = height - (previousHeight ?? height);
+             state.resizeDifference = difference;
++            // Scrolling can reveal content-visibility rows and resize this observer's target.
++            // Keep resize authority synchronous, but move layout writes outside delivery.
++            cancelAnimationFrame(contentResizeFrame.current);
++            contentResizeFrame.current = requestAnimationFrame(() => {
++                contentResizeFrame.current = 0;
++                if (content !== contentRef.current) return;
+             /**
+              * Sometimes the browser can overscroll past the target,
+              * so check for this and adjust appropriately.
+@@ -326,11 +371,9 @@ export const useStickToBottom = (options = {}) => {
                  state.scrollTop = state.targetScrollTop;
              }
              setIsNearBottom(state.isNearBottom);
@@ -80,11 +103,10 @@ diff --git a/dist/useStickToBottom.js b/dist/useStickToBottom.js
                  const animation = mergeAnimations(optionsRef.current, previousHeight
                      ? optionsRef.current.resize
                      : optionsRef.current.initial);
-@@ -340,17 +374,6 @@
-                     preserveScrollPosition: true,
+@@ -341,17 +384,6 @@ export const useStickToBottom = (options = {}) => {
                      duration: animation === "instant" ? undefined : RETAIN_ANIMATION_DURATION_MS,
                  });
--            }
+             }
 -            else {
 -                /**
 -                 * Else if it's a negative resize, check if we're near the bottom
@@ -95,6 +117,15 @@ diff --git a/dist/useStickToBottom.js b/dist/useStickToBottom.js
 -                    setEscapedFromLock(false);
 -                    setIsAtBottom(true);
 -                }
-             }
+-            }
              previousHeight = height;
              /**
+              * Reset the resize difference after the scroll event
+@@ -367,6 +399,7 @@ export const useStickToBottom = (options = {}) => {
+                     }
+                 }, 1);
+             });
++            });
+         });
+         state.resizeObserver?.observe(content);
+     }, []);

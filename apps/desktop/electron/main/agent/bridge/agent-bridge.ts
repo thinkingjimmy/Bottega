@@ -149,6 +149,11 @@ async function spawnAgent(
   let resolvedInput = reuseInput;
   let credentialUse: ReturnType<typeof reserveAgentCredentialUse> | undefined;
   try {
+    if (payload.artifactEdit) {
+      await (await import("../../design/chat-edit/spawn")).spawnArtifactChatEdit({ entry, payload, context, options, resolved: reuseInput, authority: trustedAuthority, turns, publishState,
+        callbacks: (backend, runtimeGeneration) => createTurnCallbacks({ turns, threadScopes, publish, observe, finalizeEntry }, { entry, generation, backend, runtimeGeneration, options, context, trustedAuthority }) });
+      return;
+    }
     credentialUse = reserveAgentCredentialUse(backend.id);
     await credentialUse.ready;
     assertAgentProcessAdmission(backend.id);

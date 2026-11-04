@@ -2,8 +2,8 @@
 
 /**
  * [INPUT]: Depends on UI Button/Tooltip, host-injected UI text, streamdown/CJK, MessageRendererContext, opt-in local file links and the message plugin loader
- * [OUTPUT]: Provides Message/MessageContent layout with a message-content slot for bubble-scoped navigation emphasis, MessageActions/MessageAction, MessageResponse and messageRehypePlugins (repairs unfinished Markdown only while streaming, parses raw HTML only when the text has a tag, re-renders on any prop change); stabilizes locale-key/plugin detection, streams code-only rendering while Math/Mermaid stay available, and applies syntax highlighting once in a single pass after streaming settles
- * [POS]: ai-elements' message-display family; a Message never overflows its parent content list, and MessageResponse only auto-links http/mailto and hides behind a full skeleton until its plugins are chosen. Links render as real anchors (target="_blank" rel="noopener noreferrer") with no in-page confirmation, so a host may intercept the click and route the URL into its own surface. The default Markdown heading scale is re-anchored here to the text-sm body size (h1-h4 keep distinct sizes, h5/h6 collapse onto text-sm); other rendering contexts need their own scale. className is always merged last through cn's tw-merge so a caller's class wins without needing to guess specificity
+ * [OUTPUT]: Provides Message/MessageContent layout with a message-content slot for bubble-scoped navigation emphasis, MessageActions/MessageAction, MessageResponse and messageRehypePlugins (repairs unfinished Markdown only while streaming, parses raw HTML only when the text has a tag, re-renders on any prop change); stabilizes locale-key/plugin detection, streams code-only rendering while Math/Mermaid stay available, and defers syntax highlighting until a settled block enters the viewport
+ * [POS]: ai-elements' message-display family; a Message never overflows its parent content list, and MessageResponse only auto-links http/mailto and uses only an initial plugin skeleton, retains mounted content during later loads and renders literal paragraphs without Markdown parsing. Long code/table content has no vertical cap; action tooltips mount on intent without replacing buttons. Links render as real anchors (target="_blank" rel="noopener noreferrer") with no in-page confirmation, so a host may intercept the click and route the URL into its own surface. The default Markdown heading scale is re-anchored here to the text-sm body size (h1-h4 keep distinct sizes, h5/h6 collapse onto text-sm); other rendering contexts need their own scale. className is always merged last through cn's tw-merge so a caller's class wins without needing to guess specificity
  * Local TXT/Markdown/JSON links require an explicit host provider and remain inert outside that host.
  */
 
@@ -11,7 +11,6 @@ import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@ai-chat/ui/components/ui/tooltip";
 import { cn } from "@ai-chat/ui/lib/utils";
@@ -19,7 +18,7 @@ import { useUiText } from "@ai-chat/ui/lib/ui-text";
 import { cjk } from "@streamdown/cjk";
 import type { UIMessage } from "ai";
 import type { ComponentProps, HTMLAttributes } from "react";
-import { memo, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { memo, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { defaultRehypePlugins, Streamdown } from "streamdown";
 import {
   detectOptionalPlugins,
@@ -92,27 +91,25 @@ export const MessageAction = ({
   size = "icon-sm",
   ...props
 }: MessageActionProps) => {
-  const button = (
-    <Button size={size} type="button" variant={variant} {...props}>
-      {children}
-      <span className="sr-only">{label || tooltip}</span>
-    </Button>
-  );
-
-  if (tooltip) {
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>{button}</TooltipTrigger>
-          <TooltipContent>
-            <p>{tooltip}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  }
-
-  return button;
+  const [mounted, setMounted] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const id = useId();
+  const button = <Button size={size} type="button" variant={variant} {...props}
+    aria-label={props["aria-label"] ?? label ?? tooltip}
+    data-message-action=""
+    onFocus={event => { setMounted(true); setFocused(true); props.onFocus?.(event); }}
+    onBlur={event => { setFocused(false); props.onBlur?.(event); }}>
+    {children}<span className="sr-only">{label || tooltip}</span>
+  </Button>;
+  if (!tooltip) return button;
+  return <span className="relative inline-flex" onPointerEnter={() => { setMounted(true); setHovered(true); }} onPointerLeave={() => setHovered(false)}>
+    {button}
+    {mounted && <Tooltip open={hovered || focused} onOpenChange={open => { if (!open) { setHovered(false); setFocused(false); } }}>
+      <TooltipTrigger asChild><span aria-hidden="true" tabIndex={-1} className="pointer-events-none absolute inset-0" /></TooltipTrigger>
+      <TooltipContent id={id}><p>{tooltip}</p></TooltipContent>
+    </Tooltip>}
+  </span>;
 };
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
@@ -247,6 +244,8 @@ const sameProps = (previous: MessageResponseProps, next: MessageResponseProps) =
   return keys.length === Object.keys(previous).length && keys.every((key) => Object.is(previous[key], next[key]));
 };
 
+const literalParagraph = (text: string) => Boolean(text) && !/[\\`*_~<>!#$&|=:+.()\-^\n\r\t]/.test(text) && !/^ {4}/.test(text);
+
 export const MessageResponse = memo(
   function MessageResponse({ className, ...props }: MessageResponseProps) {
     const contextRenderers = useMessageRenderers();
@@ -276,8 +275,14 @@ export const MessageResponse = memo(
       languagesKey,
       !props.isAnimating
     );
-    if (!runtime.settled) {
+    const [rendered, setRendered] = useState(runtime.settled);
+    if (runtime.settled && !rendered) setRendered(true);
+    if (!runtime.settled && !rendered) {
       return <MessageResponseLoading className={className} />;
+    }
+
+    if (!callerPlugins && Object.keys(streamdownProps).every(key => key === "children" || key === "isAnimating") && literalParagraph(props.children ?? "")) {
+      return <div className={cn("size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}><p data-streamdown="paragraph">{props.children}</p></div>;
     }
 
     return (
@@ -287,7 +292,9 @@ export const MessageResponse = memo(
         // cursor, middle-click and modifier-click keep native behaviour and a
         // host can delegate clicks elsewhere. Before the spread: callers may override.
         linkSafety={{ enabled: false }}
-        // D-01: only a message still streaming needs its unfinished Markdown repaired; the pass is quadratic on bracket-dense text.
+        codeBlockMaxHeight={0}
+        tableMaxHeight={0}
+        // D-01: only a message still streaming needs its unfinished Markdown repaired; Remend 1.4 keeps bracket-dense repair linear.
         // The mode stays "streaming" so finishing doesn't swap the block tree and remount code or diagrams.
         parseIncompleteMarkdown={Boolean(props.isAnimating)}
         {...streamdownProps}

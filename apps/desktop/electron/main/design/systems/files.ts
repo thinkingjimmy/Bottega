@@ -73,13 +73,14 @@ export function projectSystemFiles(system: DesignSystem, manifest: DesignManifes
   files.set("overview.html", Buffer.from(systemOverview(system, manifest.title)));
   files.set("canvas.json", encodedJson(projectedManifest));
   if (!files.has("README.md")) files.set("README.md", Buffer.from([
-    `Use the captured ${manifest.title} system at an explicit committed revision.`,
-    "", "Load tokens.css once. Its values are generated from tokens.json and aliases.json. Preserve exact source values; unsupported colors require an explicit recommendation and user choice.",
-    "", ...system.tokens.tokens.map(token => `- Use \`${token.name}\` as documented in its source usage field. ${token.kind}.`),
-    "", "Read sources.json for precise file digests and Git versions. A workingTree source differs from the named commit; the captured file digest identifies the actual value.",
-    "", "Read components.json before using a component. Static entries are inventories; only mounted entries have a controlled-renderer PNG and pinned compiler/runtime evidence.",
-    "", "For native Canvas, compile target dc and load the ready dc.bundle/exportName from components.json. A standalone bundle is a different target. DC exports share the document React18 and do not create a root. Keep Portal targets inside the board.",
-    "", "Bind the system with its document ID and exact revision. The consumer keeps its own immutable dependency closure. Updating this system does not change existing works.", "",
+    `# ${manifest.title}`,
+    "", "A shared guide to the colors, typography and components used across your work.",
+    "", "## Colors", "", "Use the named colors for their documented purpose. Check both light and dark themes before choosing a color for text or a background.",
+    "", ...system.tokens.tokens.filter(token => token.kind === "color" && token.usage && !token.usage.startsWith("Defined in ")).map(token => `- **${token.name}**: ${token.usage}`),
+    "", "## Typography", "", "Use text styles for a consistent hierarchy. Keep reading text clear and use emphasis sparingly. Uploaded font files stay with this system.",
+    "", "## Components", "", "Browse the component examples and usage notes before adding them to a page. Interactive examples can be tried in place.",
+    "", "## Using this system", "", "Choose a saved version in your work’s Theme menu. Existing work keeps its selected version until you choose to update it.",
+    "", "Edit this overview to add your brand principles, voice and usage guidance.", "",
   ].join("\n")));
   return [...files].map(([path, data]) => ({ path, data }));
 }

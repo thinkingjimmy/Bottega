@@ -10,39 +10,13 @@ The save unit is the complete directory `design/<documentId>`. Select that docum
 editing. Every captured file, including unused local files, contributes to its read-set digest.
 The host saves that read set as one immutable archive; saving one board does not omit its peers.
 
-For new native Canvas, use [Native Canvas](native.md). The source declaration below applies to
-existing legacy documents; both formats use the same checked-byte transaction and budgets.
+Use [Native Canvas](native.md) for Canvas v3/DC or [Native Slides](slides.md) for deck v4.
+The host rejects retired schemaVersion:1 design source. Do not convert old source automatically.
+Design systems have their own source definition under `design-systems/<systemId>`.
 
-## Declare the legacy source
-
-`canvas.json` has these required fields:
-
-| Field | Value |
-| --- | --- |
-| schemaVersion | 1 |
-| format | bottega-design |
-| documentId | Directory slug; lowercase ASCII letters/digits with underscores or hyphens, at most 64 characters |
-| title | Nonempty display text, at most 250 characters |
-| boards | 1–16 ordered board records with distinct IDs and HTML file paths |
-| launchBoard | ID of one listed board |
-
-Each board declares `id`, `title`, `file`, `mode` (`responsive` or `fixed`) and
-`viewport:{width,height}`. Viewport axes are integer CSS pixels from 40 to 8000.
-For example, this manifest names one ordinary HTML file in a new source directory:
-
-```json
-{"schemaVersion":1,"format":"bottega-design","documentId":"shift-board","title":"Shift board","boards":[{"id":"huddle","title":"Huddle","file":"huddle.html","mode":"responsive","viewport":{"width":1160,"height":760}}],"launchBoard":"huddle"}
-```
-
-Add optional pages, board positions and objects only under the [Canvas contract](canvas.md).
-With no pages field, the reader exposes an implicit Page without rewriting the manifest.
-Preserve existing page/object IDs and canonical board layers in a source revision.
-
-Use complete UTF-8 HTML for each board. Resolve CSS, scripts, images and fonts to files inside
-the document, inline content or admitted data URLs. Prototype links can target listed boards
-or local fragments. Remote dependencies cannot complete the offline source closure.
-A copied fixed system uses `systems` bindings with documentId, revision, snapshotRef and files;
-a path to a live system directory is not a binding.
+Use complete UTF-8 HTML for Canvas boards and native section source for Slides. Resolve every
+resource within the captured document. The host manifest is metadata; never write it over a
+native source index. A fixed system binding names an exact system revision and copied closure.
 
 Relative stored paths have at most four segments and 240 characters. A segment starts with an
 ASCII letter, digit or underscore; subsequent characters may include dots, spaces or hyphens.
@@ -51,7 +25,7 @@ between directories only if their resolved target stays inside the same document
 
 | Complete-source budget | Maximum |
 | --- | --- |
-| Files | 64 |
+| Files | Canvas: 64; Slides: 512 |
 | canvas.json | 64 KiB |
 | One HTML file | 8 MiB |
 | All source bytes | 32 MiB |
@@ -95,10 +69,9 @@ prepared recovery retains captured bytes even while Artifact is off.
 ## Inspect the saved result
 
 Render with documentId/revision from the receipt and an optional saved boardId/viewport.
-The renderer reads that archive, not newer workspace files. A legacy historical card keeps its saved revision. Native work cards open current head
+The renderer reads that archive, not newer workspace files. Native work cards open current head
 metadata directly and expose no permanent history list; fixed snapshot references remain readable.
 
-Source commits, workspace property/Canvas edits, restore and system changes all use the same
-journal. Semantic Undo/Redo is navigation supplied by that owner. A new edit clears the redo
-branch. Source deletion is not a substitute for history navigation or document lifecycle tools.
+Native source saves and system changes share the same journal and compare-and-swap boundary.
+Manual Undo/Redo stays in the mounted native editor; the latest AI rollback is separate.
 Read [workspace state](../review/workspace.md) for checkpoint, review and export operations.

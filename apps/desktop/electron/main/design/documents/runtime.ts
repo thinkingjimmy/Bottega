@@ -30,14 +30,22 @@ export async function initializeDesignDocuments(userData: string, chats: ChatSto
   };
   current = new DesignDocuments(join(userData, "artifact-design"), {
     assertAdmission: assertArtifactAdmission, resolve,
-    async deliver(revision, data) {
+    async retainImport(revision, data, history) {
+      const artifacts = artifactRuntime(); if (!artifacts) throw new Error("Artifact custody is unavailable");
+      await artifacts.retainDocumentHistory({ chatId: revision.authority.chatId, incarnationId: revision.authority.incarnationId, artifactId: revision.artifactId }, revision.fence, revision.messageId, data, history.map(value => ({ fence: value.revision.fence, data: value.data })));
+    },
+    async deliver(revision, data, history) {
       const artifacts = artifactRuntime();
       if (!artifacts) throw new Error("Artifact custody is unavailable");
       const ref = { chatId: revision.authority.chatId, incarnationId: revision.authority.incarnationId, artifactId: revision.artifactId };
+      if (history) {
+        if (JSON.stringify(resolve(ref.chatId, ref.incarnationId)) !== JSON.stringify(revision.authority)) throw new DesignDocumentError("PATH_DENIED", "Chat authority changed during project import delivery");
+        await service.appendCanonical(ref.chatId, { id: revision.messageId, role: "assistant", content: encodeArtifactFence(revision.fence), createdAt: revision.createdAt, backend: revision.backend as ChatAgentId, completion: "complete" }); return;
+      }
       const original = current?.store.operation(requestKey(revision.authority, revision.requestId))?.sourceEdit?.input;
-      const previous = revision.manifest.contentFormat ? current?.store.latest(revision.authority.ownerId, revision.manifest.documentId, revision.authority) : undefined;
+      const previous = revision.manifest.contentFormat || revision.manifest.system ? current?.store.latest(revision.authority.ownerId, revision.manifest.documentId, revision.authority) : undefined;
       const nativeParent = original?.artifactId ?? previous?.artifactId;
-      if (revision.manifest.contentFormat && nativeParent) {
+      if ((revision.manifest.contentFormat || revision.manifest.system) && nativeParent) {
         await artifacts.retainNativeHead({ ...ref, artifactId: nativeParent }, revision.fence, data);
         if (JSON.stringify(resolve(ref.chatId, ref.incarnationId)) !== JSON.stringify(revision.authority))
           throw new DesignDocumentError("PATH_DENIED", "Chat workspace authority changed before native head delivery");

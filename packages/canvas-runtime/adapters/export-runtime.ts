@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Original maintained native write-access status, export registrations and a main-authored immutable export-job metadata envelope.
- * [OUTPUT]: Main-frozen menu delegation, token-bound original write-access status and producer invocation with bounded read-only export bytes and actual Canvas/Slides font hooks and concrete transformed-model/exact-picture output previews.
+ * [OUTPUT]: Original-menu whole-folder entry, main-frozen menu delegation, token-bound original write-access status and producer invocation with bounded read-only export bytes and actual Canvas/Slides font hooks and concrete transformed-model/exact-picture output previews.
  * [POS]: Trusted editor export adapter; authored child documents cannot access this instance or grant a job.
  */
 import type { NativeExportOptions } from "../../cloud-protocol/src/artifacts/design/export/options";
@@ -144,4 +144,34 @@ export function nativeExportBundleJob() {
   if (typeof document === "undefined") return false;
   const metadata = document.querySelector<HTMLMetaElement>('meta[name="bottega-native-export"]');
   return metadata?.content ? JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(metadata.content), char => char.charCodeAt(0)))).bundle === true : document.documentElement.getAttribute("data-bottega-native-export-bundle") === "1" || bundleJob;
+}
+
+type ProjectExport = ((start?: boolean) => void) & { label(): string; folder(): string; description(): string };
+const projectExport = () => (window as Window & { __bottegaNativeProjectExport?: ProjectExport }).__bottegaNativeProjectExport;
+export function nativeProjectExportAvailable() { return typeof projectExport() === "function"; }
+export function nativeProjectExportLabel() { return projectExport()?.label() ?? "Export"; }
+export function nativeWholeFolderLabel() { return projectExport()?.folder() ?? "Whole folder (.zip)"; }
+export function nativeWholeFolderDescription() { return projectExport()?.description() ?? "Everything here, to back up or move"; }
+export function openNativeProjectExport(start = false) { projectExport()?.(start); }
+
+export function nativeHistoryLabel() {
+  const locale = document.documentElement.lang || new URL(location.href).searchParams.get("lang") || "en";
+  return locale.startsWith("zh") ? "版本历史" : locale.startsWith("ja") ? "バージョン履歴" : locale.startsWith("es") ? "Historial de versiones" : locale.startsWith("fr") ? "Historique des versions" : "Version history";
+}
+export function openNativeHistory() {
+  const token = document.querySelector<HTMLMetaElement>('meta[name="bottega-native-token"]')?.content;
+  if (token) window.parent.postMessage({ type: "bottega:native:history", token }, "*");
+}
+
+export function nativeSystemBrowserLabel() {
+  const locale=document.documentElement.lang || new URL(location.href).searchParams.get("lang") || "en";
+  return locale.startsWith("zh") ? "浏览设计系统" : locale.startsWith("ja") ? "デザインシステムを表示" : locale.startsWith("es") ? "Ver sistema de diseño" : locale.startsWith("fr") ? "Voir le système de design" : "Browse system";
+}
+export function nativeSystemBrowserAvailable() {
+  const meta=document.querySelector<HTMLMetaElement>('meta[name="bottega-native-systems"]');
+  try { return !document.querySelector('meta[name="bottega-native-readonly"]') && Boolean(meta && Array.isArray(JSON.parse(atob(meta.content)))); } catch { return false; }
+}
+export function openNativeSystemBrowser() {
+  const token=document.querySelector<HTMLMetaElement>('meta[name="bottega-native-token"]')?.content;
+  if (token && nativeSystemBrowserAvailable()) window.parent.postMessage({type:"bottega:native:system-browser",token},"*");
 }

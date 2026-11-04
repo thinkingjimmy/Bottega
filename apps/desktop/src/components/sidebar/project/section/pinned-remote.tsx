@@ -1,12 +1,14 @@
 "use client";
 
 /**
- * [INPUT]: Depends on i18n, the viewed-computer scope and its pin set, the history provider, the shared menu/row primitives, the default Project glyph and the lazy ./pin-picker dialog.
- * [OUTPUT]: Provides ProjectAddAction (the group's two-item `+`, which loads ./pin-picker when asked), pinnedTombstones and PinnedProjectRow for a pinned Project its owner has deleted or archived, and usePinnedProjectLabels.
+ * [INPUT]: Depends on i18n, React Router, the shared draftRoute encoder, the viewed-computer scope and its pin set, the history provider, the shared menu/row primitives, the default Project glyph and the lazy ./pin-picker dialog.
+ * [OUTPUT]: Provides ProjectAddAction (the group's two-item `+`, which opens the added folder's Project draft and loads ./pin-picker when asked), pinnedTombstones and PinnedProjectRow for a pinned Project its owner has deleted or archived, and usePinnedProjectLabels.
  * [POS]: The pinning affordance for components/sidebar/project/section; a pin is a per-profile arrangement of this computer's tab and writes nothing to the owner, the cloud or any folder.
  */
 
 import { Suspense, lazy, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
+import { draftRoute } from "@/lib/chat/drafts/draft-route";
 import { FolderPlus, Pin, PinOff, Plus, Globe } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { useHistory } from "@/components/providers/history/history-provider";
@@ -96,14 +98,16 @@ export function PinnedProjectRow({ entry, project }: { entry: PinnedRemoteProjec
  */
 export function ProjectAddAction({ className }: { className?: string }) {
   const { t } = useAppTranslation();
+  const navigate = useNavigate();
   const { scope } = useCloudSidebar();
   const history = useHistory();
   const [pickerOpen, setPickerOpen] = useState(false);
   const menu = useSidebarRenameMenu(() => setPickerOpen(true));
-  const addLocal = () => {
+  const addLocal = async () => {
     /* A folder chosen here is this computer's, so the strip comes home to the tab it will appear in. */
     scope.selectLocal();
-    void history.addProject();
+    const project = await history.addProject();
+    if (project) navigate(draftRoute(project.id));
   };
   if (scope.computers.length < 2) {
     return (

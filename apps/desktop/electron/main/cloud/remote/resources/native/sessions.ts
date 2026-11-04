@@ -35,7 +35,7 @@ export class NativeRemoteSessions {
     this.heads = new NativeHeadMaterials(ports);
     this.timer = setInterval(() => this.prune(), 30_000); this.timer.unref?.();
   }
-  private record(input: Exclude<NativeRemoteInput, { kind: "head" | "head-material" | "open" }>, operator: Operator, check = true) {
+  private record(input: Exclude<NativeRemoteInput, { kind: "head" | "head-material" | "open" | "project-import" }>, operator: Operator, check = true) {
     const record = this.records.get(input.sessionId);
     if (!record || JSON.stringify(record.operator) !== JSON.stringify(operator) || record.token !== input.token ||
       ["chatId", "incarnationId", "artifactId", "viewId", "generation"].some(key => record.input[key as keyof WorkspaceCommand] !== input[key as keyof typeof input])) throw new Error("artifact-unavailable");
@@ -72,24 +72,41 @@ export class NativeRemoteSessions {
     this.records.set(id, record);
     try {
       const native = artifactRuntime()!.gateway.nativeSession(lease.id, windowId), snapshot = native.snapshot();
-      const source = packArtifactArchive(snapshot.files, 512), assets = await nativeEditorAssets(snapshot.version.manifest.contentFormat!); current();
+      const contentFormat = snapshot.version.manifest.system ? "design-system/v1" : snapshot.version.manifest.contentFormat!;
+      const source = packArtifactArchive(snapshot.files, 512), assets = await nativeEditorAssets(contentFormat); current();
       const runtime = packArtifactArchive([...assets].map(([path, data]) => ({ path, data })), 512);
       const sourceFile = await transfer.stage(id + ":source", nativeBytesSource(source), controller.signal);
+      const editorSource = snapshot.version.manifest.system ? await transfer.stage(id + ":editor-source", nativeBytesSource(packArtifactArchive(native.editorSnapshot(), 512)), controller.signal) : undefined;
       const runtimeFile = await transfer.stage(id + ":runtime", nativeBytesSource(runtime), controller.signal); current(); record.runtime = runtimeFile;
       return nativeRemoteResultSchema.parse({ kind: "opened", sessionId: id, token: record.token, leaseId: lease.id, expiresAt: lease.expiresAt,
-        viewId: input.viewId, generation: input.generation, source: sourceFile, runtime: { blobId: runtimeFile.blob.blobId, sha256: runtimeFile.blob.sha256, bytes: runtimeFile.blob.bytes }, snapshotRef: snapshot.version.snapshotRef, readSetDigest: snapshot.version.readSetDigest, contentFormat: snapshot.version.manifest.contentFormat });
+        viewId: input.viewId, generation: input.generation, source: sourceFile, runtime: { blobId: runtimeFile.blob.blobId, sha256: runtimeFile.blob.sha256, bytes: runtimeFile.blob.bytes }, snapshotRef: snapshot.version.snapshotRef, readSetDigest: snapshot.version.readSetDigest, contentFormat, ...(editorSource ? { editorSource } : {}) });
     } catch (cause) { await this.release(record); throw cause; }
   }
   async dispatch(raw: unknown, operator: Operator, commandCurrent: () => void, accountCurrent: () => void): Promise<NativeRemoteResult> {
     const input = nativeRemoteInputSchema.parse(raw); commandCurrent(); accountCurrent(); this.prune();
     if (this.closed) throw new Error("artifact-unavailable");
-    const owner = await artifactRuntime()!.remote?.validate({ chatId: input.chatId, incarnationId: input.incarnationId, artifactId: input.artifactId });
+    const owner = await artifactRuntime()!.remote?.validate({ chatId: input.chatId, incarnationId: input.incarnationId, artifactId: "artifactId" in input ? input.artifactId : "catalog" });
     commandCurrent(); if (!owner || owner.ownerDeviceId !== this.ports.deviceId) throw new Error("artifact-unavailable");
     const workspace = artifactWorkspace();
+    if (input.kind === "project-import") return (await import("../../../../design/projects/jobs/owner")).withProjectWork(async () => {
+      const { assertArtifactGeneration } = await import("../../../../artifacts/admission/state"), current = () => { commandCurrent(); accountCurrent(); if (this.closed) throw new Error("artifact-unavailable"); assertArtifactGeneration(input.generation); };
+      current(); const files = this.ports.files(operator.userId);
+      try {
+        const selected = await files.read(input.file.blob, { kind: "chat", id: input.chatId }, AbortSignal.timeout(120000)); current();
+        const bytes = await (await import("../../../../design/projects/source")).readProjectFile(selected.path, AbortSignal.timeout(60000)); current();
+        const sourceDigest = "sha256:" + input.file.blob.sha256;
+        if (bytes.length !== input.file.blob.bytes || designDigest(bytes) !== sourceDigest) throw new Error("artifact-invalid");
+        const result = await (await import("../../../../design/projects/import")).importProjectBytes({ action: "native-project-import", chatId: input.chatId, incarnationId: input.incarnationId, generation: input.generation, requestId: input.requestId, sourceDigest }, bytes, current);
+        current();
+        const operation = (await import("@ai-chat/cloud-protocol/resources/artifact/model")).artifactOperationSchema.parse({ status: result.status, requestId: result.requestId,
+          ...(result.status === "committed" ? { documentId: result.documentId, revision: result.revision, readSetDigest: result.readSetDigest, snapshotRef: result.snapshotRef, artifactId: result.artifactRef.artifactId } : { operationRef: result.operationRef, ...(result.status === "conflict" ? { code: result.code, sourceConflict: result.sourceConflict } : {}) }) });
+        return nativeRemoteResultSchema.parse({ kind: "project-import", operation });
+      } finally { await files.close(); }
+    });
     if (input.kind === "head-material") return this.heads.read(input, operator);
     if (input.kind === "head") {
-      const head = await workspace.dispatch({ chatId: input.chatId, incarnationId: input.incarnationId, artifactId: input.artifactId, action: "native-head" }) as { fence: unknown; revision: number; snapshotRef: string; readSetDigest: string; generation: string; enabled: boolean; dirty: boolean; aiRollback?: { requestId: string }; checkpoint: unknown; documentId: string };
-      commandCurrent(); return nativeRemoteResultSchema.parse(await this.heads.issue(input, operator, accountCurrent, { kind: "head", fence: artifactFenceSchema.parse(head.fence), revision: head.revision, snapshotRef: head.snapshotRef, readSetDigest: head.readSetDigest, generation: head.generation, enabled: head.enabled, dirty: head.dirty, aiRollback: head.aiRollback }, { checkpoint: head.checkpoint,
+      const head = await workspace.dispatch({ chatId: input.chatId, incarnationId: input.incarnationId, artifactId: input.artifactId, action: input.reference ? "native-locate" : input.mode === "fixed" ? "read" : "native-head", ...(input.reference ? { reference: input.reference, documentId: input.reference.documentId } : {}) }) as { fence: unknown; revision: number; snapshotRef: string; readSetDigest: string; generation: string; enabled: boolean; dirty: boolean; pendingChatEdit?: import("@ai-chat/cloud-protocol/artifacts/design/chat/model").PendingArtifactChatSave; aiRollback?: { requestId: string }; checkpoint: unknown; documentId: string };
+      commandCurrent(); return nativeRemoteResultSchema.parse(await this.heads.issue(input, operator, accountCurrent, { kind: "head", fence: artifactFenceSchema.parse(head.fence), revision: head.revision, snapshotRef: head.snapshotRef, readSetDigest: head.readSetDigest, generation: head.generation, enabled: head.enabled, dirty: head.dirty, pendingChatEdit: head.pendingChatEdit, aiRollback: head.aiRollback }, { checkpoint: head.checkpoint,
         checkpointConflicts: workspace.checkpoints.conflicts(input.chatId, input.incarnationId, head.documentId, head.revision) }));
     }
     if (input.kind === "open") {
@@ -128,7 +145,7 @@ export class NativeRemoteSessions {
       if (command.documentId !== record.input.documentId) throw new Error("artifact-unavailable");
       const result = await workspace.dispatch(command, record.windowId); commandCurrent(); record.current();
       if (command.action === "ack-disable") record.events.splice(0, record.events.length, ...record.events.filter(event => event.type !== "before-disable" || event.nonce !== command.nonce));
-      if (command.action === "native-candidate-preview") return this.wrap(record.input, result as { id: string; expiresAt: number }, record.windowId, operator, record.current, false);
+      if (command.action === "native-candidate-preview" || command.action === "preview") return this.wrap(command.action === "preview" ? command : record.input, result as { id: string; expiresAt: number }, record.windowId, operator, record.current, false);
       const bytes = Buffer.from(JSON.stringify(result));
       return nativeRemoteResultSchema.parse(bytes.length <= 2048 ? { kind: "workspace", json: result } :
         { kind: "workspace", result: await record.transfer.stageContent(record.id + ":result", bytes, "application/json", record.controller.signal) });

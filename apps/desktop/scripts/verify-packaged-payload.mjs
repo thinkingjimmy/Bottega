@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node-runtime/after-pack.mjs (runtime layout, Node entitlements), codesign/plutil on macOS, the one-shot build manifest (appPath/appOutDir/resourcesPath/installers), @electron/asar listPackage/extractFile, runtime-dependencies.json, electron-builder.yml extraResources targets, the shared system-font policy, the original sumo ISC notice, and an optional release-budgets.json
- * [OUTPUT]: Provides providerPackageFailures and asarPackageReader verifyProviderPackages (TASK-11 d3: every built-in Provider package inside the asar, file by file against runtime-entries.json's sha256/bytes pins, no unpinned package directory, and no providerPackages in the runtime manifest), evaluateReleaseBudgets (current-platform installer and unpacked ceilings, plus an approved bundled-runtime line only when that runtime is packaged) and verifyPackagedPayload, which verifies the packaged tree structurally (every manifest package present in the ASAR or unpacked tree with matching name and version, every optional dependency of a manifest package that is installed for the build's os/cpu (its native half, e.g. `@img/sharp-<platform>-<arch>`) also packaged unless an exclusion glob removes it, every excludedGlobs match absent, every extraResources target present, the extension-trust anchor unprovisioned or a production root (never a test root), and crypto notice bytes exact), writes release/dist-size-receipt.json with installer bytes and unpackedPayloadBytes, and asserts current-platform budgets when release-budgets.json declares them; platforms without budget keys are measure-only, cross-platform color tray resources plus macOS templates and native executable checks, including the Bottega Dock helpers and their single recovery LaunchAgent plist; the bundled Node (TASK-34): exactly manifest + bin/node + LICENSE under Resources/runtime, the signed digest the manifest names, no binary field, entries/packages equal to the asar's runtime-entries.json, and on macOS hardened runtime with only its own entitlements (X1); the approved bundledRuntimes line is added to the installer ceilings only when that Node is packaged. Enforces shared system-font policy over emitted renderer assets.
+ * [OUTPUT]: Provides providerPackageFailures and asarPackageReader verifyProviderPackages (TASK-11 d3: every built-in Provider package inside the asar, file by file against runtime-entries.json's sha256/bytes pins, no unpinned package directory, and no providerPackages in the runtime manifest), evaluateReleaseBudgets (current-platform installer and unpacked ceilings, plus an approved bundled-runtime line only when that runtime is packaged, plus per-component baselines) and verifyPackagedPayload, which verifies the packaged tree structurally (every manifest package present in the ASAR or unpacked tree with matching name and version, every optional dependency of a manifest package that is installed for the build's os/cpu (its native half, e.g. `@img/sharp-<platform>-<arch>`) also packaged unless an exclusion glob removes it, every excludedGlobs match absent, every extraResources target present, the extension-trust anchor unprovisioned or a production root (never a test root), and crypto notice bytes exact), writes release/dist-size-receipt.json with installer bytes, unpackedPayloadBytes and, on macOS, the per-component split from budget/payload-components.mjs, and asserts current-platform budgets (totals and per-component baselines) when release-budgets.json declares them; platforms without budget keys are measure-only, cross-platform color tray resources plus macOS templates and native executable checks, including the Bottega Dock helpers and their single recovery LaunchAgent plist; the bundled Node (TASK-34): exactly manifest + bin/node + LICENSE under Resources/runtime, the signed digest the manifest names, no binary field, entries/packages equal to the asar's runtime-entries.json, and on macOS hardened runtime with only its own entitlements (X1); the approved bundledRuntimes line is added to the installer ceilings only when that Node is packaged. Enforces shared system-font policy over emitted renderer assets.
  * [POS]: Production build verification shared by the private dist smoke; it contains no behavior test so the same file can later run inside the public build job. The dependency manifest owns what must exist, this file proves the packaged bytes agree
  */
 
@@ -15,6 +15,7 @@ import { spawnSync } from "node:child_process";
 import { extractFile, listPackage, statFile } from "@electron/asar";
 import { NODE_ENTITLEMENTS, runtimePaths } from "./node-runtime/after-pack.mjs";
 import { assertSystemFontEntries } from "../../../packages/ui/src/styles/system-fonts.mjs";
+import { componentBudgetFailures, payloadComponents } from "./budget/payload-components.mjs";
 
 const RECEIPT_SCHEMA = "bottega.dist-size-receipt/v1";
 
@@ -197,6 +198,8 @@ export async function verifyPackagedPayload({ desktop, buildManifest, log = (lin
   const installers = Object.fromEntries(
     Object.entries(buildManifest.installers ?? {}).map(([id, artifact]) => [id, artifact.bytes])
   );
+  const components = buildManifest.platform === "darwin" ? payloadComponents(measuredRoot, manifest.packages) : undefined;
+  if (components) assert.equal(Object.values(components).reduce((sum, bytes) => sum + bytes, 0), payloadBytes, "Payload components do not sum to the unpacked payload");
   const receipt = {
     schema: RECEIPT_SCHEMA,
     buildId: buildManifest.buildId,
@@ -206,11 +209,13 @@ export async function verifyPackagedPayload({ desktop, buildManifest, log = (lin
     installers,
     measuredRoot,
     unpackedPayloadBytes: payloadBytes,
+    ...(components ? { components } : {}),
     measuredAt: Date.now(),
   };
   const receiptPath = join(dirname(buildManifest.appOutDir), "dist-size-receipt.json");
   writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
   log(`[packaged-payload] ${Object.keys(manifest.packages).length} packages verified; payload ${(payloadBytes / 1048576).toFixed(1)} MB; installers ${Object.entries(installers).map(([id, bytes]) => `${id}=${(bytes / 1048576).toFixed(1)} MB`).join(", ") || "(none)"}`);
+  if (components) log(`[packaged-payload] components ${Object.entries(components).map(([name, bytes]) => `${name}=${(bytes / 1048576).toFixed(1)} MB`).join(", ")}`);
 
   /* 5. 预算：只对当前平台已声明的键断言；没有键就是 measure-only，首次测量不会被卡住。 */
   const budgetsPath = join(desktop, "release-budgets.json");
@@ -220,7 +225,7 @@ export async function verifyPackagedPayload({ desktop, buildManifest, log = (lin
   }
   const budgets = JSON.parse(readFileSync(budgetsPath, "utf8"));
   const payloadKey = `${buildManifest.platform}-${buildManifest.arch}`;
-  const { asserted, over } = evaluateReleaseBudgets(budgets, { installers, payloadKey, payloadBytes, bundledNode });
+  const { asserted, over } = evaluateReleaseBudgets(budgets, { installers, payloadKey, payloadBytes, bundledNode, components });
   assert.equal(over.length, 0, `超出体积预算：${over.join("; ")}`);
   log(`[packaged-payload] ${asserted} budget(s) asserted for ${payloadKey}${asserted === 0 ? " (measure-only)" : ""}`);
   return receipt;
@@ -294,7 +299,7 @@ export function verifyProviderPackages({ archive, entries = new Set(listPackage(
   return Object.keys(pinned).length;
 }
 
-export function evaluateReleaseBudgets(budgets, { installers, payloadKey, payloadBytes, bundledNode }) {
+export function evaluateReleaseBudgets(budgets, { installers, payloadKey, payloadBytes, bundledNode, components }) {
   const line = bundledNode ? budgets.bundledRuntimes?.[bundledNode] : null;
   const over = [];
   let asserted = 0;
@@ -320,7 +325,8 @@ export function evaluateReleaseBudgets(budgets, { installers, payloadKey, payloa
       if (payloadBytes > payloadBase + increase) over.push(`${payloadKey} payload ${payloadBytes} > ${payloadBase + increase}`);
     }
   }
-  return { asserted, over };
+  const parts = componentBudgetFailures(budgets, payloadKey, components);
+  return { asserted: asserted + parts.asserted, over: [...over, ...parts.over] };
 }
 
 /**

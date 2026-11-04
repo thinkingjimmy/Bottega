@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Authenticated artifact fences and host-provided lifecycle, file and composer capabilities.
- * [OUTPUT]: Owner-bound workspace/file/lease ports with cancellable immutable resource reads, tab-hosted presentation/close hooks and original-composer callbacks and shared exact-view source events.
+ * [OUTPUT]: Owner-bound workspace/file/lease ports with cancellable immutable resource reads, tab-hosted presentation/close hooks and original-composer draft status, mounted timeline navigation, same-request complete-project import, and shared exact-view source events.
  * [POS]: Shared artifact UI dependency boundary for desktop and cloud reading.
  */
 import type { ArtifactWorkspaceEvent } from "@ai-chat/cloud-protocol/artifacts/design/events/model";
 import { createContext, useContext } from "react";
 import type { ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
-export type ArtifactLease = { id: string; url: string; origin: string; expiresAt: number; sandbox: "allow-scripts" | "allow-scripts allow-same-origin"; mount?: (frame: Window) => void };
+export type ArtifactLease = { id: string; url: string; origin: string; expiresAt: number; sandbox: "allow-scripts" | "allow-scripts allow-same-origin" | "allow-scripts allow-same-origin allow-forms"; mount?: (frame: Window) => void };
 export type ArtifactWorkbook = { exists: boolean; sheets: { name: string; imported: boolean; hasId: boolean }[] };
 export type ArtifactHost = {
   scope: string; locale: string; desktop?: boolean; directoryTopLevel?: boolean; sidePanel?: boolean;
@@ -18,6 +18,9 @@ export type ArtifactHost = {
   action(fence: ArtifactFence, action: "quick-look" | "reveal" | "open" | "save", followUp?: ArtifactHost["followUp"]): Promise<void>;
   open(fence: ArtifactFence, followUp?: ArtifactHost["followUp"]): void | Promise<void>;
   followUp?(value: { prompt: string; title?: string; design?: import("@ai-chat/cloud-protocol/artifacts/design/review").DesignReference }): void | Promise<void>;
+  hasDraftComment?(documentId: string, commentId: string): boolean;
+  subscribeDraft?(listener: () => void): () => void;
+  revealMessage?(messageId: string): void;
   sendReview?(value: { prompt: string; title?: string; design: import("@ai-chat/cloud-protocol/artifacts/design/review").DesignReference; requestId: string; createdAt: number }): Promise<void>;
   workspace?(input: Omit<import("@ai-chat/cloud-protocol/artifacts/design/model").WorkspaceCommand, "chatId" | "incarnationId">, signal?: AbortSignal): Promise<unknown>;
   workspaceEvents?(listener: (event: ArtifactWorkspaceEvent) => void | Promise<void>): () => void;
@@ -26,12 +29,13 @@ export type ArtifactHost = {
   openPreview?(url: string): Promise<void>;
   managePreviews?(): void;
   workbook?(fence: ArtifactFence): Promise<ArtifactWorkbook>;
+  importProject?(input: { requestId: string; file?: File; fence?: ArtifactFence }, signal?: AbortSignal): Promise<unknown>;
   importBase?(fence: ArtifactFence, sheet: string, confirmed: boolean): Promise<unknown>;
 };
 const Context = createContext<ArtifactHost | null>(null);
 export const ArtifactHostProvider = Context.Provider;
 export const useArtifactHost = () => useContext(Context);
-export type ArtifactPresentation = { full: boolean; canExpand: boolean; setFull(full: boolean): void; close(): void;
+export type ArtifactPresentation = { reference?: import("@ai-chat/cloud-protocol/artifacts/design/review").DesignReference; full: boolean; canExpand: boolean; setFull(full: boolean): void; close(): void;
   beforeClose?(handler: () => Promise<unknown>): () => void; tabChrome?: { title: HTMLElement | null; actions: HTMLElement | null } };
 const Presentation = createContext<ArtifactPresentation | null>(null);
 export const ArtifactPresentationProvider = Presentation.Provider;

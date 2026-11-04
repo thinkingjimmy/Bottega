@@ -47,6 +47,12 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 产品模型与四个核心能力域见[功能文档](../features/README.zh-CN.md)。
 
+### 升级到 0.3.0
+
+0.3.0 使用协议 25。服务协调升级后，请更新已连接的桌面端并刷新 Bottega Web；旧客户端访问 Cloud 时需要更新。已有内容、同步密码与账号密钥保留，无需清空数据。更新前请备份 Bottega 文件夹与应用数据。macOS Apple 芯片正式版使用稳定更新渠道；0.2.5 个人版需要手动安装。
+
+Canvas v3、Slides v4、Design System 与 Dashboard 各有专用编辑器。退役 Artifact 文件与快照保持原样，其卡片显示“不支持此格式”，不会恢复编辑权限。受支持的当前作品可以使用 History 或完整项目 ZIP 导出。Dock 仍为 Alpha，要求 macOS 27.x 与 Apple 芯片。能力与验收边界见 [0.3.0 里程碑](../changelog/README.zh-CN.md#2026-11-04--v030)。
+
 ### 升级到 0.2.12
 
 0.2.12 使用协议 23。服务协调升级后，请更新已连接的桌面端并刷新 Bottega Web；旧客户端访问 Cloud 时需要更新。已有内容、同步密码与账号密钥保留，无需清空数据。更新前请备份 Bottega 文件夹与应用数据。macOS Apple 芯片正式版使用稳定更新渠道；0.2.5 个人版需要手动安装。Dock 仍为 Alpha，仅支持 macOS 27.x 与 Apple 芯片。原生 Canvas／Slides 的待验收范围见 [0.2.12 里程碑](../changelog/README.zh-CN.md#2026-11-01--v0212)。
@@ -67,11 +73,11 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 - 一台 Apple 芯片的 Mac
 - 至少安装一个受支持的 CLI：
-  - Codex CLI **仅限 0.163.0-alpha.10.2**；本次版本不支持其他 CLI 版本。
+  - Codex CLI 需支持 Bottega 使用的原生协议、必需方法及所选权限和模型策略。普通 Chat 不按单一版本准入。原生 Codex 标题生成与隔离编辑保留独立的 **0.163.0-alpha.10.2** 资格要求；普通 Chat 可用不表示这些能力也可用。
   - Claude Code 2.1.216 或更高版本
   - Kimi Code 0.29.1 或更高版本
   - OpenCode 1.18.13 或更高版本
-- 从源码构建：Node.js 24，pnpm 11.9 或更高版本
+- 从源码构建：固定的 Node.js 24.21.0 与 pnpm 11.9.0
 
 启动 Bottega 前，请先在对应官方 CLI 中完成登录。Bottega 不会要求或导入这些凭据。
 
@@ -93,7 +99,7 @@ Codex CLI **仅支持 0.163.0-alpha.10.2**，命令使用原生审批。逐项�
 
 本次继续使用**协议 19**，保留已有内容、同步密码与账号密钥，无需清空数据。Dock 在 macOS 27.x / Apple 芯片上保持 Alpha；替代模式、系统恢复以及显示器与全屏组合仍在验证。见 [0.2.7 更新日志](../changelog/README.zh-CN.md#2026-10-18--v027)和[安装步骤](#下载与安装)。
 
-下方旧版升级说明描述的是各自版本；0.2.7 请以当前 Codex 权限说明为准。
+旧版升级说明描述各自版本。当前版本请以环境要求和 0.3.0 升级说明为准。
 
 ## 升级到 0.2.6
 
@@ -125,29 +131,29 @@ Cloud Sync 现使用协议 15。使用云功能的所有电脑都需升级到 0.
 
 ## 下载与安装
 
-[下载 0.2.12](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12)，桌面安装包**仅适用于 macOS Apple 芯片（ARM64）**。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
+[下载 0.3.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.3.0)，桌面安装包**仅适用于 macOS Apple 芯片（ARM64）**。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
 
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
-| macOS（Apple 芯片 / ARM64） | [DMG 或 ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12) | 正式稳定更新渠道。 |
+| macOS（Apple 芯片 / ARM64） | [DMG 或 ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.3.0) | 正式稳定更新渠道。 |
 
 请使用具有 **Developer ID 签名与 Apple 公证**的正式安装包。0.2.6 起的正式版使用稳定自动更新通道；已发布的 0.2.5 个人版需要手动更新。
 
 1. 完全退出 Bottega，并备份 Bottega 文件夹与应用数据。
-2. 从同一版本页面下载 DMG 或 ZIP，以及 `Bottega-0.2.12-release-evidence.tar.gz`。读取归档根目录的 `release-manifest.json`。运行 `shasum -a 256`，后接安装包路径，将输出与清单中对应安装包的 `sha256` 比较。
+2. 从同一版本页面下载 DMG 或 ZIP，以及 `Bottega-0.3.0-release-evidence.tar.gz`。读取归档根目录的 `release-manifest.json`。运行 `shasum -a 256`，后接安装包路径，将输出与清单中对应安装包的 `sha256` 比较。
 3. 打开 DMG，将 Bottega 拖入「应用程序」；使用 ZIP 时，解压后将应用复制到该目录。
 4. 从「应用程序」打开 Bottega，确认正常的 macOS 首次启动提示。如果 macOS 报告签名或公证问题，请保留错误信息并反馈 bug，暂勿打开该安装包。
 
 无需解压整个归档，即可读取清单并检查 DMG：
 
 ```bash
-tar -xOf Bottega-0.2.12-release-evidence.tar.gz release-manifest.json
-shasum -a 256 Bottega-0.2.12-arm64.dmg
+tar -xOf Bottega-0.3.0-release-evidence.tar.gz release-manifest.json
+shasum -a 256 Bottega-0.3.0-arm64.dmg
 ```
 
-使用 ZIP 时，将校验命令中的文件名改为 `Bottega-0.2.12-arm64-mac.zip`。归档集中保存发布与验收材料；具体通过范围以其中的实际记录为准，不表示全部物理设备验收完成。
+使用 ZIP 时，将校验命令中的文件名改为 `Bottega-0.3.0-arm64-mac.zip`。归档集中保存发布与验收材料；具体通过范围以其中的实际记录为准，不表示全部物理设备验收完成。
 
-自动更新使用 `latest-mac.yml`、`Bottega-0.2.12-arm64.dmg.blockmap` 与 `Bottega-0.2.12-arm64-mac.zip.blockmap`。App 兼容文件为 `app-gui-compatibility-support.json` 与 `app-gui-compatibility-support.json.sig`。
+自动更新使用 `latest-mac.yml`、`Bottega-0.3.0-arm64.dmg.blockmap` 与 `Bottega-0.3.0-arm64-mac.zip.blockmap`。App 兼容文件为 `app-gui-compatibility-support.json` 与 `app-gui-compatibility-support.json.sig`。
 
 0.2.7 根据维护者决定，在完整本机与最终安装包 GUI 验收完成前发布。该版本没有完整验收证据归档，真实安装升级尚未验证。0.2.8 的归档不能用于宣称 0.2.7 已完成验收。
 
@@ -322,4 +328,4 @@ Bug、产品反馈与功能建议，请直接提交到 [GitHub Issues](https://g
 
 ## 协议
 
-Bottega 使用 [MIT License](../../LICENSE)。
+Bottega 自有代码使用 [MIT License](../../LICENSE)。Canvas、Slides 与 Design System 编辑器分支保留 BaoCut Community License，随附组件与参考资源保留各自条款。分发或托管所覆盖代码前，请阅读[组件许可](../README.zh-CN.md#组件许可)。

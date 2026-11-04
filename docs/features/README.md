@@ -6,12 +6,12 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 
 ## Multi-agent
 
-- Connect Codex through its native App Server; Claude Code, Kimi Code and OpenCode use their existing local CLI connections. Codex requires CLI 0.163.0-alpha.10.2 exactly. The conversation layout stays the same.
+- Connect Codex through its native App Server; Claude Code, Kimi Code and OpenCode use their existing local CLI connections. Ordinary Codex Chat checks actual native protocol and required capabilities rather than one exact CLI version. Generated native titles and isolated editor tasks retain separate CLI qualification. The conversation layout stays the same.
 - Switch the next Agent in an idle chat while preserving its transcript, per-reply authors, and bounded history handoff. Each provider keeps its own authentication and quota model.
 - See runtime and authentication availability in the composer, with scoped installation, sign-in, and retry actions.
-- Read available Codex, Claude Code, Kimi, and OpenCode Go quota windows, remaining amounts, and reset times in Settings and the Agent selector, including rolling, weekly, and monthly periods.
-- Choose a title-capable Agent and model in Settings › General › Title generation. This version's Codex connection does not support the required restricted, tool-free title execution. If Codex is selected, titles use the first message, the selected Agent and model stay saved, and the existing Settings row explains the fallback. You can select a supported Agent yourself; Bottega never switches Providers automatically.
-- Use Plan mode, live steering, queued messages, and visible tool activity without hiding backend differences.
+- Read available Codex, Claude Code, Kimi and OpenCode Go quota windows, remaining amounts and reset times in Settings and the Agent selector. Codex quota reads and optional update notices are independent of ordinary Chat version admission; unavailable limits are not invented.
+- Choose a title-capable Agent and model in Settings › General › Title generation. Qualified Codex titles use the selected model in a separate ephemeral, read-only task with no tools or workspace instructions. If title execution is unavailable, Bottega keeps the selected Agent and model and uses the first message; it never switches Providers automatically.
+- Use Plan mode, live steering, queued messages and visible tool activity without hiding backend differences. Queued first messages continue when the runtime becomes available; long histories load in small batches and keep the reading position, while code highlighting runs in a shared worker.
 - Create Sections and Subagents for parallel work, inspect their progress, pass bounded context between them, and promote useful results into durable Sections.
 - Search and adopt supported local CLI histories without silently rewriting their original records.
 - Import Project history explicitly from Settings. Only installed Agents are included; reopening a Project does not scan again.
@@ -25,7 +25,7 @@ Both modes allow network access and ordinary reads outside the workspace. Writes
 
 Bottega no longer adds its previous credential-path denials, protected internal paths or read-only subtrees to Codex commands. This includes the GitHub CLI configuration folder. Those files can be read, and approved operations or Full access can modify them. Tool grants and disabled Skills do not create a separate filesystem fence for commands.
 
-Plan uses the selected permission mode; it does not make the filesystem read-only. Tasks that require strict read-only access, no network, no tools or Skill file isolation are unavailable through this Codex integration. Bottega explains the unsupported requirement before execution instead of silently relaxing it or switching a task fixed to Codex to another Provider.
+Plan uses the selected permission mode; it does not make the filesystem read-only. Ordinary Codex Chat does not provide generic strict read-only, network-off, no-tool or Skill-isolation roles. Qualified title generation and isolated editor tasks use their own purpose-specific restricted execution. Other unsupported requirements are explained before execution, without silently relaxing them or switching a task fixed to Codex to another Provider.
 
 Command output stays in the original command details. Background services show their command name, status and independent Stop above the Chat input. A failed Stop keeps its retry action, and other services continue running. Bottega continues to check tool access, Chat ownership and process lifecycle.
 
@@ -38,13 +38,17 @@ Command output stays in the original command details. Background services show t
 
 ## Artifacts
 
-- Open multiple Artifacts in the third-column tabs alongside other previews. Reopening activates the existing tab. Switching or closing waits for saving; failed saves keep the current tab and input.
-- Select artboard elements without reloading live previews or losing form input. Compact Canvas controls share one floating toolbar and wrap to the available width.
-- Render Agent visualizations inline in the transcript, expand them, or open them in the Chat side panel.
-- Preview, save, reveal, or Quick Look the files a turn produced, and import a worksheet into a Base with an explicit row-merge confirmation.
-- Open Claude artifacts in the built-in browser, which reuses the existing persistent browser partition.
-- Keep every preview sandboxed: an artifact frame gets no network or storage access, and oversized, interrupted, or invalid artifacts state the reason instead of rendering.
-- Read artifacts produced on another computer once that computer has synced them, with an explicit waiting state until then.
+- Open native Canvas v3, Slides v4, Design System and Dashboard work in dedicated editors. Dashboard uses fixed CSV, TSV or JSON sources. Authored pages and component examples remain isolated from host write access.
+- Keep multiple works in third-column tabs alongside other previews. Reopening activates the existing tab. Switching or closing waits for saving; a failed save keeps the tab and unsent input.
+- Add element, region or whole-work instructions to the original Chat draft while keeping its text and attachments. Send normally. Sent comments retain exact instructions and target versions, and applied results link back to saved versions in the same Chat.
+- Use supported isolated editing with separate CLI qualification and explicit result confirmation. Unknown saves recover their original operation without another model call. Unsupported execution stays unavailable with a reason.
+- Browse fixed read-only History previews, authors and changes. Restore selected changes or a complete version while preserving unrelated current work. Resume a paused restore under the original operation.
+- Export complete project ZIPs with source, resources, comments and full supported history. Open them in the fixed original tool or import them into a new Bottega workspace with fresh permissions.
+- Use independent dataviz guidance and palette validation without opening an editor. Warnings and failures retain their original rule results.
+- Keep retired-format files and snapshots unchanged. Unsupported cards do not open an editor or restore write access.
+- Render Agent visualizations inline, expand them or open them in the side panel. Preview, save, reveal or Quick Look produced files; worksheet imports into Base require row-merge confirmation.
+- Open Claude artifacts in the built-in browser with its existing persistent partition. Sandboxed previews receive no host write capability; invalid or oversized inputs report their reason.
+- Read synchronized work on another device once its owning computer has published the required bytes. Encrypted browser views retain unsent input and explicit conflict choices.
 
 ## Base
 
@@ -183,7 +187,7 @@ Create a Widget from Dock settings and continue editing in its source Chat. Prev
 - Rebuild conversations from the folder when the local Chat database cannot be opened, while the previous database is preserved.
 - Move the folder from Settings › General, including to another disk, with every saved path following it; or erase all of Bottega's data on this computer while cloud data stays in your account.
 - Keep a Bottega folder with the computer that published it: the same computer takes it back after a reinstall, a cleared data folder, or a new profile with nothing to confirm, and another computer is refused by name. A folder that has never synchronized opens anywhere.
-- Back up the Bottega folder and complete application data before changing versions. 0.2.11 retains existing content and uses protocol 22; see the [upgrade guide](../getting-started/README.md#upgrading-to-0211), including historical migration notes for older releases.
+- Back up the Bottega folder and complete application data before changing versions. 0.3.0 retains existing content and uses protocol 25; see the [upgrade guide](../getting-started/README.md#upgrading-to-030), including historical migration notes for older releases.
 
 ## Bundled runtime and Agent boundaries
 
@@ -195,3 +199,5 @@ Create a Widget from Dock settings and continue editing in its source Chat. Prev
 ## Product foundations
 
 These areas share the same design rules: local CLI authentication, capability checks for product tools, Provider-specific command permissions, durable main-process ownership, and explicit archive and deletion flows. Unsupported requirements are reported before execution.
+
+See the [component licenses](../README.md#component-licenses) for the Canvas, Slides and Design System Community License terms and other bundled notices.

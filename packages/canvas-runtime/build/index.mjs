@@ -48,7 +48,7 @@ const fontLibrary = verifiedFontLibrary(root);
 const output = await compile(root, source, fontLibrary);
 const receipt = { origin, fontLibraryInputs: fontLibrary.inputs, sourceFiles: sources.length, maintenanceSha256: sha256(readFileSync(join(root, "source/maintenance.patch"))),
   adapters: adapterFiles.map(path => ({ path, sha256: sha256(readFileSync(join(adapters, path))) })),
-  buildScripts: readdirSync(join(root, "build")).filter(path => /\.(?:mjs|[jt]sx?)$/.test(path)).sort().map(path => ({ path, sha256: sha256(readFileSync(join(root, "build", path))) })),
+  buildScripts: [...readdirSync(join(root, "build")).filter(path => /\.(?:mjs|[jt]sx?)$/.test(path)), "projects/ui.ts", "projects/copy.ts"].sort().map(path => ({ path, sha256: sha256(readFileSync(join(root, "build", path))) })),
   packageSha256: sha256(readFileSync(join(root, "package.json"))), lockSha256: sha256(readFileSync(resolve(root, "../../pnpm-lock.yaml"))), outputs: output };
 writeFileSync(join(root, "dist/build.json"), JSON.stringify(receipt, null, 2) + "\n");
 log("Maintained Canvas built: " + output.length + " browser files; " + sources.length + " verified source inputs.");

@@ -35,6 +35,7 @@ export const NODE_ENTRY_FILES = Object.freeze({
   "process-watchdog": "process-watchdog-entry.js",
   /* Slice 5: the App repair supervisor (C8). */
   "repair-supervisor": "repair-supervisor-entry.js",
+  "palette-validator": "palette-validator-entry.js",
 } as const);
 export type NodeEntry = keyof typeof NODE_ENTRY_FILES;
 

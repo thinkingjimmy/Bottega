@@ -1,11 +1,12 @@
 /**
  * [INPUT]: Admitted immutable bytes, exact Chat incarnations and parent-synced persistence primitives.
- * [OUTPUT]: Immutable snapshot reads with or without live metadata, custody promotion, restart reconstruction and independent Fork references.
+ * [OUTPUT]: Immutable snapshot reads with or without live metadata, custody promotion, restart reconstruction, independent Fork references and opaque unsupported records without index migration.
  * [POS]: Local artifact authority independent of cloud credentials or key availability; bytes live beside their Chat in the folder, so Chat deletion collects them with the directory.
  */
+import { storedArtifactFenceSchema, unsupportedArtifactFence } from "./retained/fence";
 import { ArtifactFailure } from "./failure";
 import { z } from "zod";
-import { lstat, readFile, rm } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { artifactFenceSchema, type ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import { artifactRefSchema, ARTIFACT_BUDGET, type ArtifactRef } from "../../../../shared/ipc/apps/artifact-ipc";
@@ -16,11 +17,13 @@ import { artifactExtension } from "@ai-chat/cloud-protocol/artifacts/media-types
 import { libraryChatPath, libraryDirectory, libraryObjectId } from "../../library/paths";
 const recordSchema = z.object({ ref: artifactRefSchema, fence: artifactFenceSchema, messageId: z.string().max(128), committed: z.boolean(), remote: z.string().max(1024).optional(),
   derivedFrom: z.object({ artifactId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional() }).strict();
-/* v2 (OPT-42): snapshot file names carry the real extension. A v1 index is converted once: records whose file name changes
-   (`.img`/`.bin`) are dropped with their files — there are no real users to migrate (ruling), and a record never points at a
-   name that no longer exists. */
-const schema = z.object({ v: z.union([z.literal(1), z.literal(2)]), records: z.array(recordSchema), releasedChats: z.array(z.string()) }).strict();
-const LEGACY_EXTENSION: Readonly<Record<string, string>> = { "html-fragment": "html", "html-document": "html", "static-site": "tar", markdown: "md", svg: "svg", image: "img", pdf: "pdf", docx: "docx", pptx: "pptx", xlsx: "xlsx", csv: "csv" };
+const storedRecordSchema = recordSchema.omit({ fence: true }).extend({
+  fence: storedArtifactFenceSchema,
+}).strict().superRefine((value, context) => {
+  if (unsupportedArtifactFence(value.fence)) return;
+  if (!recordSchema.safeParse(value).success) context.addIssue({ code: "custom", message: "Invalid current Artifact record" });
+});
+const schema = z.object({ v: z.literal(2), records: z.array(storedRecordSchema), releasedChats: z.array(z.string()) }).strict();
 export type ArtifactRecord = z.infer<typeof recordSchema>;
 const key = (ref: ArtifactRef) => JSON.stringify([ref.chatId, ref.incarnationId, ref.artifactId]);
 const chatKey = (ref: Pick<ArtifactRef, "chatId" | "incarnationId">) => JSON.stringify([ref.chatId, ref.incarnationId]);
@@ -33,19 +36,16 @@ export class SnapshotCustody {
   constructor(readonly root: string, private libraryRoot: () => string | null) { this.index = new DurableJson(join(root, "index.json"), schema, () => ({ v: 2, records: [], releasedChats: [] })); }
   async initialize() {
     await this.index.initialize();
-    if (this.index.snapshot().v === 1) await this.convertLegacyNames();
     this.refresh();
   }
-  private async convertLegacyNames() {
-    const root = this.libraryRoot(), stale = this.index.snapshot().records.filter(record =>
-      (LEGACY_EXTENSION[record.fence.kind] ?? "bin") !== artifactExtension(record.fence));
-    if (root) for (const record of stale) {
-      await rm(join(libraryChatPath(root, record.ref.chatId), "artifacts", libraryObjectId(record.ref.artifactId), `snapshot.${LEGACY_EXTENSION[record.fence.kind] ?? "bin"}`), { force: true });
+  private refresh() {
+    this.mirror.clear();
+    for (const value of this.index.snapshot().records) {
+      if (unsupportedArtifactFence(value.fence)) continue;
+      const record = recordSchema.safeParse(value);
+      if (record.success && !record.data.fence.rejected) this.mirror.set(key(record.data.ref), record.data);
     }
-    const gone = new Set(stale.map(record => key(record.ref)));
-    await this.index.mutate(state => { state.v = 2; state.records = state.records.filter(record => !gone.has(key(record.ref))); });
   }
-  private refresh() { this.mirror.clear(); for (const record of this.index.snapshot().records) this.mirror.set(key(record.ref), record); }
   private async write(operation: (state: z.infer<typeof schema>) => void) { await this.index.mutate(operation); this.refresh(); }
   records() { return [...this.mirror.values()]; }
   lookup(ref: ArtifactRef) { return this.mirror.get(key(ref)) ?? null; }
@@ -73,7 +73,8 @@ export class SnapshotCustody {
       record = recordSchema.parse(record);
       const state = this.index.snapshot();
       if (state.releasedChats.includes(chatKey(record.ref))) throw new Error("artifact-released");
-      const previous = state.records.find(value => key(value.ref) === key(record.ref));
+      if (unsupportedArtifactFence(record.fence) || state.records.some(value => key(value.ref) === key(record.ref) && unsupportedArtifactFence(value.fence))) throw new Error("artifact-unavailable");
+      const previous = this.lookup(record.ref);
       if (previous) {
         if (previous.fence.sha256 !== record.fence.sha256) throw new Error("artifact-identity-conflict");
         record = { ...previous, committed: previous.committed || record.committed };
@@ -82,7 +83,7 @@ export class SnapshotCustody {
       const root = this.libraryRoot(); if (!root) throw new Error("artifact-folder-unavailable");
       await libraryDirectory(root, "chats", record.ref.chatId, "artifacts", record.ref.artifactId);
       if (!fence.sha256 || fence.bytes === undefined) throw new Error("artifact-unavailable");
-      const sum = (records: ArtifactRecord[]) => [...new Map(records.map(value => [this.path(value.fence, value.ref), value.fence.bytes ?? 0])).values()].reduce((total, bytes) => total + bytes, 0);
+      const sum = (records: readonly z.infer<typeof storedRecordSchema>[]) => [...new Map(records.flatMap(value => { if (unsupportedArtifactFence(value.fence)) return []; const parsed = recordSchema.safeParse(value); return parsed.success && !parsed.data.fence.rejected && parsed.data.fence.sha256 ? [[this.path(parsed.data.fence, parsed.data.ref), parsed.data.fence.bytes ?? 0] as const] : []; })).values()].reduce((total, bytes) => total + bytes, 0);
       const next = previous ? state.records : [...state.records, record];
       if (sum(next) > ARTIFACT_BUDGET.global || sum(next.filter(value => value.ref.chatId === record.ref.chatId)) > ARTIFACT_BUDGET.chat) throw new ArtifactFailure("budget", "retain");
       if (data) {
@@ -102,14 +103,14 @@ export class SnapshotCustody {
   commit(chatId: string, messageId: string, retained: ReadonlySet<string>) {
     return this.queue.enqueue(async () => {
       await this.write(state => {
-        state.records = state.records.filter(record => record.ref.chatId !== chatId || record.messageId !== messageId || retained.has(record.derivedFrom?.artifactId ?? record.fence.id));
-        for (const record of state.records) if (record.ref.chatId === chatId && record.messageId === messageId) record.committed = true;
+        state.records = state.records.filter(record => unsupportedArtifactFence(record.fence) || record.ref.chatId !== chatId || record.messageId !== messageId || retained.has(record.derivedFrom?.artifactId ?? record.fence.id));
+        for (const record of state.records) if (!unsupportedArtifactFence(record.fence) && record.ref.chatId === chatId && record.messageId === messageId) record.committed = true;
       });
     });
   }
   release(ref: ArtifactRef) {
     return this.queue.enqueue(async () => {
-      await this.write(state => { state.records = state.records.filter(record => key(record.ref) !== key(ref)); });
+      await this.write(state => { state.records = state.records.filter(record => unsupportedArtifactFence(record.fence) || key(record.ref) !== key(ref)); });
     });
   }
   releaseChat(chatId: string, incarnationId: string) {

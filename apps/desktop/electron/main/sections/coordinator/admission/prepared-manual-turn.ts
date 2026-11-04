@@ -504,6 +504,10 @@ export async function prepareManualTurn(
   const submission = normalizeManualSubmission(input);
   await (await import("../../../artifacts/workspace/references")).assertDesignReferences(submission.turn.scope.conversationId,
     submission.precondition.kind === "existing" ? submission.precondition.incarnationId : undefined, submission.content.content.richValue);
+  const artifactEdit = await (await import("../../../design/chat-edit/evidence")).freezeArtifactEdit({
+    chatId: submission.turn.scope.conversationId, incarnationId: submission.precondition.kind === "existing" ? submission.precondition.incarnationId : undefined,
+    requestId: submission.turn.requestId, nodes: submission.content.content.richValue, options: submission.turn.turnOptions, planMode: submission.turn.planMode,
+  });
   const stagingDir = join(dependencies.stagingRoot, submission.intentId);
   const reservations: FileReservation[] = [];
   const explicitSkills: ExplicitSkillRequirementReceipt[] = [];
@@ -589,7 +593,7 @@ export async function prepareManualTurn(
       expectedAgentRevision: submission.expectedAgentRevision,
       intentId: submission.intentId,
       persistence,
-      turn,
+      turn: { ...turn, ...(artifactEdit ? { artifactEdit } : {}) },
       input,
       content: binaryFreeSubmissionContent(submission.content),
       precondition: submission.precondition,

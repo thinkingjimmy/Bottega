@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Durable local snapshots and an optional admitted encrypted publication transport.
- * [OUTPUT]: Persists publication failures and schedules exact-reference transfers independently of unrelated jobs.
+ * [OUTPUT]: Schedules current exact-reference transfers independently and preserves unsupported jobs without executing or resetting their shared ledger.
  * [POS]: Artifact synchronization outbox; local custody remains usable while synchronization is unavailable.
  */
 import { artifactFailure } from "./failure";
@@ -9,13 +9,18 @@ import { join } from "node:path";
 import { artifactRefSchema, type ArtifactRef } from "../../../../shared/ipc/apps/artifact-ipc";
 import { artifactFenceSchema, type ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import { DurableJson } from "../../persistence/durable-json";
+import { storedArtifactFenceSchema, unsupportedArtifactFence } from "./retained/fence";
 export const artifactPublicationSchema = z.object({ ref: artifactRefSchema, fence: artifactFenceSchema,
   state: z.enum(["pending", "uploading", "published", "released"]), attempts: z.number().int().nonnegative(),
   failure: z.object({ stage: z.string().max(32), code: z.string().max(40), retryable: z.boolean(), at: z.number() }).strict().optional(),
   blocked: z.literal("sync-unavailable").optional(), releasedRemotely: z.boolean().optional(),
   settled: z.literal(true).optional(), accountKey: z.string().optional(), nextAttemptAt: z.number().optional() }).strict();
 export type ArtifactPublication = z.infer<typeof artifactPublicationSchema>;
-const schema = z.object({ v: z.literal(1), jobs: z.array(artifactPublicationSchema) }).strict();
+const storedPublicationSchema = artifactPublicationSchema.omit({ fence: true }).extend({ fence: storedArtifactFenceSchema }).strict().superRefine((value, context) => {
+  if (!unsupportedArtifactFence(value.fence) && !artifactPublicationSchema.safeParse(value).success)
+    context.addIssue({ code: "custom", message: "Invalid current Artifact publication" });
+});
+const schema = z.object({ v: z.literal(1), jobs: z.array(storedPublicationSchema) }).strict();
 const key = (ref: ArtifactRef) => JSON.stringify([ref.chatId, ref.incarnationId, ref.artifactId]);
 export interface ArtifactPublishTransport {
   accountKey: string;
@@ -38,8 +43,8 @@ export class ArtifactPublisher {
     await this.journal.initialize();
     /* A released job that settled has no remote reference left, so it goes at startup; a published one stays so a later release can tombstone it (C-17). */
     await this.write(state => {
-      state.jobs = state.jobs.filter(job => !(job.state === "released" && job.settled));
-      for (const job of state.jobs) if (job.state === "uploading") job.state = "pending";
+      state.jobs = state.jobs.filter(job => unsupportedArtifactFence(job.fence) || !(job.state === "released" && job.settled));
+      for (const job of state.jobs) if (!unsupportedArtifactFence(job.fence) && job.state === "uploading") job.state = "pending";
     });
   }
   configure(transport: () => ArtifactPublishTransport | null) { this.transport = transport; }
@@ -47,11 +52,12 @@ export class ArtifactPublisher {
   private async write(operation: (state: z.infer<typeof schema>) => void) {
     await this.journal.mutate(operation);
     this.index.clear();
-    for (const job of this.journal.snapshot().jobs) this.index.set(key(job.ref), job);
+    for (const job of this.journal.snapshot().jobs) if (!unsupportedArtifactFence(job.fence)) this.index.set(key(job.ref), artifactPublicationSchema.parse(job));
   }
   async discardUnpublished(ref: ArtifactRef) {
     let discarded = false;
     await this.write(state => { const job = state.jobs.find(job => key(job.ref) === key(ref));
+      if (job && unsupportedArtifactFence(job.fence)) return;
       if (!job || job.attempts === 0 && job.state !== "published" && !this.jobsInFlight.has(key(ref))) {
         state.jobs = state.jobs.filter(job => key(job.ref) !== key(ref)); discarded = true;
       }
@@ -59,6 +65,8 @@ export class ArtifactPublisher {
     return discarded;
   }
   async enqueue(ref: ArtifactRef, fence: ArtifactFence) {
+    artifactFenceSchema.parse(fence);
+    if (unsupportedArtifactFence(fence)) throw new Error("Unsupported Artifact publication");
     if (this.index.has(key(ref))) return;
     await this.write(state => {
       if (!state.jobs.some(job => key(job.ref) === key(ref))) state.jobs.push({ ref, fence, state: "pending", blocked: "sync-unavailable", attempts: 0 });
@@ -71,6 +79,7 @@ export class ArtifactPublisher {
     const local = !current || (current.state === "pending" && current.attempts === 0);
     await this.write(state => {
       const job = state.jobs.find(job => key(job.ref) === key(ref));
+      if (job && unsupportedArtifactFence(job.fence)) return;
       if (job) { job.state = "released"; job.releasedRemotely = local; delete job.nextAttemptAt; delete job.settled; }
       else state.jobs.push({ ref, fence: { v: 1, id: ref.artifactId, kind: "file", title: "Artifact", rejected: "unavailable" }, state: "released", attempts: 0, releasedRemotely: true });
     });
@@ -81,7 +90,11 @@ export class ArtifactPublisher {
     this.flight = flight; return flight;
   }
   private async change(ref: ArtifactRef, update: (job: ArtifactPublication) => void) {
-    await this.write(state => { const job = state.jobs.find(job => key(job.ref) === key(ref)); if (job) update(job); });
+    await this.write(state => {
+      const index = state.jobs.findIndex(job => key(job.ref) === key(ref));
+      const raw = state.jobs[index]; if (!raw || unsupportedArtifactFence(raw.fence)) return;
+      const job = artifactPublicationSchema.parse(raw); update(job); state.jobs[index] = job;
+    });
   }
   /** The transfer directory is cleared once; a terminal job must never cost I/O on a later flush. */
   private settle(ref: ArtifactRef) { return this.change(ref, job => { if (job.state === "published" || job.releasedRemotely) job.settled = true; }); }

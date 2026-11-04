@@ -1,8 +1,14 @@
 {
-  "schema": "bottega.surface-budgets/v1",
+  "schema": "bottega.surface-budgets/v2",
   "policy": {
-    "headroom": 0.02,
-    "rule": "Ceiling = measured + 2 % per surface and metric. A ceiling moves up only through `--resample --reason`, which appends to history; after a reclaim, resample so the ceiling moves down. Two-byte (non-Latin-1) chunk counts get no headroom. Renderer surfaces gate raw, gzip-9 and brotli-11; Preload and Node surfaces gate raw (resident source); their gzip and brotli are recorded under `measured` for information only and have no ceiling. Preload and Node surfaces gate the production build only (the bytes that ship); any other flavour prints its deltas against the same ceilings without failing. Ceilings are sampled only from a production build, and `pnpm budget:production` builds with production inputs whatever the shell or CI says.",
+    "renderer": {
+      "block": 0.02
+    },
+    "node": {
+      "warn": 0.02,
+      "block": 0.05
+    },
+    "rule": "Each surface is gated against its baseline, the measured production build of the last formal release or an approved exception. Renderer surfaces block when raw bytes exceed baseline + 2 %. Preload and Node surfaces warn above baseline + 2 % (the release continues; the reason goes into the week's CHANGLOGS entry) and block above baseline + 5 %. Because baselines move only at a formal release or with an approved reason, the lines bound the growth of a whole release cycle. A new two-byte (non-Latin-1) chunk, or a new eager external package in a Node closure, blocks at any size. Renderer gzip-9 and brotli-11 stay in the baseline as a record and gate nothing: the desktop loads local files. Preload and Node surfaces gate the production build only; any other flavour reports its deltas. Baselines are sampled only from a production build through `--resample --reason`, which appends to history.",
     "exceptions": []
   },
   "history": [
@@ -213,236 +219,243 @@
           }
         }
       }
+    },
+    {
+      "date": "2026-11-03",
+      "reason": "Policy v2 (Jimmy, 2026-11-03): ceilings become baselines plus tiered lines. Every baseline is the previous `measured` value, unchanged. Renderer surfaces keep blocking at +2 % on raw bytes only; renderer gzip and brotli become records, because the desktop never transfers compressed bytes. Preload and Node surfaces warn above +2 % and block above +5 %; a new two-byte chunk or a new eager external package blocks. main/index therefore warns above 4,699,913 and blocks above 4,838,145 raw (was one 4,699,930 ceiling). Eager external packages are recorded from a production build in the next entry. Evidence: TODO/open/package-size/11-03-package-size-review.md."
+    },
+    {
+      "date": "2026-11-03",
+      "reason": "Policy v2: record the eager external packages of every preload and Node closure from a production build of main @ a1c1f34c5 plus the v2 gate (out-budget, flavour production). Baselines unchanged. Surfaces with eager packages: main/index: @agentclientprotocol/sdk, http-proxy, i18next, nanoid, parse5, react; main/builtin-tools-server: ajv, ajv-formats; main/codec-host-entry: sharp; main/app-gui-compiler-entry: @tailwindcss/node, @tailwindcss/oxide, esbuild, typescript; every other preload and Node surface loads none."
     }
   ],
   "surfaces": {
     "renderer/index/js": {
-      "raw": 1704815,
-      "gzip": 548841,
-      "brotli": 455954,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 1671387,
         "gzip": 538079,
         "brotli": 447013
-      }
+      },
+      "twoByteChunks": 0
     },
     "renderer/index/css": {
-      "raw": 231610,
-      "gzip": 34543,
-      "brotli": 27244,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 227068,
         "gzip": 33865,
         "brotli": 26709
-      }
+      },
+      "twoByteChunks": 0
     },
     "renderer/system-dock-bar/js": {
-      "raw": 492678,
-      "gzip": 162690,
-      "brotli": 139482,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 483017,
         "gzip": 159500,
         "brotli": 136747
-      }
+      },
+      "twoByteChunks": 0
     },
     "renderer/system-dock-bar/css": {
-      "raw": 8297,
-      "gzip": 2771,
-      "brotli": 2335,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 8134,
         "gzip": 2716,
         "brotli": 2289
-      }
+      },
+      "twoByteChunks": 0
     },
     "renderer/system-dock-panel/js": {
-      "raw": 521885,
-      "gzip": 170657,
-      "brotli": 146630,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 511651,
         "gzip": 167310,
         "brotli": 143754
-      }
+      },
+      "twoByteChunks": 0
     },
     "renderer/system-dock-panel/css": {
-      "raw": 13844,
-      "gzip": 3870,
-      "brotli": 3287,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 13572,
         "gzip": 3794,
         "brotli": 3222
-      }
+      },
+      "twoByteChunks": 0
     },
     "preload/index": {
-      "raw": 64231,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 62971,
         "gzip": 15163,
         "brotli": 12868
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "preload/system-dock": {
-      "raw": 872,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 854,
         "gzip": 446,
         "brotli": 377
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "preload/system-dock-detail": {
-      "raw": 2445,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 2397,
         "gzip": 1195,
         "brotli": 1030
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "main/index": {
-      "raw": 4699930,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 4607757,
         "gzip": 1347402,
         "brotli": 1053400
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": [
+        "@agentclientprotocol/sdk",
+        "http-proxy",
+        "i18next",
+        "nanoid",
+        "parse5",
+        "react"
+      ]
     },
     "main/sync-crypto-worker-entry": {
-      "raw": 158029,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 154930,
         "gzip": 47829,
         "brotli": 42309
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "main/builtin-tools-server": {
-      "raw": 465738,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 456605,
         "gzip": 131368,
         "brotli": 112485
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": [
+        "ajv",
+        "ajv-formats"
+      ]
     },
     "main/codec-host-entry": {
-      "raw": 110247,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 108085,
         "gzip": 31933,
         "brotli": 28048
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": [
+        "sharp"
+      ]
     },
     "main/custody-guardian-entry": {
-      "raw": 105102,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 103041,
         "gzip": 30524,
         "brotli": 27017
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "main/utility-host-entry": {
-      "raw": 2777,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 2722,
         "gzip": 1398,
         "brotli": 1256
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "main/provider-bridge-entry": {
-      "raw": 39965,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 39181,
         "gzip": 15193,
         "brotli": 13735
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "main/app-gui-compiler-entry": {
-      "raw": 259153,
-      "twoByteChunks": 1,
-      "measured": {
+      "baseline": {
         "raw": 254071,
         "gzip": 77830,
         "brotli": 66352
-      }
+      },
+      "twoByteChunks": 1,
+      "eagerPackages": [
+        "@tailwindcss/node",
+        "@tailwindcss/oxide",
+        "esbuild",
+        "typescript"
+      ]
     },
     "main/app-gui-query-worker-entry": {
-      "raw": 35829,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 35126,
         "gzip": 14480,
         "brotli": 12904
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "main/chat-database-worker-entry": {
-      "raw": 882848,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 865537,
         "gzip": 232649,
         "brotli": 200017
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "main/history-import-worker-entry": {
-      "raw": 555048,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 544164,
         "gzip": 157505,
         "brotli": 135863
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "main/providers/codex/bridge": {
-      "raw": 130,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 127,
         "gzip": 133,
         "brotli": 103
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "main/providers/claude/bridge": {
-      "raw": 10571,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 10363,
         "gzip": 4418,
         "brotli": 3921
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "main/providers/kimi/bridge": {
-      "raw": 4225,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 4142,
         "gzip": 1867,
         "brotli": 1652
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     },
     "main/providers/opencode/bridge": {
-      "raw": 4562,
-      "twoByteChunks": 0,
-      "measured": {
+      "baseline": {
         "raw": 4472,
         "gzip": 1930,
         "brotli": 1700
-      }
+      },
+      "twoByteChunks": 0,
+      "eagerPackages": []
     }
   }
 }

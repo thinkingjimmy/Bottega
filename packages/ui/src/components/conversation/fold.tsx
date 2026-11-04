@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on host-provided labels/content, shared resize measurement and optional conversation scroll-lock release.
+ * [INPUT]: Depends on host-provided labels/content, visible-row-gated, frame-coalesced shared resize measurement and transcript disclosure memory and optional conversation scroll-lock release.
  * [OUTPUT]: Provides ConversationFold with the native 12-line preview, overflow fade and accessible expansion control.
  * [POS]: Shared user-message body fold for native, remote and imported conversations.
  */
@@ -13,6 +13,8 @@ import {
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useScrollLockRelease } from "../ai-elements/conversation";
 import { Button } from "../ui/controls/button";
+import { useRowDisclosure } from "./rows/state";
+import { observeVisibleRow } from "./rows/visibility";
 import { observeSharedResize } from "./resize";
 
 const USER_MESSAGE_PREVIEW_LINES = 12;
@@ -40,7 +42,7 @@ export function ConversationFold({
   showMore: string;
   showLess: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useRowDisclosure("fold");
   const [hasMore, setHasMore] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -51,15 +53,18 @@ export function ConversationFold({
     const preview = previewRef.current;
     const body = bodyRef.current;
     if (!preview || !body) return;
-    const update = () => setHasMore(userMessageOverflows(preview, body));
-    const frame = window.requestAnimationFrame(update);
-    const stopPreview = observeSharedResize(preview, update);
-    const stopBody = observeSharedResize(body, update);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      stopPreview();
-      stopBody();
-    };
+    return observeVisibleRow(preview, () => {
+      let frame = 0;
+      // Fold state changes geometry; apply it after ResizeObserver delivery.
+      const schedule = () => {
+        if (frame) return;
+        frame = window.requestAnimationFrame(() => { frame = 0; setHasMore(userMessageOverflows(preview, body)); });
+      };
+      schedule();
+      const stopPreview = observeSharedResize(preview, schedule);
+      const stopBody = observeSharedResize(body, schedule);
+      return () => { window.cancelAnimationFrame(frame); stopPreview(); stopBody(); };
+    });
   }, [measurementKey]);
 
   const toggle = () => {
@@ -71,7 +76,7 @@ export function ConversationFold({
     <>
       <div
         className={
-          expanded ? "relative" : "relative max-h-[12lh] overflow-hidden"
+          expanded || !hasMore ? "relative" : "relative max-h-[12lh] overflow-hidden"
         }
         data-user-message-preview=""
         id={contentId}

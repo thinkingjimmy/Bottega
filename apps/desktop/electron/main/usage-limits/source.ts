@@ -1,12 +1,13 @@
 /**
- * [INPUT]: Depends on the runtime registry port, environment identity and each Provider's quota hook (its identity and auth-blind facts) with the Providers that have one.
- * [OUTPUT]: Resolves and reconfirms main-owned quota targets (built-ins only: a package Provider's registry changes are no quota event), names the signed-in account's fingerprint (so a re-key under the same account keeps its reading), waits out an inconclusive authentication check (starting one this environment never ran) for readers that cannot detect a logged-out CLI, answers a custom route (read live from the Provider's hook, rechecking sign-in when it changed) as unsupported without a read, resolves the file that sets it (quotaRouteConfig), reads through the warm channel pool and reports identity invalidation (environment, runtime, sign-in or route changes; never a recheck attempt), and reports each completed same-facts recheck once.
+ * [INPUT]: Depends on the quota-purpose runtime registry port, environment identity, Provider quota version policy and each Provider's quota hook (identity and auth-blind facts).
+ * [OUTPUT]: Resolves and reconfirms main-owned quota targets under quota-specific version policy (built-ins only: a package Provider's registry changes are no quota event), names the signed-in account's fingerprint (so a re-key under the same account keeps its reading), waits out an inconclusive authentication check (starting one this environment never ran) for readers that cannot detect a logged-out CLI, answers a custom route (read live from the Provider's hook, rechecking sign-in when it changed) as unsupported without a read, resolves the file that sets it (quotaRouteConfig), reads through the warm channel pool and reports identity invalidation (environment, runtime, sign-in or route changes; never a recheck attempt), and reports each completed same-facts recheck once.
  * [POS]: Production runtime port for the quota service; renderer inputs never select a CLI or account.
  */
 import { createHash } from "node:crypto";
 import type { AgentBackendId } from "../../../shared/ipc/agent/agent-ipc";
 import { backendRuntimeRegistry, quotaHookFor, quotaProviders } from "../backends";
 import { builtinProviderCatalog, knownBackend } from "../../../shared/providers/catalog";
+import { quotaVersionIndependent } from "../../../shared/usage-limits/policy";
 import type { BackendRuntimeSnapshot } from "../backends/runtime/runtime-registry";
 import { runtimeEnvironmentIdentity } from "../backends/runtime/availability/scope";
 import { waitForSharedFlight } from "../backends/jobs/supervised-command";
@@ -29,7 +30,7 @@ export type QuotaSourcePort = {
   demand?(backend: AgentBackendId, state: QuotaDemandState, idleMs?: number): void | Promise<void>;
 };
 async function identity(backend: AgentBackendId, snapshot: BackendRuntimeSnapshot) {
-  if (snapshot.runtimeStatus !== "installed") throw new QuotaReadError("not-installed");
+  if (snapshot.runtimeStatus !== "installed" && snapshot.runtimeStatus !== "unsupported") throw new QuotaReadError("not-installed");
   /* The Provider's own account facts sit under its id, so the hashed JSON is the same as when each was named here
      (an absent one is dropped by JSON.stringify): a key survives this move, and a warm channel is not rebuilt for it. */
   const extra = await quotaHookFor(backend)?.identity?.();
@@ -62,8 +63,10 @@ export function createNativeQuotaSource(registry: QuotaRegistryPort, pool: Quota
   return {
     async resolve(backend, signal) {
       if (!quotaHookFor(backend)) throw new QuotaReadError("unsupported");
-      const snapshot = await waitForSharedFlight(registry.resolveForSpawn(backend, signal), signal);
-      if (snapshot.runtimeStatus !== "installed") throw new QuotaReadError(snapshot.runtimeStatus === "missing" ? "not-installed" : snapshot.runtimeStatus === "unsupported" ? "unsupported" : "unavailable", undefined, "runtime");
+      const snapshot = await waitForSharedFlight(registry.resolveForSpawn(backend, signal, "quota"), signal);
+      if (snapshot.runtimeStatus !== "installed" && !(snapshot.runtimeStatus === "unsupported" && quotaVersionIndependent(backend))) {
+        throw new QuotaReadError(snapshot.runtimeStatus === "missing" ? "not-installed" : snapshot.runtimeStatus === "unsupported" ? "unsupported" : "unavailable", undefined, "runtime");
+      }
       let auth = await conclusiveAuthStatus(registry, backend, snapshot, signal);
       /* A custom route (a base URL, a cloud switch or an apiKeyHelper) bills that endpoint, not a subscription, so there are no
          account limits to read: Claude's get_usage answers rate_limits_available: false every time, which is not "try later".
@@ -83,7 +86,7 @@ export function createNativeQuotaSource(registry: QuotaRegistryPort, pool: Quota
       return { runtime: snapshot.runtime, identity: await identity(backend, snapshot), snapshot };
     },
     async confirm(backend, target, signal) {
-      return await registry.confirmForSpawn(backend, target.snapshot, signal) &&
+      return await registry.confirmForSpawn(backend, target.snapshot, signal, "quota") &&
         target.identity === await identity(backend, target.snapshot);
     },
     read(backend, target, signal) {

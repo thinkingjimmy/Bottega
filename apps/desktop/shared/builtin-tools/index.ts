@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on built-in domain specs and the aggregation-free platform contract
  * [OUTPUT]: Exposes the aggregate BuiltinToolSpec registry, exact tool names, wire schemas, Base capability projection, product-context fragments, and access projection per turn kind (manual; relay without manualTurnOnly; workflow: only Base and the Chat's own history, AGT-06 (a))
- * [POS]: The public registry for sections, subagents, projects, bases, search, current-Chat history, browser, design, apps, plugins, skills and workflows
+ * [POS]: The public registry for sections, subagents, projects, bases, search, current-Chat history, browser, design, apps, plugins, skills/dataviz and workflows
  */
 
 import { HISTORY_TOOL_SPECS } from "../chat-agent/history-tool";
@@ -16,6 +16,7 @@ import { PREVIEW_TOOL_SPECS } from "./preview";
 import { SECTION_TOOL_SPECS } from "./catalog/sections";
 import { SEARCH_TOOL_SPECS } from "./catalog/search";
 import { SKILL_TOOL_SPECS } from "./agent/skills";
+import { DATAVIZ_TOOL_SPECS } from "./agent/dataviz";
 import { SUBAGENT_TOOL_SPECS } from "./agent/subagents";
 import { WORKFLOW_TOOL_SPECS } from "./agent/workflows";
 
@@ -32,6 +33,7 @@ export const BUILTIN_TOOL_SPECS = [
   ...PLUGIN_TOOL_SPECS,
   ...PREVIEW_TOOL_SPECS,
   ...SKILL_TOOL_SPECS,
+  ...DATAVIZ_TOOL_SPECS,
   ...WORKFLOW_TOOL_SPECS,
 ] as const satisfies readonly BuiltinToolSpec[];
 
@@ -129,4 +131,5 @@ export * from "./plugins";
 export * from "./catalog/sections";
 export * from "./catalog/search";
 export * from "./agent/skills";
+export * from "./agent/dataviz";
 export * from "./agent/subagents";

@@ -1,0 +1,458 @@
+{
+  "schemaVersion": 1,
+  "status": "pending-explicit-approval",
+  "repository": "https://github.com/JimLiu/baocut",
+  "commit": "e2864776f8bf97617af75f5b94ab3dbdd007634e",
+  "acceptanceTarget": "baoyu-design v2.7.1; maintained fork with explicit differences",
+  "scope": "Only these exact Design System source files and necessary maintenance; self-owned code retains the 800-line limit.",
+  "files": [
+    {
+      "path": "packages/design-system-runtime/src/contracts/application.ts",
+      "gitBlob": "f179d8956153bffcdb02b6a13cf4d42d7aba82de",
+      "sha256": "2338adec4580efa9e37dec9e01d3e8fa5f441bcaca5e0020ddd6569b439e01ee",
+      "bytes": 38675,
+      "lines": 1295
+    },
+    {
+      "path": "packages/design-system-runtime/src/contracts/editor-runtime.ts",
+      "gitBlob": "0ce097f8069dabf54d657cd7ebf569650a35b5c9",
+      "sha256": "8ae4c67eb30be994b56381e96b10f023066feefa173970ea95f7beb1fe7b6cf0",
+      "bytes": 23299,
+      "lines": 827
+    },
+    {
+      "path": "packages/design-system-runtime/src/contracts/overlays.ts",
+      "gitBlob": "3662c9c3a59fde7814ef20f683a84857db521bb0",
+      "sha256": "fd11eb52d68e04416792cd0aeb4a83ef72f75bd96f08a42d9a52ea6847638271",
+      "bytes": 39383,
+      "lines": 1294
+    },
+    {
+      "path": "packages/design-system-runtime/src/documents/storage.ts",
+      "gitBlob": "194639d830d86b903809383ff779797ee02f77a8",
+      "sha256": "f772cb844c174a8d1fa2816ca45fcce96981db1212a0e65b04a6b3d1c1f3a032",
+      "bytes": 36267,
+      "lines": 1148
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/add-token-dialog.tsx",
+      "gitBlob": "06924f6e7e32bdbab8f51260245ad3bdc15d3b51",
+      "sha256": "ea23370574ddb15d4899df1a160e61795e744cbd7aa673cf31ba6435f906841e",
+      "bytes": 49508,
+      "lines": 1544
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/asset-groups.tsx",
+      "gitBlob": "c20b7b077f70e6eeaa865999033cb760535ba6c5",
+      "sha256": "0eb813a30595624483a00da23400d509b945b7fd6e3b4e9d8caa5e40d0cd6647",
+      "bytes": 29453,
+      "lines": 893
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/claude-delivery.tsx",
+      "gitBlob": "e57383f3cd70531f89518c5556535a05fd8f34fb",
+      "sha256": "9b26fbf5d46d39b192ba8de74a17f4d0bb1bbe382d4fbdea1d26f7216629751e",
+      "bytes": 28748,
+      "lines": 971
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/colors.tsx",
+      "gitBlob": "5463bf5fa9f6cfdc3dc8c8d808cdfd0a4f89b5a6",
+      "sha256": "f10a68774f202fb2c95f8e949399e57b8648527bb383f67eff2d2590838e2040",
+      "bytes": 33955,
+      "lines": 1010
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/components.tsx",
+      "gitBlob": "60342393b5df73690c62f71fc7469db6a5b94b82",
+      "sha256": "4f80fcb1011a24a551e126644fc017ae6505d7f0a6f46c1d3349e68fc7dacf29",
+      "bytes": 28327,
+      "lines": 854
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/files-index.tsx",
+      "gitBlob": "20cfe6fca4125dfe148ab5c48b99b0aa8e59addf",
+      "sha256": "43e628ed46e135ea7b4c6e67e56dd2c2b9f81bff1461999c720c8bed3b0654a8",
+      "bytes": 49483,
+      "lines": 1708
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/index-file-store.ts",
+      "gitBlob": "390bb6f731883f30c775c025bf39207d16725341",
+      "sha256": "3ed80cc55f326135657f24914e94a74201bcf3f456f5d33fea9e4b18a19a1dcc",
+      "bytes": 27998,
+      "lines": 927
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/markdown-editor.tsx",
+      "gitBlob": "bc9ab8a028a8f4878948fef278cfdfb304ef11f8",
+      "sha256": "7f3cfa3f8aa0765c4142a59a1b99ecaafbf6d8143b92bfdf54b862723e430745",
+      "bytes": 29510,
+      "lines": 938
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/published-preview.tsx",
+      "gitBlob": "35120a39c480fa2f226f5a1ec8605edeb81a8abd",
+      "sha256": "b7a94510411cce028f20711f5db35a1a35ea55e2a42acd0f6abcbd31fe994cb5",
+      "bytes": 24271,
+      "lines": 807
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/shadows.tsx",
+      "gitBlob": "a1ae794a6813c6143f93dc908978a0f9d0622812",
+      "sha256": "5517661039531c2b72dd5e3dacd90efe3fcb02c8673227b0c1f2840a6cc823b4",
+      "bytes": 32765,
+      "lines": 953
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/swatch-runtime.tsx",
+      "gitBlob": "ae44c0397cd15bda657137662a036dcdf874133a",
+      "sha256": "260fc715ad03d50d6047b573737b122968ec1ca570a5ace5c40dc7343475ea66",
+      "bytes": 52654,
+      "lines": 1597
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/typography.tsx",
+      "gitBlob": "b20d2a3fc44d730b4d05dfc7d3140c6130cfa274",
+      "sha256": "b7efaab77173c0f03d9172c80d3b5269ccf6300d3f0570ffb00a35e5228d95d0",
+      "bytes": 46510,
+      "lines": 1439
+    },
+    {
+      "path": "packages/design-system-runtime/src/editor/upload-pipeline.ts",
+      "gitBlob": "87d66121283402a9993fe36f880911f69c89e475",
+      "sha256": "e320c4fcb3bfe8986635118c3018d4437aa62e5bdbf0a6d988d47b0305dc36e1",
+      "bytes": 34068,
+      "lines": 1152
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/browser-port.ts",
+      "gitBlob": "40105ddb29394b727d56196cc8b94de8c38fae97",
+      "sha256": "27dd352cb6852e6a72995c5b3d22ca909eb20a1098d7a799d35e36e18931d5d5",
+      "bytes": 38490,
+      "lines": 1227
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/debug-panel.ts",
+      "gitBlob": "1e860c5d73b406b1728c0515b41e86e6dcf03fea",
+      "sha256": "0c4532bc0ff228bc578068dc1b1480e1f05fa6354c0223d581e38af08ab59e1d",
+      "bytes": 72476,
+      "lines": 2143
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/design-system-document.ts",
+      "gitBlob": "183bfb7462be5c4faa0840e228564e09be7a60f3",
+      "sha256": "523356c04495e0548fe7e1d5b8e5f7bab8235c0f6ade827cb131a6559cf67476",
+      "bytes": 137249,
+      "lines": 4131
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/document.ts",
+      "gitBlob": "7e5511e93052931278c378b965d72f4adc61ed6c",
+      "sha256": "7a819a111dfe2172144b91df06a64ea4020f373b49684b3a878e0835f1fd9c12",
+      "bytes": 30468,
+      "lines": 960
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/hot-updates.ts",
+      "gitBlob": "09ba13c937a4713ffc6252ed31eca680c66fcc02",
+      "sha256": "20b4b72db8c1d44d90bdc14ebda9a1805e2fd0c86510f74ad75e3a24ee525600",
+      "bytes": 28960,
+      "lines": 958
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/migration-engine.ts",
+      "gitBlob": "aa5869081564897b51a2db64698304530df78957",
+      "sha256": "6c38da2f44e50b3c2a262049ca727365c7d71868fcb19171559041368acc8200",
+      "bytes": 43323,
+      "lines": 1438
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/paths.ts",
+      "gitBlob": "8570df9c126128aa67113b4ad5ac20c4f30ad489",
+      "sha256": "c458c6bfde254e099068d4929fb6f9477128a9ca0d11e8a2a89292ac8c98b18b",
+      "bytes": 32642,
+      "lines": 1128
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/save-queue.ts",
+      "gitBlob": "6666ff6489b67786f913b442a463a8e852859b98",
+      "sha256": "41b789ae4bc7f8b68c745c92dd60ce5d4a493392c47eaf75693bd9b9a144f6d5",
+      "bytes": 55516,
+      "lines": 1800
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/single-file-migration-boot.ts",
+      "gitBlob": "8a57cfe57bd28229874f53054112fc09d494b9cf",
+      "sha256": "4d9658c9965ac173aa7174d3e81b737a12fcf435a94c23db6f7218a666810d56",
+      "bytes": 29839,
+      "lines": 951
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/ui/design-system-app.tsx",
+      "gitBlob": "3a47b63257b918d4ed0f6d552c558b7d692b56d8",
+      "sha256": "7e95f308fd74bff5ddc6b86b918d49d540334dd0ec7b3e9043ecd380d39a1413",
+      "bytes": 157421,
+      "lines": 4272
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/ui/design-system-files.tsx",
+      "gitBlob": "2a8458448eb308e60b454bfa9f0b6fa28f070e07",
+      "sha256": "b04e15ba29ae89d62a0edd3419f30d427d7333e4bd3d1f4d487c9404d8005a8c",
+      "bytes": 29639,
+      "lines": 944
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/ui/file-browser.tsx",
+      "gitBlob": "f096e904d624ef454eb404640be12d8f13ec8e6b",
+      "sha256": "26d5dee42e4d1461e362e13241027a996c996d1af23c199fb17a8fb25b9aa04b",
+      "bytes": 75702,
+      "lines": 2320
+    },
+    {
+      "path": "packages/design-system-runtime/src/files/ui/navigation.tsx",
+      "gitBlob": "6470dd8eb649158116ac1752ddca9c253916002d",
+      "sha256": "7e49e8b23ef94c0c7fa78b99fcd63d22c5b0dd2ab8d957ab50e0e4eb8d19c036",
+      "bytes": 31332,
+      "lines": 949
+    },
+    {
+      "path": "packages/design-system-runtime/src/host/frame-bridge.tsx",
+      "gitBlob": "2014b5433290c65a85c60528b7b19a730b4bc9f9",
+      "sha256": "62fe5dc0847d7a823685d8b32110a8d4e2ca4db36c6eeaeeea64ab7438cd8693",
+      "bytes": 25623,
+      "lines": 894
+    },
+    {
+      "path": "packages/design-system-runtime/src/inferred-runtime-types.ts",
+      "gitBlob": "cfd7c53e1fe2db7adecd7dd3e3668fd79e410868",
+      "sha256": "c3e088ea8912fdd39a53155e7097eefd76dda5c036187723924e297c5907404c",
+      "bytes": 34002,
+      "lines": 855
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/asset-commands.ts",
+      "gitBlob": "d6127357772a76e3867b69673e8e73002c9140f3",
+      "sha256": "171ead771324ec0171b2cca0b969cca4a369713c5b650c11262dd290669b48c4",
+      "bytes": 28010,
+      "lines": 908
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/asset-store.ts",
+      "gitBlob": "0fed7185181d3090401e3689d7b3eb4e73d6ab8d",
+      "sha256": "c5f2b1e2b5d7c383c3af4d241e598f9adbe52ad786d8e1e6b87e601d53ccbe68",
+      "bytes": 33633,
+      "lines": 1118
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/component-inference.ts",
+      "gitBlob": "eb9ad97c72c8e59e404a372232b09132beda0893",
+      "sha256": "cec32683aadf8ab72b07057207f413ec14d030ba13a2782818105d812dbaf321",
+      "bytes": 57800,
+      "lines": 1911
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/derive-system.ts",
+      "gitBlob": "fb67e06bbcd76a2225cb24829733495cf8ac58a0",
+      "sha256": "bcd6743a2d81665d69af6114c23a900db51a21ab56801b85c38cc78a60968926",
+      "bytes": 31871,
+      "lines": 1038
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/documentation.ts",
+      "gitBlob": "790420e2d3f34194d4bd0cd90b9faffb82696f1e",
+      "sha256": "f55036f575d187866993f9349995177b7bcdabb0d59517f5cb6c3b86eecbabd7",
+      "bytes": 146877,
+      "lines": 4406
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/file-policy.ts",
+      "gitBlob": "cc050dfdf5cea823aa64ad7e8a032b05eb8a4452",
+      "sha256": "30f10c84eef1c519e9b0d85a4a2d4f07f070333e1f9304d1cd05b859254a3965",
+      "bytes": 24999,
+      "lines": 861
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/file-table.ts",
+      "gitBlob": "d13be129c0dfdcd3035aca7b720bd61518d13c1b",
+      "sha256": "d0deb43861a22e3f11d0f2cd362ea738e492412e8c40de94976ccf7bd95bd4fe",
+      "bytes": 30268,
+      "lines": 1034
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/publish.ts",
+      "gitBlob": "7738f53a74859787b7dd1351e0b15ce519cca865",
+      "sha256": "a237b25a1869c674a902200e318d0e03044ed28bdbb85e23ee61bc7d8e280d46",
+      "bytes": 39440,
+      "lines": 1192
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/storage.ts",
+      "gitBlob": "7dd9829d90d5a1f7d5f9f4b051f49ad749856423",
+      "sha256": "3282c236652a407c6be11b48a9f8abd8921e8f5d6cf2ce4830054fe39ca05ec0",
+      "bytes": 25808,
+      "lines": 923
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/store-compose.ts",
+      "gitBlob": "cbea798d513652bc9b8136b35c67f3d888a252dc",
+      "sha256": "5b4b78f7c7ddb7c8ff0c1d631816dd580b3fd198fb6494612ae92d583b947f3f",
+      "bytes": 29337,
+      "lines": 923
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/store-conversion.ts",
+      "gitBlob": "4227af069b7467e8b1103fa07416d5c7338d7f8b",
+      "sha256": "81a517cb82ac14870e98655f083b154300d7bbb21e4ad34ec68a448831dd0b8c",
+      "bytes": 32326,
+      "lines": 986
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/stored-file-codec.ts",
+      "gitBlob": "12dca63345fa0fe5414a5d402f8b3eaccd8c8d31",
+      "sha256": "23f131815940aa39ca4c0b0938c0a1453da755e7e5e8f80a4e909a8375bfeb25",
+      "bytes": 29308,
+      "lines": 1040
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/system-store.ts",
+      "gitBlob": "ed782ce5d0b2f07d4d952be3ddefd7e3c36568ba",
+      "sha256": "453f97665b646885e9b8faa32471c0aadf481d440717dafed988958eabfa0a56",
+      "bytes": 41470,
+      "lines": 1313
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/system-sync.ts",
+      "gitBlob": "281996a163a9aa5513afc06e377fca5d0b736a11",
+      "sha256": "12473a6fa2dca2d290ce12d540b4a2e59cc21ff25763afe6a8154e056719a0b6",
+      "bytes": 25367,
+      "lines": 844
+    },
+    {
+      "path": "packages/design-system-runtime/src/model/tokens.ts",
+      "gitBlob": "e2ef8c1d86788043f7585d445b5ca4ba0354e0e0",
+      "sha256": "6dd211d9e4e34251e0edb091e90dd60d98b6552b31ee7d1a295836d68d41f881",
+      "bytes": 58584,
+      "lines": 2011
+    },
+    {
+      "path": "packages/design-system-runtime/src/reviewed-runtime-types.ts",
+      "gitBlob": "0474f91ba645fa6c11045fc7cbf3298a2e87fd61",
+      "sha256": "06620f4ce8ba06a9ac58c04d3b0a0c6922651182a1d7653c6ab48e212610fa47",
+      "bytes": 362093,
+      "lines": 9166
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/artifact-toolbar.tsx",
+      "gitBlob": "5aa59910f5d482645c7704e78c096f7a6c63d1d2",
+      "sha256": "ffacffade0be02d1463fe17b00a3440e688be8f2fd55870f5f9d05bbacbd8f4f",
+      "bytes": 38835,
+      "lines": 1198
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/avatars.tsx",
+      "gitBlob": "9881dfa10ce8dede7b165b70fe3f567057d2cfac",
+      "sha256": "dca43ce4a2016491fda56ff5273cc3756f4f59a7c7adc879faa21aea069d4d7c",
+      "bytes": 96979,
+      "lines": 3235
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/color/picker.tsx",
+      "gitBlob": "0bc7104f1a800e4b1dda8fbd150313675d779d8e",
+      "sha256": "b222e85d21bd4dd772c863a3543fb1a335a2de152d607ee4b621dc3a4c699eb0",
+      "bytes": 34230,
+      "lines": 1045
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/combobox.tsx",
+      "gitBlob": "2d27c51fe9482fa8db29f3621df5fefe38cd85f1",
+      "sha256": "776b5ec7f655aba95d67552997dd7ff557ef880ea3e4bcf7b4ff8d5b4bd0d853",
+      "bytes": 118179,
+      "lines": 3476
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/dialog.tsx",
+      "gitBlob": "4e1f083225400609201f9964d8d2b429b3492ad8",
+      "sha256": "17dd881820328f1ec8367979eccdea8109c787d87c71668f705bbbefbd8028e1",
+      "bytes": 41532,
+      "lines": 1266
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/disclosure.tsx",
+      "gitBlob": "8c37d21352f783a0b1d6c22b4b4ef61db5a893ae",
+      "sha256": "42380b5ecf08bc773fa4f99675a1a39fb9e2c4ea43ca6583b14563ce0e45f03b",
+      "bytes": 41789,
+      "lines": 1432
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/foundation.tsx",
+      "gitBlob": "391512680405a6a1d966c2bc82d6efc7d1c90bc8",
+      "sha256": "aac561b6627e8cae36700757c15219eb539b623ff54babad3cbb9f229fb67626",
+      "bytes": 106389,
+      "lines": 3597
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/interactions.tsx",
+      "gitBlob": "9463163f97a32dcab2a633442f785f4412a97d03",
+      "sha256": "9c0a4d66b40c484bd9d98eb6fdb3a7a77595d664286b0aeab4fe38efc91ca72c",
+      "bytes": 138700,
+      "lines": 4826
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/menu.tsx",
+      "gitBlob": "064b1bd4b3d6aeb9ef33e87d4fb8f33c6cd6dfcc",
+      "sha256": "6f5abba4970329f0665edb61ef8feeb75cd7df3e374ff6a07a52de909982b188",
+      "bytes": 78500,
+      "lines": 2395
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/overlays.tsx",
+      "gitBlob": "2bbd76e237fda46be2996fb12f2919fd9e5704eb",
+      "sha256": "f519fb2454848611ae294bf07ee0f2fe585a32bea128a89748bfdc3dd3853e20",
+      "bytes": 185235,
+      "lines": 5805
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/segmented-control.tsx",
+      "gitBlob": "b072f3641c846711dd160d0c99ffd50d68033d9a",
+      "sha256": "ecaa88b5a3fb2d3db8f18e232bd33a7d30136f163f683dcad75f491a375a6ea2",
+      "bytes": 39415,
+      "lines": 1187
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/side-panels.tsx",
+      "gitBlob": "5a7e7602e752b228812b1ec456963d4c82fd944b",
+      "sha256": "2ae111a771d1ce0235536b02c3fc6b40d765b617a8a3e0d3da8d32d35cc8d32c",
+      "bytes": 52157,
+      "lines": 1602
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/skeleton.tsx",
+      "gitBlob": "c95141b350a2fee932252ce8ccee7c1ca154be30",
+      "sha256": "bb203028d5246279542baeb664bd02a38bfe30bf1694af81922b79bf2daf420d",
+      "bytes": 31795,
+      "lines": 1006
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/tabs.tsx",
+      "gitBlob": "bb2c15796284f6ca6ed5f90001dff327c8b53bc2",
+      "sha256": "19274e8c7db9b2f446867a734e4723ef3e09fff305e460cf18663b1b3ba19b9b",
+      "bytes": 34163,
+      "lines": 1056
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/toast.tsx",
+      "gitBlob": "c90570a6797bf87392977b4aef2e5046aa892953",
+      "sha256": "64a414602129fa6547090c81977c0cda7c8f233752d944ebc255a52cb5e320ef",
+      "bytes": 28300,
+      "lines": 869
+    },
+    {
+      "path": "packages/design-system-runtime/src/ui/toolbar-controls.tsx",
+      "gitBlob": "33186299c9579c62f2b2f9d39894964c9ed02393",
+      "sha256": "306efbb168f86d5ba65b790006c650dc6ffcec0bcd007c7200a8aece76f72ac6",
+      "bytes": 51217,
+      "lines": 1715
+    }
+  ]
+}

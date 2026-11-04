@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on relay/state ledgers, Chat and Settings services, exact-submission recovery, SQLite unknown-outcome classification, Agent main bridge, memory/bootstrap ports, manual-turn helpers, and the canonical residence index, and the startup recovery gate
- * [OUTPUT]: Provides sole FIFO admission, trusted remote entry, terminal Home capture that never blocks settling the turn, Memory authorization at settlement for a person's turn only (never a workflow step's), exact recovery, holding every start while startup recovery is closed, and quiescent shutdown. Projects queued counts and active request identities for exact App disable confirmation. Remote source pause and queue claims share the admission and dispatch critical section.
+ * [OUTPUT]: Provides sole FIFO admission, trusted remote entry, terminal Home capture that never blocks settling the turn, Memory authorization at settlement for a person's turn only (never a workflow step's), exact recovery, holding every start while startup recovery is closed, and quiescent shutdown. Runtime eligibility wakes retained inputs without resubmission and releases its subscription at shutdown. Projects queued counts and active request identities for exact App disable confirmation. Remote source pause and queue claims share the admission and dispatch critical section.
  * [POS]: Sections coordinator arbiter; renderer and MCP callers submit intents while this module alone advances Chat commits and Agent claims
  */
 
@@ -59,6 +59,7 @@ export class ConversationCoordinator {
   private readonly submissionRecovery: SubmissionRecovery;
   private accepting = false;
   private readonly releaseFenceListener = taskStartFence.onReleased(() => this.wakePending());
+  private readonly releaseEligibilityListener: () => void;
 
   pendingStopOperations() {
     return this.dispatches.snapshot().filter((operation) => !this.dependencies.ledger.read((state) =>
@@ -98,6 +99,7 @@ export class ConversationCoordinator {
   }
 
   constructor(private readonly dependencies: CoordinatorDependencies) {
+    this.releaseEligibilityListener = dependencies.subscribeDispatchEligibility?.(() => this.wakePending()) ?? (() => {});
     this.submissionRecovery = new SubmissionRecovery({
       dependencies, dispatches: this.dispatches, accepting: () => this.accepting,
       runConversation: (id, task) => this.conversations.run(id, task),
@@ -657,6 +659,7 @@ export class ConversationCoordinator {
     this.accepting = false;
     await this.dispatches.drain();
     this.releaseFenceListener();
+    this.releaseEligibilityListener();
     await this.dependencies.ledger.closeAndFlush();
   }
 

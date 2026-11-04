@@ -11,7 +11,7 @@ export const DESIGN_LIMITS = Object.freeze({ boards: 16, files: 64, manifest: 64
   issues: 32, stableMs: 1_000, intervalMs: 500, waitMs: 10_000 });
 export const DESIGN_SLIDES_LIMITS = Object.freeze({ ...DESIGN_LIMITS, boards: 256, files: 512 });
 export const DESIGN_EFFECT_LIMITS = Object.freeze({ files: DESIGN_SLIDES_LIMITS.files * 2, source: DESIGN_LIMITS.source * 2 });
-export const designFileLimit = (files: readonly { path: string }[]) => files.some(file => file.path === "deck.json") ? DESIGN_SLIDES_LIMITS.files : DESIGN_LIMITS.files;
+export const designFileLimit = (files: readonly { path: string }[]) => files.some(file => ["deck.json", "dashboard.json"].includes(file.path)) ? DESIGN_SLIDES_LIMITS.files : DESIGN_LIMITS.files;
 export type DesignAuthority = Readonly<{ chatId: string; incarnationId: string; workspace: string;
   ownerId: string; authorityIdentity: string }>;
 export type DesignSourceFile = Readonly<{ path: string; data: Buffer; digest: string; stamp: string }>;

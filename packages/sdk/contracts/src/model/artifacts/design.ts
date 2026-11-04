@@ -9,5 +9,9 @@ export type DesignAnchor = Readonly<{ boardId: string; boardDigest: string; sele
   properties?: Readonly<Partial<Record<"color" | "background-color" | "font-size" | "padding" | "gap" | "width" | "height" |
     "font-family" | "font-weight" | "font-style" | "text-decoration" | "text-align" | "line-height" | "letter-spacing" | "left" | "top", string>>>;
   viewport?: { width: number; height: number; scrollX: number; scrollY: number }; sourceLine?: number; file?: string }>;
+export type NativeEditEvidence = Readonly<{ anchor: string; label: string; file?: string; section?: string; sourceDigest: string; text: string } &
+  ({ kind: "native-comment"; commentId: string; commentDigest: string } | { kind: "native-selection" })>;
 export type DesignReference = Readonly<{ artifactId: string; documentId: string; revision: number; readSetDigest: string; generation: string;
+  purpose?: "edit";
+  native?: NativeEditEvidence;
   anchors?: Readonly<Record<string, DesignAnchor | null>> }>;

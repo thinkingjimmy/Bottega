@@ -16,6 +16,7 @@ export const uiTextEn = {
   resizeSidebarHint: "Drag to resize sidebar",
   attachment: "Attachment",
   previewAttachment: "Preview attachment",
+  removeDesignReference: "Remove reference",
   removeAttachment: "Remove attachment",
   stop: "Stop",
   submit: "Submit",

@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Depends on scoped transcript/live sources, optional remote controls, shared localized thinking copy, virtualized native conversation geometry and portable Chat heads.
- * [OUTPUT]: Renders canonical/live messages without duplication and retains original bubbles until this view has loaded their bodies. Publishes one bounded model; settlement retires waiting before the head catches up.
+ * [OUTPUT]: Renders canonical/live messages without duplication and retains original bubbles until this view has loaded their bodies. Edits use readable frozen instructions. Publishes one bounded model; settlement retires waiting before the head catches up.
  * [POS]: conversation/'s root transcript over body/ and timeline/ for desktop and Web; missing pages never imply a complete or empty reply.
  */
+import { designReferenceMessageText } from "@bottega/contracts/model/artifacts/design-message";
 import {
   lazy,
   Suspense,
@@ -225,7 +226,7 @@ export function ChatTranscript({
       <TimelineView key={`${chatId}/${head.chat.incarnationId}`} memoryKey={`${chatId}/${head.chat.incarnationId}`} busy={value.busy} messages={messages} hasMoreBefore={value.canEarlier} earlier={earlier} materialize={materialize}
         routeSearch={targetMessageId ? `?m=${encodeURIComponent(targetMessageId)}` : undefined}
         copy={{ earlier: copy.earlier, loading: copy.loading, imported: copy.imported, loaded: count => `${copy.earlier}: ${count}` }}
-        navigation={jumpTo => <>{findEnabled && <TranscriptFind chatId={chatId} find={search.find} t={findT} jumpTo={jumpTo} surfaceVisible />}{outlineEnabled && <ChatOutline canonicalItems={canonicalOutline && outlineState?.reader === outline ? outlineState.items : undefined} onIntent={canonicalOutline ? outlineIntent : undefined} messages={value.items.flatMap(item => item.kind === "native" ? [item.body.message] : [])} label={copy.outline} onJump={jumpTo} />}</>}
+        navigation={jumpTo => <>{findEnabled && <TranscriptFind chatId={chatId} find={search.find} t={findT} jumpTo={jumpTo} surfaceVisible />}{outlineEnabled && <ChatOutline streaming={replying} canonicalItems={canonicalOutline && outlineState?.reader === outline ? outlineState.items : undefined} onIntent={canonicalOutline ? outlineIntent : undefined} messages={value.items.flatMap(item => item.kind === "native" ? [item.body.message] : [])} label={copy.outline} onJump={jumpTo} />}</>}
         before={<>
           {!value.latest && (
             <button
@@ -259,7 +260,7 @@ export function ChatTranscript({
         </>}
         row={({ item }) => <>
                   {item.kind === "native" ? (editing === item.body.message.id && onEdit ?
-                    <Suspense fallback={<ConversationUser content={item.body.message.content} showMore={copy.showMore} showLess={copy.showLess} />}><UserMessageEditor key={editing} t={editTranslation} content={item.body.message.content} onCancel={() => setEditing(null)} onSubmit={content => onEdit(item.body.message.id, content)} /></Suspense> : <TranscriptMessage
+                    <Suspense fallback={<ConversationUser content={designReferenceMessageText(item.body.message.content)} showMore={copy.showMore} showLess={copy.showLess} />}><UserMessageEditor key={editing} t={editTranslation} content={designReferenceMessageText(item.body.message.content)} onCancel={() => setEditing(null)} onSubmit={content => onEdit(item.body.message.id, content)} /></Suspense> : <TranscriptMessage
                       chatId={chatId}
                       onOpenImage={onOpenImage} onOpenSubagent={onOpenSubagent} onOpenPlan={onOpenPlan} expandedPlanId={expandedPlanId}
                       remoteFailure={remoteFailure}

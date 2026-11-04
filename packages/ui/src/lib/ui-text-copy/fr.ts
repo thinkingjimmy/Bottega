@@ -16,6 +16,7 @@ export const uiTextFr = {
   resizeSidebarHint: "Faites glisser pour redimensionner la barre latérale",
   attachment: "Pièce jointe",
   previewAttachment: "Prévisualiser la pièce jointe",
+  removeDesignReference: "Retirer la référence",
   removeAttachment: "Supprimer la pièce jointe",
   stop: "Arrêter",
   submit: "Envoyer",

@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/JimLiu/baoyu-design",
+  "version": "2.7.1",
+  "commit": "6759e358eb88d83986c753b0fc60c84e4aabdb3a",
+  "use": "Internal development under the requested alignment plan; no commercial distribution clearance claimed.",
+  "terms": "Anthropic dataviz material is not MIT; Color.js MIT notices remain in both validators. See NOTICE.md.",
+  "files": [
+    {
+      "source": "skills/dataviz/SKILL.md",
+      "target": "SKILL.md",
+      "gitBlob": "1293de11559f533f6a945c814810b43eda3138e5",
+      "originalSha256": "e9e805e804f30f441e7edd12b88a6763f2e40d34e49107d03d659914ab91d881",
+      "sha256": "2d94d2da76316edaf62f4afa1d55164e8fd2a50b1dbd95868d802dd3314d4698",
+      "bytes": 9621,
+      "modification": "English GEB header; Bottega tool/renderer boundaries added only to the entry; public export removes internal protocol lines only"
+    },
+    {
+      "source": "skills/dataviz/references/anti-patterns.md",
+      "target": "references/anti-patterns.md",
+      "gitBlob": "6e9fc759548628919a37d6b0ffb46072854956cd",
+      "originalSha256": "8526a6c662c62dcd5cae2ef5402f83583cde06e495cf44f8d77ec8508ed6d967",
+      "sha256": "51436aaaeaba7c7777f98a332d20a8f35bdced6a09b9da3e9b2d96373066dceb",
+      "bytes": 6373,
+      "modification": "English GEB header; Bottega tool/renderer boundaries added only to the entry; public export removes internal protocol lines only"
+    },
+    {
+      "source": "skills/dataviz/references/choosing-a-form.md",
+      "target": "references/choosing-a-form.md",
+      "gitBlob": "819ceb6df534d924ce015bfa2c106acb1b83fc8f",
+      "originalSha256": "fbd8d8fb385670569c16cdcfe3d0e05281d0a33f892ef09a54b5c5780dc548e2",
+      "sha256": "33c506f8af5a3b1046564eba955153dd88df63d4e9cc5a99c17f23c1f3124fac",
+      "bytes": 3309,
+      "modification": "English GEB header; Bottega tool/renderer boundaries added only to the entry; public export removes internal protocol lines only"
+    },
+    {
+      "source": "skills/dataviz/references/color-formula.md",
+      "target": "references/color-formula.md",
+      "gitBlob": "0e4fa9746f8d71d4c5b7b828d7243992f10874b7",
+      "originalSha256": "6924caad41a9a19c14764a95e97430a30a9891abac13c6a1a5dd5a01727b5187",
+      "sha256": "ea47871cc53ec656224b44a9253307d5e376e9429d7f9aca55a334ca6ad8960e",
+      "bytes": 8730,
+      "modification": "English GEB header; Bottega tool/renderer boundaries added only to the entry; public export removes internal protocol lines only"
+    },
+    {
+      "source": "skills/dataviz/references/components.md",
+      "target": "references/components.md",
+      "gitBlob": "22f80b72703ee6372872a2e501896c11d08200c0",
+      "originalSha256": "ce463ae52c62e499cc6cc52100ffe47fa4e1851a1725e5bd76892b0f6f31185d",
+      "sha256": "48e13c055809911d8e4dec33b6e918c6aa68124faf3606182082adc30b0bc504",
+      "bytes": 2326,
+      "modification": "English GEB header; Bottega tool/renderer boundaries added only to the entry; public export removes internal protocol lines only"
+    },
+    {
+      "source": "skills/dataviz/references/interaction.md",
+      "target": "references/interaction.md",
+      "gitBlob": "0a4ce5fa2da40cf8af82a43c53ed36e7a9656756",
+      "originalSha256": "2050b65e1a0d919627db870215f423956e17f82c1285eb336537b732cb0c7893",
+      "sha256": "34aeb6cee94cd1e1dc15d5034a97b4f9d7d64f6c3d4472fc76cb16aa6fa7c2b3",
+      "bytes": 3960,
+      "modification": "English GEB header; Bottega tool/renderer boundaries added only to the entry; public export removes internal protocol lines only"
+    },
+    {
+      "source": "skills/dataviz/references/marks-and-anatomy.md",
+      "target": "references/marks-and-anatomy.md",
+      "gitBlob": "1b67eaaf7d8a5ef116c6468a2ae4743cf75cfe1e",
+      "originalSha256": "0659e4a8fc65ddc3f56bf369dbdbfa60b0f94bb385f22ba88dc5daddd7c68845",
+      "sha256": "b0016fa5dfeaa4ca480fc3c56b42f4e40a73bb70822f90dd04d8d60fb79041f6",
+      "bytes": 6328,
+      "modification": "English GEB header; Bottega tool/renderer boundaries added only to the entry; public export removes internal protocol lines only"
+    },
+    {
+      "source": "skills/dataviz/references/palette.md",
+      "target": "references/palette.md",
+      "gitBlob": "1eb45f1beffde7fa087d36b0a9d88f1c83af80cf",
+      "originalSha256": "b0eb3882e9cf8467a2979c4f63a69f2f83510318e7ebeb7a07e0ebd89189bba1",
+      "sha256": "36324f4ba3fcd966ff5643b55ff02a14fd4dbce5e15cd8736002f2089d91864c",
+      "bytes": 9738,
+      "modification": "English GEB header; Bottega tool/renderer boundaries added only to the entry; public export removes internal protocol lines only"
+    },
+    {
+      "source": "skills/dataviz/scripts/validate_palette.js",
+      "target": "scripts/validate_palette.js",
+      "gitBlob": "0529c4f9c3bdb689bfe8ee30327b78e99c94976a",
+      "originalSha256": "25df43beb77674dad34348b9fe338d5a47f568e08bcf51b38780e51386cf866e",
+      "sha256": "af3fd73eec42652c2bb3aabb60f69aa5592967c18c7390b7ac3a6cf140d25800",
+      "bytes": 20226,
+      "modification": "English GEB header only; original behavior and notices retained; public export removes internal protocol lines only"
+    },
+    {
+      "source": "skills/dataviz/scripts/validate_palette.py",
+      "target": "scripts/validate_palette.py",
+      "gitBlob": "c5cd012f445f8b7a8c26106dcafded4326958abe",
+      "originalSha256": "949f8c86dc1c98c589f1455bb2d7cd8967ffecf85d77eed2789dce62ce6c2cf4",
+      "sha256": "3a5162587f184284c194b0fe074579a82f44056149e9e8850a8ffe7a8854572a",
+      "bytes": 17941,
+      "modification": "English GEB header only; original behavior and notices retained; public export removes internal protocol lines only"
+    },
+    {
+      "source": "NOTICE.md",
+      "target": "NOTICE.md",
+      "gitBlob": "bae0e3b709277d1b9587bab504ab8932a3f78b9d",
+      "originalSha256": "725d084274ce974fbf7caea31028d1a138a4de9bf6bda629b5692a335e4e3ff5",
+      "sha256": "725d084274ce974fbf7caea31028d1a138a4de9bf6bda629b5692a335e4e3ff5",
+      "bytes": 6610,
+      "modification": "None; public export removes internal protocol lines only"
+    }
+  ],
+  "publicSourceFilter": {
+    "schema": "bottega.dataviz-public-source/v1",
+    "originalProvenanceSha256": "71dc0bc72c95e83b8462c2122921e2281a35b3f702221deba6e89d6b9a783991",
+    "transformation": "remove-protocol-lines/v1"
+  }
+}

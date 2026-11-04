@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on shared Marker/Collapsible primitives and caller-owned labels and process content.
+ * [INPUT]: Depends on transcript disclosure memory, shared Marker/Collapsible primitives and caller-owned labels and process content.
  * [OUTPUT]: Provides ConversationAgent, ConversationProcessHeading and a collapsed process disclosure with native scroll-lock release.
  * [POS]: Shared completed-turn activity presentation; no tool execution or process decoding is owned here.
  */
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
+import { useRowDisclosure } from "./rows/state";
 import { ChevronRightIcon } from "lucide-react";
 import { useScrollLockRelease } from "../ai-elements/conversation";
 import {
@@ -54,7 +55,7 @@ export function ConversationProcess({
   label: string;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useRowDisclosure("process");
   const stopScroll = useScrollLockRelease();
   return (
     <Collapsible

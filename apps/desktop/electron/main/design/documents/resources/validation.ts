@@ -1,9 +1,9 @@
 /**
- * [INPUT]: Complete fixed bytes, explicit native source dispatch, closed manifests/native comment data, canonical Canvas layers, raster decoder and local resource rules.
+ * [INPUT]: Complete fixed bytes, explicit native source dispatch, closed manifests/native comment data, current system source definitions and shared loaded-resource graph rules.
  * [OUTPUT]: Checks the same loaded dependency graph and render budgets used by preview preparation.
  * [POS]: Document validation; it cannot write registry, history, Chat or files.
  */
-import { projectNativeManifest } from "@ai-chat/cloud-protocol/artifacts/design/native/source";
+import { readDesignManifest } from "@ai-chat/cloud-protocol/artifacts/design/core/source";
 import { assertHtmlDocument } from "../../workspace/access";
 import { DESIGN_LIMITS, DesignDocumentError, manifestSchema,
   type DesignIssue, type DesignManifest, type DesignReadSet } from "../model";
@@ -16,23 +16,28 @@ export async function validateDesignSet(readSet: DesignReadSet): Promise<{ manif
   const sources = new Map(readSet.files.map(file => [file.path, file]));
   let manifest: DesignManifest | null = null;
   try {
-    const indexPath = sources.has("deck.json") ? "deck.json" : "canvas.json";
+    const indexPath = sources.has("dashboard.json") ? "dashboard.json" : sources.has("deck.json") ? "deck.json" : "canvas.json";
     const bytes = sources.get(indexPath)?.data;
-    if (!bytes) { issue("canvas.json", "A Canvas or Slides index is required"); return { manifest, issues }; }
-    const native = projectNativeManifest(readSet.files, readSet.path.split("/")[1]!);
-    if (native) (await import("@ai-chat/cloud-protocol/artifacts/design/native/comments")).readNativeComments(readSet.files);
-    const parsed = manifestSchema.safeParse(native ?? JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
+    if (!bytes) { issue("canvas.json", "An explicit current document index is required"); return { manifest, issues }; }
+    const current = readDesignManifest(readSet.files, readSet.path.split("/")[1]!);
+    if (current.contentFormat || current.system) (await import("@ai-chat/cloud-protocol/artifacts/design/native/comments")).readNativeComments(readSet.files);
+    const parsed = manifestSchema.safeParse(current);
     if (parsed.success) manifest = parsed.data;
     else for (const problem of parsed.error.issues) issue("canvas.json", `${problem.path.join(".")}: ${problem.message}`);
   } catch (cause) { issue("canvas.json", cause instanceof Error ? cause.message : "Manifest must be valid UTF-8 JSON"); }
   if (manifest && readSet.path !== `${manifest.format === "bottega-design-system" ? "design-systems" : "design"}/${manifest.documentId}`) issue("canvas.json", "documentId and format must match the directory");
+  if (manifest?.contentFormat === "dashboard/v1") {
+    try { await (await import("../../dashboard/resources")).dashboardResources(readSet.files, manifest.documentId); }
+    catch (cause) { issue("dashboard.json", cause instanceof Error ? cause.message : "Invalid Dashboard resource closure"); }
+    return { manifest, issues };
+  }
+  if (sources.has("db/data/users/local/runs.json")) issue("db/data/users/local/runs.json", "Page state requires the explicit Dashboard format");
   for (const board of manifest?.boards ?? []) {
     const file = sources.get(board.file);
     if (!file) { issue(board.file, "Board file is missing"); continue; }
     try { if (manifest?.contentFormat !== "slides/v4") assertHtmlDocument(file.data); }
     catch { issue(board.file, "Board must be a complete UTF-8 HTML document"); }
   }
-  if (manifest?.objects?.length || manifest?.pages?.length) for (const value of await (await import("../../canvas/layers")).validateCanvasResources(manifest, readSet.files)) issue(value.file, value.message);
   const inertSources = manifest && (manifest.system || manifest.systems?.length) ? (await import("../../systems/service")).inertSystemSources(readSet) : new Set<string>();
   for (const file of readSet.files) {
     if (inertSources.has(file.path)) continue;
@@ -64,12 +69,9 @@ export async function validateDesignSet(readSet: DesignReadSet): Promise<{ manif
   if (manifest?.format === "bottega-design-system") {
     for (const value of (await import("../../systems/validation")).validateDesignSystem(readSet)) issue(value.file, value.message);
   }
-  if (manifest && !manifest.contentFormat && !issues.length) {
-    const { prepareDesignSnapshot } = await import("../rendering");
-    for (const board of manifest.boards) {
-      try { await prepareDesignSnapshot({ version: { manifest, revision: 1, readSetDigest: readSet.readSetDigest, snapshotRef: readSet.readSetDigest } as import("../store").DesignRevision, files: [...readSet.files] }, board.id); }
-      catch (cause) { issue(board.file, cause instanceof Error ? cause.message : "Unsupported render dependency graph"); }
-    }
+  if (manifest && !issues.length) {
+    try { await (await import("./graph")).validateLoadedGraph(manifest, readSet); }
+    catch (cause) { issue("canvas.json", cause instanceof Error ? cause.message : "Unsupported render dependency graph"); }
   }
   return { manifest, issues };
 }

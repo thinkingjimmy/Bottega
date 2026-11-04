@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Owner-scoped immutable Artifact fences, original-composer callbacks and guarded panel presentation.
- * [OUTPUT]: Session-only Artifact identities and stable native work tabs with current-head frame/Undo continuity, bounded owner memory, existing tab chrome portal targets and lazy active-tab content.
+ * [OUTPUT]: Session-only Artifact tabs, current-head frame/Undo continuity and exact-destination reference retention through asynchronous tab activation.
  * [POS]: Shared Artifact tab boundary for native and remote third-column hosts; no fences or callbacks are persisted.
  */
 import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
@@ -12,22 +12,34 @@ import { useArtifactCloseGuard } from "../lifecycle/close";
 export { useArtifactTabChrome } from "./tab-chrome";
 
 export type ArtifactTabId = `artifact:${string}`;
-export type ArtifactTabValue = { fence: ArtifactFence; followUp?: ArtifactHost["followUp"] };
+export type ArtifactTabValue = { reference?: import("@ai-chat/cloud-protocol/artifacts/design/review").DesignReference; referenceTargetId?: string; fence: ArtifactFence; followUp?: ArtifactHost["followUp"] };
 export const isArtifactTab = (id: unknown): id is ArtifactTabId => typeof id === "string" && /^artifact:[A-Za-z0-9_-]{1,128}$/.test(id);
-export const artifactTabId = (fence: ArtifactFence): ArtifactTabId => `artifact:${fence.design?.contentFormat ? "work-" + fence.design.documentId : fence.id}`;
+export const artifactTabId = (fence: ArtifactFence): ArtifactTabId => `artifact:${fence.design ? "work-" + fence.design.documentId : fence.id}`;
 const activeNativeHeads = new WeakMap<ArtifactTabValue, string>();
 const empty: ReadonlyMap<ArtifactTabId, ArtifactTabValue> = new Map();
 const owners = new Map<string, ReadonlyMap<ArtifactTabId, ArtifactTabValue>>();
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+export function isMountedArtifactHead(scope: string, fence: ArtifactFence) {
+  const value = owners.get(scope)?.get(artifactTabId(fence));
+  return Boolean(value && fence.design && activeNativeHeads.get(value) === fence.design.readSetDigest);
+}
 export function rememberArtifactTab(scope: string, fence: ArtifactFence, followUp?: ArtifactHost["followUp"]) {
   const id = artifactTabId(fence), previous = owners.get(scope)?.get(id);
-  if (previous?.fence === fence && previous.followUp === followUp || previous && fence.design?.contentFormat && activeNativeHeads.get(previous) === fence.design.readSetDigest) return id;
+  if (previous?.fence === fence && previous.followUp === followUp || previous && fence.design && activeNativeHeads.get(previous) === fence.design.readSetDigest) return id;
   const values = new Map(owners.get(scope));
-  values.set(id, { fence, followUp }); owners.delete(scope); owners.set(scope, values);
+  const target = previous?.referenceTargetId === fence.id ? { reference: previous.reference, referenceTargetId: previous.referenceTargetId } : {};
+  values.set(id, { fence, followUp, ...target }); owners.delete(scope); owners.set(scope, values);
   if (owners.size > 64) owners.delete(owners.keys().next().value!);
   for (const listener of listeners) listener();
   return id;
+}
+export function rememberArtifactTarget(scope: string, fence: ArtifactFence, reference: NonNullable<ArtifactTabValue["reference"]>) {
+  const id = artifactTabId(fence), previous = owners.get(scope)?.get(id); if (!previous) return;
+  const next = { ...previous, reference, referenceTargetId: fence.id }, head = activeNativeHeads.get(previous);
+  if (head) activeNativeHeads.set(next, head);
+  const values = new Map(owners.get(scope)); values.set(id, next); owners.set(scope, values);
+  for (const listener of listeners) listener();
 }
 export function useArtifactTabs(scope: string) {
   const read = () => owners.get(scope) ?? empty;
@@ -47,20 +59,20 @@ export function ArtifactTab({ value, presentation, onFollowUp }: { value: Artifa
   useLayoutEffect(() => { afterFollowUp.current = onFollowUp; }, [onFollowUp]);
   useLayoutEffect(() => {
     active.current = value;
-    if (value.fence.design?.contentFormat) activeNativeHeads.set(value, value.fence.design.readSetDigest);
+    if (value.fence.design && !activeNativeHeads.has(value)) activeNativeHeads.set(value, value.fence.design.readSetDigest);
     return () => { activeNativeHeads.delete(value); if (active.current === value) active.current = null; };
   }, [value]);
   const followUp = value.followUp ?? host?.followUp;
   const adapted = useMemo(() => host ? { ...host, remember: (fence: ArtifactFence) => {
     host.remember?.(fence);
-    if (active.current === value && fence.design?.contentFormat && fence.design.documentId === value.fence.design?.documentId)
+    if (active.current === value && fence.design && fence.design.documentId === value.fence.design?.documentId)
       activeNativeHeads.set(value, fence.design.readSetDigest);
   }, followUp: followUp ? async (request: Parameters<NonNullable<ArtifactHost["followUp"]>>[0]) => {
     if (active.current !== value) return;
     await followUp(request);
     if (active.current === value) afterFollowUp.current?.();
   } : undefined } : null, [host, followUp, value]);
-  return <ArtifactHostProvider value={adapted}><ArtifactPresentationProvider value={presentation}>
+  return <ArtifactHostProvider value={adapted}><ArtifactPresentationProvider value={{ ...presentation, reference: value.reference }}>
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-sm"><ArtifactPreview fence={value.fence} expanded /></div>
   </ArtifactPresentationProvider></ArtifactHostProvider>;
 }

@@ -4,14 +4,16 @@
  * [POS]: Chat presentation only; editable frames and source mutations remain in the expanded workspace.
  */
 import { lazy, Suspense } from "react";
-import { Download } from "lucide-react";
+import { Download, History } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import type { ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import { useArtifactHost } from "../context";
+import { historyCopy } from "../history/copy";
+import { requestNativeHistory } from "../history/navigation";
 import { artifactCopy } from "../copy";
 import "./presentation.css";
-const Thumbnail = lazy(() => import("../workspace/canvas/thumbnail").then(module => ({ default: module.BoardThumbnail })));
-const Current = lazy(() => import("../workspace/directory").then(module => ({ default: module.CurrentVersionLink })));
+const Thumbnail = lazy(() => import("./thumbnails/thumbnail").then(module => ({ default: module.BoardThumbnail })));
+const Current = lazy(() => import("../presentation/directory").then(module => ({ default: module.CurrentVersionLink })));
 
 export function DesignArtifactCard({ fence, busy, error, open, save }: { fence: ArtifactFence; busy: boolean; error: boolean; open(): void; save(): void }) {
   const host = useArtifactHost()!, copy = artifactCopy(host.locale), design = fence.design!;
@@ -23,6 +25,7 @@ export function DesignArtifactCard({ fence, busy, error, open, save }: { fence: 
     </div>
     <footer className="relative flex min-h-[68px] flex-wrap items-center justify-end gap-2 px-4 pb-4 pt-2">
       {host.workspace && <div className="mr-auto min-w-0 text-xs"><Suspense fallback={null}><Current fence={fence} /></Suspense></div>}
+      {host.workspace && <Button type="button" variant="ghost" size="icon" className="min-h-11 min-w-11" aria-label={historyCopy(host.locale).title} title={historyCopy(host.locale).title} disabled={busy} onClick={() => { requestNativeHistory(host.scope, design.documentId, design.revision); open(); }}><History className="size-4" /></Button>}
       <Button type="button" className="min-h-[44px] shrink-0 px-5" data-action="open-version" onClick={open}>{openLabel(host.locale)}</Button>
     </footer>
     {error && <p role="alert" className="px-4 pb-3 text-sm">{copy.failed}</p>}

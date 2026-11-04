@@ -47,6 +47,7 @@
     "./artifacts": "./src/artifacts/context.tsx",
     "./artifact-card": "./src/artifacts/card.tsx",
     "./artifact-renderer": "./src/artifacts/renderer.tsx",
+    "./artifact-reference": "./src/artifacts/native/review/reveal.ts",
     "./artifact-tabs": "./src/artifacts/presentation/tabs.tsx",
     "./artifact-copy": "./src/artifacts/copy.ts",
     "./links": "./src/links/port.tsx",
@@ -142,7 +143,8 @@
     "./plugins/*": "./src/plugins/*.ts",
     "./plugins/host/context": "./src/plugins/host/context.tsx",
     "./plugins/host/modal": "./src/plugins/host/modal.tsx",
-    "./live-preview-copy": "./src/artifacts/live/copy.ts"
+    "./live-preview-copy": "./src/artifacts/live/copy.ts",
+    "./artifact-projects": "./src/artifacts/projects/launcher.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -9,10 +9,10 @@ import { artifactViewerShell } from "@ai-chat/cloud-protocol/artifacts/viewer-sh
 import { artifactResourcePath, type ArtifactResource } from "../shared/resources";
 import { prepareDocument } from "../shared/document";
 import { designFrameHtml, type DesignFrameIdentity } from "@ai-chat/cloud-protocol/artifacts/design/frame";
-import { manifestSchema } from "@ai-chat/cloud-protocol/artifacts/design/model";
+import { readDesignManifest } from "@ai-chat/cloud-protocol/artifacts/design/core/source";
 export type { ArtifactResource } from "../shared/resources";
 export function prepareContent(fence: ArtifactFence, files: ArtifactResource[], theme: "light" | "dark", design?: DesignFrameIdentity): string {
-  const manifest = fence.design ? manifestSchema.parse(JSON.parse(new TextDecoder().decode(files.find(file => file.path === "canvas.json")!.bytes))) : null;
+  const manifest = fence.design ? readDesignManifest(files.map(file => ({ path: file.path, data: file.bytes })), fence.design.documentId) : null;
   const board = manifest?.boards.find(board => board.id === (design?.boardId ?? fence.design?.launchBoard));
   const entry = board?.file ?? (fence.kind === "static-site" ? fence.entry : files[0]!.path);
   const file = files.find(file => file.path === entry); if (!file) throw new Error("artifact-entry-missing");

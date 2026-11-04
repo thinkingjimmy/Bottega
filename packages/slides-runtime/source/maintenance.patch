@@ -1,3 +1,88 @@
+--- a/packages/slides/src/editor/comments-bridge.ts
++++ b/packages/slides/src/editor/comments-bridge.ts
+@@ -1,3 +1,8 @@
++/**
++ * [INPUT]: Authenticated parent link, native runtime comment handlers and trusted non-editing keyboard input.
++ * [OUTPUT]: One CommentsBridge mode/thread/compose owner with truthful mode messages and Escape teardown.
++ * [POS]: Shared maintained Canvas/Slides comment bridge; authored opaque frames receive no parent capability.
++ */
+ /**
+  * 标注的桥（docs/design/slides §8.2）：运行时的 `comments.customAnchors` 在 iframe 里，批注框与草稿在父窗口。
+  *
+@@ -120,6 +125,14 @@
+     else pins.clear();
+     link.post({ type: 'editor:mode', on });
+   };
++  const exitOnEscape = (event: KeyboardEvent) => {
++    if (!event.isTrusted || event.key !== "Escape" || event.defaultPrevented || event.isComposing || !mode) return;
++    const target = event.target;
++    if (target instanceof Element && target.closest('input,textarea,select,[contenteditable="true"],[role="dialog"],[role="alertdialog"]')) return;
++    if (document.querySelector('[data-mc-popover],[data-mc-scrim]')) return;
++    event.preventDefault(); setMode(false);
++  };
++  window.addEventListener("keydown", exitOnEscape, true);
+   const settle = (requestId: string, opened: boolean) => {
+     const resolve = pending.get(requestId);
+     if (!resolve) return;
+@@ -213,6 +226,7 @@
+       return mode;
+     },
+     dispose() {
++      window.removeEventListener("keydown", exitOnEscape, true);
+       stop();
+       for (const id of [...pending.keys()]) settle(id, false);
+       pins.clear();
+--- a/packages/slides-runtime/src/boot/bootstrap.ts
++++ b/packages/slides-runtime/src/boot/bootstrap.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Original native file boot state and the editor-owned private file transport.
++ * [OUTPUT]: Original document bootstrap with consistent ordinary and fresh snapshot reads.
++ * [POS]: Maintained original bootstrap; no global fetch or write gate is replaced.
++ */
++import { nativeEditorFetch } from "../adapters/asset-address";
+ /** Restored application module; prepare first, initialize in original order. */
+ import type { ReactElement } from "react";
+ import {
+@@ -795,7 +801,7 @@
+       (slidesWriteAccessPromise ??= (0, runtime.determineSlidesWriteAccess)());
+     filesBootPortOptions = {
+       fetchFresh: (input) =>
+-        fetch(input, {
++        nativeEditorFetch(input, {
+           cache: "no-store",
+         }),
+       onRead: (input, options, context, value) =>
+--- a/packages/slides-runtime/src/comments/labels.ts
++++ b/packages/slides-runtime/src/comments/labels.ts
+@@ -1,4 +1,8 @@
+-/** Restored application module; prepare first, initialize in original order. */
++/**
++ * [INPUT]: Original source slide identity, selected frame/area and native comment formatting limits.
++ * [OUTPUT]: Human labels and canonical slides/<id>.html detail prefixes for exact host source binding.
++ * [POS]: Maintained original Slides comment metadata; labels and anchor geometry retain their upstream contract.
++ */
+ import { bindRuntimeValue, type RuntimeBindings } from "../bindings";
+ import type { HostCommentLabels } from "../../../slides/src/editor/slides-host";
+ import type { Frame, Slide, SlideNode, TextNode } from "../deck-contracts";
+@@ -308,7 +312,7 @@
+     anchor: CommentLabelAnchor,
+   ): string {
+     let prefix =
+-      "Slide " + String(slideNumber) + slideDiagnosticIdSuffix(slide);
++      "slides/" + slide.id + ".html: Slide " + String(slideNumber) + slideDiagnosticIdSuffix(slide);
+     if (anchor.kind === "slide") {
+       return buildCommentLabel(
+         prefix,
+@@ -482,7 +486,7 @@
+             ? callback2(area.within, input)
+             : null,
+           value3 =
+-            "Area on slide " +
++            "slides/" + slide.id + ".html: Area on slide " +
+             String(slideNumber) +
+             value +
+             (value2 !== null ? " in " + value2 : "") +
 --- a/packages/slides-runtime/src/delivery/provider.ts
 +++ b/packages/slides-runtime/src/delivery/provider.ts
 @@ -1,3 +1,8 @@
@@ -46,7 +131,12 @@
                      lists: argument,
 --- a/packages/slides-runtime/src/editor/app.ts
 +++ b/packages/slides-runtime/src/editor/app.ts
-@@ -1,3 +1,12 @@
+@@ -1,3 +1,17 @@
++/**
++ * [INPUT]: Maintained original toolbar runtime and the trusted native project download owner.
++ * [OUTPUT]: Existing native controls with the source-bound complete-project Export entry.
++ * [POS]: Maintained editor chrome; authored frames cannot invoke this module.
++ */
 +/**
 + * [INPUT]: Original Slides editor/capture/export producers and main-frozen read-only native job options.
 + * [OUTPUT]: Main-frozen menu delegation and original PPTX/PDF/PNG/HTML exports with exact quality/scale/notes/theme choices and actual transformed-model/picture previews in fixed jobs.
@@ -54,12 +144,12 @@
 + */
 +import { nativeMainPresentation, nativePresentationHandlers, nativePresentationIndex, nativePresentationExit, nativePresentationFallback } from "../adapters/presentation";
 +import { nativeSlidesResource } from "../adapters/asset-address";
-+import { nativeMainExport, validateNativePptxMedia, nativeExportEditablePreview, nativeExportPicturePreviews } from "../adapters/export-runtime";
++import { nativeHistoryLabel, openNativeHistory, nativeProjectExportAvailable, nativeProjectExportLabel, nativeWholeFolderLabel, nativeWholeFolderDescription, openNativeProjectExport, nativeMainExport, validateNativePptxMedia, nativeExportEditablePreview, nativeExportPicturePreviews } from "../adapters/export-runtime";
 +import type { NativeExportOptions } from "@ai-chat/cloud-protocol/artifacts/design/export/options";
  /** Restored application module; prepare first, initialize in original order. */
  import type { ChangeEvent, DragEvent as ReactDragEvent, FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactElement, ReactNode, RefObject, WheelEvent as ReactWheelEvent } from "react";
  import {
-@@ -6699,7 +6708,7 @@
+@@ -6699,7 +6713,7 @@
          );
          exportNotesToastRef.current = value;
        },
@@ -68,7 +158,7 @@
          let [
              { measureDeck: value2 },
              { deckToPptxBlob: value3, pptxFilename: value4 },
-@@ -6777,11 +6786,13 @@
+@@ -6777,11 +6791,13 @@
                    fontsReadyMs: Math.max(0, value11 - Date.now()),
                  }),
            value17 = extraExportFormats && input !== "google",
@@ -85,7 +175,7 @@
              },
            ),
            value20 = !extraExportFormats
-@@ -6837,6 +6848,8 @@
+@@ -6837,6 +6853,8 @@
          }
          setExporting(true);
          try {
@@ -94,7 +184,7 @@
            let value =
              await exportStateRef.current.renderPptxFile(input);
            await downloadBasicPptx(value);
-@@ -7096,7 +7109,7 @@
+@@ -7096,7 +7114,7 @@
          return renderPdfFile(
            value2(snapshot.meta.title),
            (input, options) =>
@@ -103,7 +193,7 @@
          );
        },
        renderWithImageBudget = async (
-@@ -7245,6 +7258,8 @@
+@@ -7245,6 +7263,8 @@
          }
          setExporting(true);
          try {
@@ -112,7 +202,7 @@
            let value2 = await exportStateRef.current.preparePdfRender(
              value?.notes === true,
            );
-@@ -7345,6 +7360,8 @@
+@@ -7345,6 +7365,8 @@
          }
          setExporting(true);
          try {
@@ -121,7 +211,7 @@
            await renderAndDownload(
              await renderPngFile(),
              runtime.PNG_MIME_TYPE,
-@@ -7416,6 +7433,8 @@
+@@ -7416,6 +7438,8 @@
          }
          setExporting(true);
          try {
@@ -130,7 +220,7 @@
            let value = await exportStateRef.current.renderHtmlFile({
                fit: false,
              }),
-@@ -7475,7 +7494,7 @@
+@@ -7475,7 +7499,7 @@
          }
        },
        createExportProducer =
@@ -139,7 +229,7 @@
          async (input2: ExportProduceOptions): Promise<ExportedFile> => {
            let value: PdfExportOptions | undefined;
            if (input === "pdf" && extraExportFormats && input2.interactive) {
-@@ -7522,7 +7541,26 @@
+@@ -7522,7 +7546,26 @@
              value3 = extraExportFormats ? input2.signal : undefined,
              value4: ExportRender;
            try {
@@ -167,7 +257,7 @@
            } catch (value5: unknown) {
              if (value3?.aborted === true) {
                throw new runtime.ExportCancelledError();
-@@ -7545,6 +7583,7 @@
+@@ -7545,6 +7588,7 @@
            return {
              filename: value4.filename,
              data: value4.blob,
@@ -175,7 +265,7 @@
            };
          },
        prepareExportWithNotesOption =
-@@ -7613,6 +7652,7 @@
+@@ -7613,6 +7657,7 @@
                  "pptx",
                  "PPTX",
                  () => exportStateRef.current.renderPptxFile("current"),
@@ -183,7 +273,7 @@
                ),
              },
              {
-@@ -7622,6 +7662,7 @@
+@@ -7622,6 +7667,7 @@
                  "pptx",
                  "PPTX",
                  () => exportStateRef.current.renderPptxFile("basic"),
@@ -191,7 +281,7 @@
                ),
              },
              {
-@@ -7634,6 +7675,7 @@
+@@ -7634,6 +7680,7 @@
                    () =>
                      exportStateRef.current.preparePptxPicturesRender(),
                  ),
@@ -199,7 +289,7 @@
                ),
              },
              {
-@@ -7734,16 +7776,29 @@
+@@ -7734,16 +7781,29 @@
          },
        },
      );
@@ -230,7 +320,7 @@
          let index = 0;
          for (
            let index2 = 0;
-@@ -7758,7 +7813,7 @@
+@@ -7758,7 +7818,7 @@
          let flag = false,
            flag2 = false;
          if (input && speakerNotesSession === null) {
@@ -239,7 +329,7 @@
              ? null
              : (0, runtime.openSpeakerNotes)();
            flag2 = value2?.kind === "opened";
-@@ -7771,7 +7826,7 @@
+@@ -7771,7 +7831,7 @@
            flag2 || navigator.userActivation?.isActive === false;
          setDockSpeakerNotes(flag);
          setFullscreenRequest(
@@ -248,7 +338,72 @@
          );
          presentingRef.current = true;
          setPresentationStartIndex(
-@@ -9857,9 +9912,9 @@
+@@ -8224,7 +8284,7 @@
+           SlidesAppJsx.jsxs(runtime.ToolbarPopover, {
+             iconOnly: true,
+             icon: "Download",
+-            label: exporting ? "Exporting…" : "Download",
++            label: exporting ? "Exporting…" : nativeProjectExportAvailable() ? nativeProjectExportLabel() : "Download",
+             tip: downloadsWithheld2
+               ? runtime.DOWNLOADS_UNAVAILABLE_MESSAGE
+               : exporting
+@@ -8242,23 +8302,24 @@
+                 ? getSlideToExport() === undefined
+                 : presentableSlides.length === 0) ||
+               exporting,
+-            children: [
++            children: SlidesAppJsx.jsxs("div", { "data-native-export-region": "", children: [
++              SlidesAppJsx.jsx("h2", { children: nativeProjectExportLabel() }),
+               SlidesAppJsx.jsx(runtime.Menu.Item, {
+                 disabled: pdfExportDisabled,
+                 disabledReason: ALL_SLIDES_SKIPPED_EXPORT_MESSAGE,
+                 onClick: () => void downloadPdf(),
+-                children: "PDF (.pdf)",
++                icon: "File", description: "Document for printing and sharing", trailing: SlidesAppJsx.jsx(runtime.Icon, { name: "Download", size: "sm" }), "aria-label": "PDF (.pdf)", children: "PDF (.pdf)",
+               }),
+               SlidesAppJsx.jsx(runtime.Menu.Item, {
+                 disabled: pdfExportDisabled,
+                 disabledReason: ALL_SLIDES_SKIPPED_EXPORT_MESSAGE,
+                 onClick: () => void downloadHtml(),
+-                children: "Web page (.html)",
++                icon: "Code", description: "Standalone web page", trailing: SlidesAppJsx.jsx(runtime.Icon, { name: "Download", size: "sm" }), "aria-label": "Web page (.html)", children: "Web page (.html)",
+               }),
+               extraExportFormats
+                 ? SlidesAppJsx.jsx(runtime.Menu.Item, {
+                     onClick: () => void downloadPng(),
+-                    children: "Current slide as an image (.png)",
++                    icon: "Image", description: "Image", trailing: SlidesAppJsx.jsx(runtime.Icon, { name: "Download", size: "sm" }), "aria-label": "Current slide as an image (.png)", children: "Current slide as an image (.png)",
+                   })
+                 : null,
+               SlidesAppJsx.jsx(runtime.Menu.Separator, {}),
+@@ -8268,21 +8329,20 @@
+                     disabled: pdfExportDisabled,
+                     disabledReason: ALL_SLIDES_SKIPPED_EXPORT_MESSAGE,
+                     onClick: () => void exportPptx("current"),
+-                    children: "PowerPoint, current fonts (.pptx)",
++                    icon: "File", description: "Keeps this deck's fonts", trailing: SlidesAppJsx.jsx(runtime.Icon, { name: "Download", size: "sm" }), "aria-label": "PowerPoint, current fonts (.pptx)", children: "PowerPoint, current fonts (.pptx)",
+                   }),
+                   SlidesAppJsx.jsx(runtime.Menu.Item, {
+                     disabled: pdfExportDisabled,
+                     disabledReason: ALL_SLIDES_SKIPPED_EXPORT_MESSAGE,
+                     onClick: () => void exportPptx("basic"),
+-                    children: "PowerPoint, basic fonts (.pptx)",
+-                  }),
+-                  SlidesAppJsx.jsx(runtime.Menu.GroupLabel, {
+-                    children: "Basic fonts work on any computer",
++                    icon: "File", description: "Basic fonts work on any computer", trailing: SlidesAppJsx.jsx(runtime.Icon, { name: "Download", size: "sm" }), "aria-label": "PowerPoint, basic fonts (.pptx)", children: "PowerPoint, basic fonts (.pptx)",
+                   }),
+                 ],
+               }),
+-            ],
++              nativeProjectExportAvailable() ? SlidesAppJsx.jsx(runtime.Menu.Item, { icon: "Folder", description: nativeWholeFolderDescription(), trailing: SlidesAppJsx.jsx(runtime.Icon, { name: "Download", size: "sm" }), onClick: () => openNativeProjectExport(true), "aria-label": nativeWholeFolderLabel(), children: nativeWholeFolderLabel() }) : null,
++            ] }),
+           }),
++          nativeProjectExportAvailable() ? SlidesAppJsx.jsx(runtime.ToolbarButton, { iconOnly: true, icon: "History", label: nativeHistoryLabel(), tip: nativeHistoryLabel(), onClick: openNativeHistory }) : null,
+           toolbarMenus,
+           SlidesAppJsx.jsx(runtime.ToolbarWhenVisible, {
+             children: SlidesAppJsx.jsx(runtime.ArtifactToolbarDivider, {}),
+@@ -9857,9 +9917,9 @@
                startIndex: presentationStartIndex,
                dockNotes: dockSpeakerNotes,
                fullscreenRequest: fullscreenRequest,
@@ -261,7 +416,7 @@
              })
            : null,
          SlidesAppJsx.jsx(runtime.LiveAnnouncer, {}),
-@@ -10506,7 +10561,8 @@
+@@ -10506,7 +10566,8 @@
      });
      isLocalEmbeddableResource = (url: string) =>
        (0, runtime.isStoredBlobReference)(url) ||
@@ -675,6 +830,21 @@
      }
      text = addOptionalGoogleFontImports(text);
      if (text3 === "") {
+--- a/packages/slides-runtime/src/ui/color-picker.ts
++++ b/packages/slides-runtime/src/ui/color-picker.ts
+@@ -1,3 +1,4 @@
++import { nativeSystemBrowserLabel, nativeSystemBrowserAvailable, openNativeSystemBrowser } from "../adapters/export-runtime";
+ /** Restored application module; prepare first, initialize in original order. */
+ import {
+   bindRuntimeValue,
+@@ -533,6 +534,7 @@
+             value: "custom",
+             children: "Custom",
+           }),
++          nativeSystemBrowserAvailable() ? jsxForUiColorPicker.jsx("button", { type:"button", className:"ml-auto rounded-md px-2 text-xs text-fg-secondary hover:bg-bg-secondary focus-visible:outline focus-visible:outline-2", onClick:openNativeSystemBrowser, children:nativeSystemBrowserLabel() }) : null,
+         ],
+       }),
+     });
 --- a/packages/slides-runtime/src/ui/interactions.ts
 +++ b/packages/slides-runtime/src/ui/interactions.ts
 @@ -1,3 +1,9 @@
@@ -783,54 +953,3 @@
    }
    function isIconName(input: unknown): input is string {
      return typeof input === "string";
---- a/packages/slides-runtime/src/boot/bootstrap.ts
-+++ b/packages/slides-runtime/src/boot/bootstrap.ts
-@@ -1,3 +1,9 @@
-+/**
-+ * [INPUT]: Original native file boot state and the editor-owned private file transport.
-+ * [OUTPUT]: Original document bootstrap with consistent ordinary and fresh snapshot reads.
-+ * [POS]: Maintained original bootstrap; no global fetch or write gate is replaced.
-+ */
-+import { nativeEditorFetch } from "../adapters/asset-address";
- /** Restored application module; prepare first, initialize in original order. */
- import type { ReactElement } from "react";
- import {
-@@ -795,7 +801,7 @@
-       (slidesWriteAccessPromise ??= (0, runtime.determineSlidesWriteAccess)());
-     filesBootPortOptions = {
-       fetchFresh: (input) =>
--        fetch(input, {
-+        nativeEditorFetch(input, {
-           cache: "no-store",
-         }),
-       onRead: (input, options, context, value) =>
---- a/packages/slides-runtime/src/comments/labels.ts
-+++ b/packages/slides-runtime/src/comments/labels.ts
-@@ -1,4 +1,8 @@
--/** Restored application module; prepare first, initialize in original order. */
-+/**
-+ * [INPUT]: Original source slide identity, selected frame/area and native comment formatting limits.
-+ * [OUTPUT]: Human labels and canonical slides/<id>.html detail prefixes for exact host source binding.
-+ * [POS]: Maintained original Slides comment metadata; labels and anchor geometry retain their upstream contract.
-+ */
- import { bindRuntimeValue, type RuntimeBindings } from "../bindings";
- import type { HostCommentLabels } from "../../../slides/src/editor/slides-host";
- import type { Frame, Slide, SlideNode, TextNode } from "../deck-contracts";
-@@ -308,7 +312,7 @@
-     anchor: CommentLabelAnchor,
-   ): string {
-     let prefix =
--      "Slide " + String(slideNumber) + slideDiagnosticIdSuffix(slide);
-+      "slides/" + slide.id + ".html: Slide " + String(slideNumber) + slideDiagnosticIdSuffix(slide);
-     if (anchor.kind === "slide") {
-       return buildCommentLabel(
-         prefix,
-@@ -482,7 +486,7 @@
-             ? callback2(area.within, input)
-             : null,
-           value3 =
--            "Area on slide " +
-+            "slides/" + slide.id + ".html: Area on slide " +
-             String(slideNumber) +
-             value +
-             (value2 !== null ? " in " + value2 : "") +

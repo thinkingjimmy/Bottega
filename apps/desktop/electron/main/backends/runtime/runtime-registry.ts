@@ -3,7 +3,7 @@
  * [OUTPUT]: Owns 60-second runtime and five-minute full checks, cancellation-preserved evidence, independent startup facts, separate candidate and scoped purpose eligibility and a read-only per-CLI account fingerprint, for any Provider id its resolver runs (a built-in or an available package Provider; an id it does not is refused by name and stores nothing): discovery bounded by the flight's own deadline, the version run on the backend's declared arguments, the list over the resolver's ids and forget for a package Provider that stopped being available.
  * [POS]: The only owner of the backends running time and discovery/auth subprocess; Chat, Section, Settings and Background tasks cannot detect CLI on their own
  * Warm installed/unsupported snapshots revalidate executable identity; discovered versions carry versionIdentity.
- * Full checks authenticate installed and unsupported versions independently; unsupported versions remain blocked for execution and quota reads.
+ * Full checks authenticate installed and unsupported versions independently; only quota-purpose launches may use a Provider with independent quota version policy.
  */
 
 import { inspectRuntimeCandidate, optionalRuntimeIdentity } from "./runtime-inspection";
@@ -22,6 +22,7 @@ import { DISABLED_CAPABILITIES, summarizeCandidateDiagnostics, executableIdentit
 export { DISABLED_CAPABILITIES } from "./availability/runtime";
 export type { BackendRuntimeSnapshot } from "./availability/runtime";
 import { providerTraits } from "../../../../shared/providers/traits";
+import { quotaVersionIndependent } from "../../../../shared/usage-limits/policy";
 import type {
   AgentRuntime,
   RuntimeConfirmation,
@@ -313,14 +314,19 @@ export class BackendRuntimeRegistry {
     return this.resolve(backend);
   }
 
+  private acceptsRuntime(backend: ProviderId, snapshot: BackendRuntimeSnapshot, purpose: "execution" | "quota"): snapshot is BackendRuntimeSnapshot & PresentSnapshot {
+    return snapshot.runtimeStatus === "installed" || purpose === "quota" && quotaVersionIndependent(backend) && snapshot.runtimeStatus === "unsupported";
+  }
+
   async resolveForSpawn(
     backend: ProviderId,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    purpose: "execution" | "quota" = "execution"
   ) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       signal?.throwIfAborted();
       const snapshot = await waitForSignal(this.resolve(backend), signal);
-      if (snapshot.runtimeStatus !== "installed") return snapshot;
+      if (!this.acceptsRuntime(backend, snapshot, purpose)) return snapshot;
       const stored = this.snapshots.get(backend);
       if (!stored?.identity) {
         this.invalidate(backend);
@@ -339,7 +345,7 @@ export class BackendRuntimeRegistry {
       }
       if (
         identity &&
-        current.snapshot.runtimeStatus === "installed" &&
+        current.snapshot.runtimeStatus === snapshot.runtimeStatus &&
         current.snapshot.runtime.executable === snapshot.runtime.executable &&
         current.snapshot.runtime.version === snapshot.runtime.version &&
         current.identity &&
@@ -361,15 +367,16 @@ export class BackendRuntimeRegistry {
   async confirmForSpawn(
     backend: ProviderId,
     expected: BackendRuntimeSnapshot,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    purpose: "execution" | "quota" = "execution"
   ) {
     signal?.throwIfAborted();
-    if (expected.runtimeStatus !== "installed") return false;
+    if (!this.acceptsRuntime(backend, expected, purpose)) return false;
     const stored = this.snapshots.get(backend);
     if (
       this.generation(backend) !== expected.generation ||
       stored?.snapshot.generation !== expected.generation ||
-      stored.snapshot.runtimeStatus !== "installed" ||
+      stored.snapshot.runtimeStatus !== expected.runtimeStatus ||
       stored.snapshot.runtime.executable !== expected.runtime.executable ||
       stored.snapshot.runtime.version !== expected.runtime.version ||
       !stored.identity
@@ -384,7 +391,7 @@ export class BackendRuntimeRegistry {
     if (
       this.generation(backend) !== expected.generation ||
       current?.snapshot.generation !== expected.generation ||
-      current.snapshot.runtimeStatus !== "installed" ||
+      current.snapshot.runtimeStatus !== expected.runtimeStatus ||
       current.snapshot.runtime.executable !== expected.runtime.executable ||
       current.snapshot.runtime.version !== expected.runtime.version ||
       !current.identity ||

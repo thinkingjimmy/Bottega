@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod and the zod-free capability leaf (provider-capabilities.ts)
- * [OUTPUT]: Provides the four-layer Provider contract: providerIdSchema, PROVIDER_CAPABILITIES/PROVIDER_PURPOSES/APPLIES_AT, homePathSchema, providerDescriptorSchema (with the optional CLI facts: instructions file, skills root, plugin mode, plan decisions; and the optional ACP launch arguments, bounded argv with no path separator) + providersDeclaring (layer 1), negotiateProviderGrammar (layer 2), measuredCapabilitySchema + currentMeasurements (layer 3), ROLE_REQUIREMENTS + admitRole + WORKFLOW_ROLES/admitWorkflowRole with typed refusals and host-enforced capabilities (layer 4), and configChangeEffect
+ * [OUTPUT]: Provides the four-layer Provider contract: providerIdSchema, PROVIDER_CAPABILITIES/PROVIDER_PURPOSES/APPLIES_AT, homePathSchema, providerDescriptorSchema (with an optional discovery version floor and optional CLI facts: instructions file, skills root, plugin mode, plan decisions; and the optional ACP launch arguments, bounded argv with no path separator) + providersDeclaring (layer 1), negotiateProviderGrammar (layer 2), measuredCapabilitySchema + currentMeasurements (layer 3), ROLE_REQUIREMENTS + admitRole + WORKFLOW_ROLES/admitWorkflowRole with typed refusals and host-enforced capabilities (layer 4), and configChangeEffect
  * [POS]: Public Provider contract shared by the host, Provider packages and later the SDK; support is proven by host measurement, never by a package's own declaration
  */
 import { z } from "zod";
@@ -36,11 +36,11 @@ export const providerDescriptorSchema = z.object({
   displayName: z.string().min(1).max(64),
   /** The range of host handshake grammar versions the provider's bridge speaks. */
   grammar: z.object({ min: z.number().int().min(1), max: z.number().int().min(1) }).strict().refine(value => value.min <= value.max, "grammar-range"),
-  /** How the host finds the CLI (commands, version arguments, minimum version), how it is launched, and which environment variables
+  /** How the host finds the CLI (commands, version arguments, optional minimum version), how it is launched, and which environment variables
       it may receive (names only; values come from the host's launch plan). */
   runtime: z.object({
     discovery: z.object({ commands: z.array(z.string().min(1).max(64)).min(1).max(8), versionArgs: z.array(z.string().min(1).max(32)).max(4),
-      minimumVersion: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/) }).strict(),
+      minimumVersion: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/).optional() }).strict(),
     /* `args`: what starts the CLI speaking ACP on stdio (e.g. `["acp"]`), passed as argv after the discovered executable, never
        through a shell. An argument cannot contain a path separator, so it cannot name a path elsewhere; a bare name is relative to the
        working directory the host sets. No control characters (U+0000–U+001F, U+007F–U+009F) and no leading `@` (a response file some CLIs read). Absent

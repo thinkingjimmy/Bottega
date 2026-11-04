@@ -6,10 +6,10 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-export type NativeRuntimeFormat = "canvas-dc/v3" | "slides/v4";
+export type NativeRuntimeFormat = "canvas-dc/v3" | "slides/v4" | "design-system/v1" | "dashboard/v1";
 type Output = { path: string; bytes: number; sha256: string; browser?: boolean };
 const current = new Map<NativeRuntimeFormat, Promise<ReadonlyMap<string, Uint8Array>>>();
-const rootFor = (format: NativeRuntimeFormat) => join(__dirname, format === "slides/v4" ? "slides-runtime" : "canvas-runtime");
+const rootFor = (format: NativeRuntimeFormat) => join(__dirname, format === "slides/v4" ? "slides-runtime" : format === "design-system/v1" ? "design-system-runtime" : format === "dashboard/v1" ? "dashboard-runtime" : "canvas-runtime");
 async function receipt(format: NativeRuntimeFormat): Promise<Output[]> {
   const value = JSON.parse(await readFile(join(rootFor(format), "build.json"), "utf8"));
   if (!Array.isArray(value.outputs) || value.outputs.length > 16) throw new Error("Native editor receipt is invalid");

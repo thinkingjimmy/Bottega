@@ -1,10 +1,11 @@
 /**
  * Native command titles feed the shared composer service controls without remounting the Chat.
- * [INPUT]: Depends on React layout measurement, ChatSessionController, window role, canonical transcript and its hydration skeleton, lib/idle-prefetch, composer, optional side panel, Gallery, and main-window Memory state
+ * [INPUT]: Depends on React layout measurement, ChatSessionController, window role, canonical transcript and its hydration skeleton, lib/idle-prefetch, selective draft image-key subscriptions, composer, optional side panel, Gallery, and main-window Memory state
  * [OUTPUT]: Native/imported Chat layout, scoped local message-file links, non-visual command execution context, shared third-column sizing and paged transcript states.
  * [POS]: The single horizontal chat layout for draft and canonical native/imported sessions
  */
 
+import { useTurnDraftSelection } from "@/lib/chat/state/turn/draft-store";
 import { useWindowRows } from "@/lib/native-transcript/use-native-transcript";
 import { conversationRows } from "@/lib/native-transcript/window";
 import {
@@ -221,7 +222,7 @@ export function ChatViewFrame({
   const windowRows = useWindowRows(conversationId);
   const conversationMessages = useMemo(() => conversationRows(windowRows, controller.transcript.messages), [windowRows, controller.transcript.messages]);
   const hasVisibleContent =
-    Boolean(controller.transcript.draft) ||
+    controller.transcript.hasDraft ||
     conversationMessages.some(
       (message) => message.notice?.kind !== "app-chat-ready" && message.notice?.kind !== "plugin-chat-ready"
     );
@@ -231,9 +232,7 @@ export function ChatViewFrame({
      startup main thread. Wait for something worth rendering; a conversation
      with stored history keeps its skeleton, which is content of a kind. */
   const mountTranscript = existingChat || hasVisibleContent;
-  const galleryDraftKey = conversationImageDraftKey(
-    controller.transcript.draft
-  );
+  const galleryDraftKey = useTurnDraftSelection(conversationId, controller.transcript.incarnationId, conversationImageDraftKey);
   const galleryDraft = useMemo(
     () => projectConversationImageDraft(galleryDraftKey),
     [galleryDraftKey]

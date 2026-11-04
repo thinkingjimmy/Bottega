@@ -1,6 +1,6 @@
 /**
  * [INPUT]: parse5 markup/source locations, entity-position mapping and CSS/JavaScript syntax scanners.
- * [OUTPUT]: Real HTML/SVG/DC-import loading ranges (including multiple literal from/import targets) and distinct local navigation ranges.
+ * [OUTPUT]: Exact fixed JavaScript/CSS data-resource inlining and real HTML/SVG/DC-import loading ranges (including multiple literal from/import targets) and distinct local navigation ranges.
  * [POS]: Markup dependency analysis; comments/prose/script literals never become markup references.
  */
 import { parse, parseFragment, type DefaultTreeAdapterMap } from "parse5";
@@ -75,4 +75,23 @@ export function htmlReferences(text: string): DesignReference[] {
     }
   }
   return result;
+}
+
+export function inlineDesignTextResources(html: string) {
+  const queue: DefaultTreeAdapterMap["node"][] = [parse(html, { sourceCodeLocationInfo: true })];
+  const replacements: { start: number; end: number; value: string }[] = [];
+  for (let index = 0; index < queue.length; index++) {
+    const node = queue[index]!; if ("childNodes" in node) queue.push(...node.childNodes); if ("content" in node) queue.push(node.content);
+    if (!("tagName" in node) || !node.sourceCodeLocation) continue;
+    const script = node.tagName === "script", style = node.tagName === "link" && node.attrs.some(attr => attr.name === "rel" && attr.value.toLowerCase() === "stylesheet");
+    if (!script && !style) continue;
+    const url = node.attrs.find(attr => attr.name === (script ? "src" : "href"))?.value;
+    const match = url && /^data:(?:text\/javascript|application\/javascript|text\/css);base64,([A-Za-z0-9+/]*={0,2})$/.exec(url);
+    if (!match) continue;
+    const bytes = Buffer.from(match[1]!, "base64"); if (bytes.toString("base64") !== match[1] || bytes.length > 32 * 1024 * 1024) throw new Error("An inline resource exceeds its exact byte budget");
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes), kind = script ? "script" : "style", type = script && node.attrs.some(attr => attr.name === "type" && attr.value === "module") ? ' type="module"' : "";
+    replacements.push({ start: node.sourceCodeLocation.startOffset, end: node.sourceCodeLocation.endOffset, value: `<${kind}${type}>${text.replace(new RegExp("</" + kind, "gi"), "<\\/" + kind)}</${kind}>` });
+  }
+  let result = html; for (const replacement of replacements.sort((a, b) => b.start - a.start)) result = result.slice(0, replacement.start) + replacement.value + result.slice(replacement.end);
+  if (Buffer.byteLength(result) > 50_000_000) throw new Error("The prepared inline page exceeds its complete render budget"); return result;
 }

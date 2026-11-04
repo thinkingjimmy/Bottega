@@ -16,6 +16,7 @@ export const uiTextZhCn = {
   resizeSidebarHint: "拖动调整侧栏宽度",
   attachment: "附件",
   previewAttachment: "预览附件",
+  removeDesignReference: "移除引用",
   removeAttachment: "移除附件",
   stop: "停止",
   submit: "发送",

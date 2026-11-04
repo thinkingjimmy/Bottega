@@ -1,23 +1,26 @@
 /**
  * [INPUT]: A current design revision and one explicitly selected immutable system revision.
- * [OUTPUT]: Fixed legacy/native version bindings, deterministic original palettes/resources, exact runtime validation and syntax-position native section or HTML style updates.
+ * [OUTPUT]: Fixed current native version bindings, deterministic original palettes/resources, exact runtime validation and syntax-position native section or HTML style updates.
  * [POS]: System consumption through the existing edit journal; later system updates cannot change this copy.
  */
+import { packArtifactArchive } from "@ai-chat/cloud-protocol/artifacts/archive";
 import { nativeSystemProjection } from "./native/projection";
 import { nativeSystemIndex, nativeSystemSection } from "./native/apply";
 import { posix } from "node:path";
 import { parse, type DefaultTreeAdapterMap } from "parse5";
 import type { WorkspaceCommand } from "@ai-chat/cloud-protocol/artifacts/design/model";
-import { projectNativeManifest } from "@ai-chat/cloud-protocol/artifacts/design/native/source";
+import { readDesignManifest } from "@ai-chat/cloud-protocol/artifacts/design/core/source";
 import { nativeEditorAssets } from "../../artifacts/render/native/assets";
 import { designResourceReferences, designResourceTarget } from "../documents/resources/references";
 import { readDesignSystem } from "./validation";
 import { systemBindingSchema } from "@ai-chat/cloud-protocol/artifacts/design/model";
 import { designDocuments } from "../documents/runtime";
 import type { DesignRevision } from "../documents/store";
-import { DesignDocumentError, sourcePath, manifestSchema, designDigest, type DesignReadSet, type DesignAuthority, type DesignIssue } from "../documents/model";
+import { DesignDocumentError, sourcePath, designDigest, type DesignReadSet, type DesignAuthority, type DesignIssue } from "../documents/model";
 import { validateDesignSystem } from "./validation";
 import { transformedDesignSet } from "../documents/edits";
+import { requireValidDesignSet } from "../documents/resources/validation";
+import { readPortableSystem } from "../projects/portable";
 
 function stylesheetLink(source: string, systemId: string, href: string) {
   const ast = parse(source, { sourceCodeLocationInfo: true }), removals: { start: number; end: number }[] = [];
@@ -50,8 +53,11 @@ export async function bindDesignSystem(input: WorkspaceCommand, version: DesignR
   const issues = validateDesignSystem(transformedDesignSet(snapshot.version.path, snapshot.files));
   if (issues.length) throw new DesignDocumentError("INVALID_DOCUMENT", "Selected system has invalid captured resources", issues);
   const prefix = `systems/${input.systemId}/`, files = new Map(source.files.map(file => [file.path, file.data]));
-  const projection = version.manifest.contentFormat ? await nativeSystemProjection(snapshot, version.manifest.contentFormat) : undefined;
-  const closure = projection ? [...projection.closure, ...projection.derived] : snapshot.files.filter(file => file.path !== "canvas.json" && file.path !== "overview.html").map(file => ({ path: prefix + file.path, data: file.data }));
+  if (version.manifest.contentFormat !== "canvas-dc/v3" && version.manifest.contentFormat !== "slides/v4") throw new DesignDocumentError("INVALID_DOCUMENT", "Bind a current native design");
+  const projection = await nativeSystemProjection(snapshot, version.manifest.contentFormat);
+  const copiedSource = packArtifactArchive(snapshot.files, 512), copiedPath = prefix + "source.tar";
+  if (designDigest(copiedSource) !== snapshot.version.snapshotRef) throw new DesignDocumentError("INVALID_DOCUMENT", "The fixed System source copy changed");
+  const closure = [...projection.closure, ...projection.derived, { path: copiedPath, data: copiedSource }];
   const prior = new Set(version.manifest.systems?.find(binding => binding.documentId === input.systemId)?.files);
   for (const file of closure) {
     sourcePath.parse(file.path);
@@ -60,7 +66,7 @@ export async function bindDesignSystem(input: WorkspaceCommand, version: DesignR
     files.set(file.path, Buffer.from(file.data));
   }
   const binding = systemBindingSchema.parse({ documentId: input.systemId, revision: input.targetRevision, snapshotRef: snapshot.version.snapshotRef,
-    files: closure.map(file => file.path) });
+    files: closure.map(file => file.path), copy: { path: copiedPath, digest: snapshot.version.snapshotRef } });
   const manifest = { ...version.manifest, systems: [...(version.manifest.systems ?? []).filter(value => value.documentId !== input.systemId), binding] };
   for (const board of manifest.boards) {
     const bytes = files.get(board.file); if (!bytes) throw new DesignDocumentError("INVALID_DOCUMENT", "Consumer board is missing");
@@ -69,28 +75,30 @@ export async function bindDesignSystem(input: WorkspaceCommand, version: DesignR
     files.set(board.file, Buffer.from(projection?.conversion.target === "slides/v4" ? nativeSystemSection(text, projection) : stylesheetLink(text, input.systemId, href)));
   }
   const index = version.manifest.contentFormat === "slides/v4" ? "deck.json" : "canvas.json";
-  const raw = projection ? JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(files.get(index)!)) : null;
-  files.set(index, Buffer.from(JSON.stringify(raw ? { ...nativeSystemIndex(raw, projection!), bottegaSystems: manifest.systems } : manifest, null, 2) + "\n"));
+  const raw = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(files.get(index)!));
+  files.set(index, Buffer.from(JSON.stringify({ ...nativeSystemIndex(raw, projection, new Date().toISOString()), bottegaSystems: manifest.systems }, null, 2) + "\n"));
   return [...files].map(([path, data]) => ({ path, data }));
 }
-export async function validateSystemBindings(readSet: DesignReadSet, authority: DesignAuthority): Promise<DesignIssue[]> {
+export async function validateSystemBindings(readSet: DesignReadSet, authority?: DesignAuthority): Promise<DesignIssue[]> {
   const issues: DesignIssue[] = [];
   const index = readSet.files.some(file => file.path === "deck.json") ? "deck.json" : "canvas.json";
   const issue = (message: string) => { if (issues.length < 32) issues.push({ file: index, message: message.slice(0, 500) }); };
   const bytes = readSet.files.find(file => file.path === index)?.data;
   if (!bytes) return issues;
   let manifest;
-  try { manifest = projectNativeManifest(readSet.files, readSet.path.split("/")[1]!) ?? manifestSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))); }
+  try { manifest = readDesignManifest(readSet.files, readSet.path.split("/")[1]!); }
   catch { return issues; }
   if (!manifest.systems?.length) return issues;
-  const seen = new Set<string>(), documents = designDocuments();
+  const seen = new Set<string>();
   for (const binding of manifest.systems ?? []) {
     if (seen.has(binding.documentId)) { issue(`Duplicate system binding: ${binding.documentId}`); continue; } seen.add(binding.documentId);
     try {
-      const snapshot = await documents.readRevision(authority.chatId, authority.incarnationId, binding.documentId, binding.revision);
-      if (JSON.stringify(snapshot.version.authority) !== JSON.stringify(authority) || snapshot.version.manifest.format !== "bottega-design-system" || snapshot.version.snapshotRef !== binding.snapshotRef) {
+      if (!binding.copy && !authority) throw new Error("A portable project cannot require its original Chat");
+      const snapshot = binding.copy ? readPortableSystem(readSet.files, binding) : await designDocuments().readRevision(authority!.chatId, authority!.incarnationId, binding.documentId, binding.revision);
+      if (!binding.copy && (!("authority" in snapshot.version) || JSON.stringify(snapshot.version.authority) !== JSON.stringify(authority)) || snapshot.version.manifest.format !== "bottega-design-system" || snapshot.version.snapshotRef !== binding.snapshotRef) {
         issue(`System binding does not identify an authorized exact revision: ${binding.documentId}`); continue;
       }
+      if (binding.copy) await requireValidDesignSet(transformedDesignSet("design-systems/" + binding.documentId, snapshot.files));
       if (manifest.contentFormat === "canvas-dc/v3") {
         const system = readDesignSystem(snapshot.files, snapshot.version.manifest).system;
         if (!system) { issue("Fixed system metadata is invalid"); continue; }
@@ -106,10 +114,10 @@ export async function validateSystemBindings(readSet: DesignReadSet, authority: 
           }
         }
       }
-      const prefix = `systems/${binding.documentId}/`;
-      const projection = manifest.contentFormat ? await nativeSystemProjection(snapshot, manifest.contentFormat) : undefined;
-      const closure = projection ? [...projection.closure, ...projection.derived] : snapshot.files.filter(file => file.path !== "canvas.json" && file.path !== "overview.html").map(file => ({ path: prefix + file.path, data: file.data }));
-      const expected = closure.map(file => file.path).sort();
+      if (manifest.contentFormat !== "canvas-dc/v3" && manifest.contentFormat !== "slides/v4") { issue("Only current native designs can bind a system"); continue; }
+      const projection = await nativeSystemProjection(snapshot, manifest.contentFormat);
+      const closure = [...projection.closure, ...projection.derived];
+      const expected = [...closure.map(file => file.path), ...(binding.copy ? [binding.copy.path] : [])].sort();
       if (new Set(binding.files).size !== binding.files.length || JSON.stringify([...binding.files].sort()) !== JSON.stringify(expected)) {
         issue(`Fixed system closure is incomplete or contains unrelated paths: ${binding.documentId}`); continue;
       }

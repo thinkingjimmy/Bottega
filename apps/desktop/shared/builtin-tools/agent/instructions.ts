@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on the final allowedTools issued for the turn
- * [OUTPUT]: Provides ProductContextFragments and productContextFragments: Base/Chart/Preview product-context text selected by the issued allowedTools
+ * [OUTPUT]: Provides ProductContextFragments and productContextFragments: compact Base/Chart/Preview and independent dataviz guidance within the unchanged fixed-context budget, selected only by issued allowedTools
  * [POS]: apps/desktop/shared/builtin-tools/agent; Cross-tool product-context truth of builtin-tools; it describes issued capability only and never edits prompts
  */
 
@@ -27,16 +27,16 @@ const CHART_READ_TOOLS = [
 ] as const;
 
 const BASE_WRITE_CONTEXT =
-  "[Base] Base 工具作用于当前 chat 可写的 Base：自有 Base 优先，否则是所属 Project 的共享 Base；带 target 参数时作用于本轮已附加 App 的 Base。用户要建表格/记账/清单时优先用 Base 工具，不要另建电子表格文件。";
+  "[Base] Use this chat's writable Base: owned first, else Project-shared. target selects an App Base attached this turn. Use Base tools for tables/bookkeeping/lists; do not create spreadsheet files.";
 
 const BASE_READ_CONTEXT =
   "[Base] Base 读工具作用于当前 chat 可见的 Base：自有优先、Project 共享回退；本轮为只读，不要承诺写入或建表。";
 
 const CHART_CONTEXT =
-  "[Chart] 需要在回复正文画图时，输出紧凑 ```chart JSON 围栏：{type:'pie|bar|line|stacked-bar|scatter|radar|heatmap',title?,labels:string[],series:[{name?,data:(number|null)[]}]}。单图≤12KB、每条回复≤2图；只画聚合结果，不塞原始行。";
+  "[Chart] For reply charts, use compact ```chart JSON fences: {type:'pie|bar|line|stacked-bar|scatter|radar|heatmap',title?,labels:string[],series:[{name?,data:(number|null)[]}]} <=12KB/chart, <=2/reply; aggregates only, no raw rows.";
 
 const CHART_VIEW_CONTEXT =
-  "要“持续随 Base 数据更新”的图表请改用 base_set_view 建 chart 视图。";
+  " Use base_set_view for chart views that follow Base data.";
 
 export type ProductContextFragments = Readonly<{
   base?: string;
@@ -63,11 +63,12 @@ export function productContextFragments(
       : readable
         ? { base: BASE_READ_CONTEXT }
         : {}),
-    ...(chartReadable
+    ...(chartReadable || allowed.has("validate_palette")
       ? {
-          chart: `${CHART_CONTEXT}${
-            allowed.has("base_set_view") ? CHART_VIEW_CONTEXT : ""
-          }`,
+          chart: [
+            ...(chartReadable ? [`${CHART_CONTEXT}${allowed.has("base_set_view") ? CHART_VIEW_CONTEXT : ""}`] : []),
+            ...(allowed.has("validate_palette") ? ["[Dataviz] Load the dataviz Skill before chart code, colors or Dashboard layout. Run validate_palette on actual palette, surface and mode. Keep WARN; this does not verify data, layout or interaction."] : []),
+          ].join(" "),
         }
       : {}),
   };

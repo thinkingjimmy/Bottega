@@ -1,6 +1,6 @@
 /**
  * [INPUT]: One-use capability, exact fixed design-view identity, pure snapshot preparation and host-observed activation.
- * [OUTPUT]: One-use fixed native editor entry with its unchanged restrictive policy, opaque authored frames, fixed navigation and authenticated selection/hover/camera/key relay and transient display commands without source authority.
+ * [OUTPUT]: One-use native editor entry, opaque ordinary/system frames, authenticated system readiness/navigation and ordinary theme/follow-up events.
  * [POS]: Credential-free trusted artifact wrapper, started by main.ts on artifact hosts; untrusted content has no hosting-origin or Service Worker authority.
  */
 import { artifactFenceSchema, artifactRelativePathSchema } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
@@ -56,11 +56,12 @@ export function startArtifact() {
         if (!feedback) { feedback = document.createElement("p"); feedback.id = "artifact-follow-up-status"; feedback.setAttribute("role", "status"); feedback.style.cssText = "position:fixed;bottom:0;left:0;right:0;padding:12px;background:white;color:black"; document.body.append(feedback); }
         feedback.textContent = message.data.ok ? "" : String(message.data.message ?? "").slice(0, 250); return;
       }
-      if (message.source === host && message.origin === __ARTIFACT_PARENT_ORIGIN__ && ["bottega:artifact:theme", "bottega:design:select", "bottega:design:targets", "bottega:design:tool", "bottega:design:display", "bottega:design:editor"].includes(message.data?.type)) {
+      if (message.source === host && message.origin === __ARTIFACT_PARENT_ORIGIN__ && message.data?.type === "bottega:artifact:theme") {
         frame.contentWindow?.postMessage(message.data, "*"); return;
       }
       if (message.source !== frame.contentWindow || message.origin !== "null") return;
-      if (design && ["bottega:design:anchor", "bottega:design:navigate", "bottega:design:escape", "bottega:design:geometry", "bottega:design:hover", "bottega:design:gesture", "bottega:design:key", "bottega:design:text"].includes(message.data?.type) && message.data?.id === design.id && message.data?.nonce === design.nonce && message.data?.generation === design.generation && (message.data.type === "bottega:design:navigate" || message.data.boardId === design.boardId && message.data.boardDigest === design.boardDigest)) {
+      if (design && ["bottega:design:navigate", "bottega:design:geometry"].includes(message.data?.type) && message.data?.id === design.id && message.data?.nonce === design.nonce && message.data?.generation === design.generation && message.data.boardId === design.boardId && message.data.boardDigest === design.boardDigest &&
+        (message.data.type !== "bottega:design:navigate" || Object.values(design.navigation ?? {}).includes(message.data.targetBoardId))) {
         host.postMessage(message.data, __ARTIFACT_PARENT_ORIGIN__); return;
       }
       if (message.data?.type === "bottega:artifact:follow-up") {

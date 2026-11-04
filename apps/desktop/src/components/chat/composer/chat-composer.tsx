@@ -3,6 +3,7 @@
  * [OUTPUT]: Native rich submission, model and permission edits for later submissions during an active turn, Agent-menu availability recovery without a duplicate status/manage/recheck strip, preserved drafts and image warnings, queued Plan/authentication retry, prepare-failure recovery, Sketch and account-owned remote draft execution.
  * [POS]: Chat command surface; candidate projection is read-only while drafts, attachments, and Gallery custody remain in the per-Chat store
  */
+import { useArtifactHost } from "@ai-chat/chat-ui/artifacts";
 import { builtinProviderPermissionModel } from "@bottega/contracts/model/provider-capabilities";
 import { ChatAddMenu } from "./input/add-menu";
 
@@ -96,6 +97,8 @@ function ChatComposerContent({
   collapseWhenIdle?: boolean;
   managedWorktree?: boolean;
 }) {
+  const artifactHost = useArtifactHost();
+  const [referenceFailure, setReferenceFailure] = useState("");
   const controller = execution.controller;
   const { t, i18n } = useAppTranslation();
   const inputRef = useRef<RichInputHandle>(null);
@@ -534,6 +537,7 @@ function ChatComposerContent({
           </TooltipTrigger><TooltipContent className="max-w-72">{t("agentAvailability.retryExplanation")}</TooltipContent></Tooltip>}
           {showAuthenticationRetry && controller.queueHolds && <span data-finish-queued-first="">{t("chat.queue.finishQueuedFirst")}</span>}
         </div>}
+        {referenceFailure && <p role="alert" className="px-3 pt-2 text-xs text-destructive">{referenceFailure}</p>}
         <PromptInputBody {...providerWarmup}>
           <PromptInputAttachments attachmentAction={sketch.attachmentAction} />
           <RichInput
@@ -547,6 +551,7 @@ function ChatComposerContent({
                 ? t("chat.composer.surface.previewMarkdown")
                 : undefined
             }
+            onDesignClick={artifactHost ? node => { void import("@ai-chat/chat-ui/artifact-reference").then(module => module.openDesignReference(artifactHost, node.reference)).catch(error => { void import("@ai-chat/chat-ui/artifact-reference").then(module => setReferenceFailure(module.referenceFailureCopy(i18n.language))); console.warn("[artifact-reference]", error); }); } : undefined}
             onChange={controller.setRichValue}
             onFileClick={
               enableSidePanel
@@ -600,7 +605,7 @@ function ChatComposerContent({
           <PromptInputTools>
             {/* 菜单里只有 Files 与 Plan：两者都不可得时不给入口。点开一个只剩
                 灰字的加号，说的是「你可以」，而事实是不能——空菜单比没有菜单更贵。 */}
-            {(controller.imageInputAvailable || controller.planSupported) && (
+            {(controller.imageInputAvailable || controller.planSupported || artifactHost?.importProject) && (
               <ChatAddMenu
                 controller={controller}
                 disabled={editingDisabled}

@@ -17,7 +17,7 @@ const freeze = <T extends object>(value: T): Readonly<T> => {
 };
 export async function createNativeExportPlan(input: WorkspaceCommand, snapshot: NativeExportSnapshot, choices: unknown) {
   const { version } = snapshot, format = version.manifest.contentFormat;
-  if (!format) throw new DesignDocumentError("INVALID_DOCUMENT", "Choose an original native Canvas or Slides document");
+  if (format !== "canvas-dc/v3" && format !== "slides/v4") throw new DesignDocumentError("INVALID_DOCUMENT", "Choose an original native Canvas or Slides document");
   if (Boolean(input.candidateId) !== Boolean(input.candidateDigest)) throw new Error("Native export needs the complete sealed candidate identity");
   if (input.candidateDigest && input.candidateDigest !== version.snapshotRef) throw new Error("The export belongs to another sealed candidate");
   const options = normalizeNativeExportOptions(choices, { contentFormat: format, pages: version.manifest.boards.map(board => board.id), launchPage: version.manifest.launchBoard });

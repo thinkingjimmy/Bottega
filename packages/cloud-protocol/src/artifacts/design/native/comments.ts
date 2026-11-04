@@ -15,6 +15,7 @@ export const nativeComposeSchema = z.object({ requestId: z.string().uuid(), anch
 export const nativeThreadSchema = z.object({ id, anchor: z.string().min(1).max(2048), label: z.string().max(1000), detail: z.string().max(4000).optional(),
   location: z.record(z.string().max(128), z.unknown()), status: z.enum(["open", "resolved"]), createdAt: time, updatedAt: time,
   messages: z.array(message).max(64).refine(values => new Set(values.map(row => row.id)).size === values.length), resolvedAt: time.optional(),
+  result: z.object({ requestId: id, messageId: id, revision: z.number().int().positive(), summary: z.string().max(1000), at: time }).strict().optional(),
   agent: z.object({ status: z.enum(["pending", "delivered", "replied"]), sentAt: time, deliveredAt: time.optional(), repliedAt: time.optional(), via: z.string().max(128).optional() }).strict().optional(),
 }).strict();
 export const nativeCommentsSchema = z.object({ version: z.literal(1), threads: z.array(nativeThreadSchema).max(200) }).strict()
@@ -22,10 +23,11 @@ export const nativeCommentsSchema = z.object({ version: z.literal(1), threads: z
     "Native comments repeat an identity or exceed their byte budget");
 export type NativeComments = z.infer<typeof nativeCommentsSchema>;
 export type NativeCompose = z.infer<typeof nativeComposeSchema>;
-export const nativeCommentSaveSchema = z.object({ requestId: z.string().uuid(), kind: z.enum(["create", "reply", "resolve", "reopen"]),
+export const nativeCommentSaveSchema = z.object({ requestId: z.string().uuid(), kind: z.enum(["create", "reply", "resolve", "reopen", "edit", "delete"]),
   at: z.number().int().nonnegative(), threadId: id, beforeDigest: digestSchema, digest: digestSchema }).strict();
 export type NativeCommentSave = z.infer<typeof nativeCommentSaveSchema>;
 export const nativeInputSchema = z.object({ instruction: z.string().max(4096).default(""), compose: nativeComposeSchema.optional(),
+  handoff: z.object({ commentId: id }).strict().optional(), edit: z.object({ threadId: id, text: z.string().max(10000) }).strict().optional(),
   reply: z.object({ threadId: id, text: z.string().max(10000) }).strict().optional(), pending: z.string().max(8192).optional(), commentSave: nativeCommentSaveSchema.optional() }).strict();
 export type NativeInput = z.infer<typeof nativeInputSchema>;
 export function readNativeComments(files: readonly { path: string; data: Uint8Array }[]): NativeComments {

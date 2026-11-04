@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on electron-vite, Vite React/Tailwind plugins, esbuild, Node paths, Rollup diagnostics, cloud assembly configuration and the native Keychain/maintained Canvas build plugins
  * [OUTPUT]: Provides the fixed production desktop assembly, out entry selection, CSP, renderer module reports, and utility workers.
- * [POS]: Electron build entry coordinating main/preload rebuilds, process restarts, and renderer output
+ * [POS]: Electron build entry coordinating main/preload rebuilds, process restarts, and renderer output and module code-highlighting workers
  */
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -90,6 +90,7 @@ const RUNTIME_ENTRY_SOURCES: Record<NodeEntry, string> = {
     "app-gui-compiler": "electron/main/workers/app-gui-compiler-entry.ts",
     "process-watchdog": "electron/main/runtime/programs/watchdog-entry.ts",
     "repair-supervisor": "electron/main/runtime/programs/repair-supervisor-entry.ts",
+    "palette-validator": "electron/main/skills/dataviz/entry.ts",
 };
 /* A private (non-production) main input marked here is taken out of the Rollup graph and built like a runtime entry: one file a plain
    Node can run from the unpacked tree, outside the product catalog and its digests (TASK-35 slice 6). */
@@ -158,6 +159,20 @@ function runtimeEntries(): Plugin {
                 this.emitFile({ type: "asset", fileName: file, source: code });
                 return code;
             };
+            // The compiled evaluator and its reported identity must come from the same verified source bytes.
+            const paletteRoot = resolve(__dirname, "resources/skills/dataviz");
+            const paletteProvenance = resolve(paletteRoot, "provenance.json");
+            this.addWatchFile(paletteProvenance);
+            const paletteFiles = JSON.parse(readFileSync(paletteProvenance, "utf8")).files as Array<{
+                target: string;
+                sha256: string;
+            }>;
+            for (const input of paletteFiles) {
+                const path = resolve(paletteRoot, input.target);
+                if (!path.startsWith(paletteRoot + sep) || sha256(readFileSync(path)) !== input.sha256)
+                    this.error(`Dataviz resource identity mismatch: ${input.target}`);
+                this.addWatchFile(path);
+            }
             const entries: Record<string, {
                 file: string;
                 sha256: string;
@@ -320,6 +335,7 @@ export default defineConfig({
         },
     },
     renderer: {
+        worker: { format: "es" },
         define: { ...cloudDefines, __BOTTEGA_WORKBENCH_UI__: JSON.stringify(workbenchUi) },
         esbuild: ESBUILD,
         root: "src",

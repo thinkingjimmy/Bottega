@@ -62,6 +62,7 @@ export function useNativeCommentSave({ send, subscribe, recovery, read, confirme
         const input = recovery.current.current;
         if (input.commentSave?.requestId === requestId) await recovery.update({ ...input, commentSave: undefined,
           ...(intent.kind === "create" && "c_" + input.compose?.requestId === intent.threadId ? { compose: undefined } : {}),
+          ...(intent.kind === "edit" && input.edit?.threadId === intent.threadId ? { edit: undefined } : {}),
           ...(intent.kind === "reply" && input.reply?.threadId === intent.threadId ? { reply: undefined } : {}) });
       } catch (cause) { setFailed(true); throw cause; } finally { active.current = undefined; writing.current = false; setSaving(false); }
     });

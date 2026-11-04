@@ -7,7 +7,7 @@ import { z } from "zod";
 import { digestSchema, sourcePath } from "../model";
 
 export const systemName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/);
-export const tokenKindSchema = z.enum(["color", "font-family", "font-size", "line-height", "font-weight", "letter-spacing", "spacing", "radius", "shadow"]);
+export const tokenKindSchema = z.enum(["color", "font-family", "font-size", "line-height", "font-weight", "letter-spacing", "font-style", "font-optical-size", "spacing", "radius", "shadow"]);
 export const systemThemeSchema = z.object({ id: systemName.max(32), name: z.string().min(1).max(80) }).strict();
 export const systemTokenSchema = z.object({ name: systemName, kind: tokenKindSchema,
   values: z.record(systemName.max(32), z.string().min(1).max(1000)), usage: z.string().max(1000),
@@ -19,8 +19,12 @@ export const systemAliasSchema = z.object({ name: systemName, target: systemName
 export const systemFontSchema = z.object({ family: z.string().min(1).max(200), file: sourcePath, sourceId: systemName,
   definitionSourceId: systemName, sourceKey: z.string().min(1).max(240),
   weight: z.string().max(40), style: z.enum(["normal", "italic", "oblique"]) }).strict();
+export const systemTypeProperties = { fontSize: "font-size", lineHeight: "line-height", fontWeight: "font-weight", letterSpacing: "letter-spacing", fontStyle: "font-style", opticalSize: "font-optical-size" } as const;
+const typeReferences = z.object({ fontSize: systemName.optional(), lineHeight: systemName.optional(), fontWeight: systemName.optional(), letterSpacing: systemName.optional(), fontStyle: systemName.optional(), opticalSize: systemName.optional() }).strict();
+export const systemTypographySchema = z.object({ groups: z.array(z.object({ name: z.string().min(1).max(120), family: systemName.or(z.literal("")), note: z.string().max(1000),
+  styles: z.array(z.object({ name: systemName, family: systemName.or(z.literal("")), usage: z.string().max(1000), sample: z.string().max(200), tokens: typeReferences }).strict()).max(80) }).strict()).max(12) }).strict();
 export const systemTokensSchema = z.object({ schemaVersion: z.literal(1), themes: z.array(systemThemeSchema).min(1).max(8),
-  tokens: z.array(systemTokenSchema).max(512), fonts: z.array(systemFontSchema).max(32) }).strict();
+  tokens: z.array(systemTokenSchema).max(512), typography: systemTypographySchema.optional(), fonts: z.array(systemFontSchema).max(32) }).strict();
 export const systemAliasesSchema = z.object({ schemaVersion: z.literal(1), aliases: z.array(systemAliasSchema).max(512) }).strict();
 export const systemSourceSchema = z.object({ id: systemName, path: sourcePath, capturedPath: sourcePath, digest: digestSchema,
   bytes: z.number().int().nonnegative().max(24 * 1024 * 1024),

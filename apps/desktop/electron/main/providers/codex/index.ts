@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Uses validated native CLI discovery, bb-native-v1 launch policy, the pinned Provider bridge and model/auth/quota controls and the pinned official installer target.
- * [OUTPUT]: Exports codexBackend with exact-version native Chat, readiness, model options, quota and strict-role admission. Declares the separate isolated native candidate capability and explicit candidate factory; ordinary Chat refuses that purpose.
+ * [INPUT]: Uses native CLI discovery, bb-native-v1 RPC/policy admission, the pinned Provider bridge, model/auth/quota controls and the recommended installer reference.
+ * [OUTPUT]: Exports codexBackend with version-independent ordinary Chat, native RPC/policy admission, models, quota, optional updates and separate qualified native title/candidate factories; ordinary Chat refuses isolated roles.
  * [POS]: Codex composition boundary; all subprocesses retain main authorization and custody.
  */
 
@@ -85,7 +85,6 @@ const capabilities: Omit<
 export const codexBackend: BackendDescriptor = {
   id: "codex",
   displayName: "Codex",
-  minimumVersion: SUPPORTED_CODEX_VERSION,
   workspaceDirName: "codex-workspace",
   sessionCapabilityPolicy: SESSION_CAPABILITY_POLICY.codex,
   quota: codexQuota,
@@ -93,15 +92,10 @@ export const codexBackend: BackendDescriptor = {
   detectRuntime: findCodexRuntime,
   // Version probes and execution use the same normalized state root.
   versionEnvironment: codexEnvironment,
-  validateRuntime: (runtime) =>
-    runtime.version.replace(/^codex-cli\s+/, "") === SUPPORTED_CODEX_VERSION
-      ? { status: "installed" }
-      : {
-          status: "unsupported",
-          reason: `This native integration supports Codex CLI ${SUPPORTED_CODEX_VERSION} only. Recheck after installing that version.`,
-        },
+  validateRuntime: () => ({ status: "installed" }),
   capabilitiesFor: (runtime) => ({
     ...capabilities,
+    candidateEditing: runtime.version.replace(/^codex-cli\s+/, "") === SUPPORTED_CODEX_VERSION ? capabilities.candidateEditing : undefined,
     builtinTools: builtinToolsForVersion("codex", runtime.version),
   }),
   classifyFailure: cause => nativeFailure(cause),
@@ -119,11 +113,20 @@ export const codexBackend: BackendDescriptor = {
   },
   createTurn: (options) => {
     if (options.artifactCandidate) throw new Error("An isolated candidate must use its candidate factory");
+    if (options.titleOnly) throw new Error("A native title must use its title factory");
     assertCodexOptions(options.payload.turnOptions);
     return new BridgedTurn(options, {
       protocol: "codex-app-server",
       env: codexEnvironment(options.runtime),
       prepare: async () => (await import("./native/policy/launch")).nativeCodexTurnPlan(options),
+    }, requireProviderBridge());
+  },
+  createTitleTurn: (options) => {
+    if (!options.titleOnly) throw new Error("Title execution requires its independent purpose");
+    assertCodexOptions(options.payload.turnOptions);
+    return new BridgedTurn(options, {
+      protocol: "codex-app-server", env: codexEnvironment(options.runtime),
+      prepare: async () => (await import("./native/policy/isolated/title-plan")).nativeTitleTurnPlan(options),
     }, requireProviderBridge());
   },
   createCandidateTurn: (options) => {
@@ -146,7 +149,6 @@ export const codexBackend: BackendDescriptor = {
   },
   setup: {
     latestVersion: async () => SUPPORTED_CODEX_VERSION,
-    updatePolicy: "exact",
     updateCommand: { command: "/bin/sh", args: ["-c", `curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh -s -- --release ${SUPPORTED_CODEX_VERSION}`] },
     commands: {
       install: {

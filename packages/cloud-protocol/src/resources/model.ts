@@ -7,6 +7,8 @@
  */
 import { appDisableImpactSchema, setAppEnabledInputSchema } from "../apps/build-status/enablement";
 import { z } from "zod";
+import { designReferenceSchema } from "../artifacts/design/reference/model";
+import { nativeHistoryResultSchema } from "../artifacts/design/history/model";
 import { PROJECT_GIT_REFUSALS, projectGitListSchema, projectGitCheckoutSchema, projectGitCreateSchema, projectGitPageSchema } from "./project-git";
 import { digest, id, version } from "../encryption/domains/scalars";
 import { PLAINTEXT_LIMITS } from "../encryption/limits";
@@ -19,7 +21,7 @@ import { pluginInstallSourceSchema, pluginInstallReceiptSchema } from "./plugin-
 import { pluginRecordReadSchema, pluginRecordReportSchema, pluginRecordResultsSchema, pluginRecordPageSchema } from "./plugin-records";
 import { artifactFenceSchema } from "../turns/text/artifact-reference";
 import { nativeRemoteInputSchema, nativeRemoteResultSchema } from "./artifact/native";
-import { artifactStatusInput, artifactHistoryInput, artifactOperationInput, artifactRemoteInput, artifactStatusSchema, artifactOperationSchema, artifactExportSchema, artifactHistorySchema, artifactDifferenceSchema, artifactCanvasTargetSchema, artifactCancellationSchema } from "./artifact/model";
+import { artifactStatusInput, artifactHistoryInput, artifactOperationInput, artifactRemoteInput, artifactStatusSchema, artifactOperationSchema, artifactExportSchema, artifactHistorySchema, artifactDifferenceSchema, artifactCancellationSchema } from "./artifact/model";
 
 const packet = (plaintextBytes: number) => { const envelopeBytes = Math.ceil(plaintextBytes * 4 / 3) + 8_192; return { envelopeBytes, packetChars: Math.ceil(envelopeBytes * 4 / 3) }; };
 const command = packet(PLAINTEXT_LIMITS[10]), result = packet(PLAINTEXT_LIMITS[11]);
@@ -116,11 +118,10 @@ export const resourceResultBodySchema = z.union([
     pluginInstall: pluginInstallReceiptSchema.optional(),
     pluginRecord: pluginRecordPageSchema.optional(),
     artifactRecovery: z.object({ fence: artifactFenceSchema.nullable() }).strict().optional(),
-    artifactNative: nativeRemoteResultSchema.optional(),
+    artifactNative: nativeRemoteResultSchema.optional(), artifactNativeHistory: nativeHistoryResultSchema.optional(), artifactNativeReference: designReferenceSchema.optional(),
     artifactStatus: artifactStatusSchema.optional(), artifactOperation: artifactOperationSchema.optional(),
     artifactCancellation: artifactCancellationSchema.optional(), artifactExport: artifactExportSchema.optional(), artifactHistory: artifactHistorySchema.optional(),
     artifactDifference: artifactDifferenceSchema.optional(),
-    artifactCanvasTarget: artifactCanvasTargetSchema.optional(),
     preview: previewViewSchema.optional(),
     evidence: z.object({ kind: z.enum(["diff", "report"]), offset: version.max(65_536), nextOffset: version.max(65_536).nullable(),
       totalBytes: version.max(2 * 1024 * 1024), chunk: z.string().max(5462).regex(/^[A-Za-z0-9_-]*$/), digest, truncated: z.boolean() }).strict().optional() }).strict(),

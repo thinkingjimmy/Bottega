@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on a ProviderBackend's ordinary and optional candidate factories, candidate capability, option validator, factory chat-option defaults, per-backend process lease and credential reservation
- * [OUTPUT]: Provides runOneShotTurn for read-only titles or main-admitted independent candidates: one prompt, one process, the assistant text it produced, with every approval denied, a hard deadline and guaranteed process termination through the turn's process owner (host custody; a reported process with no owner fails closed)
- * [POS]: Sibling of backends/jobs/executor.ts for backends that have no headless path at all; it runs the product's ordinary interactive turn (bridged, like every turn) exactly once instead of a CLI print mode
+ * [INPUT]: Depends on a ProviderBackend's ordinary and optional dedicated title/candidate factories, candidate capability, option validator, factory chat-option defaults, per-backend process lease and credential reservation
+ * [OUTPUT]: Provides runOneShotTurn for read-only titles or main-admitted independent candidates: one prompt, one process, the assistant text with distinct message paragraphs, with every approval denied, a hard deadline and confirmed process termination through the turn's process owner (host custody; a reported process with no owner fails closed)
+ * [POS]: Sibling of backends/jobs/executor.ts for backends that have no headless path at all; it runs a dedicated native title, isolated candidate or ordinary read-only Provider turn exactly once
  */
 
 import { join } from "node:path";
@@ -22,6 +22,7 @@ import type {
   AgentTurn,
   ProviderBackend,
   BackendTurnOptions,
+  ResolvedAgentInputItem,
   ResolvedRuntime,
   TrustedTurnAuthority,
 } from "../contracts/types";
@@ -36,6 +37,8 @@ export type OneShotTurnJob = {
   model?: string | null;
   timeoutMs: number;
   signal?: AbortSignal;
+  extraInput?: readonly ResolvedAgentInputItem[];
+  onPromptHandoff?(value: ReturnType<AgentTurn["promptHandoff"]>): void;
   candidate?: { chatId: string; incarnationId: string; authority: TrustedTurnAuthority; options?: ChatTurnOptions };
 };
 
@@ -85,7 +88,8 @@ function oneShotTurnOptions(
 export async function runOneShotTurn(job: OneShotTurnJob): Promise<string> {
   const { descriptor, workspace, requestId } = job;
   job.signal?.throwIfAborted();
-  const createTurn = job.candidate ? descriptor.createCandidateTurn : descriptor.createTurn;
+  const titleOnly = !job.candidate && Boolean(descriptor.createTitleTurn);
+  const createTurn = job.candidate ? descriptor.createCandidateTurn : descriptor.createTitleTurn ?? descriptor.createTurn;
   if (!createTurn || job.candidate && descriptor.capabilitiesFor(job.runtime).candidateEditing !== "native-candidate/v1")
     throw new Error("This Provider does not support isolated candidate editing yet");
   if (job.candidate?.options && job.candidate.options.backend !== descriptor.id)
@@ -141,7 +145,7 @@ export async function runOneShotTurn(job: OneShotTurnJob): Promise<string> {
     onUserInput: () => turn?.interrupt(),
     onTerminal: (event) => {
       if (event.type === "done") {
-        settle({ text: [...messages.values()].join("") });
+        settle({ text: [...messages.values()].join("\n\n") });
         return;
       }
       settle({
@@ -184,7 +188,8 @@ export async function runOneShotTurn(job: OneShotTurnJob): Promise<string> {
       },
       ...(job.candidate ? { chatIncarnationId: job.candidate.incarnationId, trustedAuthority: job.candidate.authority,
         artifactCandidate: { root: workspace }, disableProviderMemory: true } : {}),
-      input: idleInput(job.prompt),
+      ...(titleOnly ? { titleOnly: true as const, disableProviderMemory: true } : {}),
+      input: { ...idleInput(job.prompt), input: [{ type: "text", text: job.prompt }, ...(job.extraInput ?? [])] },
       callbacks,
       runtime: job.runtime,
       workspace,
@@ -199,6 +204,7 @@ export async function runOneShotTurn(job: OneShotTurnJob): Promise<string> {
         controlRoot: controlRootFor(workspace),
       },
     });
+    job.onPromptHandoff?.(turn.promptHandoff());
     const active = turn;
     void active.start(job.signal).catch((cause) => {
       settle({ error: asError(cause) });
@@ -222,7 +228,7 @@ export async function runOneShotTurn(job: OneShotTurnJob): Promise<string> {
     finally { lease.release(); credentialUse.release(); }
     if (cleanupError) {
       reportAgentCleanupFailure(descriptor.id, cleanupError);
-      if (job.candidate) failure = Object.assign(cleanupError, { code: "ARTIFACT_CANDIDATE_CLEANUP_REQUIRED" });
+      failure = Object.assign(cleanupError, { code: job.candidate ? "ARTIFACT_CANDIDATE_CLEANUP_REQUIRED" : "ONE_SHOT_CLEANUP_REQUIRED" });
     }
   }
   if (failure) throw failure;

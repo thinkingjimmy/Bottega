@@ -46,7 +46,7 @@ the source operations reference; an unresolved file effect is not permission to 
 An inventoried component has captured source and a reason for its current mode. To attempt a
 mount, use `design_system_compile` for that exact component and entry, with supported props.
 Select value JSON target:dc for native Canvas or target:standalone for the separate React19 preview.
-A DC result lives in component.dc; its status and evidence are independent of legacy mode/evidence.
+A DC result lives in component.dc; its status and evidence are independent of standalone mode/evidence.
 The host uses its locked local toolchain. A static result remains static; a successful mount
 still needs image inspection and separate interaction checks. Use `design_render_check` only
 if it is actually issued, or inspect returned local evidence with an available image tool.
@@ -61,7 +61,7 @@ State the saved revision, source digest/version basis, captured inventory and un
 Keep unsupported literals and absent dependencies visible. A source font change, mounted image
 or generated stylesheet must not be described as verified in every consumer.
 
-The system uses the same Artifact authority, durable journal, CAS, semantic history and recovery
+The system uses the same Artifact authority, durable journal, CAS, fixed system revisions and recovery
 as a design. Retained/historical references do not authorize source mutation. Artifact refusal
 must preserve the user's pending input; do not open another Chat or send a follow-up automatically.
 

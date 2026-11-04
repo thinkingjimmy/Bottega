@@ -370,6 +370,20 @@
   "excludedGlobs": [
     "**/node_modules/@openai/codex-*/**",
     "**/node_modules/@anthropic-ai/claude-agent-sdk-*/**",
-    "**/node_modules/**/*.map"
+    "**/node_modules/**/*.map",
+    "**/node_modules/@phosphor-icons/react/dist/ssr/**",
+    "**/node_modules/@phosphor-icons/react/dist/index.umd.js",
+    "**/node_modules/@phosphor-icons/react/dist/index.cjs.js",
+    "**/node_modules/echarts/dist/echarts*.js",
+    "**/node_modules/typescript/lib/_tsc.js",
+    "**/node_modules/typescript/lib/*/diagnosticMessages.generated.json",
+    "**/node_modules/typescript/lib/_tsserver.js",
+    "**/node_modules/typescript/lib/_typingsInstaller.js",
+    "**/node_modules/typescript/lib/tsserver.js",
+    "**/node_modules/typescript/lib/tsserverlibrary.js",
+    "**/node_modules/typescript/lib/typingsInstaller.js",
+    "**/node_modules/typescript/lib/watchGuard.js",
+    "**/node_modules/lucide-react/dist/lucide-react.prefixed.d.ts",
+    "**/node_modules/lucide-react/dist/lucide-react.suffixed.d.ts"
   ]
 }

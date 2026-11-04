@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared agent/MCP DTOs, model-catalog probe admission, the apps/runtime/agent-tools AgentToolInventory type, AbortSignal, and the Node subprocess environment type
  * [OUTPUT]: Defines backend contracts, optional model-probe admission, the credential-safe authentication-check claim and main-only turn authority with optional exact-conversation Full Access validation, ProviderReadinessPlan (a descriptor's Provider bridge readiness launch) and ProviderBackend (a backend for any Provider id, what the runtime registry and the Provider resolver work with). TurnProcessOwner with optional durable descendant recording (B2-01: the other layer that owns a turn's process, e.g. host custody for a bridged turn).
- * BackendTurnOptions carries a main-only isolated candidate purpose, background result persistence and skillIsolation for workflow launch translation; descriptors expose an optional separate candidate factory, never an ordinary-Chat fallback.
+ * BackendTurnOptions carries main-only isolated title/candidate purposes, background result persistence and skillIsolation for workflow launch translation; descriptors expose optional separate title/candidate factories, never an ordinary-Chat fallback.
  * ResolvedRuntime binds a registry version answer to its executable with versionIdentity for host measurements.
  * Carries fixed qualified setup commands and the main-owned disableProviderMemory policy into native Provider launch configuration.
  * [POS]: The backends contract module; runtime registry, transports, and product callers recognise each other only through the types declared here
@@ -252,6 +252,8 @@ export type TrustedTurnAuthority = {
 };
 
 export type BackendTurnOptions = {
+  /** Main-only title purpose; never accepted from renderer or ordinary Chat options. */
+  titleOnly?: true;
   /** Main-only independent candidate purpose; never accepted from renderer or ordinary Chat options. */
   artifactCandidate?: Readonly<{ root: string }>;
   persistNativeBackgroundResults?: (results: import("../../../../shared/ipc/agent/background-ipc").NativeBackgroundResult[]) => Promise<void>;
@@ -569,6 +571,8 @@ export type ConnectionDescriptor = {
   createTurn(options: BackendTurnOptions): AgentTurn;
   /** Separate main-only execution port; declaring candidateEditing alone never enables ordinary Chat for candidates. */
   createCandidateTurn?(options: BackendTurnOptions): AgentTurn;
+  /** Separate no-tool native title port; ordinary Chat does not acquire this purpose. */
+  createTitleTurn?(options: BackendTurnOptions): AgentTurn;
 };
 
 export type CapabilityProvider = {

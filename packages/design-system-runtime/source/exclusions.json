@@ -1,0 +1,14 @@
+{
+  "transform": "excluded-editor-fonts/v1",
+  "files": [
+    {
+      "path": "packages/design-system-runtime/src/app.css",
+      "upstreamSha256": "4067571ea30a9bcd3b75e1d22192faedaaff1c0cd9f7ebf03f977d72e3e42662",
+      "upstreamBytes": 415380,
+      "productionSha256": "194ccb3d53d0289dd09bae5ec626f525be79ccde6133db38e797d1bbf01f048e",
+      "productionBytes": 389309,
+      "removedFontFaces": 1
+    }
+  ],
+  "reason": "Use system UI fonts and licensed SVG controls; do not adopt editor font binaries."
+}

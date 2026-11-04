@@ -7,7 +7,6 @@ import type { WorkspaceCommand } from "@ai-chat/cloud-protocol/artifacts/design/
 import type { DesignRevision } from "../documents/store";
 import { designDigest, DesignDocumentError } from "../documents/model";
 import { normalizeDesignExportRange } from "./export-range";
-import { canvasBoardPage } from "@ai-chat/cloud-protocol/artifacts/design/canvas/view";
 type Snapshot = { version: DesignRevision; files: { path: string; data: Uint8Array }[] };
 const freeze = <T extends object>(value: T): Readonly<T> => {
   for (const child of Object.values(value)) if (child && typeof child === "object") freeze(child);
@@ -19,13 +18,12 @@ export async function createDesignExportSpec(input: WorkspaceCommand, snapshot: 
     throw new DesignDocumentError("INVALID_DOCUMENT", "Export this sealed candidate through its candidate preview");
   const { version } = snapshot;
   const source = freeze({ documentId: version.manifest.documentId, revision: version.revision, snapshotRef: version.snapshotRef,
-    readSetDigest: version.readSetDigest, contentFormat: version.manifest.contentFormat ?? "canvas/v1" });
+    readSetDigest: version.readSetDigest, contentFormat: version.manifest.contentFormat ?? "design-system/v1" });
   const files = snapshot.files.map(file => ({ path: file.path, bytes: file.data.length, digest: designDigest(file.data) })).sort((a, b) => a.path.localeCompare(b.path, "en"));
   const resources = freeze({ digest: designDigest(JSON.stringify(files)), files: files.length, bytes: files.reduce((sum, file) => sum + file.bytes, 0) });
   const fontResources = freeze({ digest: designDigest(JSON.stringify(files.filter(file => /\.(?:woff2?|otf|ttf)$/i.test(file.path)))),
     verification: "captured-resources-only" as const });
-  const selected = version.manifest.boards.filter(board => range.scope === "board" ? board.id === range.boardId :
-    range.scope === "page" ? canvasBoardPage(version.manifest, board) === range.pageId : true);
+  const selected = version.manifest.boards.filter(board => range.scope === "board" ? board.id === range.boardId : true);
   let native = Boolean(version.manifest.contentFormat);
   if (!native && version.manifest.format === "bottega-design-system") {
     const { isSystemDcBoard } = await import("../systems/components/proof");

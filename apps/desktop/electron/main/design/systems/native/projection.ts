@@ -11,7 +11,7 @@ import type { DesignRevision } from "../../documents/store";
 import { designDigest, DesignDocumentError } from "../../documents/model";
 import { readDesignSystem } from "../validation";
 type Member = { path: string; data: Uint8Array };
-export type NativeSystemSnapshot = { version: DesignRevision; files: Member[] };
+export type NativeSystemSnapshot = { version: Pick<DesignRevision, "manifest" | "revision" | "snapshotRef">; files: Member[] };
 const json = (value: unknown) => Buffer.from(JSON.stringify(value, null, 2) + "\n");
 const fail = (message: string): never => { throw new DesignDocumentError("INVALID_DOCUMENT", message); };
 const primary = (value: string) => /^\s*(?:"([^"]+)"|'([^']+)'|([^,]+))/.exec(value)?.slice(1).find(Boolean)?.trim();
@@ -56,7 +56,7 @@ export async function nativeSystemProjection(snapshot: NativeSystemSnapshot, tar
   });
   if (target === "slides/v4" && new Set(fonts.map(font => font.family)).size !== new Set(fonts.map(font => font.family + ":" + font.digest)).size)
     return fail("Native Slides needs one exact variable font file per family; choose a supported captured face");
-  const images = system.sources.files.filter(source => /\.(?:png|jpe?g|webp|gif|svg)$/i.test(source.path)).map(source => ({ source: source.path, path: prefix + source.capturedPath, digest: source.digest }));
+  const images = system.sources.files.filter(source => !source.retained && /\.(?:png|jpe?g|webp|gif|svg)$/i.test(source.path)).map(source => ({ source: source.path, path: prefix + source.capturedPath, digest: source.digest }));
   for (const component of system.components.components) if (target === "slides/v4" || component.dc?.status !== "ready")
     unsupported.push({ kind: "component", name: component.name, reason: target === "slides/v4" ? "Native Slides does not load React components; use an image or native elements." : component.dc?.reason ?? "Compile and verify the React18 DC target before using this component." });
   const palettes = system.tokens.themes.map(theme => {

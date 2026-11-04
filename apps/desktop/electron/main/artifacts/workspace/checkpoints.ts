@@ -1,11 +1,11 @@
 /**
  * [INPUT]: DurableJson, trusted local or main-issued authenticated remote window/view/document lifetime verification and bounded review checkpoints.
- * [OUTPUT]: Stores revision-bound checkpoint CAS input, carries latest native input across own head advancement, preserves conflicts and notifies exact native consumers after source completion and bounds final native saves by the pending window/view/document acknowledgement.
+ * [OUTPUT]: Stores revision-bound checkpoint CAS input, carries latest native input across own head advancement, preserves conflicts and notifies exact native consumers of pending original Chat saves and source completion and bounds final native saves by the pending window/view/document acknowledgement.
  * [POS]: Recovery input custody; not a second permanent comment store.
  */
 import { z } from "zod";
 import type { DesignRevision } from "../../design/documents/store";
-import { artifactWorkspaceEventSchema } from "@ai-chat/cloud-protocol/artifacts/design/events/model";
+import { artifactWorkspaceEventSchema, type ArtifactWorkspaceEvent } from "@ai-chat/cloud-protocol/artifacts/design/events/model";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { checkpointSchema, type DesignCheckpoint } from "@ai-chat/cloud-protocol/artifacts/design/review";
@@ -13,8 +13,15 @@ import { DurableJson } from "../../persistence/durable-json";
 import { ARTIFACT_IPC } from "../../../../shared/ipc-channels/apps";
 import { BrowserWindow } from "electron";
 import { encryptedResourceCommandSchema, type EncryptedResourceCommand } from "@ai-chat/cloud-protocol/resources/model";
-const schema = z.object({ schemaVersion: z.literal(1), inputs: z.record(z.string(), checkpointSchema),
-  conflicts: z.record(z.string(), z.array(checkpointSchema).max(16)).default({}),
+const storedCheckpointSchema = z.object({ documentId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/),
+  revision: z.number().int().positive(), boardId: z.string().min(1).max(64),
+}).passthrough().superRefine((value, context) => {
+  if (["canvas", "edit", "view", "annotation"].some(key => key in value)) return;
+  if (!checkpointSchema.safeParse(value).success) context.addIssue({ code: "custom", message: "Invalid current checkpoint" });
+});
+const currentCheckpoint = (value: unknown) => { const parsed = checkpointSchema.safeParse(value); return parsed.success ? parsed.data : null; };
+const schema = z.object({ schemaVersion: z.literal(1), inputs: z.record(z.string(), storedCheckpointSchema),
+  conflicts: z.record(z.string(), z.array(storedCheckpointSchema).max(16)).default({}),
   commands: z.record(z.string(), z.object({ digest: z.string(), sealed: encryptedResourceCommandSchema }).strict()).default({}) }).strict();
 export class ArtifactCheckpoints {
   private readonly file: DurableJson<z.infer<typeof schema>>;
@@ -25,28 +32,29 @@ export class ArtifactCheckpoints {
   constructor(root: string) { this.file = new DurableJson(join(root, "review-checkpoints.json"), schema, () => ({ schemaVersion: 1, inputs: {}, conflicts: {}, commands: {} })); }
   initialize() { return this.file.initialize(); }
   key(chatId: string, incarnationId: string, documentId: string) { return JSON.stringify([chatId, incarnationId, documentId]); }
-  read(chatId: string, incarnationId: string, documentId: string, revision?: number) { return this.file.read(state => state.inputs[this.key(chatId, incarnationId, documentId) + ":" + revision] ?? null); }
+  read(chatId: string, incarnationId: string, documentId: string, revision?: number) { return this.file.read(state => currentCheckpoint(state.inputs[this.key(chatId, incarnationId, documentId) + ":" + revision])); }
   native(chatId: string, incarnationId: string, documentId: string, revision: number, boardId: string) {
     const prefix = this.key(chatId, incarnationId, documentId) + ":";
     return this.file.read(state => {
-      const current = state.inputs[prefix + revision];
-      const latest = Object.entries(state.inputs).filter(([key, value]) => key.startsWith(prefix) && value.revision <= revision && value.native !== undefined)
+      const current = currentCheckpoint(state.inputs[prefix + revision]);
+      const latest = Object.entries(state.inputs).flatMap(([key, value]) => { const parsed = currentCheckpoint(value); return parsed ? [[key, parsed] as const] : []; }).filter(([key, value]) => key.startsWith(prefix) && value.revision <= revision && value.native !== undefined)
         .sort((a, b) => b[1].revision - a[1].revision)[0]?.[1];
       if (!latest) return current ?? null;
       return { ...(current ?? { documentId, revision, boardId, notes: [] }), native: latest.native };
     });
   }
-  conflicts(chatId: string, incarnationId: string, documentId: string, revision: number) { return this.file.read(state => state.conflicts[this.key(chatId, incarnationId, documentId) + ":" + revision] ?? []); }
+  conflicts(chatId: string, incarnationId: string, documentId: string, revision: number) { return this.file.read(state => (state.conflicts[this.key(chatId, incarnationId, documentId) + ":" + revision] ?? []).flatMap(value => { const parsed = currentCheckpoint(value); return parsed ? [parsed] : []; })); }
   async save(chatId: string, incarnationId: string, input: DesignCheckpoint) {
     if (this.fault) throw new Error("Artifact checkpoint could not be saved. Retry before closing.");
     const value = checkpointSchema.parse(input);
     const key = this.key(chatId, incarnationId, input.documentId) + ":" + input.revision;
     const result = await this.file.mutate(state => {
-      const previous = state.inputs[key];
+      const stored = state.inputs[key], previous = currentCheckpoint(stored);
+      if (stored && !previous) throw new Error("Unsupported checkpoint is retained; choose a current document");
       if (previous?.save && (!value.save || previous.save.version !== value.save.version || previous.save.viewId === value.save.viewId && previous.save.sequence >= value.save.sequence)) {
         const conflicts = state.conflicts[key] ?? [];
         if (conflicts.length >= 16) return { conflict: true, full: true };
-        state.conflicts[key] = [...conflicts.filter(row => row.save?.viewId !== value.save?.viewId), value];
+        state.conflicts[key] = [...conflicts.filter(row => currentCheckpoint(row)?.save?.viewId !== value.save?.viewId), value];
         return { conflict: true };
       }
       const version = (previous?.save?.version ?? 0) + 1;
@@ -134,17 +142,23 @@ export class ArtifactCheckpoints {
     }
     await Promise.all(pending);
   }
-  sourceChanged(version: DesignRevision, generation: string) {
-    if (!version.manifest.contentFormat) return;
+  private notifySource(version: DesignRevision, create: (viewId: string) => ArtifactWorkspaceEvent) {
+    if (!version.manifest.contentFormat && !version.manifest.system) return;
     const scope = this.key(version.authority.chatId, version.authority.incarnationId, version.manifest.documentId);
     for (const [windowId, views] of this.windows) for (const [viewId, target] of views) {
       if (target !== scope || !this.ownsView(windowId, viewId, scope)) continue;
-      const event = artifactWorkspaceEventSchema.parse({ type: "source-changed", generation, scope: viewId,
-        documentId: version.manifest.documentId, revision: version.revision, snapshotRef: version.snapshotRef });
-      const remote = this.remote.get(windowId);
+      const event = artifactWorkspaceEventSchema.parse(create(viewId)), remote = this.remote.get(windowId);
       if (remote) remote.send(event);
       else BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.id === windowId)?.webContents.send(ARTIFACT_IPC.workspaceEvent, event);
     }
+  }
+  sourceChanged(version: DesignRevision, generation: string) {
+    this.notifySource(version, scope => ({ type: "source-changed", generation, scope,
+      documentId: version.manifest.documentId, revision: version.revision, snapshotRef: version.snapshotRef }));
+  }
+  sourcePending(version: DesignRevision, generation: string, artifactId: string) {
+    this.notifySource(version, scope => ({ type: "source-pending", generation, scope,
+      documentId: version.manifest.documentId, pending: { artifactId, requestId: version.requestId } }));
   }
   changed(generation: string, enabled: boolean) {
     for (const remote of this.remote.values()) remote.send({ type: "changed", generation, enabled });

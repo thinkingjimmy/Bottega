@@ -4,7 +4,7 @@
  * [POS]: Shared native presentation boundary; no URL, window, owner or filesystem authority is accepted.
  */
 import { z } from "zod";
-import { utf8JsonBytes } from "../../canvas/commands";
+import { utf8JsonBytes } from "../../core/transport";
 const slideId = z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$/), sessionId = z.string().uuid();
 export const nativePresentationCommandSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start"), slideId, notes: z.boolean() }).strict(),

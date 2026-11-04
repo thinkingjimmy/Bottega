@@ -1,0 +1,16 @@
+/**
+ * [INPUT]: Fixed baoyu-design 2.7.1 History panel appearance and the current application theme.
+ * [OUTPUT]: Scoped original panel surface, text, border, focus and hover tokens.
+ * [POS]: Native History appearance; inherited app tokens outside this panel stay owned by the app.
+ */
+.native-history {
+  --background: #fff; --foreground: #1a1915; --muted: #f2f1ee;
+  --muted-foreground: #72706a; --border: #e9e7e2; --ring: #2563d9;
+  font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  box-shadow: 0 16px 48px rgb(20 18 14 / 16%), 0 2px 8px rgb(20 18 14 / 6%);
+}
+.dark .native-history {
+  --background: #262624; --foreground: #f3f2ef; --muted: #31302e;
+  --muted-foreground: #aaa8a2; --border: #3a3936; --ring: #6ea2ff;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 50%), 0 2px 8px rgb(0 0 0 / 30%);
+}

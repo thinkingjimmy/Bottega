@@ -1,12 +1,13 @@
 /**
  * [INPUT]: Depends on Tailwind/shadcn, Streamdown portal, tagging and the consumer --app-font-sans token.
- * [OUTPUT]: Provides @ai-chat/ui themes, system sans/monospace typography, round corners, cross-pack scanning inputs, scrollbar-slim, touch-target-44, no-hover and Markdown fullscreen Electron no-drag styles.
+ * [OUTPUT]: Provides @ai-chat/ui themes, system sans/monospace typography, round corners, cross-pack scanning inputs, scroll-owner-only scrollbar activity, content-visibility transcript rows, touch-target-44, no-hover and Markdown fullscreen Electron no-drag styles.
  * [POS]: Shared UI packages are universal-style root, desktop/web consumption; Browser ignored Electron exclusive app-region
  */
 
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./chart-palette.css";
 
 /* ============================================================
  * 跨包类名扫描：Tailwind v4 不扫描 node_modules，
@@ -90,13 +91,9 @@
     border-radius: 9999px;
     transition: background-color 160ms ease;
   }
-  /* 现身态：指针在这片区域内，或刚滚过还没静置。
-     活动位由持有滚动的那一层挂，可能是自己也可能是后代，故四条都要覆盖；
-     `[data-scroll-active] *` 让它一并点亮自己肚子里的嵌套滚动条。 */
+  /* Each scroll owner reveals only its own thumb; activity never invalidates descendant thumbs. */
   &[data-scroll-active]::-webkit-scrollbar-thumb,
-  &[data-scroll-active] *::-webkit-scrollbar-thumb,
-  & [data-scroll-active]::-webkit-scrollbar-thumb,
-  & [data-scroll-active] *::-webkit-scrollbar-thumb {
+  & [data-scroll-active]::-webkit-scrollbar-thumb {
     background-color: var(--border);
   }
   /* 指针压在拇指上：加深，表明它可被拖 */
@@ -236,11 +233,6 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
-  --chart-1: #e76e50;
-  --chart-2: #2a9d90;
-  --chart-3: #274754;
-  --chart-4: #e8c468;
-  --chart-5: #f4a462;
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -275,11 +267,6 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
-  --chart-1: #e76e50;
-  --chart-2: #2a9d90;
-  --chart-3: #6da8bd;
-  --chart-4: #e8c468;
-  --chart-5: #f4a462;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -300,4 +287,10 @@
   html {
     @apply font-sans;
   }
+}
+
+/* Keep offscreen row layout out of scroll frames; remembered sizes survive re-entry. */
+[data-transcript-content] [data-message-id] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
 }

@@ -3,11 +3,11 @@
 /**
  * [INPUT]: Depends on PromptInput RichValue, host activation feedback, candidate icons, invalid-state metadata, and PathLabel
  * [OUTPUT]: Provides RichInputNodes with atomic chip activation, Enter/Space handling, focus rings, invalid state, host-owned file chip states (busy spinner, bad tone), and 44px coarse-pointer targets
- * Fixed design references render as atomic accessible chips without editable authority fields.
+ * Fixed design references expose explicit draft removal without changing work comments or authority fields.
  * [POS]: packages/ui/src/components/ai-elements/rich; RichInput node view layer; editing history and candidate ownership remain in rich-input.tsx
  */
 
-import { LoaderCircle, PackageIcon } from "lucide-react";
+import { LoaderCircle, PackageIcon, X } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
 import type { RichNode, RichValue } from "../prompt/prompt-input";
 import {
@@ -32,6 +32,9 @@ export type RichFileState = { kind: "busy" | "bad"; title?: string };
 
 export function RichInputNodes({
   value,
+  onDesignClick,
+  onDesignRemove,
+  designRemoveTitle,
   onFileClick,
   onWorkspaceFileClick,
   fileClickTitle,
@@ -42,6 +45,9 @@ export function RichInputNodes({
   fileStates,
 }: {
   value: RichValue;
+  onDesignClick?: (node: NodeOf<"design">) => void;
+  onDesignRemove?: (node: NodeOf<"design">) => void;
+  designRemoveTitle?: string;
   onFileClick?: (node: NodeOf<"file">) => void;
   onWorkspaceFileClick?: (node: NodeOf<"workspace-file">) => void;
   fileClickTitle?: string;
@@ -78,8 +84,15 @@ export function RichInputNodes({
         </span>
       );
     }
-    if (node.type === "design") return <span contentEditable={false} data-rich-node-id={node.id} key={node.id}
-      className="mx-0.5 inline-flex select-none rounded-md bg-muted px-1.5 py-0.5 align-baseline text-primary">@{node.name}</span>;
+    if (node.type === "design") return <span contentEditable={false} data-rich-node-id={node.id} key={node.id} className="mx-0.5 inline-flex max-w-full select-none overflow-hidden rounded-md bg-muted align-baseline">
+      <button type="button" data-design-reference={node.reference.native?.kind === "native-comment" ? node.reference.native.commentId : node.reference.documentId}
+        title={node.reference.native?.text ?? node.name} disabled={!onDesignClick} onClick={event => { event.preventDefault(); event.stopPropagation(); onDesignClick?.(node); }}
+        onKeyDown={event => activateWithKeyboard(event, () => onDesignClick?.(node))}
+        className="inline-flex min-h-8 min-w-0 max-w-80 flex-1 flex-col items-start rounded-md bg-muted px-2 py-1 text-left text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11 disabled:cursor-default">
+        <span className="max-w-full truncate text-xs font-medium">@{node.name}</span>{node.reference.native && <span className="line-clamp-2 text-xs text-muted-foreground">{node.reference.native.text}</span>}
+      </button>{onDesignRemove && <button type="button" data-design-remove={node.id} aria-label={`${designRemoveTitle ?? "Remove reference"}: ${node.name}`}
+        onClick={event => { event.preventDefault(); event.stopPropagation(); onDesignRemove(node); }} onKeyDown={event => activateWithKeyboard(event, () => onDesignRemove(node))}
+        className="mr-0.5 inline-flex min-h-8 min-w-7 shrink-0 self-center items-center justify-center rounded-md text-muted-foreground hover:bg-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11"><X className="size-3" aria-hidden="true" /></button>}</span>;
     if (node.type === "section" || node.type === "history") {
       return (
         <span

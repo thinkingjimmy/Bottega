@@ -1,0 +1,524 @@
+--- a/packages/design-system-runtime/src/app.css
++++ b/packages/design-system-runtime/src/app.css
+@@ -3,4 +3,10 @@
+ 
+ 
+ /* BaoCut: the platform's Anthropic Sans is not bundled; the "anthropic" font is the system UI font. */
+-:root{--font-anthropic-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+\ No newline at end of file
++:root{--font-anthropic-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
++.ds-main{padding-inline:16px;gap:28px}
++
++/* The embedding host owns document chrome; the original content keeps one scroller. */
++html,body,#root{width:100%;height:100%;min-height:0;margin:0;overflow:hidden}
++
++#root [data-mc-paned]{height:100%}
+--- a/packages/design-system-runtime/src/editor/asset-context-menu.tsx
++++ b/packages/design-system-runtime/src/editor/asset-context-menu.tsx
+@@ -53,6 +53,9 @@
+           >
+             {"Open"}
+           </runtime.Menu.Item>,
++          edit !== undefined && typeof (window as Window & {__bottegaSystemReplaceAsset?:unknown}).__bottegaSystemReplaceAsset === "function" ? (
++            <runtime.Menu.Item icon={"Edit"} {...assetActionDisabledProps(value2)} onClick={() => value !== undefined && (window as Window & {__bottegaSystemReplaceAsset(asset:Application.EditorAsset):void}).__bottegaSystemReplaceAsset(value)} data-testid={"ds-amenu-replace"}>{(window as Window & {__bottegaSystemReplaceAsset?:{label?():string}}).__bottegaSystemReplaceAsset?.label?.() ?? "Replace…"}</runtime.Menu.Item>
++          ) : null,
+           edit !== undefined ? (
+             <runtime.Menu.Item
+               icon={"Edit"}
+--- a/packages/design-system-runtime/src/editor/asset-resources.tsx
++++ b/packages/design-system-runtime/src/editor/asset-resources.tsx
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System capabilities and the exact Bottega native module transport.
++ * [OUTPUT]: Original System file/resource behavior through closed local or encrypted reads.
++ * [POS]: Trusted maintained System source; authored opaque previews receive no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ import type * as React from "react";
+ import type * as Editor from "../contracts/editor-runtime";
+ import type * as Model from "../contracts";
+--- a/packages/design-system-runtime/src/editor/asset-thumbnails.tsx
++++ b/packages/design-system-runtime/src/editor/asset-thumbnails.tsx
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System capabilities and the exact Bottega native module transport.
++ * [OUTPUT]: Original System file/resource behavior through closed local or encrypted reads.
++ * [POS]: Trusted maintained System source; authored opaque previews receive no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ import type * as React from "react";
+ import type * as Editor from "../contracts/editor-runtime";
+ import type * as Model from "../contracts";
+--- a/packages/design-system-runtime/src/editor/asset-upload.tsx
++++ b/packages/design-system-runtime/src/editor/asset-upload.tsx
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System capabilities and the exact Bottega native module transport.
++ * [OUTPUT]: Original System file/resource behavior through closed local or encrypted reads.
++ * [POS]: Trusted maintained System source; authored opaque previews receive no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ import type * as React from "react";
+ import type * as Editor from "../contracts/editor-runtime";
+ import type * as Model from "../contracts";
+--- a/packages/design-system-runtime/src/editor/component-preview.tsx
++++ b/packages/design-system-runtime/src/editor/component-preview.tsx
+@@ -1,3 +1,8 @@
++/**
++ * [INPUT]: Original component lifecycle and independently compiled self-contained preview documents.
++ * [OUTPUT]: Opaque original previews with stable state when unrelated global preview resources settle.
++ * [POS]: Maintained System component view; fixed standalone closures do not depend on the original shared preview head.
++ */
+ import type * as React from "react";
+ import type * as Editor from "../contracts/editor-runtime";
+ import type * as Model from "../contracts";
+@@ -200,16 +205,18 @@
+       );
+       return () => clearTimeout(value);
+     }, [isLive, previewPool]);
++    const standalone = html.includes('name="bottega-standalone-preview"');
++    // The captured standalone document already owns every runtime/style dependency.
+     let headKey = (runtime.reactSwatchPreview as typeof React).useMemo(
+-        () => (0, runtime.swatchHeadKey)(debouncedHead),
+-        [debouncedHead],
++        () => standalone ? "bottega-standalone" : (0, runtime.swatchHeadKey)(debouncedHead),
++        [debouncedHead, standalone],
+       ),
+       headRef = (runtime.reactSwatchPreview as typeof React).useRef(
+         debouncedHead,
+       );
+     headRef.current = debouncedHead;
+     let hasStaticReason = staticReason !== undefined && staticReason !== "",
+-      runtimeKey = (0, runtime.swatchRuntimeKey)(debouncedHead);
++      runtimeKey = standalone ? "bottega-standalone" : (0, runtime.swatchRuntimeKey)(debouncedHead);
+     (runtime.reactSwatchPreview as typeof React).useEffect((): void => {
+       setBootFailed(false);
+       setNavigated(false);
+--- a/packages/design-system-runtime/src/editor/components.tsx
++++ b/packages/design-system-runtime/src/editor/components.tsx
+@@ -112,12 +112,7 @@
+   }): React.ReactElement {
+     return (
+       <p className={"ds-stage-doc ds-pad py-md text-body text-secondary"}>
+-        {[
+-          // BaoCut: user-facing copy calls the agent "the agent", not Claude.
+-          "No preview yet — ask the agent for components/",
+-          name,
+-          "/preview.html.",
+-        ]}
++        {(window as Window & {__bottegaSystemEmptyPreview?:()=>string}).__bottegaSystemEmptyPreview?.() ?? ("No preview yet — ask the agent for components/" + name + "/preview.html.")}
+       </p>
+     );
+   }
+@@ -822,7 +817,7 @@
+       hasEditorFlagInParentLocation(queryKey) ||
+       hasEditorFlagInStorage(flag);
+     editorFeatureFlags = {
+-      componentProps: isEditorFeatureEnabled("componentProps", "ds_props"),
++      componentProps: typeof window !== "undefined" && Boolean(window.designSystemHost),
+     };
+     jsxComponentsSection = (0, runtime.toModuleNamespace)(
+       (0, runtime.loadJsxNamespace)(),
+--- a/packages/design-system-runtime/src/editor/published-preview.tsx
++++ b/packages/design-system-runtime/src/editor/published-preview.tsx
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System capabilities and the exact Bottega native module transport.
++ * [OUTPUT]: Original System file/resource behavior through closed local or encrypted reads.
++ * [POS]: Trusted maintained System source; authored opaque previews receive no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ import type * as React from "react";
+ import type * as Editor from "../contracts/editor-runtime";
+ import type * as Model from "../contracts";
+@@ -748,7 +754,7 @@
+       }
+     };
+     fetchProjectFilesListing = async (): Promise<unknown> => {
+-      let value = await globalThis.fetch(FILES_LISTING_NAME, {
++      let value = await fetch(FILES_LISTING_NAME, {
+         credentials: "same-origin",
+         signal: AbortSignal.timeout(FILES_LISTING_TIMEOUT_MS),
+       });
+--- a/packages/design-system-runtime/src/editor/swatch-runtime.tsx
++++ b/packages/design-system-runtime/src/editor/swatch-runtime.tsx
+@@ -1,3 +1,13 @@
++/**
++ * [INPUT]: Original preview heads, their selected color scheme and fixed compiled component closures.
++ * [OUTPUT]: Opaque live component frames with a theme-owned page background independent of application chrome.
++ * [POS]: Maintained System preview runtime; source and ready-message isolation remain unchanged.
++ */
++/**
++ * [INPUT]: Maintained System runtime contracts and the trusted Bottega host boundary.
++ * [OUTPUT]: Original System behavior with module-owned transport and opaque component isolation.
++ * [POS]: Approved maintained System source; authored previews hold no host capability.
++ */
+ import type * as React from "react";
+ import type * as Editor from "../contracts/editor-runtime";
+ import type * as Model from "../contracts";
+@@ -480,7 +490,9 @@
+     headId: string,
+     holdFonts: boolean = false,
+   ): string {
+-    let placement = swatchHeadPlacement(head.urls, headId, holdFonts);
++    // Opaque components receive fixed head bytes, never a parent-object lookup.
++    const held = JSON.stringify({ tokensCss: head.tokensCss, fontsCss: head.fontsCssHeld || head.fontsCss, bundleCss: head.bundleCss, runtimeScripts: head.runtimeScripts, bundleJs: head.bundleJs }).replaceAll("<", "\\u003c");
++    let placement = { head: "", body: '<script>(function(H){var h=document.head;function css(t){if(t){var s=document.createElement("style");s.textContent=t;h.appendChild(s)}}function js(t){if(t){var s=document.createElement("script");s.text=t;h.appendChild(s)}}css(H.tokensCss);css(H.fontsCss);css(H.bundleCss);H.runtimeScripts.forEach(js);js(H.bundleJs)})(' + held + ');<\/script>' };
+     return (
+       "<!doctype html><html" +
+       swatchHtmlAttributes(head) +
+@@ -752,7 +764,7 @@
+         value5.heldFonts,
+       ),
+       value7 =
+-        options.cardFile !== undefined &&
++        false && options.cardFile !== undefined &&
+         (0, runtime.isPreviewRunnerAvailable)(value2)
+           ? (0, runtime.previewRunnerAddresses)(options.cardFile, value.baseURI)
+           : null,
+@@ -790,7 +802,8 @@
+     value4.style.height = "100%";
+     value4.style.border = "0";
+     value4.style.display = "block";
+-    value4.style.background = "transparent";
++    value4.style.background = options.head.colorScheme === "dark" ? "#171717" : "#ffffff";
++    value4.style.colorScheme = options.head.colorScheme;
+     let flag: boolean = false,
+       flag2: boolean = false,
+       callback = (): void => {
+@@ -1066,7 +1079,7 @@
+     if (frameWindow === null || event.source !== frameWindow) {
+       return "drop";
+     }
+-    if (event.origin !== origin) {
++    if (event.origin !== "null") {
+       return "drop";
+     }
+     if (navigated) {
+@@ -1560,7 +1573,7 @@
+ })();`;
+     SWATCH_ATTRIBUTE = "data-ds-swatch";
+     PREVIEW_BOOT_TIMEOUT_MS = 4000;
+-    PREVIEW_IFRAME_SANDBOX = "allow-scripts allow-same-origin";
++    PREVIEW_IFRAME_SANDBOX = "allow-scripts";
+     ADMITTED_PREVIEW_CDN_PREFIXES = [
+       "https://cdnjs.cloudflare.com",
+       "https://cdn.jsdelivr.net/pyodide/",
+--- a/packages/design-system-runtime/src/editor/upload-pipeline.ts
++++ b/packages/design-system-runtime/src/editor/upload-pipeline.ts
+@@ -811,8 +811,8 @@
+             ? "."
+             : leftOut
+               ? // BaoCut: user-facing copy calls the agent "the agent", not Claude.
+-                " — the agent will take it from here."
+-              : ". Save when you’re ready and the agent will take it from here."),
++                "."
++              : ". Save when you are ready."),
+       );
+     }
+     if (result.warnings.length > 0) {
+--- a/packages/design-system-runtime/src/files/application-boot.ts
++++ b/packages/design-system-runtime/src/files/application-boot.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System runtime contracts and the trusted Bottega host boundary.
++ * [OUTPUT]: Original System behavior with module-owned transport and opaque component isolation.
++ * [POS]: Approved maintained System source; authored previews hold no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ import type * as FilesCore from "../contracts/files-core";
+ import type * as Docs from "../contracts/design-system-document";
+ import type * as Boot from "../contracts/boot";
+--- a/packages/design-system-runtime/src/files/browser-port.ts
++++ b/packages/design-system-runtime/src/files/browser-port.ts
+@@ -1,4 +1,10 @@
++/**
++ * [INPUT]: Maintained System runtime contracts and the trusted Bottega host boundary.
++ * [OUTPUT]: Original System behavior with module-owned transport and opaque component isolation.
++ * [POS]: Approved maintained System source; authored previews hold no host capability.
++ */
+ /** Restored application module; prepare first, initialize in original order. */
++import { systemFetch } from "../adapters/transport";
+ import { bindRuntimeValue, type RuntimeBindings } from "../runtime-types";
+ import type {
+   PortListingMetadata,
+@@ -125,7 +131,7 @@
+   }
+   function createBrowserFilesPort(options: BrowserFilesPortOptions = {}) {
+     let fetchFile =
+-        options.fetch ?? ((input: string) => globalThis.fetch(input)),
++        options.fetch ?? ((input: string) => systemFetch(input)),
+       fetchFresh = options.fetchFresh ?? fetchFile,
+       freshReads: boolean = false,
+       now = () => globalThis.performance?.now() ?? Date.now(),
+--- a/packages/design-system-runtime/src/files/carry.ts
++++ b/packages/design-system-runtime/src/files/carry.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System capabilities and the exact Bottega native module transport.
++ * [OUTPUT]: Original System file/resource behavior through closed local or encrypted reads.
++ * [POS]: Trusted maintained System source; authored opaque previews receive no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ /** Restored application module; prepare first, initialize in original order. */
+ import { bindRuntimeValue, type RuntimeBindings } from "../runtime-types";
+ import type {
+--- a/packages/design-system-runtime/src/files/cover-capture.tsx
++++ b/packages/design-system-runtime/src/files/cover-capture.tsx
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System capabilities and the exact Bottega native module transport.
++ * [OUTPUT]: Original System file/resource behavior through closed local or encrypted reads.
++ * [POS]: Trusted maintained System source; authored opaque previews receive no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ import type * as Boot from "../contracts/boot";
+ import type * as Model from "../contracts";
+ import type * as Storage from "../contracts/model-storage";
+--- a/packages/design-system-runtime/src/files/design-system-document.ts
++++ b/packages/design-system-runtime/src/files/design-system-document.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System capabilities and the exact Bottega native module transport.
++ * [OUTPUT]: Original System file/resource behavior through closed local or encrypted reads.
++ * [POS]: Trusted maintained System source; authored opaque previews receive no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ import type * as Core from "../contracts";
+ import type * as M from "../contracts/design-system-document";
+ import type * as F from "../contracts/files-core";
+--- a/packages/design-system-runtime/src/files/legacy-state-reader.ts
++++ b/packages/design-system-runtime/src/files/legacy-state-reader.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System capabilities and the exact Bottega native module transport.
++ * [OUTPUT]: Original System file/resource behavior through closed local or encrypted reads.
++ * [POS]: Trusted maintained System source; authored opaque previews receive no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ import type * as Boot from "../contracts/boot";
+ import type * as Model from "../contracts";
+ import type * as Storage from "../contracts/model-storage";
+--- a/packages/design-system-runtime/src/files/per-file-boot.ts
++++ b/packages/design-system-runtime/src/files/per-file-boot.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System runtime contracts and the trusted Bottega host boundary.
++ * [OUTPUT]: Original System behavior with module-owned transport and opaque component isolation.
++ * [POS]: Approved maintained System source; authored previews hold no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ import type * as FilesCore from "../contracts/files-core";
+ import type * as Docs from "../contracts/design-system-document";
+ import type * as Boot from "../contracts/boot";
+@@ -153,6 +159,13 @@
+         );
+         (0, runtime.observeDocumentThumbnailReadiness)(value);
+         provideDesignSystemFilesDebugState(value, files, indexPath);
++        let announced = false;
++        const announceReady = () => {
++          if (announced || value.loadState() !== "live") return;
++          announced = true;
++          afterTwoAnimationFrames(() => window.dispatchEvent(new Event("bottega:system-ready")));
++        };
++        value.subscribe(announceReady); announceReady();
+         let values = new Set<string>();
+         value.subscribe((): void => {
+           if (value.loadState() !== "live" || value.readOnly()) {
+--- a/packages/design-system-runtime/src/files/single-file-migration-boot.ts
++++ b/packages/design-system-runtime/src/files/single-file-migration-boot.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System capabilities and the exact Bottega native module transport.
++ * [OUTPUT]: Original System file/resource behavior through closed local or encrypted reads.
++ * [POS]: Trusted maintained System source; authored opaque previews receive no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ import type * as FilesCore from "../contracts/files-core";
+ import type * as Docs from "../contracts/design-system-document";
+ import type * as Boot from "../contracts/boot";
+--- a/packages/design-system-runtime/src/files/ui/design-system-app.tsx
++++ b/packages/design-system-runtime/src/files/ui/design-system-app.tsx
+@@ -1,3 +1,8 @@
++/**
++ * [INPUT]: Maintained original toolbar runtime and the trusted native project download owner.
++ * [OUTPUT]: Original System content; the embedding host owns document title, History and Export controls.
++ * [POS]: Maintained editor chrome; authored frames cannot invoke this module.
++ */
+ /** Restored application module; prepare first, initialize in original order. */
+ import type * as React from "react";
+ import type * as JsxRuntime from "react/jsx-runtime";
+@@ -3668,6 +3673,8 @@
+           />
+         ) : null;
+     return (
++      <div className={"flex h-full min-h-0 flex-col"}>
++      <div className={"min-h-0 flex-1"}>
+       <runtime.ArtifactShell
+         doc={document2}
+         undo={editor.undo}
+@@ -4037,6 +4044,8 @@
+           ]}
+         </runtime.CdsRoot>
+       </runtime.ArtifactShell>
++      </div>
++      </div>
+     );
+   }
+   bindRuntimeValue(
+--- a/packages/design-system-runtime/src/files/ui/file-browser.tsx
++++ b/packages/design-system-runtime/src/files/ui/file-browser.tsx
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System capabilities and the exact Bottega native module transport.
++ * [OUTPUT]: Original System file/resource behavior through closed local or encrypted reads.
++ * [POS]: Trusted maintained System source; authored opaque previews receive no host capability.
++ */
++import { systemFetch as fetch } from "../../adapters/transport";
+ /** Restored application module; prepare first, initialize in original order. */
+ import { bindRuntimeValue, type RuntimeBindings } from "../../runtime-types";
+ import type * as React from "react";
+--- a/packages/design-system-runtime/src/files/ui/preview-availability.tsx
++++ b/packages/design-system-runtime/src/files/ui/preview-availability.tsx
+@@ -1,3 +1,9 @@
++import { systemFetch as fetch } from "../../adapters/transport";
++/**
++ * [INPUT]: Fixed preview metadata and complete untrusted component source.
++ * [OUTPUT]: Original preview UI with explicit standalone closure qualification.
++ * [POS]: Maintained System preview boundary; every live component remains opaque.
++ */
+ import type * as React from "react";
+ import type * as Preview from "../../contracts/preview";
+ import type * as Model from "../../contracts";
+@@ -132,9 +138,11 @@
+     previewHead: Preview.PreviewHeadResult,
+     stage?: Preview.ComponentPreviewStage,
+   ): Preview.ComponentPreviewSource {
++    const standalone = component.previewHtml?.includes('name="bottega-standalone-preview"');
++    const values = JSON.stringify(stage?.values ?? {}).replaceAll("<", "\u003c");
++    const html = standalone ? component.previewHtml!.replace(/<head([^>]*)>/i, match => match + '<script type="application/json" id="bottega-system-props">' + values + '</script>') : undefined;
+     return {
+-      html:
+-        stage !== undefined
++      html: standalone ? html : stage !== undefined
+           ? (0, runtime.generateComponentMountHtml)(component.name, stage)
+           : component.previewHtml,
+       file: (0, runtime.projectFilePath)(
+@@ -142,7 +150,7 @@
+       ),
+       fromProps: stage !== undefined,
+       staticReason:
+-        previewHead.staticReason !== "" ? STATIC_PREVIEW_NOTE : undefined,
++        previewHead.staticReason !== "" && !component.previewHtml?.includes('name="bottega-standalone-preview"') ? STATIC_PREVIEW_NOTE : undefined,
+     };
+   }
+   function FluidComponentPreview({
+--- a/packages/design-system-runtime/src/files/ui/preview-head.ts
++++ b/packages/design-system-runtime/src/files/ui/preview-head.ts
+@@ -1,3 +1,8 @@
++/**
++ * [INPUT]: Fixed preview metadata and complete untrusted component source.
++ * [OUTPUT]: Original preview UI with explicit standalone closure qualification.
++ * [POS]: Maintained System preview boundary; every live component remains opaque.
++ */
+ import type * as React from "react";
+ import type * as Preview from "../../contracts/preview";
+ import type * as Model from "../../contracts";
+@@ -186,6 +191,8 @@
+     system: Preview.PreviewSystem,
+     libraries: Model.ResolvedLibraries = previewLibraries(system).libraries,
+   ): Preview.PreviewStaticStatus {
++    // Each host-qualified standalone card carries its complete runtime closure.
++    if (system.components.length > 0 && system.components.every(component => component.previewHtml?.includes('name="bottega-standalone-preview"'))) return { staticReason: "", staticMissing: Object.freeze([]) };
+     if (system.bundle.js !== null && libraries.missing.length > 0) {
+       let { missing: value, missingFiles: value2 } = libraries,
+         value3 = Object.freeze(
+--- a/packages/design-system-runtime/src/model/asset-store.ts
++++ b/packages/design-system-runtime/src/model/asset-store.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System capabilities and the exact Bottega native module transport.
++ * [OUTPUT]: Original System file/resource behavior through closed local or encrypted reads.
++ * [POS]: Trusted maintained System source; authored opaque previews receive no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ import type * as Storage from "../contracts/model-storage";
+ import type * as Model from "../contracts";
+ import type * as Host from "../contracts/platform-host";
+--- a/packages/design-system-runtime/src/model/remote-text.ts
++++ b/packages/design-system-runtime/src/model/remote-text.ts
+@@ -1,3 +1,9 @@
++/**
++ * [INPUT]: Maintained System capabilities and the exact Bottega native module transport.
++ * [OUTPUT]: Original System file/resource behavior through closed local or encrypted reads.
++ * [POS]: Trusted maintained System source; authored opaque previews receive no host capability.
++ */
++import { systemFetch as fetch } from "../adapters/transport";
+ import type * as Storage from "../contracts/model-storage";
+ import type * as Model from "../contracts";
+ import type * as Host from "../contracts/platform-host";
+--- a/packages/design-system-runtime/src/ui/interactions.tsx
++++ b/packages/design-system-runtime/src/ui/interactions.tsx
+@@ -3,6 +3,7 @@
+ import type * as O from "../contracts/overlays";
+ import type * as D from "../contracts/dom";
+ import type * as React from "react";
++import { SystemSvgIcon } from "../adapters/icons";
+ import type {
+   CallbackRef,
+   RefCleanup,
+@@ -13,6 +14,11 @@
+   CustomStyle,
+ } from "../contracts/dom";
+ /** Restored application module; prepare first, initialize in original order. */
++/**
++ * [INPUT]: Restored Design System interaction primitives and the licensed native SystemSvgIcon adapter.
++ * [OUTPUT]: Original interaction controls and density-scaled accessible SVG icons.
++ * [POS]: Maintained Design System UI interaction module; custom original SVG paths are preserved.
++ */
+ import { bindRuntimeValue, type RuntimeBindings } from "../runtime-types";
+ export function installUiInteractions(runtime: RuntimeBindings): () => void {
+   var classMergeThemeKeys: D.ThemeTokenManifest["themeKeys"];
+@@ -1916,38 +1922,10 @@
+             }),
+           }
+         : value21;
+-    return (
+-      <span
+-        data-cds={"Icon"}
+-        data-cds-anim={value22 ? "" : undefined}
+-        data-cds-anim-loop={
+-          value22 && loopingIcons.has(value13) ? "" : undefined
+-        }
+-        style={
+-          value4
+-            ? {
+-                ...value26,
+-                ...value4,
+-              }
+-            : value26
+-        }
+-        className={value3}
+-        {...value10}
+-        role={value10.role ?? (value2 ? "img" : undefined)}
+-        aria-hidden={value10["aria-hidden"] ?? (value2 ? undefined : true)}
+-        aria-label={value10["aria-label"] ?? (value2 || undefined)}
+-      >
+-        {[
+-          value19 !== undefined && (
+-            <span data-cds-icon-layer={"secondary"} aria-hidden={"true"}>
+-              {String.fromCodePoint(value19)}
+-            </span>
+-          ),
+-          value18 !== undefined ? String.fromCodePoint(value18) : null,
+-        ]}
+-      </span>
+-    );
+-  }
++    return <SystemSvgIcon {...value10} name={value13} pixelSize={pixelsToScaledRem(value14)}
++      bold={value11} animated={value12} alt={value2} className={value3} style={value4} />;
++  }
++
+   function isIconName(input: unknown): input is string {
+     return typeof input === "string";
+   }

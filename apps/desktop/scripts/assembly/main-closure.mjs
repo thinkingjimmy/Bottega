@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on Node Buffer only
- * [OUTPUT]: Provides moduleEdges and eagerClosure, the static-require walk over a Rollup CJS main assembly that masks lazy `import()` / `Promise.resolve().then(() => require())` edges
- * [POS]: Shared by check-main-bundle (banned packages, cloud prepare boundary) and budget/check-budgets (main and worker surface bytes)
+ * [INPUT]: Depends on Node Buffer and the builtin module list
+ * [OUTPUT]: Provides moduleEdges, eagerClosure (the static-require walk over a Rollup CJS main assembly that masks lazy `import()` / `Promise.resolve().then(() => require())` edges) and eagerExternalPackages (the bare packages one chunk requires at load time, without Node builtins and Electron)
+ * [POS]: Shared by check-main-bundle (banned packages, cloud prepare boundary) and budget/check-budgets (main and worker surface bytes and eager packages)
  */
 import { Buffer } from "node:buffer";
+import { builtinModules } from "node:module";
 
 /* Rollup 的 CJS 产物里，外部依赖的动态 import 原样保留为 `import("pkg")`，
    chunk 之间的动态 import 则写成 `Promise.resolve().then(() => require("./x"))`。
@@ -48,6 +49,22 @@ export function moduleEdges(source, banned = []) {
     if (owner) eagerPackages.add(owner);
   }
   return { staticRelative, dynamicRelative, eagerPackages };
+}
+
+/* Rollup 改名后的 `require$1(…)` 也是同一个 require；引号两种都认。 */
+const EAGER_REQUIRE = /(?<![\w$.])require(?:\$\d+)?\(\s*(["'])((?:(?!\1)[^\\]|\\.)*)\1\s*\)/g;
+const isHostModule = (specifier) => specifier.startsWith("node:") || builtinModules.includes(specifier.split("/")[0])
+  || specifier === "electron" || specifier.startsWith("electron/");
+
+export function eagerExternalPackages(source) {
+  const mask = lazyMask(source), names = new Set();
+  for (const match of source.matchAll(EAGER_REQUIRE)) {
+    const specifier = match[2];
+    if (mask[match.index] || specifier.startsWith(".") || isHostModule(specifier)) continue;
+    const parts = specifier.split("/");
+    names.add(specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]);
+  }
+  return names;
 }
 
 /**

@@ -1,12 +1,14 @@
 /**
- * [INPUT]: Host-owned paged history reads, the window maths, the highlight helpers and the per-conversation anchor memory.
+ * [INPUT]: Host-owned history ports, stable scroll handles, outer-row position lookup and bounded anchor memory.
  * [OUTPUT]: Provides TimelineReader and useTimelineReader: history paging, prepend scroll compensation, deep-link seeking, focus restoration, cross-mount anchor/offset restoration, and an in-place re-anchor on the newest rows when the host says its window was replaced (anchorKey).
  * [POS]: The timeline's state machine; adapters supply rows and reads, never a second window, and a port swap re-enters the transcript where the reader left it.
  */
+import { flushSync } from "react-dom";
+import { firstVisibleRow, atTranscriptBottom } from "./reading/position";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useScrollLockRelease, useStickToBottomContext } from "@ai-chat/ui/components/ai-elements/conversation";
-import { initialTranscriptAnchor, transcriptWindow, expandTranscriptAnchor, includeTranscriptTarget, shouldRestoreTranscriptFocus, type TranscriptRow } from "./window";
-import { findTranscriptTarget, highlightTranscriptTarget, scrollTranscriptTo } from "./highlight";
+import { useScrollLockRelease, useConversationScrollElements } from "@ai-chat/ui/components/ai-elements/conversation";
+import { initialTranscriptAnchor, transcriptWindow, includeTranscriptTarget, shouldRestoreTranscriptFocus, type TranscriptRow } from "./window";
+import { findTranscriptTarget, highlightTranscriptTarget, scrollTranscriptTo, cancelTranscriptScroll, settleTranscriptBottom } from "./highlight";
 import { forgetTimelineAnchor, recallTimelineAnchor, rememberTimelineAnchor } from "./anchor-memory";
 export type TimelineReader<Row extends TranscriptRow> = {
   messages: readonly Row[]; hasMoreBefore: boolean;
@@ -18,22 +20,9 @@ export type TimelineReader<Row extends TranscriptRow> = {
   /** A new value says the host's rows were replaced by a different window (desktop: the projection standing in, then the window's first page). */
   anchorKey?: string;
 };
-const transcriptRows = (scroller: HTMLElement) => [...scroller.querySelectorAll("[data-message-id]")].filter((node): node is HTMLElement => node instanceof HTMLElement);
-/** The first row still inside the scroller, with its top edge measured both absolutely and relative to it. */
-function firstVisibleRow(scroller: HTMLElement) {
-  const scrollerTop = scroller.getBoundingClientRect().top;
-  for (const node of transcriptRows(scroller)) {
-    const box = node.getBoundingClientRect();
-    if (box.bottom >= scrollerTop) return { id: node.dataset.messageId!, top: box.top, offsetTop: box.top - scrollerTop };
-  }
-  return null;
-}
-/* Sitting at the newest row is not a position worth restoring: the next mount should follow the
-   conversation forward, exactly as it does today. Only a reader who scrolled away has an offset. */
-const AT_BOTTOM_SLACK = 24;
 
 export function useTimelineReader<Row extends TranscriptRow>({ messages, hasMoreBefore, earlier, materialize, routeSearch, memoryKey, anchorKey, setHistoryBatch }: TimelineReader<Row> & { setHistoryBatch(active: boolean): void }) {
-  const { scrollRef } = useStickToBottomContext();
+  const { scrollRef, scrollToBottom, setScrollTop } = useConversationScrollElements();
   const releaseScrollLock = useScrollLockRelease();
   /* Read once, at mount: a remembered anchor is this conversation's own position from the port
      it was just showing in, so the window opens there instead of on the newest page. */
@@ -49,14 +38,15 @@ export function useTimelineReader<Row extends TranscriptRow>({ messages, hasMore
     if (!recalled) setAnchor(initialTranscriptAnchor(messages));
   }
   const pendingRestore = useRef(recalled);
+  const entering = useRef(true);
   /* The re-anchored rows commit with the scroller still where the stand-in left it; pin to the newest row before paint, or the
      stick-to-bottom observer does it a frame or two late and the top of the new window flashes first. */
   const firstAnchor = useRef(anchoredFor);
   useLayoutEffect(() => {
     if (anchoredFor === firstAnchor.current || recalled) return;
     const scroller = scrollRef.current;
-    if (scroller) scroller.scrollTop = scroller.scrollHeight;
-  }, [anchoredFor, recalled, scrollRef]);
+    if (scroller) setScrollTop(scroller.scrollHeight);
+  }, [anchoredFor, recalled, scrollRef, setScrollTop]);
   const [pendingJumpId, setPendingJumpId] = useState<string | null>(null);
   const consumedRouteKeyRef = useRef<string | null>(null);
   const pendingRouteRef = useRef<{ key: string; id: string } | null>(null);
@@ -65,8 +55,23 @@ export function useTimelineReader<Row extends TranscriptRow>({ messages, hasMore
     count: number;
   } | null>(null);
   const compensation = useRef<{ id: string; top: number } | null>(null);
-  const restoreFocusAfterExpand = useRef(false);
-  const loadedCount = useRef(0);
+  const batchGeneration = useRef(0);
+  const batchFrame = useRef(0);
+  const topSentinel = useRef<HTMLDivElement | null>(null);
+  const sentinelArmed = useRef(false);
+  const setTopSentinel = useCallback((node: HTMLDivElement | null) => {
+    topSentinel.current = node;
+    if (!node || !entering.current) return;
+    entering.current = false;
+    // An incoming port renders before the outgoing port flushes its position.
+    // A commit-time ref reads that final position before the new port paints.
+    const latest = recallTimelineAnchor(memoryKey);
+    pendingRestore.current = latest;
+    if (latest !== recalled) setAnchor(latest?.anchor ?? initialTranscriptAnchor(messages));
+  }, [memoryKey, messages, recalled]);
+  const currentMessages = useRef(messages);
+  const currentAnchor = useRef(anchor);
+  useLayoutEffect(() => { currentMessages.current = messages; currentAnchor.current = anchor; });
   const loadingEarlier = useRef(false);
   const [loadingEarlierNow, setLoadingEarlierNow] = useState(false);
   const windowed = useMemo(
@@ -99,17 +104,7 @@ export function useTimelineReader<Row extends TranscriptRow>({ messages, hasMore
           node.getBoundingClientRect().top - pendingCompensation.top;
       }
       compensation.current = null;
-      if (loadedCount.current > 0) {
-        setAnnouncement((current) => ({
-          generation: (current?.generation ?? 0) + 1,
-          count: loadedCount.current,
-        }));
-      }
-    }
-    if (restoreFocusAfterExpand.current) {
-      const first = scroller.querySelector("[data-message-id]");
-      if (first instanceof HTMLElement) first.focus({ preventScroll: true });
-      restoreFocusAfterExpand.current = false;
+
     }
     if (pendingJumpId && !anchorWasClamped) {
       const node = findTranscriptTarget(pendingJumpId, scroller);
@@ -124,7 +119,7 @@ export function useTimelineReader<Row extends TranscriptRow>({ messages, hasMore
         }
       }
     }
-    const frame = requestAnimationFrame(() => setHistoryBatch(false));
+    const frame = requestAnimationFrame(() => { if (!loadingEarlier.current) setHistoryBatch(false); });
     return () => cancelAnimationFrame(frame);
   }, [
     anchorWasClamped,
@@ -141,93 +136,153 @@ export function useTimelineReader<Row extends TranscriptRow>({ messages, hasMore
     const restore = pendingRestore.current;
     const scroller = scrollRef.current;
     if (!restore || !scroller || visibleMessages.length === 0) return;
+    if (windowed.anchor?.id !== restore.anchor.id && messages.some(row => row.id === restore.anchor.id)) return;
     pendingRestore.current = null;
     // The same node set the offset was measured over; a selector would need CSS.escape for nothing.
-    const node = transcriptRows(scroller).find(row => row.dataset.messageId === restore.anchor.id);
+    const node = findTranscriptTarget(restore.anchor.id, scroller);
     if (!node) return;
     releaseScrollLock();
     scroller.scrollTop += node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - restore.offsetTop;
-  }, [releaseScrollLock, scrollRef, visibleMessages]);
+  }, [messages, releaseScrollLock, scrollRef, visibleMessages, windowed.anchor?.id]);
+
+  const cancelBatch = useCallback(() => {
+    batchGeneration.current += 1;
+    cancelAnimationFrame(batchFrame.current);
+    loadingEarlier.current = false;
+    compensation.current = null;
+    if (scrollRef.current) cancelTranscriptScroll(scrollRef.current);
+    setLoadingEarlierNow(false);
+    setHistoryBatch(false);
+  }, [scrollRef, setHistoryBatch]);
 
   const loadEarlier = useCallback(async () => {
     if (loadingEarlier.current) return;
     const scroller = scrollRef.current;
-    if (!scroller) return;
-    if (windowed.start <= 0 && !hasMoreBefore) return;
+    if (!scroller || windowed.start <= 0 && !hasMoreBefore) return;
+    const generation = ++batchGeneration.current;
     loadingEarlier.current = true;
     setLoadingEarlierNow(true);
     releaseScrollLock();
     setHistoryBatch(true);
-    const firstVisible = firstVisibleRow(scroller);
-    if (firstVisible) compensation.current = { id: firstVisible.id, top: firstVisible.top };
     try {
-      if (windowed.start > 0) {
-        const next = expandTranscriptAnchor(messages, windowed.anchor);
-        const nextStart = transcriptWindow(messages, next).start;
-        restoreFocusAfterExpand.current = shouldRestoreTranscriptFocus(
-          nextStart,
-          document.activeElement instanceof HTMLElement &&
-            document.activeElement.hasAttribute("data-load-earlier")
-        );
-        loadedCount.current = windowed.start - nextStart;
-        setAnchor(next);
-        return;
+      let page = messages;
+      if (windowed.start === 0) {
+        const next = await earlier();
+        if (generation !== batchGeneration.current) return;
+        if (!next) { cancelBatch(); return; }
+        page = next;
       }
-      const page = await earlier();
-      const known = new Set(messages.map(message => message.id));
-      const added = page?.filter(message => !known.has(message.id)).length ?? 0;
-      if (!page || added === 0) {
-        /* 没有新行就没有位移要补：把补偿留在原地，下一次真正的加载会拿它
-           去对一个早已换过内容的坐标，滚动条于是跳一下。 */
-        compensation.current = null;
-        setHistoryBatch(false);
-        return;
-      }
-      loadedCount.current = added;
-      setAnchor((current) => expandTranscriptAnchor(page, current));
-    } catch {
-      compensation.current = null;
-      setHistoryBatch(false);
-    } finally {
-      loadingEarlier.current = false;
-      setLoadingEarlierNow(false);
-    }
-  }, [
-    earlier,
-    hasMoreBefore,
-    messages,
-    releaseScrollLock,
-    scrollRef,
-    setHistoryBatch,
-    windowed.anchor,
-    windowed.start,
-  ]);
+      const start = transcriptWindow(page, windowed.anchor).start;
+      const target = Math.max(0, start - 60);
+      const count = start - target;
+      if (!count) { cancelBatch(); return; }
+      const focusTrigger = document.activeElement instanceof HTMLElement && document.activeElement.hasAttribute("data-load-earlier");
+      let cursor = start;
+      const step = () => {
+        if (generation !== batchGeneration.current || !scroller.isConnected) return;
+        const first = firstVisibleRow(scroller);
+        if (first) compensation.current = { id: first.id, top: first.top };
+        cursor = Math.max(target, cursor - 15);
+        const row = page[cursor];
+        // One DOM commit per frame; a transition alone would still insert the full page at once.
+        flushSync(() => setAnchor({ id: row.id, seq: row.seq, ...(row.segment ? { segment: row.segment } : {}) }));
+        if (cursor > target) batchFrame.current = requestAnimationFrame(step);
+        else {
+          loadingEarlier.current = false;
+          setLoadingEarlierNow(false);
+          setHistoryBatch(false);
+          setAnnouncement(current => ({ generation: (current?.generation ?? 0) + 1, count }));
+          if (shouldRestoreTranscriptFocus(target, focusTrigger)) scroller.querySelector<HTMLElement>("[data-message-id]")?.focus({ preventScroll: true });
+        }
+      };
+      batchFrame.current = requestAnimationFrame(step);
+    } catch { if (generation === batchGeneration.current) cancelBatch(); }
+  }, [cancelBatch, earlier, hasMoreBefore, messages, releaseScrollLock, scrollRef, setHistoryBatch, windowed.anchor, windowed.start]);
 
   useEffect(() => {
+    const root = scrollRef.current, sentinel = topSentinel.current;
+    if (!root || !sentinel || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        // Initial bottom positioning briefly exposes the sentinel before rows settle.
+        if (!entry.isIntersecting) sentinelArmed.current = true;
+        else if (sentinelArmed.current && root.scrollHeight > root.clientHeight) void loadEarlier();
+      }
+    }, { root, rootMargin: "96px 0px 0px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadEarlier, scrollRef]);
+
+  const reclaim = useCallback(() => {
+    const scroller = scrollRef.current;
+    if (!scroller || !atTranscriptBottom(scroller) || loadingEarlier.current) return;
+    // Do not remove an active editor, selected text or a keyboard-focused historical control.
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && scroller.contains(selection.anchorNode)) return;
+    const focusedRow = document.activeElement?.closest<HTMLElement>("[data-message-id]");
+    const latest = initialTranscriptAnchor(currentMessages.current);
+    const start = transcriptWindow(currentMessages.current, latest).start;
+    if (focusedRow && currentMessages.current.slice(0, start).some(row => row.id === focusedRow.dataset.messageId)) return;
+    if (latest?.id === currentAnchor.current?.id) return;
+    flushSync(() => setAnchor(latest));
+    settleTranscriptBottom(scroller, () => {
+      setScrollTop(scroller.scrollHeight);
+      void scrollToBottom({ animation: "instant" });
+    });
+    if (memoryKey) forgetTimelineAnchor(memoryKey);
+  }, [memoryKey, scrollRef, scrollToBottom, setScrollTop]);
+
+  useLayoutEffect(() => {
     const scroller = scrollRef.current;
     if (!scroller) return;
-    const onScroll = () => {
-      if (scroller.scrollTop <= 96 && scroller.scrollHeight > scroller.clientHeight) {
-        void loadEarlier();
-      }
-      // A restore that has not run yet must not be overwritten by the mount's own scroll to bottom.
-      if (pendingRestore.current || !memoryKey) return;
-      if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= AT_BOTTOM_SLACK) {
-        forgetTimelineAnchor(memoryKey);
-        return;
-      }
+    let dirty = false;
+    let idle: ReturnType<typeof setTimeout> | undefined;
+    let shrink: ReturnType<typeof setTimeout> | undefined;
+    const flush = () => {
+      clearTimeout(idle);
+      if (!dirty || pendingRestore.current || !memoryKey) return;
+      dirty = false;
+      if (atTranscriptBottom(scroller)) { forgetTimelineAnchor(memoryKey); return; }
       const visible = firstVisibleRow(scroller);
-      const row = visible && messages.find(message => message.id === visible.id);
-      if (!visible || !row) return;
-      rememberTimelineAnchor(memoryKey, { anchor: { id: row.id, seq: row.seq, ...(row.segment ? { segment: row.segment } : {}) }, offsetTop: visible.offsetTop });
+      const row = visible && currentMessages.current.find(message => message.id === visible.id);
+      if (visible && row) rememberTimelineAnchor(memoryKey, { anchor: { id: row.id, seq: row.seq, ...(row.segment ? { segment: row.segment } : {}) }, offsetTop: visible.offsetTop });
+    };
+    const onScroll = () => {
+      dirty = true;
+      clearTimeout(idle); clearTimeout(shrink);
+      idle = setTimeout(flush, 150);
+      shrink = setTimeout(reclaim, 2000);
+    };
+    const latest = () => {
+      cancelBatch();
+      setPendingJumpId(null);
+      pendingRouteRef.current = null;
+      setScrollTop(scroller.scrollHeight);
+      reclaim();
     };
     scroller.addEventListener("scroll", onScroll, { passive: true });
-    return () => scroller.removeEventListener("scroll", onScroll);
-  }, [loadEarlier, memoryKey, messages, scrollRef]);
+    scroller.addEventListener("scrollend", flush);
+    scroller.addEventListener("transcript-latest", latest);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      flush(); clearTimeout(shrink);
+      cancelTranscriptScroll(scroller);
+      batchGeneration.current += 1;
+      cancelAnimationFrame(batchFrame.current);
+      scroller.removeEventListener("scroll", onScroll);
+      scroller.removeEventListener("scrollend", flush);
+      scroller.removeEventListener("transcript-latest", latest);
+      window.removeEventListener("pagehide", flush);
+    };
+  }, [cancelBatch, memoryKey, reclaim, scrollRef, setScrollTop]);
 
   const jumpTo = useCallback((id: string) => {
     const scroller = scrollRef.current;
     if (!scroller) return false;
+    cancelBatch();
+    const generation = batchGeneration.current;
+    setPendingJumpId(null);
+    if (pendingRouteRef.current?.id !== id) pendingRouteRef.current = null;
     releaseScrollLock();
     const node = findTranscriptTarget(id, scroller);
     if (node) {
@@ -240,6 +295,7 @@ export function useTimelineReader<Row extends TranscriptRow>({ messages, hasMore
     setAnchor((current) => includeTranscriptTarget(messages, current, id));
     void materialize(id)
       .then((snapshot) => {
+        if (generation !== batchGeneration.current) return;
         if (!snapshot) {
           setPendingJumpId(null);
           setHistoryBatch(false);
@@ -250,11 +306,12 @@ export function useTimelineReader<Row extends TranscriptRow>({ messages, hasMore
         );
       })
       .catch(() => {
+        if (generation !== batchGeneration.current) return;
         setPendingJumpId(null);
         setHistoryBatch(false);
       });
     return false;
-  }, [materialize, messages, releaseScrollLock, scrollRef, setHistoryBatch]);
+  }, [cancelBatch, materialize, messages, releaseScrollLock, scrollRef, setHistoryBatch]);
 
   useLayoutEffect(() => {
     const routeKey = routeSearch ?? "";
@@ -283,5 +340,5 @@ export function useTimelineReader<Row extends TranscriptRow>({ messages, hasMore
     }
   }, [jumpTo, releaseScrollLock, routeSearch, scrollRef]);
 
-  return { messages: visibleMessages, hasEarlier: windowed.start > 0 || hasMoreBefore, loadingEarlier: loadingEarlierNow, loadEarlier, jumpTo, announcement };
+  return { setTopSentinel, messages: visibleMessages, hasEarlier: windowed.start > 0 || hasMoreBefore, loadingEarlier: loadingEarlierNow, loadEarlier, jumpTo, announcement };
 }

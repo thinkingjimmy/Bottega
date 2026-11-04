@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Exact retained local/saved native input, owner checkpoint conflicts and an explicit CAS recovery callback.
- * [OUTPUT]: NativeInputRecovery shows both drafts and serializes a choice against the displayed owner version only after source loading finishes.
+ * [INPUT]: Exact retained native input, owner checkpoint conflicts, shared localized native/Chat status copy and an explicit CAS recovery callback.
+ * [OUTPUT]: NativeInputRecovery shows both drafts and serializes a choice against the displayed owner version only after source loading finishes, including readable pending comment-save and original-Chat handoff summaries.
  * [POS]: Trusted review conflict UI; it never sends a model request or changes document source.
  */
 import { useRef, useState } from "react";
 import { nativeCopy } from "./copy";
+import { nativeChatCopy } from "./review/chat-copy";
 import type { NativeInput } from "@ai-chat/cloud-protocol/artifacts/design/native/comments";
 import type { WorkspaceRead } from "@ai-chat/cloud-protocol/artifacts/design/model";
 const texts = {
@@ -23,7 +24,7 @@ export function NativeInputRecovery({ locale, input, conflict, recover, blocked 
   };
   const copy = texts[locale?.split("-")[0] as keyof typeof texts] ?? texts.en;
   const retained = conflict.checkpointConflicts?.flatMap(value => value.native ? [value.native] : []) ?? [];
-  const saved = conflict.checkpoint?.native ?? { instruction: "" }, summary = (value: NativeInput) => [value.instruction, value.compose?.text, value.reply?.text, value.pending ? nativeCopy(locale ?? "en").pending : undefined].filter(Boolean).join("\n\n");
+  const saved = conflict.checkpoint?.native ?? { instruction: "" }, summary = (value: NativeInput) => [value.instruction, value.compose?.text, value.reply?.text, value.pending || value.commentSave ? nativeCopy(locale ?? "en").pending : undefined, value.handoff ? nativeChatCopy(locale ?? "en").pending : undefined].filter(Boolean).join("\n\n");
   const button = "min-h-[44px] rounded-md border px-3 text-sm hover:bg-muted disabled:opacity-50";
   return <section data-native-input-recovery="" data-native-input-revision={conflict.revision} className="pointer-events-auto absolute left-3 bottom-20 z-50 max-h-[70%] w-[min(420px,calc(100%_-_24px))] space-y-3 overflow-auto rounded-md border bg-background p-3 text-sm shadow-lg">
     <p role="alert">{copy[0]}</p>

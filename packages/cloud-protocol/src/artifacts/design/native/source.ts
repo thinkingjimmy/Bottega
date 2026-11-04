@@ -21,14 +21,13 @@ const indexSchema = z.object({ bottegaSystems: z.array(systemBindingSchema).max(
     z.object({ view: z.literal("focused"), file: sourcePath }).passthrough()]).optional(),
   notes: z.record(z.string().regex(/^[A-Za-z0-9_-]{1,40}$/), z.object({ x: z.number().finite(), y: z.number().finite(), text: z.string().max(100_000), page: z.string().optional() }).passthrough()).optional(),
 }).passthrough();
-export function projectNativeManifest(files: readonly { path: string; data: Uint8Array }[], documentId: string): DesignManifest | null {
+export function projectNativeManifest(files: readonly { path: string; data: Uint8Array }[], documentId: string): DesignManifest {
   designId.parse(documentId);
   const canvas = files.find(file => file.path === "canvas.json"), deck = files.find(file => file.path === "deck.json");
   if (canvas && deck) throw new Error("Ambiguous native document: canvas.json and deck.json are both present");
-  if (!canvas) return deck ? projectSlidesManifest(files, documentId) : null;
+  if (!canvas) { if (deck) return projectSlidesManifest(files, documentId); throw new Error("A current Canvas or Slides index is required"); }
   if (canvas.data.length > 65_536) throw new Error("Native index exceeds its 64 KiB budget");
   const raw = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(canvas.data));
-  if (raw?.schemaVersion === 1 && raw?.v === undefined) return null;
   const index = indexSchema.parse(raw), paths = Object.keys(index.boards);
   if (!paths.length || paths.length > 16 || index.order.length !== paths.length || new Set(index.order).size !== paths.length || index.order.some(path => !index.boards[path]))
     throw new Error("Native board order must contain every board exactly once (at most 16)");

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses canonical built-in Provider identity, a custody-backed AgentProcessHost, main-frozen NativeTurnConfig, live main-owned MCP consent queries, native RPC and product callbacks.
- * [OUTPUT]: Status-only notification-silence probes; Exports CodexNativeTurn, implementing native Thread/Turn methods and exact-terminal background termination with list readback.
+ * [OUTPUT]: Status-only notification-silence probes; Exports CodexNativeTurn with isolated title/candidate Skill exclusion, ephemeral/read-only policy verification and native Thread/Turn methods and exact-terminal background termination with list readback.
  * Native Skill-budget warnings remain durable turn facts on success and failure.
  * [POS]: Native lifecycle owner; no ACP methods, launcher fallback or client-side automatic approval.
  */
@@ -97,7 +97,7 @@ export class CodexNativeTurn implements AgentTurn {
       const selected = nativeRecord(this.config.thread.config?.mcp_servers);
       const servers = { ...Object.fromEntries(Object.keys(inherited).map(name => [name, { enabled: false }])), ...selected };
       const threadParams = { ...this.config.thread, config: { ...this.config.thread.config, mcp_servers: servers } };
-      if (this.config.purpose === "artifact-candidate") {
+      if (this.config.purpose === "artifact-candidate" || this.config.purpose === "title") {
         if (this.options.payload.session || this.options.sessionRecovery || this.config.continuation) throw new Error("Candidate threads cannot resume another session");
         const listed = nativeRecord(await this.rpc.request("skills/list", { cwds: [this.options.workspace], forceReload: true }));
         if (!Array.isArray(listed.data) || listed.data.length > 32) throw new Error("Candidate Skill discovery is unavailable");
@@ -133,11 +133,11 @@ export class CodexNativeTurn implements AgentTurn {
       if (typeof thread.id !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(thread.id) ||
         (candidate && !this.config.continuation && thread.id !== candidate) ||
         (this.config.continuation && thread.id === this.config.continuation.threadId)) throw new Error("Invalid native thread identity");
-      if (this.config.purpose === "artifact-candidate" && thread.ephemeral !== true) throw new Error("Native CLI refused an ephemeral candidate thread");
+      if (this.config.purpose && thread.ephemeral !== true) throw new Error("Native CLI refused an ephemeral isolated thread");
       const actual = nativeRecord(response.sandbox), expected = this.config.turn.sandboxPolicy;
       const roots = (value: unknown) => Array.isArray(value) && value.every(root => typeof root === "string")
         ? [...new Set(value.filter(root => root !== this.options.workspace))].sort() : null;
-      const workspaceMatches = expected?.type !== "workspaceWrite" || (
+      const workspaceMatches = expected?.type === "readOnly" ? actual.networkAccess === expected.networkAccess : expected?.type !== "workspaceWrite" || (
         actual.networkAccess === expected.networkAccess && actual.excludeTmpdirEnvVar === expected.excludeTmpdirEnvVar &&
         actual.excludeSlashTmp === expected.excludeSlashTmp && JSON.stringify(roots(actual.writableRoots)) === JSON.stringify(roots(expected.writableRoots)));
       if (response.model !== this.config.thread.model || response.approvalPolicy !== this.config.thread.approvalPolicy ||

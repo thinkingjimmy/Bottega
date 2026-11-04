@@ -3,6 +3,7 @@
  * [OUTPUT]: Shared Files, Sketch, Plan and permission controls plus drop/paste admission; every unsupported input flags its own control (file, Plan chip, permission chip), images show processing/rejected/reselect states, and a rejected add becomes a toast.; with `textOnly` (U06-c) no Files or Sketch and a dropped or pasted file refused with the rule
  * [POS]: Remote input presentation; send and account lifecycle remain with the parent.
  */
+import { useProjectImportAction } from "../../../artifacts/projects/launcher";
 import { builtinProviderPermissionModel } from "@bottega/contracts/model/provider-capabilities";
 import { useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 import type { RemoteComposerCapabilities, RemotePermissionMode } from "@ai-chat/cloud-protocol/remote/input/model";
@@ -27,7 +28,7 @@ export function useRemoteComposerControls(input: { store: RemoteDraftStore; draf
   /** U06-c: the rule when this message takes no files (an App's first Edit message); files and sketch are then not offered and a dropped or pasted file is refused with it. */
   textOnly?: string }) {
   const { store, draft, port, chatId, capabilities, permissionMode, locale, disabled, copy, feedback } = input;
-  const composerText = useComposerTranslation(locale);
+  const composerText = useComposerTranslation(locale), project = useProjectImportAction();
   const scope=useMemo(()=>({chatId:chatId??input.draftKey??"new:root",incarnationId:input.incarnationId??"",ownerDeviceId:input.ownerDeviceId??""}),[chatId,input.draftKey,input.incarnationId,input.ownerDeviceId]);
   const picker = useRef<HTMLInputElement>(null), sketch = useRemoteSketch(store, locale, port?.lifetime,{entries:input.plugins??EMPTY_PLUGINS,scope}), text = remoteInputCopy(locale);
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -62,8 +63,8 @@ export function useRemoteComposerControls(input: { store: RemoteDraftStore; draf
     /* A failed chip is its own retry button, a chip lost on reload reopens the picker, one still processing or rejected has nothing to preview. */
     openFile: (id: string) => { const file = draft.files.find(file => file.id === id); if (!file) return; if (file.state === "failed") retry(file);
       else if (file.state === "reselect") reselect(file); else if (file.state !== "processing" && file.state !== "rejected") setPreviewId(id); },
-    tools: <>{!input.textOnly && <input ref={picker} type="file" multiple className="sr-only" tabIndex={-1} aria-hidden="true" onChange={event => { add(Array.from(event.target.files ?? [])); event.target.value = ""; }} />}
-      <ComposerAddMenu locale={locale} disabled={disabled} files={port?.attachments && !input.textOnly ? { disabled: draft.files.length >= 8 || !capabilities?.fileInput && !capabilities?.imageInput, run: () => picker.current?.click() } : undefined}
+    tools: <>{!input.textOnly && project.dialog}{!input.textOnly && <input ref={picker} type="file" multiple className="sr-only" tabIndex={-1} aria-hidden="true" onChange={event => { add(Array.from(event.target.files ?? [])); event.target.value = ""; }} />}
+      <ComposerAddMenu project={!input.textOnly ? project.action : undefined} locale={locale} disabled={disabled} files={port?.attachments && !input.textOnly ? { disabled: draft.files.length >= 8 || !capabilities?.fileInput && !capabilities?.imageInput, run: () => picker.current?.click() } : undefined}
         plugins={port?.attachments && !input.textOnly ? (input.plugins??[]).filter(entry=>entry.enabled&&!entry.records).map(entry=>({id:entry.id,name:entry.id==='sketch'?composerText('sketch.title'):entry.composer.title,icon:entry.composer.icon,
           disabled:!sketch.available||!entry.enabled||!entry.generationId||draft.files.length>=8||!capabilities?.imageInput,
           reason:pluginInitializationMessage(entry,composerText)??(!entry.enabled?composerText('sketch.readOnly'):draft.files.length>=8?composerText('sketch.attachmentLimit'):undefined),run:anchor=>sketch.open(entry,anchor)})) : []}

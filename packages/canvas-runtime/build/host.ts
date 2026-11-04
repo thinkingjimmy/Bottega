@@ -4,11 +4,12 @@
  * [POS]: Trusted editor entry; authored opaque frames never receive this host capability.
  */
 import { nativeFetch, nativeBase } from "./transport";
+import { installProjectExport } from "./projects/ui";
 import { nativeDownloads } from "./downloads";
 import { installNativeComments } from "./comments";
 import type { PublishBatch } from "../.build/source/packages/slides/src/file-protocol";
 import { createEditorHost, createHttpBackend } from "../.build/source/packages/slides/src/editor/editor-host";
-import { createCommentsBridge, domPinLayer, windowParentLink } from "../.build/source/packages/slides/src/editor/comments-bridge";
+import { createCommentsBridge, windowParentLink } from "../.build/source/packages/slides/src/editor/comments-bridge";
 import { createChatBridge } from "../.build/source/packages/slides/src/editor/chat-bridge";
 import { createBrowserDownloads } from "../.build/source/packages/design/src/editor/downloads-bridge";
 export function installDesignEditorHost(kind: "canvas" | "slides" = "canvas") {
@@ -74,8 +75,23 @@ export function installDesignEditorHost(kind: "canvas" | "slides" = "canvas") {
     return flight;
   };
   const link = windowParentLink(window);
-  const comments = link ? createCommentsBridge(link, domPinLayer(document)) : null;
+  const pinRoot = document.createElement("div");
+  pinRoot.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;z-index:2147483000;pointer-events:none"; document.body.append(pinRoot);
+  const pins = { clear() { pinRoot.replaceChildren(); }, render(positions: Record<string, { x: number; y: number }>, threads: readonly { id: string; n: number }[]) {
+    pinRoot.replaceChildren(...threads.filter(thread => thread.n > 0 && positions[thread.id]).map(thread => {
+      const point = positions[thread.id]!, pin = document.createElement("button"); pin.type = "button"; pin.textContent = String(thread.n); pin.dataset.nativeCommentPin = thread.id; pin.setAttribute("aria-label", "Comment " + thread.n);
+      pin.style.cssText = `position:absolute;left:${point.x}px;top:${point.y}px;transform:translate(-50%,-50%);min-width:24px;height:24px;padding:0 6px;border:0;border-radius:999px;background:#3B63FB;color:white;font:700 12px/24px system-ui,sans-serif;pointer-events:auto;cursor:pointer;box-shadow:0 1px 4px #0005`;
+      const open = () => window.parent.postMessage({ type: "editor:open-thread", id: thread.id }, "*");
+      // The native canvas removes pins when pointer-down exits comment mode.
+      pin.onpointerdown = event => { event.preventDefault(); event.stopPropagation(); open(); };
+      pin.onclick = event => { event.stopPropagation(); if (event.detail === 0) open(); };
+      return pin;
+    }));
+  } };
+  const comments = link ? createCommentsBridge(link, pins) : null;
   const chat = link ? createChatBridge(link) : null;
+  let acceptHot: ((update: { from: { ver: string }; to: { ver: string }; required: string; changed: null }) => unknown) | undefined;
+  const hot = { accept(handler: typeof acceptHot) { acceptHot = handler; } };
   const host = createEditorHost(backend, { canEdit, ...(comments ? { comments: comments.capability } : {}), ...(chat ? { chat: chat.capability } : {}) });
   const beforeExport = async () => {
     const deadline = Date.now() + 8000, dirty = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
@@ -83,14 +99,30 @@ export function installDesignEditorHost(kind: "canvas" | "slides" = "canvas") {
     if (dirty()) throw new Error("Save the current native source before exporting");
   };
   const downloads = nativeDownloads(base, token, beforeExport);
+  if (token) installProjectExport(downloads, token);
   if (token) Object.defineProperty(window, "__bottegaNativeBeforeExport", { value: beforeExport });
   if (token && link) Object.defineProperty(window, "__bottegaNativeExportJob", { value: downloads.produce });
-  Object.assign(window, { [kind === "slides" ? "slidesHost" : "designHost"]: { ...host, downloads: link ? downloads : createBrowserDownloads(window) },
+  Object.assign(window, { [kind === "slides" ? "slidesHost" : "designHost"]: { ...host, hot, downloads: link ? downloads : createBrowserDownloads(window) },
     __FRAME_PREAMBLE: { trustParent: Boolean(link) } });
   if (link) {
     window.addEventListener("message", async event => {
       if (!event.isTrusted || event.source !== window.parent || !token || event.data?.token !== token) return;
       const message = event.data;
+      if (message.type === "bottega:native:adopt-chat") {
+        try {
+          if (!acceptHot) throw new Error("Native hot updates are unavailable");
+          await beforeExport();
+          const before = await (await nativeFetch(base + "_files.json", { cache: "no-store" })).json();
+          const response = await nativeFetch(base + "__deck/adopt", { method: "POST", headers: { "Content-Type": "application/json", "X-Bottega-Native": token, "X-Bottega-Request": "native-" + crypto.randomUUID() }, body: JSON.stringify({ revision: message.revision, snapshotRef: message.snapshotRef }) });
+          if (!response.ok) throw new Error("Compare this source change before reloading");
+          const result = await response.json();
+          const after = await (await nativeFetch(base + "_files.json", { cache: "no-store" })).json();
+          const adopted = await acceptHot({ from: { ver: before.ver }, to: { ver: after.ver }, required: "none", changed: null });
+          if (adopted !== "applied") throw new Error("Native source update is waiting for the current interaction");
+          link.post({ type: "bottega:native:adopted-chat", token, result });
+        } catch { link.post({ type: "bottega:native:adoption-deferred", token }); }
+        return;
+      }
       if (message.type !== "editor:flush" || typeof message.requestId !== "string") return;
       const inert = document.body.inert;
       finalFlushNonce = typeof message.nonce === "string" ? message.nonce : undefined;

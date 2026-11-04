@@ -1,0 +1,25 @@
+/**
+ * [INPUT]: Fixed-reference page measurements and the exact parent appearance.
+ * [OUTPUT]: Documented Dashboard typography, spacing, surface/chart tokens and responsive page gutter.
+ * [POS]: Opaque page defaults before authored CSS; no reference font binaries or host capabilities.
+ */
+:root{
+  font-size:16px;
+  --font-anthropic-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","PingFang TC","Hiragino Sans","Apple SD Gothic Neo",sans-serif;
+  --font-anthropic-serif:ui-serif,Georgia,"Times New Roman",serif;
+  --cds-font-sans:var(--font-anthropic-sans);--cds-font-voice:var(--font-anthropic-serif);
+  --cds-font-size-caption:.75rem;--cds-font-size-footnote:.8125rem;--cds-font-size-body:.875rem;--cds-font-size-heading:.9375rem;--cds-font-size-title:1.375rem;--cds-font-size-prose:1rem;
+  --cds-font-weight-regular:400;--cds-font-weight-body:400;--cds-font-weight-medium:500;--cds-font-weight-semibold:580;--cds-font-weight-bold:600;
+  --cds-leading-caption:1.0625rem;--cds-leading-body:1.25rem;--cds-leading-heading:1.25rem;--cds-leading-title:1.75rem;--cds-leading-prose:1.5rem;
+  --cds-pad-xs:.375rem;--cds-pad-sm:.5rem;--cds-pad-md:.75rem;--cds-pad-lg:1rem;--cds-pad-xl:1.5rem;
+  --cds-gap-xs:.5rem;--cds-gap-sm:.75rem;--cds-gap-md:1rem;--cds-gap-lg:1.75rem;--cds-gap-xl:2.5rem;--cds-radius:.5rem;
+  --color-fg:rgb(0 0 0/.9);--color-fg-secondary:rgb(0 0 0/.6);--color-fg-muted:rgb(0 0 0/.465);--color-panel:#fff;--color-border-line:rgb(0 0 0/.08);
+  --cds-border:var(--color-border-line);--cds-text-primary:var(--color-fg);--cds-text-secondary:var(--color-fg-secondary);--cds-text-muted:var(--color-fg-muted);--cds-surface-panel:var(--color-panel);--cds-surface-popover:#fff;--cds-page-bg:#f9f9f9;--cds-shadow-popover:0 8px 24px #0000001f,0 2px 6px #00000014;
+  --cds-chart-grid:rgb(11 11 11/.1);--cds-chart-axis:#c2c2c2;--cds-chart-baseline:var(--cds-chart-axis);--cds-chart-reference:#878787;--cds-chart-muted:#c2c2c2;--cds-chart-status-critical:#dc3c3d;--cds-chart-status-warning:#fbb315;--cds-chart-status-serious:#f18a59;--cds-chart-status-good:#0aac23;
+  color:var(--color-fg);background:var(--cds-page-bg);font-family:var(--font-anthropic-sans);line-height:1.5;
+}
+html[data-mode=dark]{--color-fg:rgb(255 255 255/.93);--color-fg-secondary:rgb(255 255 255/.57);--color-fg-muted:rgb(255 255 255/.4);--color-panel:#1f1f1f;--color-border-line:rgb(255 255 255/.04);--cds-surface-popover:#303030;--cds-page-bg:#0b0b0b;--cds-shadow-popover:0 8px 24px #00000052,0 2px 6px #0003;--cds-chart-grid:rgb(255 255 255/.1);--cds-chart-axis:#383838;--cds-chart-reference:#959595;--cds-chart-muted:#5e5e5e;color-scheme:dark}
+*,::before,::after{box-sizing:border-box;border-width:0;border-style:solid;border-color:var(--color-border-line)}
+body,h1,h2,h3,h4,h5,h6,p,figure,blockquote,dl,dd{margin:0}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}body{background:var(--cds-page-bg);color:var(--color-fg);font-family:var(--font-anthropic-sans)}button,input,optgroup,select,textarea{font:inherit;font-feature-settings:inherit;color:inherit;border-radius:0;background:transparent}button,[type=button],[type=reset],[type=submit]{appearance:button}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}table{border-collapse:collapse;border-color:inherit;text-indent:0}img,svg,video,canvas{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}code,kbd,samp,pre{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:1em}[hidden]{display:none!important}
+#dash-root{font-family:var(--font-anthropic-sans);font-size:14px;line-height:1.45;color:var(--color-fg)}
+:where(#dash-root:not(:empty)){padding:var(--dash-gutter,clamp(var(--cds-pad-md),4%,var(--cds-pad-xl)))}

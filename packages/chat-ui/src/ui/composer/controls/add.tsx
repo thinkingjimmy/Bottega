@@ -9,14 +9,15 @@ import { PromptInputActionMenu, PromptInputActionMenuTrigger, PromptInputActionM
 import { useComposerTranslation } from "./copy/translation";
 type Action = { disabled?: boolean; reason?: string; run(anchor: HTMLButtonElement | null): void };
 export type ComposerPluginAction = Action & Readonly<{ id: string; name: string; icon?: string }>;
-export function ComposerAddMenu({ locale, disabled, files, plugins = [], plan, preload }: {
-  locale: string; disabled?: boolean; files?: Action; plugins?: readonly ComposerPluginAction[]; plan?: Action & { active: boolean }; preload?(): void;
+export function ComposerAddMenu({ locale, disabled, files, project, plugins = [], plan, preload }: {
+  locale: string; disabled?: boolean; files?: Action; project?: Action & { label: string }; plugins?: readonly ComposerPluginAction[]; plan?: Action & { active: boolean }; preload?(): void;
 }) {
   const t = useComposerTranslation(locale), anchor = useRef<HTMLButtonElement>(null);
   return <PromptInputActionMenu onOpenChange={open => { if (open) preload?.(); }}>
     <PromptInputActionMenuTrigger ref={anchor} aria-label={t("chat.composer.add")} className="rounded-full" disabled={disabled}><PlusIcon className="size-4" /></PromptInputActionMenuTrigger>
     <PromptInputActionMenuContent side="top" className="w-auto max-w-[calc(100vw-1rem)]">
       {files && <PromptInputActionMenuItem disabled={files.disabled} title={files.reason} onSelect={() => files.run(anchor.current)}><FileUpIcon className="size-4" />{t("chat.composer.files")}</PromptInputActionMenuItem>}
+      {project && <PromptInputActionMenuItem disabled={project.disabled} title={project.reason} onSelect={() => project.run(anchor.current)}><FileUpIcon className="size-4" />{project.label}</PromptInputActionMenuItem>}
       {plugins.map(plugin => {
         const Icon = plugin.icon === "pencil" || plugin.icon === "sketch" ? PencilIcon : PuzzleIcon;
         return <PromptInputActionMenuItem key={plugin.id} data-composer-plugin={plugin.id} disabled={plugin.disabled} onSelect={() => plugin.run(anchor.current)}>

@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Account-admitted resource identity, strict commands and the existing main workspace/custody owners.
- * [OUTPUT]: Bounded encrypted catalog/Canvas capability/edit/export results with exact original request recovery.
+ * [OUTPUT]: Bounded encrypted current catalog/system/export results with exact original request recovery.
  * [POS]: Artifact resource domain; ResourceCommandRuntime verifies the operator and connection before every call.
  */
 import { artifactWorkspace } from "../../../artifacts/workspace/runtime";
 import { artifactEnabled, artifactGeneration, assertArtifactGeneration } from "../../../artifacts/admission/state";
 import { PROTOCOL_VERSION } from "@ai-chat/cloud-protocol/config";
-import { artifactOperationSchema, artifactDifferenceSchema, artifactCanvasTargetSchema } from "@ai-chat/cloud-protocol/resources/artifact/model";
+import { artifactOperationSchema, artifactDifferenceSchema } from "@ai-chat/cloud-protocol/resources/artifact/model";
 import { resourceCommandBodySchema, resourceActionKind, type ResourceCommandBody, type ResourceResultBody } from "@ai-chat/cloud-protocol/resources/model";
 import { artifactRuntime } from "../../../artifacts/core/runtime";
 export async function artifactResourceAction(resourceId: string, raw: ResourceCommandBody, current: () => void, expectedOwnerDeviceId?: string): Promise<ResourceResultBody> {
@@ -22,12 +22,11 @@ export async function artifactResourceAction(resourceId: string, raw: ResourceCo
       if (body.action === "artifact-status") {
         const result = await artifactWorkspace().dispatch({ action: "list", chatId: input.chatId, incarnationId: input.incarnationId }) as {
           documents: { documentId: string; title: string; revision: number; snapshotRef: string; readSetDigest: string; dirty: boolean;
-            undoRevision: number | null; redoRevision: number | null;
-            fence: { id: string; bytes?: number; design?: { format: "bottega-design" | "bottega-design-system" } } }[] };
+                      fence: { id: string; bytes?: number; design?: { format: "bottega-design" | "bottega-design-system" } } }[] };
         const candidates = result.documents.sort((a, b) => a.documentId.localeCompare(b.documentId)).filter(value => !input.cursor || value.documentId > String(input.cursor));
         const documents = candidates.slice(0, 8).map(value => ({ documentId: value.documentId, title: value.title.slice(0, 80), artifactId: value.fence.id,
           revision: value.revision, snapshotRef: value.snapshotRef, readSetDigest: value.readSetDigest, bytes: value.fence.bytes!, format: value.fence.design!.format, dirty: value.dirty,
-          undoRevision: value.undoRevision, redoRevision: value.redoRevision }));
+ }));
         current(); return { ok: true, artifactStatus: { capability: { enabled: artifactEnabled(), generation: artifactGeneration(), protocolVersion: PROTOCOL_VERSION, publishedAt: Date.now() },
           documents, cursor: candidates.length > 8 ? documents.at(-1)!.documentId : null } };
       }
@@ -40,7 +39,7 @@ export async function artifactResourceAction(resourceId: string, raw: ResourceCo
           current(); return { ok: true, artifactHistory: { cursor: versions.length > 8 ? versions[7]!.revision : null,
             versions: versions.slice(0, 8).map(version => ({ documentId: version.manifest.documentId, title: version.manifest.title.slice(0, 80),
               artifactId: version.artifactId, revision: version.revision, snapshotRef: version.snapshotRef, readSetDigest: version.readSetDigest,
-              bytes: version.fence.bytes!, format: version.manifest.format, dirty: false, undoRevision: null, redoRevision: null })) } };
+              bytes: version.fence.bytes!, format: version.manifest.format, dirty: false })) } };
         }
         if (input.action === "cancel-thumbnail") { const value = await artifactWorkspace().dispatch(input); current(); return { ok: true, artifactCancellation: value as { cancelled: boolean } }; }
         if (input.action === "export" || input.action === "thumbnail") {
@@ -56,7 +55,8 @@ export async function artifactResourceAction(resourceId: string, raw: ResourceCo
         const value = await artifactWorkspace().dispatch(input);
         if (["capture-status", "retry-capture"].includes(String(input.action))) { current(); return { ok: true, artifactRecovery: value as { fence: import("@ai-chat/cloud-protocol/turns/text/artifact-reference").ArtifactFence | null } }; }
         current();
-        if (input.action === "canvas-target") return { ok: true, artifactCanvasTarget: artifactCanvasTargetSchema.parse(value) };
+        if (input.action === "native-reference") return { ok: true, artifactNativeReference: (await import("@ai-chat/cloud-protocol/artifacts/design/reference/model")).designReferenceSchema.parse(value) };
+        if (String(input.action).startsWith("native-history-") && input.action !== "native-history-restore") return { ok: true, artifactNativeHistory: (await import("@ai-chat/cloud-protocol/artifacts/design/history/model")).nativeHistoryResultSchema.parse(value) };
         if (input.action === "system-diff") return { ok: true, artifactDifference: artifactDifferenceSchema.parse(value) };
         const result = value as { status: "committed" | "pending" | "conflict"; requestId: string; documentId?: string; revision?: number;
           code?: "SOURCE_CHANGED"; sourceConflict?: unknown;

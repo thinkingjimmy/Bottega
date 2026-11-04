@@ -47,6 +47,12 @@ Setup has one path and never mentions an account: choose your Bottega folder, th
 
 See the [features guide](../features/README.md) for the product model and its four core capability areas.
 
+### Upgrading to 0.3.0
+
+0.3.0 uses protocol 25. After the coordinated service update, update connected desktops and reload Bottega Web. Earlier clients require an update for Cloud access. Existing content, sync passwords and account keys remain; no data reset is required. Back up the Bottega folder and application data before updating. Official macOS Apple silicon builds use the stable update channel; the 0.2.5 personal build requires manual installation.
+
+Canvas v3, Slides v4, Design System and Dashboard have dedicated editors. Retired Artifact files and snapshots remain unchanged. Their cards show an unsupported-format message and do not regain editor access. Use History or complete-project ZIP export for supported current work. Dock remains Alpha on macOS 27.x with Apple silicon. See the [0.3.0 milestone](../changelog/README.md#2026-11-04--v030) for capabilities and validation limits.
+
 ### Upgrading to 0.2.12
 
 0.2.12 uses protocol 23. After the coordinated service update, update connected desktop computers and reload Bottega Web. Earlier clients require an update for Cloud access. Existing content, sync passwords and account keys remain; no data reset is required. Back up your Bottega folder and application data before updating. Official macOS Apple silicon builds use the stable update channel; the 0.2.5 personal build requires manual installation. Dock remains Alpha on macOS 27.x and Apple silicon. Read the [0.2.12 milestone](../changelog/README.md#2026-11-01--v0212) for native Canvas/Slides validation limits.
@@ -67,11 +73,11 @@ See the [features guide](../features/README.md) for the product model and its fo
 
 - A Mac with Apple silicon
 - At least one supported CLI:
-  - Codex CLI **0.163.0-alpha.10.2 exactly**; other versions are not supported by this release.
+  - Codex CLI with the native protocol, required methods and selected permission/model policy supported by Bottega. Ordinary Chat has no exact-version gate. Generated native Codex titles and isolated editor tasks retain separate **0.163.0-alpha.10.2** qualification; an ordinary Chat-compatible CLI does not imply those capabilities.
   - Claude Code 2.1.216 or newer
   - Kimi Code 0.29.1 or newer
   - OpenCode 1.18.13 or newer
-- To build from source: Node.js 24 and pnpm 11.9 or newer
+- To build from source: the pinned Node.js 24.21.0 and pnpm 11.9.0
 
 Authenticate with the CLI provider before starting Bottega. Bottega never asks for or imports that credential.
 
@@ -93,7 +99,7 @@ Your saved title Agent and model stay unchanged. This version's Codex connection
 
 This release keeps **protocol 19**, existing content, sync passwords and account keys. No data reset is required. Dock remains Alpha on macOS 27.x with Apple silicon; replacement, system recovery and display/fullscreen combinations are still being validated. See the [0.2.7 changelog](../changelog/README.md#2026-10-18--v027) and [installation steps](#download-and-install).
 
-The older upgrade notes below describe their original versions. Use the current Codex permission model for 0.2.7.
+The older upgrade notes describe their original versions. Use Requirements and the 0.3.0 upgrade section for the current release.
 
 ## Upgrading to 0.2.6
 
@@ -125,29 +131,29 @@ Cloud Sync now uses protocol 15. Update all computers that use cloud features to
 
 ## Download and install
 
-[Download 0.2.12](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12) for **macOS on Apple silicon (ARM64) only**. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
+[Download 0.3.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.3.0) for **macOS on Apple silicon (ARM64) only**. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.12) | Official stable channel. |
+| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.3.0) | Official stable channel. |
 
 Use the official **Developer ID signed and Apple notarized** installers. Official builds from 0.2.6 onward use the stable automatic-update channel; the shipped 0.2.5 personal build requires a manual update.
 
 1. Quit Bottega completely and back up both your Bottega folder and application data.
-2. Download the DMG or ZIP and `Bottega-0.2.12-release-evidence.tar.gz` from the same release. Read `release-manifest.json` at the archive's root. Run `shasum -a 256` followed by the installer's path, then compare the output with that installer's `sha256` in the manifest.
+2. Download the DMG or ZIP and `Bottega-0.3.0-release-evidence.tar.gz` from the same release. Read `release-manifest.json` at the archive's root. Run `shasum -a 256` followed by the installer's path, then compare the output with that installer's `sha256` in the manifest.
 3. Open the DMG and drag Bottega into `Applications`, or extract the ZIP and copy the app there.
 4. Open Bottega from `Applications` and confirm the normal macOS first-launch prompt. If macOS reports a signature or notarization problem, keep the error details and report the bug before opening that package.
 
 To read the manifest and check the DMG without extracting the full archive:
 
 ```bash
-tar -xOf Bottega-0.2.12-release-evidence.tar.gz release-manifest.json
-shasum -a 256 Bottega-0.2.12-arm64.dmg
+tar -xOf Bottega-0.3.0-release-evidence.tar.gz release-manifest.json
+shasum -a 256 Bottega-0.3.0-arm64.dmg
 ```
 
-For the ZIP, use `Bottega-0.2.12-arm64-mac.zip` in the checksum command. The archive groups release and acceptance evidence; inspect its records for the exact validated scope. It does not imply complete physical-device qualification.
+For the ZIP, use `Bottega-0.3.0-arm64-mac.zip` in the checksum command. The archive groups release and acceptance evidence; inspect its records for the exact validated scope. It does not imply complete physical-device qualification.
 
-Automatic updates use `latest-mac.yml`, `Bottega-0.2.12-arm64.dmg.blockmap` and `Bottega-0.2.12-arm64-mac.zip.blockmap`. The App compatibility files are `app-gui-compatibility-support.json` and `app-gui-compatibility-support.json.sig`.
+Automatic updates use `latest-mac.yml`, `Bottega-0.3.0-arm64.dmg.blockmap` and `Bottega-0.3.0-arm64-mac.zip.blockmap`. The App compatibility files are `app-gui-compatibility-support.json` and `app-gui-compatibility-support.json.sig`.
 
 Version 0.2.7 was published by owner decision before complete local and final-package GUI acceptance. It has no complete acceptance evidence archive, and a real installed upgrade was not verified. Do not use 0.2.8's archive to claim acceptance of 0.2.7.
 
@@ -322,4 +328,4 @@ Please use [GitHub Issues](https://github.com/thinkingjimmy/Bottega/issues) for 
 
 ## License
 
-Bottega is released under the [MIT License](../../LICENSE).
+Bottega first-party code uses the [MIT License](../../LICENSE). Canvas, Slides and Design System editor forks retain the BaoCut Community License; bundled components and reference resources retain their own terms. See the [component licenses](../README.md#component-licenses) before redistributing or hosting covered code.

@@ -3,6 +3,7 @@
  * [OUTPUT]: ChatAddMenu.
  * [POS]: Composer attachment, plugin and Plan menu presentation.
  */
+import { useProjectImportAction } from "@ai-chat/chat-ui/artifact-projects";
 import { usePromptInputAttachments } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import { type RichInputHandle } from "@ai-chat/ui/components/ai-elements/rich-input";
 import { ComposerAddMenu as SharedComposerAddMenu } from "@ai-chat/chat-ui/composer-controls/add";
@@ -24,12 +25,12 @@ export function ChatAddMenu({
   sketch: ReturnType<typeof useSketchComposer>;
 }) {
   const { t, i18n } = useAppTranslation();
-  const attachments = usePromptInputAttachments();
-  return <SharedComposerAddMenu locale={i18n.language} disabled={disabled}
+  const attachments = usePromptInputAttachments(), project = useProjectImportAction();
+  return <>{project.dialog}<SharedComposerAddMenu project={project.action} locale={i18n.language} disabled={disabled}
     files={controller.imageInputAvailable ? { run: () => { editor.current?.saveSelection(); attachments.openFileDialog(); } } : undefined}
     plugins={controller.imageInputAvailable ? sketch.plugins : []}
     preload={controller.imageInputAvailable && !sketch.newDisabled ? sketch.preload : undefined}
     plan={{ active: controller.planMode, disabled: turnControlsDisabled || controller.skillsLoading || !controller.planSupported,
       reason: !controller.planSupported ? t("chat.composer.planUnavailable") : !controller.planMode && !controller.planAvailable ? controller.skillsError || t("chat.composer.planCheck") : undefined,
-      run: () => { void controller.togglePlanMode(); } }} />;
+      run: () => { void controller.togglePlanMode(); } }} /></>;
 }

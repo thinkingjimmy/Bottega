@@ -2,10 +2,11 @@
 
 /**
  * [INPUT]: Depends on React, AI SDK FileUIPart, host-injected UI text, pure file-admission rules, and typed useAttachmentList commands
- * [OUTPUT]: Rich draft types including fixed design references, shared file admission, workspace projection and attachment access.
+ * [OUTPUT]: Rich draft types including fixed design references, frozen native message text, shared file admission, workspace projection and attachment access.
  * [POS]: packages/ui/src/components/ai-elements/prompt; The state contract layer of ai-elements PromptInput; Draft owners can upgrade the lifecycle of the attachment to a cross-mounted store
  */
 
+import { encodeDesignReferenceMessage } from "@bottega/contracts/model/artifacts/design-message";
 import type { FileUIPart } from "ai";
 import {
   selectPromptInputFiles,
@@ -89,7 +90,7 @@ export function richValueDisplayText(value: RichValue) {
     .map((node) => {
       if (node.type === "text") return node.value;
       if (node.type === "skill") return `$${node.label}`;
-      if (node.type === "design") return `@${node.name}`;
+      if (node.type === "design") return encodeDesignReferenceMessage(node.name, node.reference);
       if (node.type === "section" || node.type === "history") return `@${node.name}`;
       if (node.type === "workspace-file") {
         return `@${node.path}${node.entryKind === "dir" ? "/" : ""}`;

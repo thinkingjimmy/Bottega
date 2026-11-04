@@ -8,6 +8,8 @@ import type { ArtifactHost } from "@ai-chat/chat-ui/artifacts";
 import type { ArtifactBridge } from "../../../../shared/ipc/apps/artifact-ipc";
 import type { ChatSessionController } from "../runtime/use-chat-session";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
+import { readComposer, subscribeComposer } from "@/lib/chat/state/composer/chat-composer-store";
+import { revealTimelineMessage } from "@ai-chat/chat-ui/timeline/highlight";
 declare global { interface Window { artifacts?: ArtifactBridge } }
 export function useDesktopArtifactHost(controller: ChatSessionController, root: RefObject<HTMLDivElement | null>, enableSidePanel: boolean): ArtifactHost {
   const { i18n } = useAppTranslation(), latest = useRef(controller);
@@ -24,9 +26,12 @@ export function useDesktopArtifactHost(controller: ChatSessionController, root: 
   return useMemo(() => {
     let pending: Promise<ArtifactHost> | undefined;
     const load = () => pending ??= import("./actions").then(module => module.desktopArtifactActions(chatId, incarnationId, i18n.language, () => latest.current, root, enableSidePanel));
-    type Action = "acquire" | "release" | "action" | "open" | "followUp" | "sendReview" | "workbook" | "importBase";
+    type Action = "acquire" | "release" | "action" | "open" | "followUp" | "sendReview" | "workbook" | "importBase" | "importProject";
     const call = <K extends Action>(key: K) => (...args: Parameters<Required<ArtifactHost>[K]>) => load().then(host => Reflect.apply(host[key]!, host, args));
     return { scope: `${chatId}:${incarnationId}`, locale: i18n.language, desktop: true, sidePanel: enableSidePanel,
+      hasDraftComment: (documentId, commentId) => readComposer(chatId).draft.richValue.some(node => node.type === "design" && node.reference.documentId === documentId && node.reference.native?.kind === "native-comment" && node.reference.native.commentId === commentId),
+      subscribeDraft: listener => subscribeComposer(chatId, listener),
+      revealMessage: messageId => revealTimelineMessage(`${chatId}/${incarnationId}`, messageId),
       recover: async (fence, retry) => { if (!window.artifacts) throw new Error("artifact-unavailable"); return (await window.artifacts.workspace({ action: retry ? "retry-capture" : "capture-status", artifactId: fence.id, chatId, incarnationId }) as { fence: typeof fence | null }).fence; },
       workspace: input => { if (!window.artifacts) throw new Error("artifact-unavailable"); return window.artifacts.workspace({ ...input, chatId, incarnationId }); },
       workspaceEvents: listener => window.artifacts?.onWorkspaceEvent(listener) ?? (() => {}),
@@ -34,6 +39,6 @@ export function useDesktopArtifactHost(controller: ChatSessionController, root: 
       keepPreview: fence => { if (!window.artifacts) throw new Error("preview-service-unavailable"); return window.artifacts.preview({ chatId, incarnationId, artifactId: fence.service!.sessionId }, "preview-keep-running"); },
       openPreview: url => import("./browser").then(module => module.openInBrowser(url, enableSidePanel ? () => latest.current.sidePanel.openTabs({ target: "browser" }) : undefined)),
       acquire: call("acquire"), release: call("release"), action: call("action"), open: call("open"),
-      followUp: call("followUp"), sendReview: call("sendReview"), workbook: call("workbook"), importBase: call("importBase") };
+      followUp: call("followUp"), sendReview: call("sendReview"), workbook: call("workbook"), importProject: call("importProject"), importBase: call("importBase") };
   }, [chatId, incarnationId, i18n.language, root, enableSidePanel]);
 }

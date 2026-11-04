@@ -1,0 +1,17 @@
+{
+  "name": "@bottega/dashboard-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build/index.mjs",
+    "typecheck": "node --check build/index.mjs"
+  },
+  "dependencies": {
+    "d3": "7.9.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

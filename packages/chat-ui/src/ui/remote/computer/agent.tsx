@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Target Agent capabilities and quota, shared picker presentation/identity/update copy and remote recovery instructions.
- * [OUTPUT]: RemoteAgentSelector lists installed Agents in published order with native login/quota/update precedence and remote execution guards.
+ * [OUTPUT]: RemoteAgentSelector lists installed Agents with native login/quota/update precedence, independent Codex quota visibility and remote execution guards.
  * [POS]: The computer surface's Agent chip, shared by creation and conversation; it chooses an Agent on one computer and never chooses a computer.
  */
 import { useEffect, useId, useState } from "react";
@@ -16,7 +16,7 @@ import { projectAgentPickerPresentation } from "../../composer/agent/presentatio
 import { agentPickerCopy } from "../../composer/agent/copy";
 const presentationFor = (option: RemoteAgentCapability) => projectAgentPickerPresentation({
   state: option.available ? "ready" : option.reason === "agent-outdated" ? "unsupported" : "unavailable",
-  signedOut: option.reason === "auth-required", limits: option.quota,
+  signedOut: option.reason === "auth-required", limits: option.quota, quotaVersionIndependent: option.backend === "codex",
 });
 export function RemoteAgentSelector({ target, value, copy, disabled, onSelect, locale = "en", quotaEnabled = true }: {
   quotaEnabled?: boolean; locale?: string; target: RemoteTarget | undefined; value: string; copy: RemoteCopy; disabled?: boolean;

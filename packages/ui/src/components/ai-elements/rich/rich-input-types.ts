@@ -80,6 +80,7 @@ export type RichInputProps = {
   value: RichValue;
   onChange: (value: RichValue) => void;
   onNodeDiscarded?: (node: Exclude<RichNode, { type: "text" }>) => void;
+  onDesignClick?: (node: Extract<RichNode, { type: "design" }>) => void;
   onFileClick?: (node: Extract<RichNode, { type: "file" }>) => void;
   onWorkspaceFileClick?: (
     node: Extract<RichNode, { type: "workspace-file" }>

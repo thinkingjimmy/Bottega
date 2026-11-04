@@ -10,9 +10,9 @@ import type { NativeSystemProjection } from "./projection";
 type Node = DefaultTreeAdapterMap["node"];
 const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 const fail = (message: string): never => { throw new DesignDocumentError("INVALID_DOCUMENT", message); };
-export function nativeSystemIndex(raw: Record<string, unknown>, projection: NativeSystemProjection) {
+export function nativeSystemIndex(raw: Record<string, unknown>, projection: NativeSystemProjection, copiedAt: string) {
   const rows = Array.isArray(raw.designSystems) ? raw.designSystems : [];
-  const designSystems = [...rows.filter(row => !row || typeof row !== "object" || row.artifact !== projection.id), ...projection.palettes.map(palette => palette.row)];
+  const designSystems = [...rows.filter(row => !row || typeof row !== "object" || row.artifact !== projection.id), ...projection.palettes.map(palette => ({ ...palette.row, copiedAt }))];
   if (designSystems.length > 8) return fail("Native system palettes exceed the eight-theme limit. Bind fewer themes or systems");
   if (projection.conversion.target !== "slides/v4") return { ...raw, designSystems };
   const faces = { ...(raw.faces as Record<string, { family?: string; src?: string; href?: string }> | undefined) };

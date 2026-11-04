@@ -1,12 +1,12 @@
 {
   "schema": "bottega.release-budgets/v1",
-  "description": "Upper bounds asserted by scripts/verify-packaged-payload.mjs for the current platform. Values are the first measured build after the 2026-09-04 size reduction with node_modules unpacked beside the ASAR and TypeScript declarations kept for the packaged App GUI compiler (DMG UDBZ 173103249; ZIP deflate-9 214292444; darwin unpackedPayloadBytes 627186432) plus 10%. The unpacked layout costs the per-file-deflated ZIP about 20 MiB versus a packed ASAR; that is the price of a working packaged compiler. Platforms without keys are measure-only until a real machine verifies them.",
+  "description": "Upper bounds asserted by scripts/verify-packaged-payload.mjs. The 2026-11-04 App GUI file pruning ratchets each macOS installer ceiling down by its measured saving (DMG 8850067; ZIP 12839025 bytes). The unpacked ceiling is the tighter of the previous ceiling minus the measured saving and 10% above the new 657204288-byte payload, after subtracting the separately added approved bundled-Node allowance. Evidence: DEV/dependencies/app-gui-pruning/evidence/measurements.json. Other platforms remain measure-only until native acceptance.",
   "installers": {
-    "darwin-arm64.dmg": 190413574,
-    "darwin-arm64.zip": 235721689
+    "darwin-arm64.dmg": 181563507,
+    "darwin-arm64.zip": 222882664
   },
   "unpackedPayload": {
-    "darwin-arm64": 689905076
+    "darwin-arm64": 602502904
   },
   "bundledRuntimes": {
     "node 24.18.0 darwin-arm64": {
@@ -22,6 +22,18 @@
       "approvedUnpackedIncreaseBytes": {
         "darwin-arm64": 120421813
       }
+    }
+  },
+  "components": {
+    "description": "Per-component unpacked bytes (policy v2, Jimmy 2026-11-03), attributed by scripts/budget/payload-components.mjs with the same counting rule as unpackedPayloadBytes, so the components sum to it. Frameworks: Contents/Frameworks (Electron, helpers, updater). Bundled Node: Resources/runtime. App GUI toolchain: unpacked packages reached only from App-GUI-only roles of runtime-dependencies.json; everything a main or adapter role reaches is a runtime module. Each component blocks above its baseline plus headroom; the totals above stay in force. Baselines were measured on the installed 0.2.12 production build (out/main/build-flavor.json production, /Applications/Bottega.app, 706,746,737 bytes in total) and move only at a formal release or with an approved reason; Jimmy authorized the 2026-11-04 file pruning in TODO/open/11-03-dependency-maintenance.md: app-gui-toolchain is rebaselined to the measured 72132503 bytes (from 110331811), retaining 5% headroom. Other component baselines and the approved bundled-Node allowances remain unchanged; total ceilings are tightened above.",
+    "headroom": 0.05,
+    "darwin-arm64": {
+      "frameworks": 244879122,
+      "bundled-node": 121125176,
+      "app-asar": 82817857,
+      "app-gui-toolchain": 72132503,
+      "runtime-modules": 129467974,
+      "other": 18124797
     }
   }
 }

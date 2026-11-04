@@ -1,5 +1,5 @@
 /**
- * [INPUT]: The relative-path leaf validator and bounded byte arrays with an explicit design-only 512-member option, without fence/render schemas.
+ * [INPUT]: The relative-path leaf validator and bounded byte arrays with an explicit design-only 512-member option, with only the exact Dashboard runs member allowed at depth five, without fence/render schemas.
  * [OUTPUT]: Deterministic regular-file tar archives and strictly checked in-memory extraction.
  * [POS]: Artifact snapshot archive codec shared by desktop custody and isolated browser shells.
  */
@@ -15,7 +15,7 @@ function field(block: Uint8Array, offset: number, size: number, value: string) {
 }
 function safeName(name: string) {
   artifactRelativePathSchema.parse(name);
-  if (name.split("/").length > 4 || name.split("/").includes("node_modules")) throw new Error("artifact-archive-path");
+  if (name.split("/").length > 4 && name !== "db/data/users/local/runs.json" || name.split("/").includes("node_modules")) throw new Error("artifact-archive-path");
   return name;
 }
 export function packArtifactArchive(files: readonly ArtifactFile[], maxFiles: 200 | 512 = 200): Uint8Array {

@@ -18,6 +18,8 @@ const jsonText = (value: unknown): string | null => typeof value === "string" ? 
 function kindFor(name: string, value: string, type = ""): SystemToken["kind"] | null {
   if (/color/i.test(type) || /^(?:#|(?:rgb|hsl|oklch|oklab|lab|lch|color)\()/i.test(value)) return "color";
   if (/(?:font.?family|font.?stack|families)/i.test(name + type)) return "font-family";
+  if (/font.?style/i.test(name + type)) return "font-style";
+  if (/optical.?siz/i.test(name + type)) return "font-optical-size";
   if (/line.?height/i.test(name + type)) return "line-height";
   if (/font.?weight/i.test(name + type)) return "font-weight";
   if (/letter.?spacing|tracking/i.test(name + type)) return "letter-spacing";

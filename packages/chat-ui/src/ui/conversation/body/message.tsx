@@ -1,12 +1,14 @@
 /**
- * [INPUT]: Canonical built-in Provider ids; Portable messages, text-only Artifact markers, turn/action views, private files and host detail callbacks.
- * [OUTPUT]: Renders origin-free canonical user bubbles, Agent/process headings, Plan, tools, media and subagents with Edit/Fork/copy actions and localized failure or interruption presentation.
+ * [INPUT]: Canonical built-in Provider ids; Portable messages, text-only Artifact markers, turn/action views, transcript-local subagent disclosure, private files and host detail callbacks.
+ * [OUTPUT]: Renders origin-free canonical user bubbles, Agent/process headings, Plan, tools, media and subagents with readable frozen-reference copy and Edit/Fork actions and localized failure or interruption presentation.
  * [POS]: Canonical transcript adapter for Web and desktop mirrors; no execution command or local authority is reconstructed.
  */
+import { useRowDisclosure } from "@ai-chat/ui/components/conversation/rows/state";
+import { designReferenceMessageText } from "@bottega/contracts/model/artifacts/design-message";
 import { BUILTIN_PROVIDER_IDS } from "@ai-chat/cloud-protocol/chats/backend-id";
 import { projectUnavailableArtifacts } from "@ai-chat/cloud-protocol/turns/text/artifact-markers";
 import { ArtifactMessageRenderers } from "../../../artifacts/renderer";
-import { lazy, memo, Suspense, useMemo, useState, type ComponentProps } from "react";
+import { lazy, memo, Suspense, useMemo, type ComponentProps } from "react";
 import {
   Message,
   MessageContent,
@@ -68,7 +70,7 @@ export function TranscriptParts({ parts, parents = [], ...props }: Props & { par
     }} />;
 }
 function TranscriptSubagent({ part, parents, ...props }: Props & { part: DraftSubagentPart; parents: string[] }) {
-  const [open, setOpen] = useState(false), agent = props.body.subagents?.[part.agentThreadId], repeated = parents.includes(part.agentThreadId);
+  const [open, setOpen] = useRowDisclosure(`subagent:${JSON.stringify([...parents, part.agentThreadId])}`), agent = props.body.subagents?.[part.agentThreadId], repeated = parents.includes(part.agentThreadId);
   return <div className="min-w-0"><ConversationSubagent id={part.agentThreadId} agent={agent?.meta.agent ?? part.agent}
     name={agent?.meta.name || part.name || props.copy.subagent} status={agent?.meta.status ?? part.status}
     disabled={!agent || repeated} title={!agent ? props.copy.unavailableDetail : undefined}
@@ -104,7 +106,7 @@ export const TranscriptMessage = memo(function TranscriptMessage(props: Props) {
   const attachments = body.attachments.map(file => <TranscriptFile key={file.attachmentId} chatId={chatId} descriptor={file.blob}
     name={message.role === "user" ? message.attachments?.find(item => item.id === file.attachmentId)?.filename ?? copy.attachment : copy.attachment}
     onOpenImage={props.onOpenImage && message.segment !== "imported" ? () => props.onOpenImage!({ kind: "attachment", attachmentId: file.attachmentId }) : undefined} source={source} copy={copy} />);
-  const actions = <ConversationActions role={message.role} fork={fork} edit={edit} onCopy={() => navigator.clipboard.writeText(text)} copyLabel={copy.copy} copiedLabel={copy.copied}
+  const actions = <ConversationActions role={message.role} fork={fork} edit={edit} onCopy={() => navigator.clipboard.writeText(message.role === "user" ? designReferenceMessageText(text) : text)} copyLabel={copy.copy} copiedLabel={copy.copied}
     timestamp={<time dateTime={new Date(message.createdAt).toISOString()}>{new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(message.createdAt)}</time>} />;
   return <ArtifactMessageRenderers><article className="chat-message" data-message-id={message.id} tabIndex={-1}>
     {message.role === "user" ? <ConversationUser content={projectUnavailableArtifacts(message.content)} showMore={copy.showMore} showLess={copy.showLess} attachments={attachments} actions={actions} /> : <>

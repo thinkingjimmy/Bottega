@@ -62,7 +62,7 @@ export class NativeCandidates {
   }
   recoverOperation(input: WorkspaceCommand, snapshot: Snapshot) {
     const reference = input.nativeOperation;
-    if (!reference || !snapshot.editable || !snapshot.version.manifest.contentFormat || reference.documentId !== snapshot.version.manifest.documentId)
+    if (!reference || !snapshot.editable || (!snapshot.version.manifest.contentFormat && !snapshot.version.manifest.system) || reference.documentId !== snapshot.version.manifest.documentId)
       throw new Error("Original native operation requires its owned source reference");
     const documents = designDocuments(), existing = documents.store.operation(requestKey(snapshot.version.authority, reference.requestId));
     if (!existing) return { status: "not-accepted", requestId: reference.requestId };
@@ -72,7 +72,7 @@ export class NativeCandidates {
   }
   async dispatch(input: WorkspaceCommand, windowId: number, snapshot: Snapshot) {
     if (input.documentId !== snapshot.version.manifest.documentId) throw new Error("Candidate belongs to another document");
-    if (!["canvas-dc/v3", "slides/v4"].includes(snapshot.version.manifest.contentFormat ?? "") || !snapshot.editable) throw new Error("Candidate editing requires the owned native source");
+    if ((!(["canvas-dc/v3", "slides/v4"].includes(snapshot.version.manifest.contentFormat ?? "")) && !(input.action === "native-ai-rollback" && (snapshot.version.manifest.system || snapshot.version.manifest.contentFormat === "dashboard/v1"))) || !snapshot.editable) throw new Error("Candidate editing requires the owned native source");
     const documents = designDocuments();
     if (["native-candidate-accept", "native-ai-rollback"].includes(input.action) && input.requestId) {
       const existing = documents.store.operation(requestKey(snapshot.version.authority, input.requestId));
@@ -116,7 +116,7 @@ export class NativeCandidates {
       if (input.action === "native-ai-rollback") {
         await this.baseline(input, snapshot.version); guard();
         const operation = documents.store.operation(requestKey(snapshot.version.authority, input.rollbackOf!)), original = operation?.sourceEdit?.input;
-        if (operation?.state !== "complete" || operation.revision.requestId !== snapshot.version.requestId || original?.action !== "native-candidate-accept" || !original.baselineSnapshotRef)
+        if (operation?.state !== "complete" || operation.revision.requestId !== snapshot.version.requestId || !["native-candidate-accept", "native-chat-apply"].includes(original?.action ?? "") || !original?.baselineSnapshotRef)
           throw new Error("This AI rollback is no longer available");
         const files = unpackArtifactArchive(await documents.store.read(original.baselineSnapshotRef), 512); guard();
         return documents.edit(input, snapshot.version, async () => files, guard);

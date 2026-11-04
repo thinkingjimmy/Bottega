@@ -46,7 +46,7 @@ export const createDescriptorBackend: DescriptorBackendFactory = (descriptor, pk
     versionEnvironment: runtime => sanitizedProcessEnvironment(runtime.path),
     versionArgs: descriptor.runtime.discovery.versionArgs,
     probeVersion: descriptorVersionProbe(descriptor, pkg),
-    validateRuntime: runtime => runtimeVersionAtLeast(runtime.version, minimum)
+    validateRuntime: runtime => !minimum || runtimeVersionAtLeast(runtime.version, minimum)
       ? { status: "installed" } : { status: "unsupported", reason: `${descriptor.displayName} ${minimum}+` },
     /* Fail-closed: only what the descriptor declares and the host can honour for any ACP CLI; nothing a built-in had to earn. */
     capabilitiesFor: () => ({ resume: declared("resume"), permissionModes: ["ask-for-approval"], modelOptions: "list-only",

@@ -6,6 +6,7 @@
 import { z } from "zod";
 import { MAX_BLOB_BYTES } from "../../config";
 import { scanFences } from "./markdown-fences";
+import { unsupportedDesignManifest } from "../../artifacts/design/core/retained";
 import { designSummarySchema } from "../../artifacts/design/core/summary";
 import { ARTIFACT_FENCE, isClaudeArtifactUrl } from "./artifact-markers";
 import { artifactRelativePathSchema } from "./artifact-path";
@@ -48,7 +49,15 @@ export function encodeArtifactFence(fence: ArtifactFence): string {
 }
 export function decodeArtifactFence(text: string): ArtifactFence | null {
   if (text.length > 8192) return null;
-  try { return artifactFenceSchema.parse(JSON.parse(text)); } catch { return null; }
+  try {
+    const raw = JSON.parse(text), parsed = artifactFenceSchema.safeParse(raw);
+    if (parsed.success) return parsed.data;
+    if (raw?.kind === "design" && unsupportedDesignManifest(raw.design)) {
+      const unavailable = artifactFenceSchema.safeParse({ v: raw.v, id: raw.id, kind: raw.kind, title: raw.title, rejected: "unsupported" });
+      if (unavailable.success) return unavailable.data;
+    }
+    return null;
+  } catch { return null; }
 }
 export function readArtifactFences(text: string): ArtifactFence[] {
   return scanFences(text).filter(fence => fence.language === ARTIFACT_FENCE && fence.closed)

@@ -4,6 +4,7 @@
  * [POS]: Agent validation payload boundary; admission and authority checks stay mandatory.
  */
 import { z } from "zod";
+import { frozenArtifactEditSchema } from "@ai-chat/cloud-protocol/artifacts/design/chat/model";
 import { handoffSchema } from "../../../../shared/chat-agent/history-schema";
 import { HANDOFF_PROMPT_HASH } from "../history/receiver";
 import { SESSION_ID_BYTE_LIMIT } from "../../../../shared/ipc/agent/agent-ipc";
@@ -58,6 +59,7 @@ export function parseAgentPayload(
       "input",
       ...(acceptsPreparedSelection ? ["preparedSkillSelection"] : []),
       ...(authority ? ["handoff", "agentRevision"] : []),
+      ...(authority?.origin?.kind === "manual" ? ["artifactEdit"] : []),
     ],
     "Agent payload"
   );
@@ -83,6 +85,8 @@ export function parseAgentPayload(
   const turnOptions = validateAgentTurnOptions(payload.turnOptions);
   const handoff = payload.handoff === undefined ? undefined : handoffSchema.parse(payload.handoff);
   if (handoff && (handoff.binding.chatId !== payload.scope?.conversationId || handoff.promptHash !== HANDOFF_PROMPT_HASH)) throw new Error("CHAT_HANDOFF_CONFLICT");
+  const artifactEdit = payload.artifactEdit === undefined ? undefined : frozenArtifactEditSchema.parse(payload.artifactEdit);
+  if (artifactEdit && (authority?.origin?.kind !== "manual" || artifactEdit.chatId !== conversationId || artifactEdit.requestId !== payload.requestId || payload.planMode)) throw new Error("Artifact edit does not belong to this original Chat turn");
   const agentRevision = payload.agentRevision === undefined ? undefined : z.number().int().nonnegative().parse(payload.agentRevision);
   const preparedSkillSelection = payload.preparedSkillSelection === undefined
     ? undefined
@@ -148,6 +152,7 @@ export function parseAgentPayload(
     input,
     ...(session ? { session } : {}),
     ...(payload.planMode !== undefined ? { planMode: payload.planMode } : {}),
+    ...(artifactEdit ? { artifactEdit } : {}),
     ...(preparedSkillSelection ? { preparedSkillSelection } : {}),
     ...(handoff ? { handoff } : {}), ...(agentRevision !== undefined ? { agentRevision } : {}),
   };

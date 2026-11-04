@@ -4,7 +4,15 @@ displayName: 图表渲染
 description: 用图表、统计、占比、趋势或 chart 展示数据，在聊天正文生成可渲染的七类图表围栏。
 ---
 
+<!--
+[INPUT]: Issued chart fence data and rendering contracts and the independent dataviz method.
+[OUTPUT]: Seven bounded inline chart fence formats.
+[POS]: Built-in chart-render Skill; dataviz owns visual method and does not replace the data contract.
+-->
+
 # 图表渲染
+
+Before chart code or color selection, load the independent `dataviz` Skill. It owns visual method and palette validation. This Skill retains the chart fence schema and limits below. The chart renderer selects its own colors; a validated custom palette does not change that renderer.
 
 在回复正文输出 `chart` 围栏。它是落库即定格的数据快照；要持续随 Base 数据更新，请配置 Base 的 Chart 视图。
 

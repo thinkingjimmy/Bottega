@@ -1,7 +1,7 @@
 <!--
   [INPUT]: Native Canvas v3 source validation, maintained DC grammar and current Chat document journal
   [OUTPUT]: Native source authoring and check/commit/render guidance without converting source or replacing the editor
-  [POS]: Default Canvas creation reference; existing legacy documents retain their own format
+  [POS]: Current Canvas creation and editing reference
 -->
 
 # Native Canvas source
@@ -10,7 +10,6 @@ For a new editable Canvas, use a complete directory at design/<documentId>, with
 version 3 and one or more .dc.html boards. The host reports contentFormat canvas-dc/v3; do not
 write its projected schemaVersion:1 manifest over the native source. Preserve an existing
 native index, pages, board files, notes and unknown native fields when making local changes.
-Existing legacy schemaVersion:1 documents use the [document reference](document.md).
 
 For a new design without another requested font, call design_fonts and request its fixed
 fontId. Copy the verified OFL font and license with the issued local file tools into this

@@ -10,19 +10,19 @@ import { decodeArtifactFence, type ArtifactFence } from "@ai-chat/cloud-protocol
 import { useArtifactHost, useArtifactPresentation } from "./context";
 import { artifactCopy } from "./copy";
 import { ArtifactFrame } from "./frame";
+import { ArtifactProjectImport } from "./projects/launcher";
 import { ArtifactImport } from "./import-dialog";
 import { LivePreviewCard } from "./live/card";
 import { DesignArtifactCard } from "./presentation/design-card";
 import { ArtifactHeader, ArtifactLoading, fullLabel } from "./presentation/header";
 const inlineKinds = new Set(["html-fragment", "html-document", "static-site", "svg", "markdown"]);
 const NativeWorkspace = lazy(() => import("./native/view").then(module => ({ default: module.NativeArtifactWorkspace })));
-const Workspace = lazy(() => import("./workspace/view").then(module => ({ default: module.ArtifactWorkspaceView })));
 export function ArtifactCard({ fence: original, expanded = false }: { fence: ArtifactFence; expanded?: boolean }) {
   const [recovered, setRecovered] = useState<{ scope: string; fence: ArtifactFence } | null>(null);
   const presentation = useArtifactPresentation(), host = useArtifactHost(), copy = artifactCopy(host?.locale ?? "en"), [error, setError] = useState(false), [busy, setBusy] = useState(false), [copied, setCopied] = useState(false);
   const fence = recovered?.scope === host?.scope && recovered?.fence.id === original.id ? recovered.fence : original;
   const design = Boolean(fence.design);
-  useEffect(() => { let current = true; if (original.rejected && host?.recover) void host.recover(original, false).then(value => { if (current) setRecovered(value ? { scope: host.scope, fence: value } : null); }).catch(() => {}); return () => { current = false; }; }, [original, host]);
+  useEffect(() => { let current = true; if (original.rejected && original.rejected !== "unsupported" && host?.recover) void host.recover(original, false).then(value => { if (current) setRecovered(value ? { scope: host.scope, fence: value } : null); }).catch(() => {}); return () => { current = false; }; }, [original, host]);
   const recoveryEpoch = useRef(0);
   useLayoutEffect(() => { const epoch = ++recoveryEpoch.current; queueMicrotask(() => { if (epoch === recoveryEpoch.current) { setBusy(false); setError(false); } }); return () => { recoveryEpoch.current = epoch + 1; }; }, [original.id, host?.scope]);
   const retryCapture = async () => { if (!host?.recover || busy) return; const epoch = recoveryEpoch.current; setBusy(true); setError(false);
@@ -34,8 +34,8 @@ export function ArtifactCard({ fence: original, expanded = false }: { fence: Art
     try { await host.action(fence, action, host.followUp); } catch { setError(true); } finally { setBusy(false); }
   };
   useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 2000); return () => clearTimeout(timer); }, [copied]);
-  if (fence.rejected || !host) return <>{expanded && <ArtifactHeader title={fence.title} />}<div role="status" className="my-3 rounded-lg border p-4 text-sm">{fence.rejected && ["missing", "unreadable", "changed", "storage", "publish"].includes(fence.rejected) ? copy[fence.rejected as "missing" | "unreadable" | "changed" | "storage" | "publish"] : fence.rejected === "interrupted" ? copy.interrupted : fence.rejected === "budget" ? copy.budget : fence.rejected === "too-large" ? copy.tooLarge : fence.rejected === "not-utf8" ? copy.encoding : fence.rejected === "symlink" || fence.rejected === "path-denied" ? copy.pathDenied : copy.unavailable}{host?.recover && fence.rejected && ["missing", "changed", "storage", "publish", "unavailable"].includes(fence.rejected) && <Button disabled={busy} onClick={() => void retryCapture()}>{copy.retry}</Button>}{error && <p role="alert">{copy.failed}</p>}</div></>;
-  if (design && expanded) return host.workspace ? <Suspense fallback={<ArtifactLoading title={fence.title} />}>{fence.design?.contentFormat ? <NativeWorkspace fence={fence} /> : <Workspace fence={fence} />}</Suspense> : <div className="flex min-h-0 flex-1 flex-col"><ArtifactHeader title={fence.title} /><p role="status" className="p-4 text-sm">{copy.unavailable}</p></div>;
+  if (fence.rejected || !host) return <>{expanded && <ArtifactHeader title={fence.title} />}<div data-artifact-id={fence.id} role="status" className="my-3 rounded-lg border p-4 text-sm"><strong className="mb-1 block font-medium">{fence.title}</strong>{fence.rejected && ["missing", "unreadable", "changed", "storage", "publish"].includes(fence.rejected) ? copy[fence.rejected as "missing" | "unreadable" | "changed" | "storage" | "publish"] : fence.rejected === "interrupted" ? copy.interrupted : fence.rejected === "budget" ? copy.budget : fence.rejected === "too-large" ? copy.tooLarge : fence.rejected === "not-utf8" ? copy.encoding : fence.rejected === "symlink" || fence.rejected === "path-denied" ? copy.pathDenied : fence.rejected === "unsupported" ? unsupportedLabel(host?.locale ?? "en") : copy.unavailable}{host?.recover && fence.rejected && ["missing", "changed", "storage", "publish", "unavailable"].includes(fence.rejected) && <Button disabled={busy} onClick={() => void retryCapture()}>{copy.retry}</Button>}{error && <p role="alert">{copy.failed}</p>}</div></>;
+  if (design && expanded) return host.workspace ? <Suspense fallback={<ArtifactLoading title={fence.title} />}><NativeWorkspace fence={fence} /></Suspense> : <div className="flex min-h-0 flex-1 flex-col"><ArtifactHeader title={fence.title} /><p role="status" className="p-4 text-sm">{copy.unavailable}</p></div>;
   const open = () => { setError(false); void Promise.resolve().then(() => host.open(fence, host.followUp)).catch(() => setError(true)); };
   if (design) return <DesignArtifactCard fence={fence} busy={busy} error={error} open={open} save={() => void run("save")} />;
   const copyText = (value: string) => { void navigator.clipboard.writeText(value).then(() => setCopied(true)).catch(() => setError(true)); };
@@ -55,6 +55,7 @@ export function ArtifactCard({ fence: original, expanded = false }: { fence: Art
       {fence.kind !== "claude-artifact" && fence.kind !== "live-app" && <div className="flex flex-wrap gap-2">
         {host.desktop && action("quick-look", copy.quick)}{action("open", copy.open)}{host.desktop && action("reveal", copy.reveal)}
         {fence.kind === "xlsx" && <ArtifactImport fence={fence} />}
+        {(fence.mime === "application/zip" || /\.zip$/i.test(fence.title)) && <ArtifactProjectImport fence={fence} />}
       </div>}
     </div>}
     {inline && <div className="flex flex-wrap gap-2 px-3 text-sm">{host.desktop && action("reveal", copy.reveal)}<Button variant="ghost" size="sm" type="button" className="relative touch-target-44" onClick={() => copyText(fence.title)}>{copy.copyTitle}</Button></div>}
@@ -71,3 +72,5 @@ export function ArtifactCodeBlock({ code }: { code: string }) {
   const host = useArtifactHost(), fence = useMemo(() => decodeArtifactFence(code), [code]);
   return fence ? <ArtifactCard key={host?.scope + fence.id} fence={fence} /> : <p role="status">{artifactCopy(host?.locale ?? "en").unavailable}</p>;
 }
+
+const unsupportedLabel = (locale: string) => locale.startsWith("zh") ? "不支持此格式。" : locale.startsWith("ja") ? "この形式はサポートされていません。" : locale.startsWith("fr") ? "Ce format n’est pas pris en charge." : locale.startsWith("es") ? "Este formato no es compatible." : "This format is not supported.";

@@ -11,7 +11,7 @@ export const artifactRefSchema = z.object({ chatId: z.string().min(1).max(128), 
 export type ArtifactRef = z.infer<typeof artifactRefSchema>;
 export const ARTIFACT_BUDGET = { fragment: 1_048_576, document: 16_777_216, chat: 536_870_912, global: 4_294_967_296 } as const;
 export { ARTIFACT_IPC } from "../../ipc-channels/apps";
-export type ArtifactLease = { id: string; url: string; origin: string; expiresAt: number; sandbox: "allow-scripts" | "allow-scripts allow-same-origin" };
+export type ArtifactLease = { id: string; url: string; origin: string; expiresAt: number; sandbox: "allow-scripts" | "allow-scripts allow-same-origin" | "allow-scripts allow-same-origin allow-forms" };
 export type ArtifactAction = "quick-look" | "reveal" | "open" | "save";
 export type ArtifactWorkbook = { exists: boolean; sheets: { name: string; imported: boolean; hasId: boolean }[] };
 export interface ArtifactBridge {

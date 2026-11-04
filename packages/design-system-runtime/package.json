@@ -1,0 +1,29 @@
+{
+  "name": "@bottega/design-system-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "exports": {
+    "./runtime": "./dist/runtime.js",
+    "./style": "./dist/runtime.css"
+  },
+  "scripts": {
+    "build": "node build/index.mjs",
+    "typecheck": "node --check build/index.mjs && node --check build/compile.mjs"
+  },
+  "devDependencies": {
+    "@base-ui/react": "1.6.0",
+    "@tanstack/react-virtual": "3.14.9",
+    "@tanstack/virtual-core": "3.17.7",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "1.24.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "tailwind-merge": "3.6.0",
+    "react-18": "npm:react@18.3.1",
+    "react-dom-18": "npm:react-dom@18.3.1",
+    "esbuild": "0.25.12"
+  }
+}

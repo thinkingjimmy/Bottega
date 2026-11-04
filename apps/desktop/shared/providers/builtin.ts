@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the Provider contract (@ai-chat/cloud-protocol/contracts/provider) and the closed AGENT_BACKEND_ORDER
- * [OUTPUT]: Provides canonical BUILTIN_PROVIDER_IDS, BUILTIN_PROVIDER_DESCRIPTORS (the four built-in providers as layer-1 descriptors), builtinProviderDescriptor and assignableProviders
+ * [OUTPUT]: Provides canonical built-in Provider descriptors, including native Codex Chat without a version floor and host-owned native titles, builtinProviderDescriptor and assignableProviders
  * [POS]: The static half of the host Provider catalog shared by main and renderer; runtime facts in electron/main/backends are checked against it by the backend registry, and tool schemas derive their provider enums from it
  */
 import { AGENT_BACKEND_ORDER } from "@ai-chat/cloud-protocol/chats/options";
@@ -28,12 +28,12 @@ const chatCore: Declared = { resume: "declared", cancel: "declared", "plan-mode"
   "mcp-stdio": "declared", "mcp-sse": "declared", "image-input": "declared", "model-catalog": "declared", "history-import": "declared" };
 const headless = { chat: "native", title: "native", "install-analysis": "native", repair: "native", serve: "native", subagent: "native" } as const;
 /* W9's format extractor must run with no tools at all: only Claude's `--tools ""` proves that (04 §5). */
-const codexHeadless = { chat: "native", title: "unsupported", "format-extract": "unsupported", "install-analysis": "unsupported", repair: "unsupported", serve: "unsupported", subagent: "unsupported" } as const;
+const codexHeadless = { chat: "native", title: "host-fallback", "format-extract": "unsupported", "install-analysis": "unsupported", repair: "unsupported", serve: "unsupported", subagent: "unsupported" } as const;
 const claudeHeadless = { ...headless, "format-extract": "native" } as const;
 
 const descriptors: Record<BuiltinId, ProviderDescriptor> = {
   codex: { ...common, providerId: "codex", packageId: "bottega.provider.codex", displayName: "Codex",
-    runtime: { discovery: { commands: ["codex"], versionArgs: ["--version"], minimumVersion: "0.163.0-alpha.10.2" },
+    runtime: { discovery: { commands: ["codex"], versionArgs: ["--version"] },
       launch: { kind: "codex-app-server", layer: "native" }, env: { allow: ["CODEX_HOME"], processStart: ["CODEX_HOME"] } },
     auth: { check: "status-command", login: { local: "terminal", remote: "unsupported" }, credentialSafeProbe: false },
     sensitiveRoots: { paths: ["~/.codex"], envOverrides: ["CODEX_HOME"], keychainServices: [], retainAfterUninstall: true },

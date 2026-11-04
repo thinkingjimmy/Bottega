@@ -1,6 +1,6 @@
 /**
  * [INPUT]: A row id, the live document and the shared MessageContent message-content slot.
- * [OUTPUT]: Provides findTranscriptTarget, measureOutlineTops (one query for all outline entries), scrollTranscriptTo and highlightTranscriptTarget with bubble-scoped user emphasis and reduced-motion support.
+ * [OUTPUT]: Provides findTranscriptTarget, measureOutlineTops (one query for all outline entries), scrollTranscriptTo, cancelTranscriptScroll, settleTranscriptBottom and highlightTranscriptTarget with bubble-scoped user emphasis and reduced-motion support.
  * [POS]: The timeline's only DOM reach; window.ts decides which row, this file finds and lights it.
  */
 export function findTranscriptTarget(id: string, root: ParentNode = document) {
@@ -29,17 +29,43 @@ export function measureOutlineTops(ids: readonly string[], scroller: HTMLElement
   return { tops, indexes };
 }
 
-/** Scrolls `node` to sit 16px below the scroller's top edge. */
-export function scrollTranscriptTo(
-  scroller: HTMLElement,
-  node: HTMLElement,
-  behavior: ScrollBehavior
-) {
-  const top =
-    node.getBoundingClientRect().top -
-    scroller.getBoundingClientRect().top +
-    scroller.scrollTop;
-  scroller.scrollTo({ top: Math.max(0, top - 16), behavior });
+const pendingScrolls = new WeakMap<HTMLElement, () => void>();
+export function cancelTranscriptScroll(scroller: HTMLElement) {
+  pendingScrolls.get(scroller)?.();
+}
+/** Correct after visible row and Fold measurements, unless the user takes control. */
+function settleTranscriptScroll(scroller: HTMLElement, align: () => void, corrections = 2) {
+  cancelTranscriptScroll(scroller);
+  let frame = 0, remaining = corrections;
+  const key = (event: KeyboardEvent) => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) cancel(); };
+  const cancel = () => {
+    cancelAnimationFrame(frame);
+    scroller.removeEventListener("wheel", cancel);
+    scroller.removeEventListener("touchstart", cancel);
+    scroller.removeEventListener("keydown", key);
+    pendingScrolls.delete(scroller);
+  };
+  const schedule = () => { frame = requestAnimationFrame(() => { frame = requestAnimationFrame(correct); }); };
+  const correct = () => {
+    if (!scroller.isConnected) { cancel(); return; }
+    align();
+    if (--remaining > 0) schedule(); else cancel();
+  };
+  pendingScrolls.set(scroller, cancel);
+  scroller.addEventListener("wheel", cancel, { passive: true });
+  scroller.addEventListener("touchstart", cancel, { passive: true });
+  scroller.addEventListener("keydown", key);
+  align(); schedule();
+}
+export function scrollTranscriptTo(scroller: HTMLElement, node: HTMLElement, _behavior: ScrollBehavior) {
+  settleTranscriptScroll(scroller, () => {
+    if (!node.isConnected) return;
+    const top = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    scroller.scrollTo({ top: Math.max(0, top - 16), behavior: "auto" });
+  });
+}
+export function settleTranscriptBottom(scroller: HTMLElement, follow: () => void) {
+  settleTranscriptScroll(scroller, follow, 4);
 }
 
 export function highlightTranscriptTarget(node: HTMLElement) {
@@ -57,4 +83,18 @@ export function highlightTranscriptTarget(node: HTMLElement) {
   window.setTimeout(() => {
     target.classList.remove("ring-2", "ring-primary/60");
   }, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 2_000);
+}
+
+const mountedNavigation = new Map<string, Set<(id: string) => boolean>>();
+/** Only mounted readers own paging, scroll position and message highlighting. */
+export function registerTimelineNavigation(scope: string, jump: (id: string) => boolean) {
+  let readers = mountedNavigation.get(scope);
+  if (!readers) mountedNavigation.set(scope, readers = new Set());
+  readers.add(jump);
+  return () => { readers.delete(jump); if (!readers.size) mountedNavigation.delete(scope); };
+}
+export function revealTimelineMessage(scope: string, id: string) {
+  if (!id || id.length > 128) return;
+  const reader = [...(mountedNavigation.get(scope) ?? [])].at(-1);
+  reader?.(id);
 }

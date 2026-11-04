@@ -20,6 +20,12 @@ export async function prepareDesignSnapshot(snapshot: { version: DesignRevision;
   const board = snapshot.version.manifest.boards.find(value => value.id === (boardId ?? snapshot.version.manifest.launchBoard));
   if (!board) throw new DesignDocumentError("INVALID_DOCUMENT", "Board ID is not in this revision");
   const files = new Map(snapshot.files.map(file => [file.path, file.data]));
+  if (snapshot.version.manifest.contentFormat === "dashboard/v1") {
+    const runtime = await (await import("../../artifacts/render/native/assets")).nativeEditorAssets("dashboard/v1");
+    const html = await (await import("../dashboard/resources")).prepareDashboardPage(snapshot.files, documentId, runtime);
+    return { html, size: board.viewport, metadata: { documentId, revision, boardId: board.id, boardDigest: designDigest(files.get(board.file)!), readSetDigest: snapshot.version.readSetDigest,
+      snapshotRef: snapshot.version.snapshotRef, contentFormat: "dashboard/v1" as const, navigation: {} as Record<string, string> } };
+  }
   const slides = snapshot.version.manifest.contentFormat === "slides/v4";
   const nativeSource = snapshot.version.manifest.contentFormat === "canvas-dc/v3";
   const systemDc = !nativeSource && await (await import("../systems/components/proof")).isSystemDcBoard(snapshot, board.file), native = nativeSource || systemDc;

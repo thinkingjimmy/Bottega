@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Private original-parent token, exact main-frozen native job endpoint and authenticated save/cancel replies.
- * [OUTPUT]: Concrete original output preview/confirmation, verified file Blobs and real private save/cancel outcomes for those same Blobs.
+ * [OUTPUT]: Concrete original output preview/confirmation, frozen whole-folder jobs with real progress/cancel/retry, verified file Blobs and real private save/cancel outcomes for those same Blobs.
  * [POS]: Trusted editor export bridge; arbitrary renderer bytes cannot be staged or substituted for a main-owned result.
  */
 import { nativeFetch } from "./transport";
@@ -62,7 +62,34 @@ export function nativeDownloads(base: string, token: string | undefined, beforeP
       if (!closed) confirm.disabled = false;
     })().catch(error => { if (!closed) { closed = true; node.remove(); for (const url of urls) URL.revokeObjectURL(url); void post(crypto.randomUUID(), { cancelPreview: result.preview.id }).catch(() => {}); reject(error); } });
   });
-  return {
+  const project = async (context: { requestId?: string; cut?: { revision: number; snapshotRef: string } }, signal: AbortSignal, progress: (value: { stage: string; completed: number; total: number }) => void, retry = false) => {
+    if (!token || active >= 2) throw new Error("Project export is unavailable or busy"); active++;
+    const id = context.requestId ??= crypto.randomUUID();
+    const cancel = () => { void post(id, { project: { action: "cancel" } }).catch(() => {}); };
+    try {
+      signal.throwIfAborted(); await beforeProduce(); signal.throwIfAborted();
+      if (!context.cut) {
+        const session = await nativeFetch(base + "__deck/session", { cache: "no-store" }); if (!session.ok) throw new Error("The saved project is unavailable");
+        const value = await session.json(); if (!Number.isSafeInteger(value.revision) || value.revision < 1 || !/^sha256:[a-f0-9]{64}$/.test(value.snapshotRef)) throw new Error("The saved project identity is invalid");
+        context.cut = { revision: value.revision, snapshotRef: value.snapshotRef };
+      }
+      signal.addEventListener("abort", cancel, { once: true });
+      let result = await post(id, { project: { action: retry ? "retry" : "start", ...context.cut } });
+      while (result.project?.state === "running") {
+        signal.throwIfAborted(); if (result.project.progress) progress(result.project.progress);
+        await new Promise<void>((resolve, reject) => { const abort = () => { clearTimeout(timer); reject(signal.reason); }, timer = setTimeout(() => { signal.removeEventListener("abort", abort); resolve(); }, 120); signal.addEventListener("abort", abort, { once: true }); if (signal.aborted) abort(); });
+        result = await post(id, { project: { action: "status" } });
+      }
+      signal.throwIfAborted(); if (result.project?.state !== "complete") throw new Error(result.project?.error ?? (result.project?.state === "cancelled" ? "Project export cancelled" : "The complete project could not be prepared"));
+      const delivery = result as Delivery;
+      if (!delivery.fence || delivery.fence.mime !== "application/zip" || !/^[a-f0-9]{64}$/.test(delivery.fence.sha256) || delivery.fence.bytes < 22 || delivery.fence.bytes > 50_000_000 || !delivery.filename || result.revision !== context.cut.revision || result.snapshotRef !== context.cut.snapshotRef) throw new Error("The whole-project receipt changed its frozen source");
+      const response = await nativeFetch(base + "__deck/download", { headers: headers(id), signal }); if (!response.ok) throw new Error("The retained whole-project file is unavailable");
+      const blob = await response.blob(); signal.throwIfAborted();
+      if (blob.size !== delivery.fence.bytes || await digest(blob) !== "sha256:" + delivery.fence.sha256) throw new Error("The complete project ZIP bytes changed");
+      staged.set(blob, { requestId: id, delivery }); progress({ stage: "complete", completed: context.cut.revision, total: context.cut.revision }); return { filename: delivery.filename, data: blob, warnings: [] as string[] };
+    } finally { signal.removeEventListener("abort", cancel); active--; }
+  };
+  return { project,
     async produce(options: Record<string, unknown>, files?: readonly string[]) {
       if (!token || active >= 2) throw new Error("Native export is unavailable or busy"); active++;
       try {

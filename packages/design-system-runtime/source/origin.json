@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/JimLiu/baocut",
+  "commit": "e2864776f8bf97617af75f5b94ab3dbdd007634e",
+  "acceptanceRepository": "https://github.com/JimLiu/baoyu-design",
+  "acceptanceCommit": "6759e358eb88d83986c753b0fc60c84e4aabdb3a",
+  "sourceSha256": "77929f15a1257072c39b48db441414595b863b1709b607cd79a33bb3c6119024",
+  "sourceFiles": 256,
+  "lineExceptionsSha256": "fded94c5367f0f65d21922e4a1a03e4681b6c1211880f001b03d2cc401a8263c",
+  "approval": "Exact 64-file internal source scope approved by Jimmy on 2026-11-03; necessary maintenance included. No commercial distribution clearance or UI acceptance is claimed.",
+  "previewRunner": {
+    "sourcePath": "apps/design-system-editor/public/artifact-type/run.html",
+    "gitBlob": "bd1bd9f1911983622907ca525de2365f5ebb8cce",
+    "sha256": "ceffa563946ece66350de2425f5a6559839e89adf82ea24de7d4d86982455abb"
+  },
+  "sourceManifestSha256": "246b2face0c651fd217d2554bb6b0708f1e3e2c6be8e55eb313d325cefde661a"
+}

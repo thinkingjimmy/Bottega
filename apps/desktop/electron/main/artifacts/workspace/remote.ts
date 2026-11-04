@@ -30,7 +30,7 @@ export function remoteArtifactWorkspace(ports: { config: CloudBuildConfig; devic
     const header = { ...protocolHeader(ports.config), expectedUserId: crypto.session.userId, encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint } };
     const scope = [input.chatId, input.incarnationId, identity, targetDeviceId], key = JSON.stringify([...scope, action, input.action, input.requestId]);
     const digest = createHash("sha256").update(canonicalJson(value)).digest("hex"), checkpoints = artifactWorkspace().checkpoints;
-    const retain = action === "artifact-workspace" && !["capture-status", "operation-status", "system-diff", "resume-edit", "resolve-edit", "thumbnail", "cancel-thumbnail", "canvas-target"].includes(input.action);
+    const retain = action === "artifact-workspace" && !input.action.startsWith("native-history-list") && !input.action.startsWith("native-history-detail") && !input.action.startsWith("native-history-diff") && !["capture-status", "operation-status", "system-diff", "resume-edit", "resolve-edit", "thumbnail", "cancel-thumbnail", "native-reference"].includes(input.action);
     const stored = retain ? checkpoints.command(key) : null;
     if (stored && stored.digest !== digest) throw new Error("artifact-request-conflict");
     let sealed = stored?.sealed;

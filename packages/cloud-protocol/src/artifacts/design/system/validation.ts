@@ -3,7 +3,7 @@
  * [OUTPUT]: Pure bounded structural errors and advisory source-value limitations.
  * [POS]: Cross-platform system checking; no I/O, registration or guessed replacement values.
  */
-import { designSystemSchema, type DesignSystem } from "./model";
+import { designSystemSchema, systemTypeProperties, type DesignSystem } from "./model";
 import { resolvedSystemValue, validTokenValue } from "./tokens";
 export type SystemIssue = { file: string; message: string };
 export function inspectDesignSystem(raw: unknown, files?: ReadonlySet<string>) {
@@ -32,6 +32,15 @@ export function inspectDesignSystem(raw: unknown, files?: ReadonlySet<string>) {
       if (!validTokenValue(token.kind, value)) advisory("tokens.json", `${token.name} (${theme}) is preserved exactly; its unsupported value is omitted from generated CSS`);
     }
     if (!token.usage.trim()) advisory("tokens.json", `${token.name} has no usage guidance`);
+  }
+  const styleNames = new Set<string>(), groupNames = new Set<string>();
+  for (const group of system.tokens.typography?.groups ?? []) {
+    if (groupNames.has(group.name)) issue("tokens.json", "Typography group names must be unique"); groupNames.add(group.name);
+    for (const name of [group.family, ...group.styles.map(style => style.family)].filter(Boolean)) if (!system.tokens.tokens.some(token => token.name === name && token.kind === "font-family")) issue("tokens.json", "Missing typography family: " + name);
+    for (const style of group.styles) {
+      if (styleNames.has(style.name)) issue("tokens.json", "Typography style names must be unique"); styleNames.add(style.name);
+      for (const [property, name] of Object.entries(style.tokens)) if (!system.tokens.tokens.some(token => token.name === name && token.kind === systemTypeProperties[property as keyof typeof systemTypeProperties])) issue("tokens.json", "Invalid typography reference: " + style.name + "." + property);
+    }
   }
   const aliasKeys = new Set<string>();
   for (const alias of system.aliases.aliases) {

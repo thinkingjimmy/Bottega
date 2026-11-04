@@ -5,6 +5,12 @@ description: 在当前 chat 可写的自有或 Project 共享 Base 中设计列�
 requires: tools: bases:mutate
 ---
 
+<!--
+[INPUT]: Issued Base data and rendering contracts and the independent dataviz method.
+[OUTPUT]: Current-Chat Base operations and persistent Chart view guidance.
+[POS]: Built-in base-ops Skill; dataviz owns visual method and does not replace the data contract.
+-->
+
 # Base 数据操作
 
 Base 工具作用域已由当前 chat 的 lease 固定：优先使用 chat 自有 Base；没有自有 Base 时，自动落到所属 Project 的共享 Base。写工具不接受 `chatId`/`projectId`/`baseId`；操作本轮附加 App 的 Base 时显式传 `target:"app:<id>"`（仅读与行级写，列/视图变更会 403）。
@@ -20,6 +26,8 @@ Base 工具作用域已由当前 chat 的 lease 固定：优先使用 chat 自�
 7. 全量导出用 `base_export_csv`，返回 `{path,bytes,rowCount}` artifact 元数据。
 
 ## 视图协议
+
+Before Chart view design or color selection, load the independent `dataviz` Skill. Keep the Base contracts below. Base Chart chooses its renderer colors; `accessibleColors` adds texture. Do not claim that a custom validated palette changes this renderer.
 
 - `base_set_view` 创建/替换命名视图，`set_active:true` 可原子切换。固定六类：`table`、`list`、`kanban`、`map`、`chart`、`gallery`；不存在 GUI/embed View。
 - Gallery 必须传 `attachmentColumnId`（attachment 列），可传 `titleColumnId`、`groupByDateColumnId`（date 列）和 `dateBucket:minute|hour|day|week|month`，并与其它 View 一样支持 `filter`/`sorts`。GUI 是 Base App 独立“应用” Surface，不通过 `base_set_view` 创建。

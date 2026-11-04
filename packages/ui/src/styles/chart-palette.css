@@ -1,0 +1,7 @@
+/**
+ * [INPUT]: Fixed dataviz all-pairs checks for actual white/light and near-black/dark chart surfaces.
+ * [OUTPUT]: Five distinct categorical chart tokens shared by ordinary charts, Base and native Dashboard.
+ * [POS]: One product palette source; other surfaces and brand overrides require their own validation.
+ */
+:root{--chart-1:#2a78d6;--chart-2:#df652d;--chart-3:#16966d;--chart-4:#6020b0;--chart-5:#506010}
+.dark,html[data-mode=dark]{--chart-1:#2a78d6;--chart-2:#df652d;--chart-3:#16966d;--chart-4:#a020a0;--chart-5:#a04020}

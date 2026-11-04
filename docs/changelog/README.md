@@ -1,9 +1,28 @@
 # Changelog
 
-[Documentation](../README.md) · [简体中文](./README.zh-CN.md)
+[Documentation](../README.md) · [Chinese (Simplified)](./README.zh-CN.md)
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+
+## 2026-11-04 — v0.3.0
+
+[Download 0.3.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.3.0) for macOS on Apple silicon (ARM64).
+
+- **Edit four kinds of work.** Use native Canvas and Slides, a dedicated Design System editor and an interactive Dashboard with fixed CSV, TSV or JSON sources. Authored pages and component examples stay isolated from host write access.
+- **Send feedback from the original Chat.** Add element, region or work instructions to the current draft, keep text and attachments, then send the combined request. Sent comments keep their original instructions and target version. Return to the unchanged target or inspect its original read-only version after it changes. Applied results link to exact saved versions in the same Chat. Unknown saves recover their original operation without another model call.
+- **Recover earlier work.** Browse authors, changes and fixed read-only previews. Restore selected changes or a complete version while keeping unrelated current work. Resume a paused restore without creating another operation.
+- **Hand over a complete project.** Export source, resources, comments and full supported history as a ZIP. Open it in the fixed original tool or import it into a new Bottega workspace and continue with fresh permissions.
+- **Check chart colors.** Use independent dataviz guidance and palette validation without opening an editor. Reports keep each rule's warning or failure.
+- **Keep Chat moving.** Queued first messages continue when the runtime becomes available. Qualified native Codex titles use the selected title model. Ordinary Codex Chat checks the native protocol and required capabilities instead of requiring one exact CLI version; quota queries and optional updates remain independent. Native title generation and isolated editing keep their separate CLI qualification.
+- **Read long conversations with fewer stalls.** History loads in small batches and keeps the reading position. Streaming updates and code highlighting avoid repeated work across earlier messages. Code blocks keep their copy actions and layout.
+- **Download less.** Packaged App GUI dependencies exclude unused build and editor-tool files while keeping the supported compiler paths and license notices.
+
+**Compatibility.** This release uses protocol **25**. Update connected desktops and reload Bottega Web after the coordinated service update. Existing content, sync passwords and account keys remain; no data reset is required. Retired Artifact files and snapshots remain unchanged. Their cards show an unsupported-format message instead of opening an editor or restoring write access. Dock remains Alpha and requires macOS 27.x with Apple silicon.
+
+**Validation limits.** Physical-device checks, system clipboard/drop, target-application PPTX reopening, complete reference-tool operation parity, long-duration installed-app memory checks and the final manual UX review retain their separate acceptance scope. Fixture performance measurements do not certify physical iPhone Safari behavior.
+
+**Licenses.** Bottega first-party code remains MIT. The modified Canvas, Slides and Design System editor forks retain the BaoCut Community License and their original notices. Other bundled reference materials retain their own terms. Commercial distribution, inclusion in commercial software supplied to others or commercial hosted access to covered code requires separate written rights; the root MIT license does not replace those terms.
 
 ## 2026-11-01 — v0.2.12
 

@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on React state, i18n, an explicit global/Project scope port, ui/Tabs, and Settings primitives
- * [OUTPUT]: Provides the complete shared ambient-tool renderer, including offline Design font access, document and system controls, with effective/source/backend facts, Project reset actions, and eight-domain navigation
+ * [OUTPUT]: Provides the complete shared ambient-tool renderer, including independent chart palette validation and offline Design font access, document and system controls, with effective/source/backend facts, Project reset actions, and eight-domain navigation
  * [POS]: apps/desktop/src/components/settings/tools; Scope-agnostic built-in tool controls for Settings › Tools; controllers own persistence and this component only renders snapshots and mutations
  */
 
 import { useState } from "react";
+import { paletteToolCopy } from "./palette-copy";
 import { RotateCcw } from "lucide-react";
 import {
   Tabs,
@@ -60,6 +61,7 @@ export const BUILTIN_TOOL_COPY = {
   browser_act: { domain: "Browser" },
   browser_tabs: { domain: "Browser" },
   browser_close: { domain: "Browser" },
+  validate_palette: { domain: "Design" },
   design_fonts: { domain: "Design" },
   design_check: { domain: "Design" },
   design_commit: { domain: "Design" },
@@ -135,7 +137,7 @@ export function BuiltinToolsSection({
 }: {
   port: BuiltinToolsSectionPort;
 }) {
-  const { t } = useAppTranslation();
+  const { t, i18n } = useAppTranslation();
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
   const byId = new Map(port.tools.map((tool) => [tool.toolId, tool]));
   const disabled = new Set(
@@ -253,9 +255,8 @@ export function BuiltinToolsSection({
             <div className="divide-inset">
               {tools.map(([name]) => {
                 const tool = byId.get(name);
-                const label = t(
-                  `settings.tools.builtin.items.${name}.label`
-                );
+                const palette = name === "validate_palette" ? paletteToolCopy(i18n.language) : undefined;
+                const label = palette?.label ?? t(`settings.tools.builtin.items.${name}.label`);
                 return (
                 <SettingsRow
                   control={
@@ -297,7 +298,7 @@ export function BuiltinToolsSection({
                         `settings.tools.builtin.effective.${tool.effectiveState}`
                       )}
                       {" · "}
-                      {t(`settings.tools.builtin.items.${name}.hint`)}{" "}
+                      {palette?.hint ?? t(`settings.tools.builtin.items.${name}.hint`)}{" "}
                       {/* 工具名是标识符不是散文：同字号同色排在句末，
                           想按名字找一个工具就只能逐句读过去。 */}
                       <code className="font-mono text-[11px] text-muted-foreground/70">

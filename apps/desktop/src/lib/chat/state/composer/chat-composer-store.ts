@@ -4,6 +4,7 @@
  * Typed fixed-design appends and queued review request keys stay with this one original draft owner.
  * [POS]: apps/desktop/src/lib/chat/state/composer; lib's single-owner store for uncommitted composer drafts and their identity; unlike the retrievable message caches, this store never LRU-evicts, and a generation-unknown snapshot can never silently replace a known one
  */
+import { designReferenceKey } from "@ai-chat/cloud-protocol/artifacts/design/reference/draft";
 import { type ComposerFile, type FileResource, type ComposerState, emptyComposer } from "./model";
 export { type ComposerFile, type FileNode, type ComposerState } from "./model";
 
@@ -408,8 +409,11 @@ export function appendComposerText(chatId: string, text: string, design?: { name
   let appended = false;
   updateComposer(chatId, (current) => {
     const richValue = [...current.draft.richValue];
-    if (design && !richValue.some(node => node.type === "design" && JSON.stringify(node.reference) === JSON.stringify(design.reference)))
-      richValue.push({ id: `design_${nanoid()}`, type: "design", name: design.name, reference: design.reference });
+    if (design) {
+      const index = richValue.findIndex(node => node.type === "design" && designReferenceKey(node.reference) === designReferenceKey(design.reference));
+      if (index < 0) richValue.push({ id: `design_${nanoid()}`, type: "design", name: design.name, reference: design.reference });
+      else richValue[index] = { ...richValue[index]!, type: "design", name: design.name, reference: design.reference } as Extract<typeof richValue[number], { type: "design" }>;
+    }
     const tail = richValue.at(-1);
     if (text && tail?.type === "text") {
       const trailingNewlines = tail.value.match(/\n*$/)?.[0].length ?? 0;

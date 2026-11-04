@@ -1,6 +1,6 @@
 /**
- * [INPUT]: The outline model, the shared Conversation scroll context and host-paged canonical entries.
- * [OUTPUT]: Provides the transcript minimap with roving keyboard focus, active-row tracking (one query per measurement, at most every 200 ms), hover previews and an intent signal (pointer or focus) the host uses to refresh stale canonical rows.
+ * [INPUT]: The outline model, the stable Conversation scroll handles and host-paged canonical entries.
+ * [OUTPUT]: Provides the transcript minimap with roving keyboard focus, active-row tracking (one query per measurement, only when visible; every 500 ms while streaming and 200 ms otherwise), hover previews and an intent signal (pointer or focus) the host uses to refresh stale canonical rows.
  * [POS]: The outline's rendered surface; host adapters own canonical outline paging.
  */
 import {
@@ -16,7 +16,7 @@ import {
   type MouseEvent,
 } from "react";
 import { FileTextIcon } from "lucide-react";
-import { useStickToBottomContext } from "@ai-chat/ui/components/ai-elements/conversation";
+import { useConversationScrollElements } from "@ai-chat/ui/components/ai-elements/conversation";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { activeOutlineIndex, outlineMinimapEntries, type OutlineMessage, type CanonicalOutlineItem } from "./outline-model";
 import { findTranscriptTarget, measureOutlineTops, scrollTranscriptTo } from "./highlight";
@@ -129,18 +129,24 @@ export const ChatOutline = memo(function ChatOutline({
   canonicalItems,
   onJump,
   onIntent,
+  visible = true,
+  streaming = false,
 }: {
   messages: readonly OutlineMessage[];
   label: string;
   canonicalItems?: readonly CanonicalOutlineItem[];
   onJump?: (id: string) => void;
   onIntent?: () => void;
+  visible?: boolean;
+  streaming?: boolean;
 }) {
   const entries = useMemo(
     () => outlineMinimapEntries(messages, canonicalItems ?? []),
     [canonicalItems, messages]
   );
-  const { scrollRef } = useStickToBottomContext();
+  const { scrollRef } = useConversationScrollElements();
+  const navRef = useRef<HTMLElement>(null);
+  const [intersecting, setIntersecting] = useState(typeof IntersectionObserver === "undefined");
   const [active, setActive] = useState(-1);
   const [preview, setPreview] = useState<{ id: string; top: number } | null>(
     null
@@ -168,8 +174,16 @@ export const ChatOutline = memo(function ChatOutline({
   }, []);
 
   useEffect(() => {
+    const nav = navRef.current;
+    if (!visible || entries.length < 2 || !nav || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(entries => setIntersecting(entries.some(entry => entry.isIntersecting)));
+    observer.observe(nav);
+    return () => observer.disconnect();
+  }, [entries.length, visible]);
+
+  useEffect(() => {
     const scroller = scrollRef.current;
-    if (!scroller || entries.length < 2) return;
+    if (!scroller || entries.length < 2 || !visible || !intersecting) return;
     let frame = 0, timer: ReturnType<typeof setTimeout> | undefined, last = Number.NEGATIVE_INFINITY;
     const measure = () => {
       last = performance.now();
@@ -180,7 +194,7 @@ export const ChatOutline = memo(function ChatOutline({
     /* A streaming reply resizes the content every frame; measure at most every MEASURE_INTERVAL_MS, always once more at the end. */
     const scheduleMeasure = () => {
       if (timer !== undefined) return;
-      const wait = Math.max(0, last + MEASURE_INTERVAL_MS - performance.now());
+      const wait = Math.max(0, last + (streaming ? 500 : MEASURE_INTERVAL_MS) - performance.now());
       timer = setTimeout(() => { timer = undefined; cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); }, wait);
     };
     const onScroll = () => {
@@ -203,7 +217,7 @@ export const ChatOutline = memo(function ChatOutline({
       measurements.current = EMPTY_MEASUREMENTS;
       located.current = false;
     };
-  }, [entries, scrollRef, updateActive]);
+  }, [entries, intersecting, scrollRef, streaming, updateActive, visible]);
 
   const handleHover = useCallback((id: string, top: number) => {
     setPreview((current) =>
@@ -233,7 +247,7 @@ export const ChatOutline = memo(function ChatOutline({
     [handleHover, handleLeave, jump]
   );
 
-  if (entries.length < 2) return null;
+  if (entries.length < 2 || !visible) return null;
   const hoveredIndex = preview
     ? entries.findIndex((entry) => entry.id === preview.id)
     : -1;
@@ -245,6 +259,7 @@ export const ChatOutline = memo(function ChatOutline({
   return (
     <DotContext.Provider value={runtime}>
       <nav
+        ref={navRef}
         aria-label={label}
         className="-translate-y-1/2 absolute top-1/2 left-2 z-10 flex max-h-[70%] flex-col justify-center"
         onMouseLeave={() => setPreview(null)}

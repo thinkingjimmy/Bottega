@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Zod, Agent input types and the shared fixed design-reference schema.
- * [OUTPUT]: Strict canonical rich input, language-neutral display and typed design references projected as inert Agent data.
+ * [OUTPUT]: Strict canonical rich input, frozen native message display and typed design references projected as inert Agent data.
  * [POS]: apps/desktop/shared/content/rich; Single source of truth for shared rich-input node validation and projection; the renderer builds and validates the actual wire value before staging or injecting it
  */
 
+import { encodeDesignReferenceMessage } from "@bottega/contracts/model/artifacts/design-message";
 import { z } from "zod";
 import {
   ATTACHMENT_FILENAME_BYTE_LIMIT,
@@ -137,7 +138,7 @@ export function richInputDisplayText(
     .map((node) => {
       if (node.type === "text") return node.value;
       if (node.type === "skill") return `$${node.label}`;
-      if (node.type === "design") return `@${node.name}`;
+      if (node.type === "design") return encodeDesignReferenceMessage(node.name, node.reference);
       if (node.type === "section" || node.type === "history") return `@${node.name}`;
       if (node.type === "workspace-file") {
         return `@${node.path}${node.entryKind === "dir" ? "/" : ""}`;

@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on shared ConversationParts, ConversationDraft, ConversationElapsed, ConversationSubagent and conversation Agent/process headings, tool rows and grouping, Message, Thinking, Terminal, Plan, image source custody, subagent, structured Agent failure notices, RegularChatTurn, fork actions, cold-turn projection, and Chat formatting components
- * [OUTPUT]: Renders terminal partial replies without Thinking, animation or a running elapsed timer.
+ * [INPUT]: Depends on shared ConversationParts, ConversationDraft, ConversationElapsed, ConversationSubagent and conversation Agent/process headings, tool rows and grouping, Message, Thinking, Terminal, Plan, image source custody, subagent, structured Agent failure notices, RegularChatTurn, fork actions, cold-turn projection, incarnation-fenced draft subscription, and Chat formatting components
+ * [OUTPUT]: Subscribes to live drafts at the leaf, owns draft Plan expansion, and renders terminal partial replies without a running elapsed timer.
  * [POS]: apps/desktop/src/components/chat/transcript/turns; Assistant-turn process renderer for chat/transcript; delegates non-plan terminal presentation to chat-regular-turn
  */
 
+import { useTurnDraft } from "@/lib/chat/state/turn/draft-store";
 import { AgentBackendIcon, isAgentBackendId } from "@/lib/agent/agent-backends";
 import { useProviderName } from "@/lib/provider-catalog/hooks";
 import {
@@ -258,7 +259,16 @@ export function ChatTurn(props: {
 
 // ─── 流式草稿：活动分组强制展开实时渲染，末尾按决策 9 渲染 shimmer ───
 
-export function ChatTurnDraft({
+export function ChatTurnDraft(props: Omit<Parameters<typeof DraftContent>[0], "draft"> & { draft?: TurnDraft; expandedPlanId?: string | null; onClosePlan?: () => void }) {
+  const live = useTurnDraft(props.chatId, props.incarnationId, props.draft === undefined);
+  const draft = props.draft ?? live;
+  if (!draft) return null;
+  const plan = projectDraftPlan(draft);
+  const expanded = props.expandedPlanId !== undefined ? props.expandedPlanId === plan?.itemId : props.isPlanExpanded;
+  return <DraftContent {...props} draft={draft} isPlanExpanded={expanded} onTogglePlan={expanded && props.onClosePlan ? props.onClosePlan : props.onTogglePlan} />;
+}
+
+function DraftContent({
   active = true,
   draft,
   hasPendingApproval,

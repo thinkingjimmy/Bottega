@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on domain services, Browser/Design runtimes, effective workspace authority, frozen Skills custody and disabled Agent plugin identities.
- * [OUTPUT]: Provides createBuiltinToolsets with current-Chat historical attachments, incarnation-bound canvas checks, Skills and plugin authoring.
+ * [INPUT]: Depends on domain services, Browser/Design and bundled-Node palette runtimes, effective workspace authority, frozen Skills custody and disabled Agent plugin identities.
+ * [OUTPUT]: Provides createBuiltinToolsets with current-Chat historical attachments, incarnation-bound canvas checks, Skills, independent bundled-Node palette validation and plugin authoring.
  * [POS]: apps/desktop/electron/main/presets; Main built-in tool composition root; index injects initialized owners while toolsets expose only narrow ports
  */
 
@@ -25,6 +25,7 @@ import { createBrowserToolset } from "../browser/toolset";
 import type { AgentPluginInventory } from "../extensions/agent-plugins/inventory";
 import type { SkillsTurnCustodyStore } from "../skills-management/custody/turn-custody";
 import { createDesignToolset } from "../design/tooling/toolset";
+import { createDatavizToolset } from "../skills/dataviz/toolset";
 import { createChatHistoryToolset } from "../agent/history/lease";
 import type { BuiltinToolset } from "../tools/registry";
 import { createWorkflowToolset } from "../workflows/step-results";
@@ -85,6 +86,7 @@ export function createBuiltinToolsets(deps: BuiltinToolsetDependencies) {
     });
   return [
     createPreviewToolset(),
+    createDatavizToolset(),
     createChatHistoryToolset(deps.chatStore, {
       readAttachment: (chatId, attachmentId) => deps.chatsService.readSectionAttachment(chatId, attachmentId),
       workspace: (chatId, incarnationId) => {

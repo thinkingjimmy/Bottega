@@ -15,13 +15,17 @@ export const summarizeDesignBoards = (manifest: { contentFormat?: string; launch
   if (cover && !selected.some(board => board.id === cover.id)) selected.splice(15, 1, cover);
   return selected.map(board => ({ id: board.id, title: board.title.slice(0, 80), mode: board.mode, viewport: board.viewport }));
 };
-const createDesignSummarySchema = () => z.object({ documentId: designId, revision: z.number().int().positive(),
-  readSetDigest: digestSchema, snapshotRef: digestSchema, launchBoard: designId, boards: z.array(boardSummarySchema).min(1).max(16),
-  format: z.enum(["bottega-design", "bottega-design-system"]), boardCount: z.number().int().min(1).max(256).optional(), contentFormat: z.enum(["canvas-dc/v3", "slides/v4"]).optional(), executionDeviceId: z.string().min(1).max(128).optional(),
-}).strict().superRefine((value, context) => {
-  if (value.contentFormat === "slides/v4" ? value.boardCount === undefined || value.boardCount < value.boards.length : value.boardCount !== undefined)
-    context.addIssue({ code: "custom", message: "Slides summaries require their complete page count" });
-  if (!value.boards.some(board => board.id === value.launchBoard)) context.addIssue({ code: "custom", message: "Summary must contain its launch board" });
-});
+const createDesignSummarySchema = () => {
+  const common = { documentId: designId, revision: z.number().int().positive(), readSetDigest: digestSchema, snapshotRef: digestSchema,
+    launchBoard: designId, boards: z.array(boardSummarySchema).min(1).max(16), boardCount: z.number().int().min(1).max(256).optional(), executionDeviceId: z.string().min(1).max(128).optional() };
+  return z.discriminatedUnion("format", [
+    z.object({ ...common, format: z.literal("bottega-design"), contentFormat: z.enum(["canvas-dc/v3", "slides/v4", "dashboard/v1"]) }).strict(),
+    z.object({ ...common, format: z.literal("bottega-design-system"), contentFormat: z.never().optional() }).strict(),
+  ]).superRefine((value, context) => {
+    if (value.contentFormat === "slides/v4" ? value.boardCount === undefined || value.boardCount < value.boards.length : value.boardCount !== undefined)
+      context.addIssue({ code: "custom", message: "Slides summaries require their complete page count" });
+    if (!value.boards.some(board => board.id === value.launchBoard)) context.addIssue({ code: "custom", message: "Summary must contain its launch board" });
+  });
+};
 export const designSummarySchema = /* @__PURE__ */ createDesignSummarySchema();
 export type DesignSummary = z.infer<typeof designSummarySchema>;

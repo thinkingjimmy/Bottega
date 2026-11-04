@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Digest-verified captured component inputs, explicit target, fixed local React/esbuild and the existing opaque offline renderer.
- * [OUTPUT]: Separate standalone React19 or native DC React18 compilation, fixed bundle/style/preview bytes and actual mount evidence.
+ * [OUTPUT]: Separate standalone React19 or native DC React18 compilation, fixed bundle/style/preview bytes, data-only standalone preview controls and actual mount evidence.
  * [POS]: System component compiler; source modules never execute in the main process or install dependencies.
  */
 import { createRequire } from "node:module";
@@ -82,7 +82,8 @@ export async function compileSystemComponent(system: DesignSystem, component: Sy
     "import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';",
     "import * as Source from '__bottega_captured_component__';",
     `const Component = Source[${JSON.stringify(component.exportName)}];`,
-    `const props = ${capturedComponentProps(props).literal};`,
+    `const defaults = ${capturedComponentProps(props).literal};`,
+    "let previewProps={};const preview=document.getElementById('bottega-system-props');if(preview&&preview.textContent.length<=16384){try{const value=JSON.parse(preview.textContent);if(value&&typeof value==='object'&&!Array.isArray(value))previewProps=Object.fromEntries(Object.entries(value).filter(([key,value])=>!/^on[A-Z]|^(?:__proto__|constructor|prototype|dangerouslySetInnerHTML)$/.test(key)&&(value===null||typeof value==='boolean'||typeof value==='number'&&Number.isFinite(value)||typeof value==='string'&&value.length<=4096)));}catch{}}const props={...defaults,...previewProps};",
     "if(!Component) throw new Error('Selected component export is missing');",
     "const mount=document.getElementById('system-component-root');",
     "try{flushSync(()=>createRoot(mount,{onUncaughtError:error=>console.error(String(error))}).render(React.createElement(Component,props)));",

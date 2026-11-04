@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Existing account-scoped encrypted file transfer, current authenticated header and immutable native byte sources.
- * [OUTPUT]: NativeFileTransfer preserves exact mutable request identities and bounded immutable-content files with account/close revalidation.
+ * [OUTPUT]: NativeFileTransfer and stageNativeRequest preserve exact mutable request identities and bounded immutable-content files with account/close revalidation.
  * [POS]: Native transport byte plane shared by Web and owner main; encrypted resource commands carry its small descriptors.
  */
 import { hashBlobSource, hashBytes, type BlobSource } from "../../../blobs/transfer";
@@ -56,3 +56,11 @@ export class NativeFileTransfer {
 }
 export const nativeBytesSource = (bytes: Uint8Array, mime = "application/octet-stream"): BlobSource => ({ bytes: bytes.length, mime,
   read: async (offset, length) => bytes.slice(offset, offset + length) });
+
+export function stageNativeRequest(transfer: NativeFileTransfer, input: { sessionId: string; path: string; method: string; requestId: string; contentType?: string; body: Uint8Array }, signal?: AbortSignal) {
+  const identity = hashBytes(new TextEncoder().encode(JSON.stringify([input.sessionId, input.path, input.method, input.requestId]))), mime = input.contentType ?? "application/octet-stream";
+  // Download start/status/cancel have one main-owned job identity and distinct data-only phases.
+  return input.path === "__deck/download" && input.method === "POST"
+    ? transfer.stageContent("download:" + identity, input.body, mime, signal)
+    : transfer.stage("request:" + identity, nativeBytesSource(input.body, mime), signal);
+}

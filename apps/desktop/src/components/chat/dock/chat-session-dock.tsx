@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on React, App i18n, ChatSessionController, latest-turn selector, TurnParts/MessageResponse, and ChatComposer
+ * [INPUT]: Depends on React, App i18n, ChatSessionController, incarnation-fenced draft store, latest-turn selector, TurnParts/MessageResponse, and ChatComposer
  * [OUTPUT]: Provides ChatSessionDock: a floating latest-turn preview tab docked above the ChatComposer input card
  * [POS]: The only source of the chat/dock's floating form; No session, no contamination of the Base, the host decides who is covered by it
  */
 
+import { useTurnDraft } from "@/lib/chat/state/turn/draft-store";
 import { useMemo, useState } from "react";
 import { ChevronUpIcon } from "lucide-react";
 import { MessageResponse } from "@ai-chat/ui/components/ai-elements/message";
@@ -27,16 +28,17 @@ export function ChatSessionDock({
 }) {
   const { t } = useAppTranslation();
   const [latestOpen, setLatestOpen] = useState(false);
+  const draft = useTurnDraft(chatId, controller.transcript.incarnationId);
   const latest = useMemo(
     () =>
       selectLatestTurn(
         controller.transcript.messages,
-        controller.transcript.draft,
+        draft,
         controller.transcript.assistantSeq
       ),
     [
       controller.transcript.assistantSeq,
-      controller.transcript.draft,
+      draft,
       controller.transcript.messages,
     ]
   );

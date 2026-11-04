@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Depends on App enablement projections, React, renderer locale/catalog runtime and data providers, canonical chat/turn snapshots, PanelSessionContext, session subcontrollers, Agent attach, workspace/skills/files, and Gallery projections
+ * [INPUT]: Depends on App enablement projections, React, renderer locale/catalog runtime and data providers, canonical chat/turn snapshots, owner-fenced draft publication, PanelSessionContext, session subcontrollers, Agent attach, workspace/skills/files, and Gallery projections
  * [OUTPUT]: Composes stable Chat controllers, including scoped local-file preview commands, queued Retry/Plan/auth actions, durable draft recovery and host-gated background runners.
  * [POS]: The thin composition root of chat/runtime; durable authority remains in main while renderer owns view generation. Routing stays outside: post-send navigation is the chat route's draft-residence observation, not a session concern
  */
+import { publishTurnDraft, releaseTurnDraft } from "@/lib/chat/state/turn/draft-store";
 import { useSessionIdentity } from "./session/identity";
 import { recentTurns } from "@/lib/native-transcript/window";
 import { useLocalPlatform } from "@/lib/cloud/chat/platform/local";
@@ -104,7 +105,8 @@ export function useChatSession({
   const [queueNotice, setQueueNotice] = useState("");
   useRecoveryWaitNotice(chatId, queued, setQueueNotice);
   const [steerIntents, setSteerIntents] = useState<SteerOutboxProjection[]>([]);
-  const [draft, setDraft] = useState<TurnDraft | null>(null);
+  const [hasDraft, setHasDraft] = useState(false);
+  const [draftOwner] = useState(() => ({}));
   const [subagents, setSubagents] = useState<Record<string, ProjectedSubagent>>({});
   const draftRef = useRef<TurnDraft | null>(null);
   const [livePreviews, setLivePreviews] = useState<ReadonlyMap<string, LiveAttachmentPreview[]>>(new Map());
@@ -216,6 +218,12 @@ export function useChatSession({
     setPlanMode,
     reportStopError,
   });
+  const setDraft = useCallback((value: TurnDraft | null | ((current: TurnDraft | null) => TurnDraft | null)) => {
+    const next = typeof value === "function" ? value(draftRef.current) : value;
+    publishTurnDraft(chatId, incarnationIdRef.current ?? messageSnapshot?.incarnationId ?? null, next, draftOwner);
+    setHasDraft(Boolean(next));
+  }, [chatId, draftOwner, messageSnapshot?.incarnationId]);
+  useLayoutEffect(() => () => releaseTurnDraft(chatId, draftOwner), [chatId, draftOwner]);
   const panelContext = useMemo<PanelSessionContext>(() => {
     if (inputPanelContext) return inputPanelContext;
     return createPanelSessionContext({
@@ -229,7 +237,6 @@ export function useChatSession({
   const sidePanel = useSessionSidePanel({
     conversationId: chatId,
     panelContext,
-    draft,
     messages,
     status,
     subagents,
@@ -662,7 +669,7 @@ export function useChatSession({
       backendId: builtinAgent(settings.turnOptions.backend) ?? undefined,
       backendDisplayName: selectedBackend?.displayName ?? "Agent",
       messages,
-      draft,
+      hasDraft,
       draftActive: !projectionStatus.terminal,
       assistantSeq: projectionStatus.assistantSeq,
       livePreviews,

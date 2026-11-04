@@ -465,6 +465,8 @@ export type PreparedSkillSelectionReceipt = Readonly<{
 }>;
 
 export type AgentSendPayload = {
+  /** Main-owned explicit Artifact edit purpose, frozen from accepted rich input. */
+  artifactEdit?: import("@ai-chat/cloud-protocol/artifacts/design/chat/model").FrozenArtifactEdit;
   /** Main-owned, bounded history manifest; never accepted from renderer IPC. */
   handoff?: import("../../chat-agent/history").FrozenHandoff;
   agentRevision?: number;

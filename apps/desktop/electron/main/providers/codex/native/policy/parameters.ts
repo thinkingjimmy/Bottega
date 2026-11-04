@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses product permission/input contracts and CLI-generated native request types.
- * [OUTPUT]: Exports nativePolicy, nativeInput and NativeTurnConfig for bb-native-v1.
+ * [OUTPUT]: Exports nativePolicy, nativeInput and NativeTurnConfig with separate title/candidate purposes for bb-native-v1.
  * [POS]: Pure native protocol boundary; selected files use quoted text references, explicit Skills use native activation.
  */
 import { fileURLToPath } from "node:url";
@@ -23,7 +23,7 @@ export function nativePolicy(mode: AgentPermissionMode, writableRoots: readonly 
 
 export type NativeTurnConfig = {
   contractId: "bb-native-v1";
-  purpose?: "artifact-candidate";
+  purpose?: "artifact-candidate" | "title";
   continuation?: { threadId: string; lastTurnId: string };
   thread: ThreadStartParams;
   turn: Omit<TurnStartParams, "threadId" | "input">;

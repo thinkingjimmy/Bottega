@@ -1,9 +1,11 @@
 /**
- * [INPUT]: The reader's state and native Conversation geometry.
- * [OUTPUT]: Provides TimelineView with 12px row spacing, row/live ordering, navigation slots and a gap slot before a named row, plus TimelineNotice for divider-styled navigation.
+ * [INPUT]: The shared reader, native Conversation geometry, row disclosure memory and shared TooltipProvider.
+ * [OUTPUT]: Provides TimelineView with 12px row spacing, row/live ordering, mounted scope navigation, navigation slots and a gap slot before a named row, plus TimelineNotice for divider-styled navigation.
  * [POS]: The timeline's only rendered surface; every rule it shows comes from reader.ts.
  */
-import { Fragment, useState, type ReactNode } from "react";
+import { useLayoutEffect, useState, type ReactNode } from "react";
+import { TranscriptStateProvider, TranscriptRowState } from "@ai-chat/ui/components/conversation/rows/state";
+import { TooltipProvider } from "@ai-chat/ui/components/ui/tooltip";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { ChevronUp } from "lucide-react";
@@ -11,6 +13,7 @@ import { Conversation, ConversationContent, ConversationScrollButton } from "@ai
 import { conversationColumnClassName } from "@ai-chat/ui/components/conversation/layout";
 import { TranscriptDividerRow as ConversationDivider } from "@ai-chat/ui/components/conversation/layout";
 import { useTimelineReader, type TimelineReader } from "./reader";
+import { registerTimelineNavigation } from "./highlight";
 import type { TranscriptRow } from "./window";
 export type TimelineViewProps<Row extends TranscriptRow> = TimelineReader<Row> & {
   row(message: Row): ReactNode;
@@ -25,22 +28,24 @@ export type TimelineViewProps<Row extends TranscriptRow> = TimelineReader<Row> &
 };
 export function TimelineView<Row extends TranscriptRow>(props: TimelineViewProps<Row>) {
   const [historyBatch, setHistoryBatch] = useState(false);
-  const content = <TimelineContent {...props} setHistoryBatch={setHistoryBatch} />;
+  const content = <TimelineContent key={props.memoryKey} {...props} setHistoryBatch={setHistoryBatch} />;
   return <Conversation data-timeline="" aria-busy={props.busy} aria-live={historyBatch ? "off" : undefined} className="min-h-0 min-w-0 flex-1" initial="instant" resize="instant" role={historyBatch ? undefined : "log"}>
-    {props.context ? props.context(content) : content}
+    <TooltipProvider><TranscriptStateProvider key={props.memoryKey}>{props.context ? props.context(content) : content}</TranscriptStateProvider></TooltipProvider>
   </Conversation>;
 }
 function TimelineContent<Row extends TranscriptRow>(props: TimelineViewProps<Row> & { setHistoryBatch(active: boolean): void }) {
-  const reader = useTimelineReader(props), { copy, live } = props;
+  const { setTopSentinel, ...reader } = useTimelineReader(props), { copy, live } = props;
+  useLayoutEffect(() => props.memoryKey ? registerTimelineNavigation(props.memoryKey, reader.jumpTo) : undefined, [props.memoryKey, reader.jumpTo]);
   const liveIndex = live?.seq === undefined ? -1 : reader.messages.findIndex(message => message.segment !== "imported" && message.seq > live.seq!);
   const renderRows = (messages: readonly Row[]) => {
     const boundary = messages.findIndex(message => message.segment !== "imported");
     const imported = boundary < 0 ? messages : messages.slice(0, boundary), native = boundary < 0 ? [] : messages.slice(boundary);
-    const render = (message: Row) => <Fragment key={message.id}>{props.gap?.before === message.id && props.gap.content}{props.row(message)}</Fragment>;
+    const render = (message: Row) => <TranscriptRowState key={message.id} id={message.id}>{props.gap?.before === message.id && props.gap.content}{props.row(message)}</TranscriptRowState>;
     return <>{imported.length > 0 && <section aria-label={copy.imported} className="contents">{imported.map(render)}</section>}{native.map(render)}</>;
   };
   return <>
     <ConversationContent className={`${conversationColumnClassName} gap-3`} data-transcript-content="" tabIndex={-1}>
+      <div aria-hidden="true" ref={setTopSentinel} data-transcript-top="" className="h-px shrink-0" />
       {props.before}
       {reader.hasEarlier && <ConversationDivider><Button size="pill" variant="ghost" data-load-earlier="" disabled={reader.loadingEarlier} onClick={reader.loadEarlier} type="button">
         {reader.loadingEarlier ? <><Spinner aria-hidden="true" />{copy.loading}</> : <><ChevronUp className="size-3" />{copy.earlier}</>}
