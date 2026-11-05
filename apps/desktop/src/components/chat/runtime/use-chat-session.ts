@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on App enablement projections, React, renderer locale/catalog runtime and data providers, canonical chat/turn snapshots, owner-fenced draft publication, PanelSessionContext, session subcontrollers, Agent attach, workspace/skills/files, and Gallery projections
- * [OUTPUT]: Composes stable Chat controllers, including scoped local-file preview commands, queued Retry/Plan/auth actions, durable draft recovery and host-gated background runners.
+ * [OUTPUT]: Composes stable Chat controllers, including scoped local-file preview commands, queued Retry/Plan/auth actions, durable draft recovery with canonical workspace reconciliation after late restoration, and host-gated background runners.
  * [POS]: The thin composition root of chat/runtime; durable authority remains in main while renderer owns view generation. Routing stays outside: post-send navigation is the chat route's draft-residence observation, not a session concern
  */
 import { publishTurnDraft, releaseTurnDraft } from "@/lib/chat/state/turn/draft-store";
@@ -376,6 +376,7 @@ export function useChatSession({
     setPlanMode,
     workspaceIdentityKey,
     workspaceIdentityReady,
+    composerState.workspaceIdentityKey,
   ]);
   const updateRichValue = useCallback(
     (next: RichValue) => {

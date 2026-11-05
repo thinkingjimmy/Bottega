@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React memo, Chat/Project abstract, chat-hydration scope rules and session project mode
- * [OUTPUT]: Provides useWorkspaceLifecycle, separates wire scope, canonical Workspace precondition, async fence key, durable draft identity and the Project's workspace binding
+ * [OUTPUT]: Provides useWorkspaceLifecycle with stable Project-bound workspace provenance across blank-slot renewal and first persistence, separate Chat/wire-scope/incarnation async fences, canonical Workspace preconditions and the Project's workspace binding
  * [POS]: Workspace-lifecycle projector for chat/runtime; use-chat-session only wires side effects and no longer computes these JSON-keyed identities itself
  */
 
@@ -62,7 +62,6 @@ export function useWorkspaceLifecycle({
   return useMemo(() => {
     const workspaceScope = chatWorkspaceScope(chatId, persisted, draftScope);
     const identity = {
-      scope: workspaceScope,
       projectId: projectId ?? null,
       membershipRevision: lifecycleProject?.membershipRevision ?? null,
       workspaceBinding: lifecycleProject?.workspaceBinding ?? null,
@@ -77,7 +76,7 @@ export function useWorkspaceLifecycle({
         incarnationId
       ),
       workspaceIdentityKey: JSON.stringify(identity),
-      workspaceScopeKey: JSON.stringify({ ...identity, incarnationId }),
+      workspaceScopeKey: JSON.stringify({ chatId, ...identity, scope: workspaceScope, incarnationId }),
     };
   }, [
     chatId,

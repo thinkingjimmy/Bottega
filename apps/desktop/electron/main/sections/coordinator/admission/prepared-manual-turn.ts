@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Canonical submissions, staged resources, main Skill custody and typed design-reference authorization.
+ * [INPUT]: Canonical submissions, staged resources, main Skill custody and typed design-reference authorization; main-resolved native-file authorization source separate from final execution/Skill workspace.
  * [OUTPUT]: Immutable manual/workflow preparation, retained user-file snapshots, pinned Skill generations and design-reference validation before admission effects.
  * [POS]: Coordinator admission boundary; package Providers still freeze no Skill catalog.
  */
@@ -154,6 +154,8 @@ export type PreparedManualLease = {
 
 type PreparationDependencies = {
   workspace: string;
+  /** Main-derived grant source; execution and Skill preparation retain workspace. */
+  fileAuthorizationWorkspace?: string;
   workspaceScope: AgentWorkspaceScope;
   backend: AgentSendPayload["turnOptions"]["backend"];
   planMode: boolean;
@@ -273,7 +275,7 @@ async function stageAuthorizedFile(
 ) {
   const reservation = dependencies.files.reserve(
     item.fileRef,
-    dependencies.workspace,
+    dependencies.fileAuthorizationWorkspace ?? dependencies.workspace,
     item.name
   );
   reservations.push(reservation);

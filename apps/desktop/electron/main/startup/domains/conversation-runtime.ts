@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Chat/Project/App/Memory/Gallery/Browser services, the History Import handle, canonical Project Tools resolver, scoped Extension inventory, Skills selection authority, canonical Provider purposes/defaults, first-message title fallback, manual staging, RelayLedger, and backend bridge
+ * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Chat/Project/App/Memory/Gallery/Browser services, the History Import handle, canonical Project Tools resolver, scoped Extension inventory, Skills selection authority, canonical Provider purposes/defaults, first-message title fallback, manual staging, RelayLedger, and backend bridge; main-resolved native-file authorization source separate from final execution/Skill workspace.
  * [OUTPUT]: Composes runtime-only chat admission, registry-driven dispatch wakes, scoped retries, queue pausing and single-backend title generation/recovery with direct first-message completion for explicitly unsupported purposes and demand-driven authentication refresh — headless job or dedicated/ordinary one-shot Agent turn — qualified against the same configured model and workspace; a package Provider's turn resolves no Project tools and names the Provider from the catalog when it fails. Refuses closed App submissions and keeps their queued messages undispatched.
  * Workflow preparation narrows Skills and MCP candidates before their receipts enter custody.
  * [POS]: The conversation-domain startup composition module; the external-history half lives in history-import-runtime.ts and assembles dependencies without holding global lifecycle state
@@ -446,8 +446,14 @@ export function createManualTurnPreparer({
     ) {
       throw new Error("PROJECT_TOOLS_CANONICAL_CONTEXT_MISMATCH");
     }
+    const fileAuthorizationWorkspace = submission.turn.input.some(
+      (item) => item.type === "mention"
+    )
+      ? resolveWorkspace(stagingScope).workspace
+      : undefined;
     return prepareManualTurn(submission, {
       workspace,
+      ...(fileAuthorizationWorkspace ? { fileAuthorizationWorkspace } : {}),
       workspaceScope: stagingScope,
       backend: submission.turn.turnOptions.backend,
       planMode: Boolean(submission.turn.planMode),
