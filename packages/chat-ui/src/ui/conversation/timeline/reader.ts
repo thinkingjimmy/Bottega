@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Host-owned history ports, stable scroll handles, outer-row position lookup and bounded anchor memory.
- * [OUTPUT]: Provides TimelineReader and useTimelineReader: history paging, prepend scroll compensation, deep-link seeking, focus restoration, cross-mount anchor/offset restoration, and an in-place re-anchor on the newest rows when the host says its window was replaced (anchorKey).
+ * [OUTPUT]: Provides TimelineReader and useTimelineReader: history paging, prepend scroll compensation, deep-link seeking once per host window, focus restoration, cross-mount anchor/offset restoration, and an in-place re-anchor that reapplies the current route when the host replaces its window (anchorKey).
  * [POS]: The timeline's state machine; adapters supply rows and reads, never a second window, and a port swap re-enters the transcript where the reader left it.
  */
 import { flushSync } from "react-dom";
@@ -314,7 +314,7 @@ export function useTimelineReader<Row extends TranscriptRow>({ messages, hasMore
   }, [cancelBatch, materialize, messages, releaseScrollLock, scrollRef, setHistoryBatch]);
 
   useLayoutEffect(() => {
-    const routeKey = routeSearch ?? "";
+    const routeKey = JSON.stringify([anchoredFor ?? null, routeSearch ?? ""]);
     if (consumedRouteKeyRef.current === routeKey) return;
     const searchParams = new URLSearchParams(routeSearch ?? "");
     const id = searchParams.get("m");
@@ -338,7 +338,7 @@ export function useTimelineReader<Row extends TranscriptRow>({ messages, hasMore
       consumedRouteKeyRef.current = routeKey;
       pendingRouteRef.current = null;
     }
-  }, [jumpTo, releaseScrollLock, routeSearch, scrollRef]);
+  }, [anchoredFor, jumpTo, releaseScrollLock, routeSearch, scrollRef]);
 
   return { setTopSentinel, messages: visibleMessages, hasEarlier: windowed.start > 0 || hasMoreBefore, loadingEarlier: loadingEarlierNow, loadEarlier, jumpTo, announcement };
 }
