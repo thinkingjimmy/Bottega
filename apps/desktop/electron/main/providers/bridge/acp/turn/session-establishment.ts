@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on ACP session load/resume, identity-bound absence classification, actual sent-prompt replay proofs and final session configuration publication.
+ * [INPUT]: Depends on canonical public Provider IDs, ACP session load/resume, identity-bound absence classification, actual sent-prompt replay proofs and final session configuration publication.
  * [OUTPUT]: Provides establishAcpSession with one bind-and-final-config callback order for fresh and resumed sessions Opens independent Claude member forks with definite-unsupported-only canonical fallback.
  * [POS]: ACP turn/session establishment unit; the parent retains transport and terminal ownership
  */
 
 import type { SessionReplayProof } from "../../../../library/sessions/boundary";
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import {
   AGENT_METHODS,
   type ClientContext,
@@ -43,7 +44,7 @@ export async function establishAcpSession(
     throw new Error("ACP session 与后端不匹配");
   }
   const fork = !resume ? options.memberFork : undefined;
-  if (fork && (fork.backend !== "claude" || options.payload.turnOptions.backend !== "claude"))
+  if (fork && (fork.backend !== BUILTIN_PROVIDER_IDS.claude || options.payload.turnOptions.backend !== BUILTIN_PROVIDER_IDS.claude))
     throw new Error("ACP member fork belongs to a different Provider");
   if (fork && input.supportsFork) {
     let created: unknown;

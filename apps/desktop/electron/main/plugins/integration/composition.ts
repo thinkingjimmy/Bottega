@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Shipped immutable weather packages and lazy canonical Team/source admission, dependency/opt-in trace owners; shared HostRuntime/tool processes, Project/Chat services, optional live Library identity and isolated Surface transport.
+ * [INPUT]: Shipped immutable weather packages and lazy canonical Team/source admission, dependency/opt-in trace owners; shared HostRuntime/tool processes, Project/Chat services, optional live Library identity and isolated Surface transport. Forwards the active interface locale getter only to the lazy dependency owner.
  * [OUTPUT]: Retryable official-source mounting after real Library admission, source Projects/builds bound to exact installed-input receipts, activation-bound Surface/failure/revocation, digest-fenced repairs and guarded recovery.
  * [POS]: Production unified plugin owner; startup and shutdown retain this owner independently of resident windows.
  */
@@ -32,7 +32,7 @@ import type {composePluginTools} from '../../startup/domains/plugin-tools-compos
 import type {BrowserWindow} from 'electron';
 import type {PluginCatalog} from '../catalog';
 import type {ArchiveService} from '../../archive/archive-service';
-type Ports={userData:string;libraryRoot():string|null;projects:ProjectsService;chats:ChatStore;
+type Ports={userData:string;locale?():string;libraryRoot():string|null;projects:ProjectsService;chats:ChatStore;
   tools:Awaited<ReturnType<typeof composePluginTools>>;transport:PluginSurfaceGateway;catalog:PluginCatalog;archive:Pick<ArchiveService,'restore'>};
 const installed:{current:UnifiedPluginIntegration|null}={current:null};
 export const unifiedPluginIntegration=()=>installed.current;
@@ -285,7 +285,7 @@ export class UnifiedPluginIntegration{
     }finally{epoch.close();await epoch.drain();}
   }
   private dependencyInstaller(){
-    return this.dependencies??=import('../engineering/dependency/owner').then(({PluginDependencyInstaller})=>new PluginDependencyInstaller({userData:this.ports.userData,signal:this.stop.signal,
+    return this.dependencies??=import('../engineering/dependency/owner').then(({PluginDependencyInstaller})=>new PluginDependencyInstaller({userData:this.ports.userData,locale:this.ports.locale,signal:this.stop.signal,
       name:id=>this.platform.get(id)?.manifest.name??id,current:(id,source)=>{const item=this.platform.get(id);if(!item||(item.directory.sourceDirectory??item.directory.packageDirectory)!==source)throw new Error('PLUGIN_SOURCE_BINDING_CHANGED');},
       warnings:(id,warnings)=>this.platform.buildWarnings(id,warnings)})).catch(error=>{this.dependencies=undefined;throw error;});
   }

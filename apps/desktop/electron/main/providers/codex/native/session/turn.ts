@@ -123,7 +123,7 @@ export class CodexNativeTurn implements AgentTurn {
       }
       let response: Record<string, unknown>, memberForked = false;
       const memberSource = this.options.memberFork?.sourceSessionId;
-      if (memberSource && this.options.memberFork?.backend !== "codex") throw new Error("Native member fork belongs to a different Provider");
+      if (memberSource && this.options.memberFork?.backend !== BUILTIN_PROVIDER_IDS.codex) throw new Error("Native member fork belongs to a different Provider");
       try {
         const opened = await openNativeThread(this.rpc, threadParams, candidate, this.config.continuation, memberSource, (cause, id) => this.missing(cause, id));
         response = opened.response; memberForked = opened.forked;

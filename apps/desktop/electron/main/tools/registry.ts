@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on unified plugin tool contributions, dynamic shared declarations, zod and exact per-turn leases.
- * [OUTPUT]: Provides PluginToolRegistry with atomic plugin registration, versioned identity, schema checks, timeout, cancellation and unload.
+ * [OUTPUT]: Provides PluginToolRegistry with atomic plugin registration, versioned identity, schema checks, private request-error origin, timeout, cancellation and unload.
  * [POS]: Domain-neutral execution boundary; host executors and trusted process executors use the same invocation path.
  */
 import { createHash } from "node:crypto";
@@ -83,11 +83,11 @@ export class PluginToolRegistry {
   }
   async call(tool: string, rawArgs: unknown, context: PluginToolContext) {
     const entry = this.executions.get(tool);
-    if (!entry || !pluginToolsAvailable(entry.spec.pluginId)) throw statusError(404, `Tool unavailable: ${tool}`);
+    if (!entry || !pluginToolsAvailable(entry.spec.pluginId)) throw statusError(404, `Tool unavailable: ${tool}`, { toolRequestError: true });
     const frozen = context.lease.toolSnapshot?.find(spec => spec.name === tool);
-    if (context.lease.toolSnapshot && (!frozen || frozen.identity !== entry.spec.identity || frozen.revision !== entry.spec.revision)) throw statusError(409, `Tool revision is stale: ${tool}`);
+    if (context.lease.toolSnapshot && (!frozen || frozen.identity !== entry.spec.identity || frozen.revision !== entry.spec.revision)) throw statusError(409, `Tool revision is stale: ${tool}`, { toolRequestError: true });
     const parsed = entry.spec.inputSchema.safeParse(rawArgs ?? {});
-    if (!parsed.success) throw statusError(400, `Invalid tool input parameters: ${parsed.error.message}`);
+    if (!parsed.success) throw statusError(400, `Invalid tool input parameters: ${parsed.error.message}`, { toolRequestError: true });
     const timeout = new AbortController();
     const signal = AbortSignal.any([context.signal, context.lease.signal, entry.life.signal, timeout.signal]);
     signal.throwIfAborted();

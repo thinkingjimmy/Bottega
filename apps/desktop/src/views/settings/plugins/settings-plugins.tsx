@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on React Router, SettingsPage, the Settings canvas and alert, workbench-copy, the main window's bounded summary catalog, complete identity index, exact full detail and original plugins bridges, shared stage metadata, settings
- *           navigation, and settings/plugins (list hook, grid, the plugin introduction and settings pages, shared switch, and lazy native package lifecycle panel).
+ *           navigation, and settings/plugins (list hook, grid, the plugin introduction and settings pages, shared switch, and lazy native package lifecycle panel). Native Workflow presentation reuses the current catalog name and Project usage stream; disable disclosure retains the existing computer name.
  * [OUTPUT]: Provides PluginsSettingsView — All plugins (the complete grouped catalog), a plugin's introduction, or a plugin's settings page; turning
  *           off uses the shared impact confirmation. Memory's settings page directly reuses its existing settings UI; Dock's reuses its
  *           original sections and target-scoped setup flow. Related pages use the same Settings navigation; source authoring prepares a
  *           lazy Create-mode source intent without allocating a Project. Canonical HostPackage entries delegate original install-identity detail/settings/lifecycle and deduplicate the old rows. Completed package uninstall returns to the catalog and its retained-data controls.
- * [POS]: apps/desktop/src/views/settings/plugins; Reached only when the workbench build flag is on. ProductApp owns the target: a card or a background surface opens the
+ * [POS]: apps/desktop/src/views/settings/plugins; Unified Plugins management is available in every Main build, independently of the workbench flag. ProductApp owns the target: a card or a background surface opens the
  *        introduction; the sidebar's Plugins entries (turned-on plugins with settings) and the introduction's Settings icon open the
  *        settings page. The unified catalog includes New plugin and trust-reviewed local installation; introductions keep a catalog return and one hero H1. Turning a plugin off on its settings
  *        page keeps the page, so owner recovery (Dock) stays reachable while off.
@@ -76,6 +76,7 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
       .finally(() => { authoringBusy.current = false; });
   };
   const plugins = usePluginList(bridge);
+  const workflow = plugins === null ? null : plugins.find(item => item.id === "workflow");
   const unified=useUnifiedPlugins(),index=useUnifiedPluginIndex(),surfaces=useRuntimePlugins(),platformCopy=pluginPlatformCopy(locale);
   const summary=target?index.items.find(item=>item.manifest.id===target.id||hostPackageIdentity(item)===target.id):undefined;
   const detail=usePluginDetail(summary?.manifest.id??target?.id),native=detail.plugin;
@@ -103,7 +104,7 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
 
   if (native && target && !hostPackageId && !(view === "settings" && plugin?.hasSettings)) {
     return <SettingsPage><SettingsCanvas><div className="mb-5"><SettingsButton data-plugin-back="" variant="ghost" onClick={()=>onOpenPlugin(null)}><ArrowLeft className="size-3.5"/>{copy.back}</SettingsButton></div>
-      <UnifiedPluginDetail key={native.manifest.id} plugin={native} items={index.items} locale={locale} onOpen={openAbout} onRemoved={()=>onOpenPlugin(null)}/>
+      <UnifiedPluginDetail key={native.manifest.id} plugin={native} items={index.items} locale={locale} workflow={workflow} workbench={workbench} computerName={computerName} onOpen={openAbout} onRemoved={()=>onOpenPlugin(null)}/>
     </SettingsCanvas></SettingsPage>;
   }
 
@@ -165,7 +166,7 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
           <p className="text-pretty text-muted-foreground text-sm">{copy.description}</p>
           {unified.page?.safeMode && <SettingsAlert tone="warn">{platformCopy.safeMode}<SettingsButton variant="ghost" onClick={()=>openAbout(unified.page!.safeMode!.pluginId)}>{platformCopy.details}</SettingsButton></SettingsAlert>}
           {unified.error && <SettingsAlert>{platformCopy.loadFailed}<SettingsButton variant="ghost" onClick={()=>void unified.reload()}>{platformCopy.retry}</SettingsButton></SettingsAlert>}
-          <UnifiedPluginCards items={unified.items} locale={locale} onOpen={openAbout}/>
+          <UnifiedPluginCards items={unified.items} locale={locale} workflow={workflow} workbench={workbench} onOpen={openAbout}/>
           {unified.page?.nextCursor && <SettingsButton variant="outline" disabled={unified.busy} onClick={()=>void unified.reload(true)}>{platformCopy.more}</SettingsButton>}
           {plugins && <PluginGrid plugins={plugins.filter(item=>!/^sha256:[a-f0-9]{64}$/.test(item.id)&&!index.items.some(native=>native.manifest.id===item.id||native.manifest.id===`bottega.${item.id}`))} workbench={workbench} state={switching.state}
             onOpen={item => openAbout(item.id)} onToggle={switching.toggle} onSetup={setup} />}

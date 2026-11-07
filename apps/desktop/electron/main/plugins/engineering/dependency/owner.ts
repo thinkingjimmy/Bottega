@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Live plugin/source bindings, verified runtime paths, managed runner, source controls and explicit script approval.
- * [OUTPUT]: Serializes/cancels dependency installs and caches only an exact still-current published-input receipt.
+ * [INPUT]: Live plugin/source bindings, verified runtime paths, managed runner, source controls and explicit script approval. Uses its live locale port and operation-loaded five-language consent templates.
+ * [OUTPUT]: Serializes/cancels dependency installs and caches only an exact still-current published-input receipt. Native script consent keeps default/cancel refusal and exact package acceptance in the current locale.
  * [POS]: Lazy operation owner; startup keeps only its typed deferred port and never loads prompts or install logic.
  */
 import { mkdir, lstat } from 'node:fs/promises';
@@ -12,9 +12,10 @@ import { installPluginDependencies, type PluginCommand, type PluginCommandResult
 import { pluginEngineeringRunner } from '../execution';
 import { admitDependencySource, dependencyFingerprint, dependencyStateFingerprint, dependencyLocalSourceDigest, type DependencyReceipt } from './model';
 import { inventoryPluginTree } from '../snapshot';
+import { pluginDependencyCopy } from './copy';
 
 type Runtime={node:string;pnpm:string;run(command:PluginCommand):Promise<PluginCommandResult>};
-type Ports={userData:string;signal?:AbortSignal;name(id:string):string;current(id:string,source:string):void;
+type Ports={userData:string;locale?():string;signal?:AbortSignal;name(id:string):string;current(id:string,source:string):void;
   warnings(id:string,warnings:string[]):Promise<void>;
   runtime?(input:{id:string;privateRoot:string;storeDir:string}):Runtime};
 type Result=Pick<DependencyReceipt,'ignoredBuilds'|'dependencyFingerprint'|'localSourceDigest'>;
@@ -44,14 +45,15 @@ export class PluginDependencyInstaller{
     try{
       const result=await installPluginDependencies({sourceRoot:source,privateRoot,storeDir,...runtime,signal,current:()=>this.ports.current(id,source),
         confirmBuilds:async packages=>{
-          signal.throwIfAborted();const {dialog}=await import('electron');
-          const response=await dialog.showMessageBox({type:'question',title:'Plugin dependency scripts',
-            message:`Allow dependency build scripts for ${this.ports.name(id)}?`,
-            detail:`These packages request installation scripts:\n\n${packages.join('\n')}\n\nScripts run in the managed plugin build process. Keep them off unless this plugin needs their generated files.`,
-            buttons:['Keep scripts off','Allow these build scripts'],defaultId:0,cancelId:0,noLink:true});
+          signal.throwIfAborted();const {dialog}=await import('electron'),copy=pluginDependencyCopy(this.ports.locale?.()??'en');
+          const response=await dialog.showMessageBox({type:'question',title:copy.title,
+            message:copy.message.replace('{plugin}',()=>this.ports.name(id)),
+            detail:`${copy.packages}\n\n${packages.join('\n')}\n\n${copy.detail}`,
+            buttons:[copy.keepOff,copy.allowBuilds],defaultId:0,cancelId:0,noLink:true});
           signal.throwIfAborted();return response.response===1?packages:[];
         }});
-      await this.ports.warnings(id,result.ignoredBuilds.map(name=>`Installation scripts were skipped for ${name}. Approve this dependency only if its build step is required.`));
+      const copy=pluginDependencyCopy(this.ports.locale?.()??'en');
+      await this.ports.warnings(id,result.ignoredBuilds.map(name=>copy.skipped.replace('{package}',()=>name)));
       signal.throwIfAborted();this.ports.current(id,source);
       if(dependencyFingerprint(source)!==result.dependencyFingerprint)throw new PluginSourceSupersededError();
       if(result.localSourceDigest&&dependencyLocalSourceDigest(await inventoryPluginTree(source,{signal}))!==result.localSourceDigest)throw new PluginSourceSupersededError();

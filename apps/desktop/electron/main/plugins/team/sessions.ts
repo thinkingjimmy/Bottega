@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Durable Chat identity registry, main-only blank/worktree creation facts, canonical Project preconditions and trusted Coordinator submit/steer/cancel ports.
+ * [INPUT]: Durable Chat identity registry, canonical public Provider IDs and host catalog narrowing, main-only blank/worktree creation facts, canonical Project preconditions and trusted Coordinator submit/steer/cancel ports.
  * [OUTPUT]: Persistent sessions, main-only first-create plans, recoverable claims, exact turn outcomes, Provider-aware delivery and cleanup-confirmed stop.
  * [POS]: Generic host session adapter reused by the team feature; never calls ephemeral spawn_subagent.
  */
@@ -7,6 +7,8 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { z } from "zod";
 import { agentBackendIdSchema } from "@ai-chat/cloud-protocol/chats/options";
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
+import { builtinProviderCatalog, knownBackend } from "../../../../shared/providers/catalog";
 import { pluginMemberSessionSchema, type PluginMemberSession } from "@bottega/contracts/plugins/platform";
 import type { PluginMemberSessionFacts } from "@bottega/contracts/plugins/team";
 import type { AgentBackendId, AgentTurnOptions, SteerAdmission, SteerIpcReceipt } from "../../../../shared/ipc/agent/agent-ipc";
@@ -19,7 +21,7 @@ import type { NativeMemberFork, NativeMemberForkSource } from "../../library/ses
 
 const entrySchema = pluginMemberSessionSchema.extend({
   teamId: z.string().min(1).max(128), task: z.string().max(32_768), forkChatId: z.string().max(128).optional(),
-  nativeFork: z.object({ backend: z.enum(["codex", "claude"]), sourceChatId: z.string().min(1).max(128),
+  nativeFork: z.object({ backend: z.enum([BUILTIN_PROVIDER_IDS.codex, BUILTIN_PROVIDER_IDS.claude]), sourceChatId: z.string().min(1).max(128),
     sourceIncarnation: z.string().min(1).max(128), sourceMessageRevision: z.number().int().nonnegative(), sourceSessionId: z.string().min(1).max(128) }).strict().optional(),
   lastRequestId: z.string().max(128).optional(),
   lastSettlement: z.object({ requestId: z.string().min(1).max(128), terminal: z.enum(["done", "cancelled", "error"]), cleanup: z.enum(["pending", "complete", "failed"]) }).strict().optional(), isolation: z.enum(["shared", "worktree"]).default("shared"),
@@ -53,7 +55,7 @@ export class PersistentMemberSessions implements PluginTeamSessionPorts {
   async initialize() { await this.file.initialize(); }
   async create(input: Parameters<PluginTeamSessionPorts["create"]>[0]): Promise<PluginMemberSession & { workspace?: string }> {
     if (!this.options.workspaceFor(input.projectId)) throw new Error("Member Project workspace is not available");
-    if (!["codex", "claude", "kimi", "opencode"].includes(input.providerId)) throw new Error("Members require a built-in Provider");
+    if (!knownBackend(builtinProviderCatalog, input.providerId)) throw new Error("Members require a built-in Provider");
     const entry = await this.file.mutate(state => {
       const existing = state.members.find(value => value.pluginId === input.pluginId && value.teamId === input.teamId && value.memberId === input.memberId);
       if (existing) {
@@ -70,8 +72,10 @@ export class PersistentMemberSessions implements PluginTeamSessionPorts {
     if (entry.forkChatId && !this.options.incarnationOf(entry.chatId)) {
       try {
         if (!this.options.forkChat) throw new Error("Canonical member Chat fork is unavailable");
+        const providerId = knownBackend(builtinProviderCatalog, entry.providerId);
+        if (!providerId) throw new Error("Member Provider is unavailable");
         const result = await this.options.forkChat({ memberSession: this.facts(entry.chatId)!, pluginId: entry.pluginId, sourceChatId: entry.forkChatId, targetChatId: entry.chatId, targetIncarnationId: entry.incarnation,
-          projectId: entry.projectId, providerId: entry.providerId as AgentBackendId, isolation: entry.isolation });
+          projectId: entry.projectId, providerId, isolation: entry.isolation });
         await this.file.mutate(state => { const current = state.members.find(value => value.chatId === entry.chatId)!;
           current.status = "idle"; if (result?.nativeFork) current.nativeFork = result.nativeFork; });
         entry.status = "idle";
@@ -155,15 +159,15 @@ export class PersistentMemberSessions implements PluginTeamSessionPorts {
       pluginId: session.pluginId, teamId: input.teamId, leadChatId: session.leadChatId, leadIncarnation: session.leadIncarnation, memberId: session.memberId,
     };
     const stored = existing ? this.options.chatFacts(session.chatId) : null;
-    const provider = session.memberId === "lead" ? stored?.agent ?? session.providerId : session.providerId;
-    if (!["codex", "claude", "kimi", "opencode"].includes(provider)) throw new Error("Member Provider is unavailable");
+    const provider = knownBackend(builtinProviderCatalog, session.memberId === "lead" ? stored?.agent ?? session.providerId : session.providerId);
+    if (!provider) throw new Error("Member Provider is unavailable");
     const current = this.options.currentRequest(session.chatId);
     const content = { schemaVersion: 1 as const, origin: "system" as const, capabilityEpoch: 0, backendEpoch: 0,
       content: { richValue: [], displayText: input.text, files: [] } };
     const createdAt = this.now(), id = "member_" + input.messageId;
     const userMessage = { id: id + "_user", role: "user" as const, content: input.text, createdAt };
     if (current) {
-      if (!["codex", "claude"].includes(provider) || !this.options.steer) return { outcome: "not-consumed" };
+      if ((provider !== BUILTIN_PROVIDER_IDS.codex && provider !== BUILTIN_PROVIDER_IDS.claude) || !this.options.steer) return { outcome: "not-consumed" };
       const receipt = await this.options.steer({ requestId: current.requestId, outboxRef: userMessage.id, createdAt,
         input: [{ type: "text", text: input.text }], displayText: input.text, content, workspacePrecondition: workspace,
         userMessage, memberSession: source });
@@ -172,7 +176,7 @@ export class PersistentMemberSessions implements PluginTeamSessionPorts {
     }
     const targetProvider = agentBackendIdSchema.parse(provider);
     const storedProvider = stored ? agentBackendIdSchema.parse(stored.agent) : undefined;
-    const defaults = stored?.options?.backend === provider ? stored.options as AgentTurnOptions : this.options.turnOptionsFor(provider as AgentBackendId);
+    const defaults = stored?.options?.backend === provider ? stored.options as AgentTurnOptions : this.options.turnOptionsFor(provider);
     const turnOptions = { ...defaults, mode: { id: "team", pluginId: session.pluginId, name: "Team" } } as AgentTurnOptions;
     const agentSwitch = stored && storedProvider && storedProvider !== targetProvider ? { expectedAgent: storedProvider, expectedAgentRevision: stored.agentRevision,
       expectedChatRecordRevision: stored.chatRecordRevision, targetAgent: targetProvider } : undefined;
@@ -184,7 +188,7 @@ export class PersistentMemberSessions implements PluginTeamSessionPorts {
     const submission: TrustedManualTurnSubmission = {
       intentId: id, ...(stored ? { expectedAgentRevision: stored.agentRevision } : {}), ...(agentSwitch ? { agentSwitch } : {}),
       persistence: existing ? { kind: "append", input: { chatId: session.chatId, message: userMessage, precondition } }
-        : { kind: "create", input: { id: session.chatId, agent: provider as AgentBackendId, options: turnOptions, firstMessage: userMessage,
+        : { kind: "create", input: { id: session.chatId, agent: provider, options: turnOptions, firstMessage: userMessage,
           incarnationId: session.incarnation, projectId: session.projectId } },
       content, precondition, workspacePrecondition: workspace, memberSession: source,
       turn: { requestId: id, scope: { conversationId: session.chatId }, turnOptions, input: [{ type: "text", text: input.text }] },

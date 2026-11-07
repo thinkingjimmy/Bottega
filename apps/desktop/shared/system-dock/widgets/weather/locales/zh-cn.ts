@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Only this locale definition labels.
- * [OUTPUT]: The complete weatherZhCN Weather copy object.
+ * [OUTPUT]: The complete weatherZhCN Weather copy object; the unused city-result instruction is excluded.
  * [POS]: Deferred locale data; no other locale or aggregate dependency.
  */
 import {weatherZhCNDefinition} from '../definitions/zh-cn';
@@ -13,7 +13,6 @@ export const weatherZhCN={
   "locating": "正在定位…",
   "located": "定位成功",
   "noCities": "未找到城市。",
-  "chooseResult": "请从结果中选择城市。",
   "denied": "定位权限被拒绝。请选择城市，或在系统设置中允许定位。",
   "disabled": "系统定位已关闭。请选择城市，或在系统设置中开启。",
   "timeout": "定位超时。请重试或选择城市。",

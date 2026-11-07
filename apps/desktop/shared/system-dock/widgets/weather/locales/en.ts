@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Only this locale definition labels.
- * [OUTPUT]: The complete weatherEn Weather copy object.
+ * [OUTPUT]: The complete weatherEn Weather copy object; the unused city-result instruction is excluded.
  * [POS]: Deferred locale data; no other locale or aggregate dependency.
  */
 import {weatherEnDefinition} from '../definitions/en';
@@ -13,7 +13,6 @@ export const weatherEn={
   "locating": "Finding your location…",
   "located": "Location ready",
   "noCities": "No cities found.",
-  "chooseResult": "Choose a city from the results.",
   "denied": "Location access was denied. Choose a city or allow access in System Settings.",
   "disabled": "Location Services are off. Choose a city or turn them on in System Settings.",
   "timeout": "Location timed out. Try again or choose a city.",

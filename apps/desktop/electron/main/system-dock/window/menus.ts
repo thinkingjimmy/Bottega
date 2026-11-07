@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron Menu, localized catalog strings, and the DockService actions.
+ * [INPUT]: Depends on Electron Menu, explicit canonical localized catalog keys, and the DockService actions.
  * [OUTPUT]: Provides placement-fenced native menus, fixed Widget management destinations and host/native Quit last.
  * [POS]: system-dock native menus; restore stays reachable from both the Dock itself and the menu bar (3.1), independent of the bar renderer's health.
  */
@@ -29,12 +29,12 @@ export function itemMenu(service: DockService, itemId: string | null): Menu | nu
   }
   if(item?.kind==='widget'&&service.ports.widgetEntry){
     const custom=item.widget.type==='custom'||item.widget.type==='plugin',paused=custom&&service.ports.custom?.face(item,'bottom').state==='paused';
-    const entry=(kind:'configure'|'edit'|'fork'|'versions'|'pause'|'remove',key:string)=>template.push({id:'dock-widget-'+kind,label:translate(service.ports.locale(),'systemDock.widgets.'+key),click:perform(()=>service.ports.widgetEntry?.({kind,itemId:item.id}))});
+    const entry=(kind:'configure'|'edit'|'fork'|'versions'|'pause'|'remove',key:string)=>template.push({id:'dock-widget-'+kind,label:translate(service.ports.locale(),key),click:perform(()=>service.ports.widgetEntry?.({kind,itemId:item.id}))});
     template.push({type:'separator'});
-    entry('configure','configure');
-    if(custom){entry('edit','edit');entry('fork','copyCustomize');entry('versions','versions');entry('pause',paused?'resume':'pause');}
-    else entry('fork','customize');
-    entry('remove','remove');
+    entry('configure','systemDock.widgets.configure');
+    if(custom){entry('edit','systemDock.widgets.edit');entry('fork','systemDock.widgets.copyCustomize');entry('versions','systemDock.widgets.versions');entry('pause',paused?'systemDock.widgets.resume':'systemDock.widgets.pause');}
+    else entry('fork','systemDock.widgets.customize');
+    entry('remove','systemDock.widgets.remove');
   }
   const nativeTarget = running
     ? service.apps?.runningRegular().find((app) => `running-${app.pid}` === running.id)

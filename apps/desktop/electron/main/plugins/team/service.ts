@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Durable feature store, persistent member host port and shared team/message contracts.
+ * [INPUT]: Durable feature store, the canonical host Provider catalog, persistent member host port and shared team/message contracts.
  * [OUTPUT]: Team ownership, durable request-bound member outcomes, cleanup-safe task/group release, failed-stop retries, readiness-gated durable claim/queue recovery, message delivery/inbox/ack and task CAS.
  * [POS]: Official team feature runtime; does not reuse ephemeral subagents or change Workflow behavior.
  */
@@ -10,6 +10,7 @@ import { pluginTeamMemberSchema, type PluginTeamSnapshot, type PluginTeamTask } 
 import type { PluginMemberSession } from "@bottega/contracts/plugins/platform";
 import { PluginTeamStore } from "./store";
 import { PluginTeamDelivery } from "./delivery";
+import { builtinProviderCatalog, knownBackend } from "../../../../shared/providers/catalog";
 export type PluginMemberTurnOutcome = Readonly<{ requestId: string; terminal: "done" | "cancelled" | "error"; cleanup: "pending" | "complete" | "failed" }>;
 export type PluginTeamSessionPorts = Readonly<{
   prepared?(input: { chatId: string; requestId: string }): Promise<boolean>;
@@ -126,7 +127,7 @@ export class PluginTeamService {
   private async createMember(input: { teamId: string; memberId: string; name: string; providerId: string; task: string; forkChatId?: string; isolation?: "shared" | "worktree" }) {
     this.assertOpen(); const team = this.requireActive(input.teamId);
     if (!input.task || Buffer.byteLength(input.task, "utf8") > MESSAGE_BYTE_LIMIT) throw new Error("Member task exceeds its body budget");
-    if (!["codex", "claude", "kimi", "opencode"].includes(input.providerId)) throw new Error("Team members require a built-in Provider");
+    if (!knownBackend(builtinProviderCatalog, input.providerId)) throw new Error("Team members require a built-in Provider");
     const existing = team.members.find(member => member.memberId === input.memberId);
     if (existing) {
       if (existing.stoppedByUser) {

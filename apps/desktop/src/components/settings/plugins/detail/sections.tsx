@@ -3,7 +3,7 @@
  *           Provider's live CLI facts and one-click update), app i18n, workbench-copy, the report-issue button and the plugin detail.
  * [OUTPUT]: Provides the pieces both plugin pages compose: PluginBanners (the one most urgent state, with its fix), HealthSection,
  *           UsedBySection (settings page), and for the introduction AboutSection, CapabilitiesSection, WorksWithSection, InUseSection
- *           and InformationSection with owner health facts, including plugins without a settings page.
+ *           and InformationSection with owner health facts, including plugins without a settings page. InUseSection accepts only read-only usage fields so the unified Workflow detail can reuse the same renderer.
  * [POS]: Read-only parts of the plugin pages; about.tsx and settings-page.tsx place them. Dependencies read as sentences (who meets
  *        each need, or why nothing does), with the contract id as small print.
  */
@@ -193,7 +193,7 @@ export function WorksWithSection({ detail, workbench, names, onOpenPlugin }: Pro
   );
 }
 
-export function InUseSection({ detail, workbench }: Props) {
+export function InUseSection({ detail, workbench }: { detail: Readonly<Pick<PluginDetail, "usedBy" | "workflowIn">>; workbench: WorkbenchCopy }) {
   const copy = workbench.plugins;
   const items = detail.usedBy ?? detail.workflowIn;
   if (!items) return null;

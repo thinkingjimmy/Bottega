@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Only this locale definition labels.
- * [OUTPUT]: The complete weatherEs Weather copy object.
+ * [OUTPUT]: The complete weatherEs Weather copy object; the unused city-result instruction is excluded.
  * [POS]: Deferred locale data; no other locale or aggregate dependency.
  */
 import {weatherEsDefinition} from '../definitions/es';
@@ -13,7 +13,6 @@ export const weatherEs={
   "locating": "Buscando ubicación…",
   "located": "Ubicación encontrada",
   "noCities": "No se encontraron ciudades.",
-  "chooseResult": "Elige una ciudad de los resultados.",
   "denied": "Se denegó la ubicación. Elige una ciudad o permite el acceso en Ajustes del Sistema.",
   "disabled": "La ubicación está desactivada. Elige una ciudad o actívala en Ajustes del Sistema.",
   "timeout": "La ubicación tardó demasiado. Reintenta o elige una ciudad.",

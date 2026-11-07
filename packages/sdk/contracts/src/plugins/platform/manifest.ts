@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Zod only.
+ * [INPUT]: Zod and the contract-owned canonical Provider identity values.
  * [OUTPUT]: Unified manifests/contributions, explicit native Base/Web/Server source formats and privileged host-view declarations.
  * [POS]: Native package identity and declaration boundary; contains no runtime authority.
  */
 import { z } from "zod";
+import { BUILTIN_PROVIDER_IDS } from "../../model/provider-capabilities";
 import { pluginIdentitySchema, pluginDigestSchema, pluginNativeRequirementsSchema, pluginToolSelectionSchema } from "./selection/mode";
 export { pluginIdentitySchema, pluginDigestSchema, pluginNativeRequirementsSchema, pluginToolSelectionSchema } from "./selection/mode";
 
@@ -54,7 +55,7 @@ export const pluginContributionSchema = z.discriminatedUnion("kind", [
 ]);
 export const pluginSourceSchema = z.object({
   kind: z.enum(["official", "authored", "external", "copy"]),
-  format: z.enum(["bottega", "claude", "mcp", "skill", "base-app", "web-app", "server-app", "host-package"]),
+  format: z.enum(["bottega", BUILTIN_PROVIDER_IDS.claude, "mcp", "skill", "base-app", "web-app", "server-app", "host-package"]),
   editable: z.boolean(), url: z.string().url().max(4096).optional(),
   pluginId: pluginIdentitySchema.optional(), revision: pluginDigestSchema.optional(),
   installIdentity: z.string().min(1).max(256).optional(), externalVersion: z.string().min(1).max(128).optional(),

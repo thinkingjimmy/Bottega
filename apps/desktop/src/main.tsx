@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, window context, surface migration, shared feedback toasts, ArchiveCelebrationHost, SketchHost, lazy unified plugin update/page hosts, startup marks, and the build-gated cloud account lifecycle.
- * [OUTPUT]: Composes persistent providers with system typography, window-level feedback hosts before route effects, App recovery, two-step onboarding without the Memory copy section, settings navigation (including background-surface requests, build-flagged Agent configs and Plugins, named plugin details and legacy Memory/Dock aliases), route-independent ProductApp sketch/archive/update hosts, declared plugin page routes, and the catalog-loaded/product-loading/gate-open startup milestones.
+ * [OUTPUT]: Composes persistent providers with system typography, window-level feedback hosts before route effects, App recovery, two-step onboarding without the Memory copy section, settings navigation (including background-surface requests, always-available unified Plugins and build-flagged Agent configs, named plugin details and legacy Memory/Dock aliases), route-independent ProductApp sketch/archive/update hosts, declared plugin page routes, and the catalog-loaded/product-loading/gate-open startup milestones.
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
 import { SettingsNavigationContext } from "@/components/providers/navigation/context";
@@ -148,12 +148,12 @@ const ShortcutsSettingsView = lazy(() =>
     default: module.ShortcutsSettingsView,
   }))
 );
-/* Workbench pages exist only with the flag (E-01): no chunk is kept in the flag-off build. */
-const PluginsSettingsView = workbenchUiEnabled ? lazy(() =>
+/* Unified Plugins settings stays lazy and available in every Main build. */
+const PluginsSettingsView = lazy(() =>
   import("@/views/settings/plugins/settings-plugins").then((module) => ({
     default: module.PluginsSettingsView,
   }))
-) : null;
+);
 /* Workbench pages exist only with the flag (E-01): no chunk is kept in the flag-off build. */
 const AgentConfigsSettingsView = workbenchUiEnabled ? lazy(() =>
   import("@/views/settings/agent-configs/settings-agent-configs").then((module) => ({
@@ -553,7 +553,7 @@ function ProductApp() {
                           {settingsSection === "shortcuts" && <ShortcutsSettingsView />}
                           {settingsSection === "providers" && <ProvidersSettingsView />}
                           {AgentConfigsSettingsView && settingsSection === "agent-configs" && <AgentConfigsSettingsView />}
-                          {PluginsSettingsView && settingsSection === "plugins" && <PluginsSettingsView target={pluginTarget} onOpenPlugin={setPluginTarget} />}
+                          {settingsSection === "plugins" && <PluginsSettingsView target={pluginTarget} onOpenPlugin={setPluginTarget} />}
                           {settingsSection === "personalization" && <PersonalizationSettingsView />}
                           {settingsSection === "browser" && <BrowserSettingsView />}
                           {settingsSection === "tools" && <ToolsSettingsView />}

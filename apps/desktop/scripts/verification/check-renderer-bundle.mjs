@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the closed output-root parser, the shared LAZY_LANES table, Node fs/path, the shared system-font asset policy, the sealed Sketch boundary checker and the temporary Rollup module report.
- * [OUTPUT]: Enforces the independent dynamic boundaries declared in LAZY_LANES (charts, native/composer locales and the rest), with a generated negative self-test per lane, that no chunk carries main-only modules (MAIN_ONLY: shared/i18n/native) or the full shiki bundle, Oniguruma or non-GitHub themes (SHIKI_EXCLUDED, OPT-24), or any @phosphor-icons/react module (PHOSPHOR_PACKAGE, OPT-36), that the task panel, Dock bar and Dock panel first paint carry no zod (ZOD_FREE_ENTRIES, OPT-34), and that a build without the workbench flag, of any flavor, renders none of the workbench-only modules (E-01; the shared workbench copy stays, the read-only workflow columns use it in both builds); Sketch editor/history must remain outside every renderer chunk and in the exact signed on-demand resource pinned by the compiler while host compute retains a dedicated Worker; byte ceilings live in budget/check-budgets.mjs. Enforces shared system-font policy over emitted renderer assets.
+ * [OUTPUT]: Enforces the independent dynamic boundaries declared in LAZY_LANES (charts, native/composer locales and the rest), with a generated negative self-test per lane, that no chunk carries main-only modules (MAIN_ONLY: shared/i18n/native) or the full shiki bundle, Oniguruma or non-GitHub themes (SHIKI_EXCLUDED, OPT-24), or any @phosphor-icons/react module (PHOSPHOR_PACKAGE, OPT-36), that the task panel, Dock bar and Dock panel first paint carry no zod (ZOD_FREE_ENTRIES, OPT-34), and that a build without the workbench flag, of any flavor, renders none of the workbench-only modules (E-01; the shared workbench copy stays, the read-only workflow columns use it in both builds); Sketch editor/history must remain outside every renderer chunk and in the exact signed on-demand resource pinned by the compiler while host compute retains a dedicated Worker; byte ceilings live in budget/check-budgets.mjs. Enforces shared system-font policy over emitted renderer assets. Existing self-tests require the unified Plugins page in default builds while AgentConfigs, Workflow and legacy plugin rows remain excluded.
  * [POS]: apps/desktop/scripts/verification; Last segment of the desktop build script; the renderer first-load boundary is enforced mechanically here and the module report is deleted after checking so it never ships
  */
 
@@ -17,9 +17,9 @@ const outputRoot = resolveOutputRoot(process.argv.slice(2), process.env, ["--sel
 const rendererRoot = resolve(import.meta.dirname, "../..", outputRoot, "renderer");
 const reportPath = resolve(rendererRoot, ".chart-module-report.json");
 
-/* Workbench-only surfaces: pages, dialogs and run views that exist only with BOTTEGA_WORKBENCH_UI=1. The flag-constant entry
-   hooks (`() => null` with the flag off) are not listed: a few bytes by design. */
-export const WORKBENCH_ONLY = /src\/views\/settings\/(?:agent-configs|plugins)\/settings-(?:agent-configs|plugins)\.tsx$|components\/settings\/project\/workflows\/|components\/settings\/agent-configs\/(config-dialog|config-list|available-in|guarantee-copy)|components\/settings\/plugins\/plugin-rows|components\/bases\/workflow\/(setup-host|runs-host)|base-ui\/dist\/ui\/workflow\/(setup-dialog|run-details|confirm-panel|record-section|run-chooser)\.js$/;
+/* Deferred workbench pages, dialogs and run views require BOTTEGA_WORKBENCH_UI=1. Unified Plugins settings is a production
+   page; flag-constant entry hooks (`() => null` with the flag off) are not listed. */
+export const WORKBENCH_ONLY = /src\/views\/settings\/agent-configs\/settings-agent-configs\.tsx$|components\/settings\/project\/workflows\/|components\/settings\/agent-configs\/(config-dialog|config-list|available-in|guarantee-copy)|components\/settings\/plugins\/plugin-rows|components\/bases\/workflow\/(setup-host|runs-host)|base-ui\/dist\/ui\/workflow\/(setup-dialog|run-details|confirm-panel|record-section|run-chooser)\.js$/;
 
 /* A build without the workbench flag renders none of the workbench-only modules (any flavor, production included). */
 function validateWorkbenchOff(report) {
@@ -214,12 +214,23 @@ function selfTest() {
   };
   validateModuleReport({ chunks: [entry, ...lazyChunks] });
 
-  // The flag-off guard reddens on a kept workbench page and stays quiet with the flag on.
-  const withPage = (workbenchUi) => ({ workbenchUi, chunks: [{ ...entry, rendered: ["src/views/settings/plugins/settings-plugins.tsx"] }, ...lazyChunks] });
-  validateModuleReport(withPage(true));
-  let kept = false;
-  try { validateModuleReport(withPage(false)); } catch { kept = true; }
-  if (!kept) throw new Error("bundle guard 的 workbench 关闭失败 fixture 未变红");
+  // Deferred workbench screens stay excluded; unified Plugins is a production page.
+  const withPage = (id, workbenchUi) => ({ workbenchUi, chunks: [{ ...entry, rendered: [id] }, ...lazyChunks] });
+  for (const id of [
+    "src/views/settings/agent-configs/settings-agent-configs.tsx",
+    "src/components/settings/agent-configs/config-dialog.tsx",
+    "src/components/settings/project/workflows/project-workflows-section.tsx",
+    "src/components/settings/plugins/plugin-rows.tsx",
+    "packages/base-ui/dist/ui/workflow/setup-dialog.js",
+  ]) {
+    validateModuleReport(withPage(id, true));
+    let refused = false;
+    try { validateModuleReport(withPage(id, false)); } catch (cause) { refused = String(cause?.message).includes(id); }
+    if (!refused) throw new Error(`Workbench-off guard accepted deferred module: ${id}`);
+  }
+  const pluginsPage = "src/views/settings/plugins/settings-plugins.tsx";
+  validateModuleReport(withPage(pluginsPage, true));
+  validateModuleReport(withPage(pluginsPage, false));
   let leaked = false;
   try { validateModuleReport({ chunks: [{ ...entry, moduleIds: [...entry.moduleIds, "shared/i18n/native/en.ts"] }, ...lazyChunks] }); } catch { leaked = true; }
   if (!leaked) throw new Error("bundle guard 未拦下含主进程专用文案的 renderer fixture");

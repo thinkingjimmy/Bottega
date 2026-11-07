@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on saved history sources and the shared renderer Find candidate/token kernel
- * [OUTPUT]: Provides bounded preparation and single-command live reads with explicit drift/retention results
+ * [OUTPUT]: Provides bounded preparation and single-command live reads with JSON-valid optional saved-part projections and explicit drift/retention results
  * [POS]: SQLite worker history facade; budgets apply before body materialization
  */
 
@@ -100,7 +100,7 @@ export class ChatHistoryReader {
       if (position.ref && candidate.id === position.ref.messageId && record.ref.digest !== position.ref.digest) return { ...result, status: "stale" };
       if (position.mode === "search" && matchSearchTokens(normalizeSearchText(record.text), queryTokens) === null) continue;
       // Parts remain independently addressable; previews cannot consume the body page budget.
-      record = { ...record, parts: record.parts?.map(part => ({ partId: part.partId, value: { available: true } })) };
+      if (record.parts) record = { ...record, parts: record.parts.map(part => ({ partId: part.partId, value: { available: true } })) };
       if (wireBytes({ ...result, records: [...result.records, record] }) > limit) {
         if (result.records.length) { scanned--; result.hasMore = true; break; }
         while (record.text && wireBytes({ ...result, records: [record] }) > limit - 900) {

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the shared built-in tool wire byte limit and tool name types, and the raw single-value result returned by one bridge/registry call
- * [OUTPUT]: Provides toBuiltinCallToolResult, which validates the initiator cap after final MCP serialization and adapts either one text payload or one text-plus-image payload without structuredContent duplication
+ * [INPUT]: Depends on the shared built-in tool wire byte limit, tool name types and raw result or execution-error message from the private bridge/registry
+ * [OUTPUT]: Provides toBuiltinCallToolResult and toBuiltinCallToolError with complete serialized initiator-cap checks, single-copy payloads and UTF-8-bounded error text
  * [POS]: The final gateway to the tools platform; prevents content/structuredContent duplication and keeps image base64 out of the text copy
  */
 
@@ -98,4 +98,21 @@ export function toBuiltinCallToolResult(
     );
   }
   return result;
+}
+
+export function toBuiltinCallToolError(message: string, limit = BUILTIN_WIRE_BYTE_LIMIT) {
+  const result = (text: string) => ({ content: [{ type: "text" as const, text }], isError: true as const });
+  const bytes = (text: string) => Buffer.byteLength(JSON.stringify(result(text)), "utf8");
+  if (bytes(message) <= limit) return result(message);
+  if (bytes("") > limit) throw Object.assign(new Error(`MCP error result exceeds ${limit} byte wire budget`), { status: 413 });
+  let low = 0;
+  let high = Math.min(Buffer.byteLength(message, "utf8"), limit);
+  let best = "";
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const candidate = utf8Prefix(message, middle);
+    if (bytes(candidate) <= limit) { best = candidate; low = middle + 1; }
+    else high = middle - 1;
+  }
+  return result(best);
 }

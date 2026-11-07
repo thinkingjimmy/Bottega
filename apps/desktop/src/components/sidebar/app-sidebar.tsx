@@ -1,7 +1,7 @@
 "use client";
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, i18n, Sidebar UI, product providers, shared WorkspaceNavigation/SettingsNavigation and ComputerSwitcher, active App targets, footer affordances, cloud projections and the Sidebar notice dialog.
- * [OUTPUT]: Adapts native data and actions to the shared complete sidebar, mounts the account's computer strip with this computer first, creates a new Chat on the computer being viewed and stands its controls down in place while that computer sleeps, and preserves generation-fenced targets, feedback and Settings navigation (including the build-flagged Agent configs entry and the Plugins group: All plugins plus each turned-on plugin that has settings, with Dock named Dock and using PanelBottom; the macOS-only standalone Dock entry remains only when Plugins is unavailable).
+ * [OUTPUT]: Adapts native data and actions to the shared complete sidebar, mounts the account's computer strip with this computer first, creates a new Chat on the computer being viewed and stands its controls down in place while that computer sleeps, and preserves generation-fenced targets, feedback and Settings navigation (including the canonical Plugins catalog entry in flag-off builds, build-flagged Agent configs and the workbench Plugins group: All plugins plus each turned-on plugin that has settings, with Dock named Dock and using PanelBottom; the macOS-only standalone Dock entry remains in flag-off builds).
  * [POS]: Unified Plugins entry and declared ready page navigation; sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  * Memory status follows its plugin item when the workbench UI is enabled; the footer uses the same destination.
  */
@@ -435,7 +435,7 @@ function AppSidebarContent({
           ? [settingItem("account", t("cloud.syncSettings"), <RefreshCw />)]
           : []),
         settingItem("shortcuts", t("common.keyboardShortcuts"), <Keyboard />),
-        // Plugins owns the Dock entry; flag-off builds use its standalone settings page.
+        // Workbench builds route Dock through its plugin; flag-off builds keep the standalone page.
         ...(window.systemDockSettings && !workbenchLabels
           ? [settingItem("dock", t("systemDock.settings.title"), <PanelBottom />)]
           : []),
@@ -463,6 +463,9 @@ function AppSidebarContent({
     {
       label: t("common.integrations"),
       items: [
+        ...(!workbenchLabels
+          ? [settingItem("plugins", pluginContextCopy(i18n.language).plugins, <Puzzle />)]
+          : []),
         settingItem("tools", t("common.tools"), <Wrench />),
         {
           id: "skills",

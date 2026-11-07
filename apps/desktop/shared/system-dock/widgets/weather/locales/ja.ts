@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Only this locale definition labels.
- * [OUTPUT]: The complete weatherJa Weather copy object.
+ * [OUTPUT]: The complete weatherJa Weather copy object; the unused city-result instruction is excluded.
  * [POS]: Deferred locale data; no other locale or aggregate dependency.
  */
 import {weatherJaDefinition} from '../definitions/ja';
@@ -13,7 +13,6 @@ export const weatherJa={
   "locating": "位置を確認中…",
   "located": "位置を確認しました",
   "noCities": "都市が見つかりません。",
-  "chooseResult": "検索結果から都市を選択してください。",
   "denied": "位置情報が拒否されました。都市を選ぶか、システム設定で許可してください。",
   "disabled": "位置情報サービスが無効です。都市を選ぶか、システム設定で有効にしてください。",
   "timeout": "位置の確認がタイムアウトしました。再試行するか都市を選択してください。",

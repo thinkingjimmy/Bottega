@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Selected Library root for optional Workflow execution; Depends on the operation layer, the utility host runtime, the Extension integration's host-package attachment, the builtin-MCP lease store, existing submission ledger composition port and the live turn registry (which workflow Chats wait on the person)
+ * [INPUT]: Selected Library root for optional Workflow execution; Depends on the operation layer, the utility host runtime, the Extension integration's host-package attachment, the builtin-MCP lease store, existing submission ledger and actual WindowRegistry composition ports and the live turn registry (which workflow Chats wait on the person)
  * [OUTPUT]: Provides composeFoundationRuntime (operations broker + registry, the Base public ports registered on it, utility hosts reconciled before any host starts, host packages made runnable, the built-in Provider packages admitted against their build pins (TASK-11 d3) before the Provider bridges are composed, the package-aware Provider catalog (built-ins plus installed Provider packages, rebuilt on every inventory change, closing an unavailable Provider's bridge; TASK-11 d4a) with its main-window IPC and its package Providers' runtime facts forgotten when one stops being available or changes generation and announced to every window when one becomes available, Provider host-probe measurements (adopted from the runtimes the registry already knows, probed only on demand) feeding Agent configurations, the plugin catalog (built-in states applied before anything spawns, declarative settings in their store, main-side health, the catalog's one resolution attached to host-package negotiation, each package's settings.get and settings delivery, and the Provider plugin settings each turn freezes), the workflow runtime (TASK-17; its Chat index loaded before any window, installed into the Chat summary projection) and the main-window registrar for Agent configurations, Plugins & Apps and workflows) and FoundationRuntime (stopAdmission, close) Provider readiness for workflows comes from provider-readiness.ts (E2-04: ready only on positive sign-in evidence). For workflow role admission it also answers which explicit settings the Provider's runtime here cannot apply (T21-c) and records that on the configuration. The package-Provider gate (d4c) is installed before any Provider bridge can start: admission, its last check before a bridge is created, and the foreign-sensitive package roots.
  * The plugin catalog names Workflow's enabled Projects and refreshes when bindings change.
  * All four Providers supply workflow measurements; scoped Kimi authentication and localized default configurations share the production services.
@@ -13,6 +13,7 @@ import type { HostCustodyDependencyPorts } from "../../host/processes/custody";
 import { composeOperations } from "../../operations/composition";
 import { createHostRuntime } from "../../host/composition";
 import { announceComposition } from "../boot/composition-hooks";
+import { windowRegistry } from "../../window/surfaces/window-registry";
 import type { AppExtensionIntegration } from "../../extensions/integration/app-extension-composition";
 import type { BuiltinMcpLeaseStore } from "../../tools/lease";
 import type { BasesService } from "../../bases/bases-service";
@@ -142,7 +143,7 @@ export async function composeFoundationRuntime(input: Parameters<typeof composeO
   installProviderRevocationCheck(providerAdmission.revocationCheck);
   installForeignPackageRoots(providerAdmission.sensitiveRoots);
   await providerAdmission.refresh();
-  announceComposition("foundation", { hosts, operations, leases: input.leases, extensions: input.extensions, hostPackages, bases, providers, ledger: input.ledger });
+  announceComposition("foundation", { hosts, operations, leases: input.leases, extensions: input.extensions, hostPackages, bases, providers, ledger: input.ledger, windows: windowRegistry });
   /* Agent configurations work signed out; cloud composition attaches their sync once the account runtime exists (TASK-12). */
   const measurementStore = new MeasurementStore(input.userData);
   await measurementStore.initialize();

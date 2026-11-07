@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on plugin-owned official declarations, existing domain executors, the shared HostRuntime, a live optional Library root and document owners.
- * [OUTPUT]: Composes one dynamic tool registry, channel-bound host RPC, trusted process manager and an admitted-Library official source loader.
+ * [OUTPUT]: Composes one dynamic tool registry, channel-bound host RPC, trusted process manager and an admitted-Library official source loader; the existing builtin-tools observation payload includes its RPC broker.
  * [POS]: Production plugin tool composition after foundation hosts exist; no tool names or per-tool wiring live here.
  */
 import { session } from "electron";
@@ -57,7 +57,7 @@ export async function composePluginTools(input: {
     const root = input.libraryRoot();
     return root ? ensureOfficialPluginSources(root) : null;
   };
-  announceComposition("builtin-tools", { registry, apps: input.services.appsService, chats: input.services.chatsService,
+  announceComposition("builtin-tools", { registry, rpc, apps: input.services.appsService, chats: input.services.chatsService,
     resolveEffectiveWorkspace: input.resolveEffectiveWorkspace, incarnationOf: input.incarnationOf });
   const hostRuntime = (manifest: UnifiedPluginManifest, revision: string) => {
     const plugin = officialToolPlugins.find(item => item.id === manifest.id && item.hostInfrastructure);

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Lean installed-team registry, existing Coordinator, canonical Chats/Projects, trusted plugin RPC and shared authoring leases.
+ * [INPUT]: Lean installed-team registry, canonical public Provider IDs/backend schema, existing Coordinator, canonical Chats/Projects, trusted plugin RPC and shared authoring leases.
  * [OUTPUT]: Production persistent team sessions, official source installation, exact active-Lead/Project recovery, feature RPC, native panel registrar and cleanup.
  * [POS]: Team plugin composition; root startup installs this owner before any window lists member Chats.
  */
@@ -7,6 +7,8 @@ import { z } from "zod";
 import type { BrowserWindow } from "electron";
 import type { AgentBackendId, AgentTurnOptions } from "../../../../shared/ipc/agent/agent-ipc";
 import { backendDefaults } from "../../../../shared/chat-agent/options";
+import { agentBackendIdSchema } from "../../../../shared/platform/agent-schema";
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import { hashCanonical } from "@bottega/contracts/core/canonical-json";
 import { pluginIdentitySchema as id } from "@bottega/contracts/plugins/platform";
 import type { PluginTeamSnapshot } from "@bottega/contracts/plugins/team";
@@ -67,7 +69,7 @@ export async function initializePluginTeams(input: PluginTeamsInput) {
         (message.content.trim() || message.parts?.length));
       if (!anchor) throw new Error("Member fork requires a completed assistant message");
       const latest = source.messages.filter(message => message.role !== "notice").at(-1);
-      const nativeFork = (value.providerId === "codex" || value.providerId === "claude") && source.agent === value.providerId &&
+      const nativeFork = (value.providerId === BUILTIN_PROVIDER_IDS.codex || value.providerId === BUILTIN_PROVIDER_IDS.claude) && source.agent === value.providerId &&
         source.session?.backend === value.providerId && !turns.hasActivity([source.id]) && latest?.id === anchor.id && source.chatMessageRevision !== undefined
         ? { backend: value.providerId, sourceChatId: source.id, sourceIncarnation: source.incarnationId,
           sourceMessageRevision: source.chatMessageRevision, sourceSessionId: source.session.id } : undefined;
@@ -127,7 +129,7 @@ export async function initializePluginTeams(input: PluginTeamsInput) {
     return service.create({ pluginId: context.pluginId, leadChatId: lease.chatId, leadIncarnation: lease.incarnationId, projectId });
   });
   register("add-member", (raw, context) => service.addMember({ ...z.object({ memberId: id.optional(), name: z.string().min(1).max(160),
-    providerId: z.enum(["codex", "claude", "kimi", "opencode"]), task: z.string().min(1).max(32_768), forkChatId: id.optional(),
+    providerId: agentBackendIdSchema, task: z.string().min(1).max(32_768), forkChatId: id.optional(),
     isolation: z.enum(["shared", "worktree"]).optional() }).strict().parse(raw), teamId: teamForCaller(context, true).id }));
   register("send", (raw, context) => {
     const value = z.object({ memberId: id, body: z.string().min(1).max(32_768), messageId: id.optional() }).strict().parse(raw);

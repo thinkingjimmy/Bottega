@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node Unix socket, shared tool name, BuiltinMcpLeaseStore and PluginToolRegistry, and statusError from main/errors
- * [OUTPUT]: Provides restartable 0600 native bridge where the MCP server claims its lease once on a persistent connection and every call and cancel travels on that connection (a replayed token on any other connection is refused), execute token/allowedTools, same-identity-different-content refusal, domain frequency control, socket-close/lease-revoke, claimed connections destroyed on stop-admission and close (so close never waits on them), cancel, ready, reverse, strict distribution and audit
+ * [OUTPUT]: Provides restartable 0600 native bridge where the MCP server claims its lease once on a persistent connection and every call and cancel travels on that connection (a replayed token on any other connection is refused), execute token/allowedTools, same-identity-different-content refusal, domain frequency control, private protocol/execution error origin, socket-close/lease-revoke, claimed connections destroyed on stop-admission and close (so close never waits on them), cancel, ready, reverse, strict distribution and audit
  * [POS]: The tools process boundary; the stdio subprocess never touches app storage and can only invoke versioned plugin tools registered by main through this bridge
  */
 
@@ -42,7 +42,7 @@ const requestSchema = z.union([claimRequestSchema, callRequestSchema, cancelRequ
 
 type BridgeResponse =
   | { id: string; ok: true; result: unknown }
-  | { id: string; ok: false; status: number; error: string };
+  | { id: string; ok: false; status: number; error: string; errorKind: "protocol" | "tool" };
 
 export class BuiltinMcpBridge {
   private server: Server | null = null;
@@ -142,6 +142,7 @@ export class BuiltinMcpBridge {
   ) {
     let requestId = "invalid";
     let response: BridgeResponse;
+    let errorKind: "protocol" | "tool" = "protocol";
     const controller = new AbortController();
     try {
       const request = requestSchema.parse(JSON.parse(line));
@@ -158,6 +159,7 @@ export class BuiltinMcpBridge {
         if (calls.has(request.id)) throw statusError(409, "内置 MCP 调用 id 重复");
         calls.set(request.id, controller);
         const lease = this.leases.authorize(request.token, request.tool, connection);
+        errorKind = "tool";
         this.leases.claimInvocation(lease, request.invocationId, request.requestDigest);
         this.leases.consume(request.token, request.tool);
         console.info(
@@ -174,10 +176,11 @@ export class BuiltinMcpBridge {
         };
       }
     } catch (cause) {
-      const value = cause as { status?: unknown; message?: unknown };
+      const value = cause as { status?: unknown; message?: unknown; toolRequestError?: unknown };
       response = {
         id: requestId,
         ok: false,
+        errorKind: value?.toolRequestError === true ? "protocol" : errorKind,
         status: typeof value?.status === "number" ? value.status : 500,
         error:
           typeof value?.message === "string" ? value.message : String(cause),

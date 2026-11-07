@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on immutable Base snapshots, the shared locale-independent canonical digest, the shared canonical cell context/projection kernel and filter walker, crypto scope hashes, tool-result budgets, statusError from main/errors, and the shared legacy rows reader (@ai-chat/cloud-protocol/bases/query/rows)
- * [OUTPUT]: Provides the bounded three-mode `read_base` projection plus queryBase (the App GUI legacy rows / package-port query), a thin delegate to the shared reader with the Agent tool-result byte budget
+ * [OUTPUT]: Provides the bounded three-mode `read_base` projection plus queryBase (the App GUI legacy rows / package-port query), a thin delegate to the shared reader with the Agent tool-result byte budget; truncated options are omitted before strict JSON result validation
  * [POS]: The only main-process Base read boundary; it builds one canonical context from the full snapshot and never performs Base mutations
  */
 
@@ -252,11 +252,10 @@ function fitColumnMeta(
   if (builtinCallToolResultBytes(envelope(meta, false)) <= byteLimit) {
     return { meta, truncated: false };
   }
-  meta = meta.map((item) =>
-    item.options
-      ? { ...item, options: undefined, options_truncated: true as const }
-      : item
-  );
+  meta = meta.map((item) => {
+    const { options, ...withoutOptions } = item;
+    return options ? { ...withoutOptions, options_truncated: true as const } : item;
+  });
   if (builtinCallToolResultBytes(envelope(meta, false)) <= byteLimit) {
     return { meta, truncated: false };
   }

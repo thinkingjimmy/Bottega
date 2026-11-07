@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Original English Dock literals excluding only the Weather UI namespace.
- * [OUTPUT]: systemDockBaseEn for synchronous native menus and renderer fallback.
+ * [OUTPUT]: systemDockBaseEn for synchronous native menus and renderer fallback; retired manual Widget editor labels are excluded.
  * [POS]: Shared native base; the complete renderer wrapper adds English Weather data.
  */
 export const systemDockBaseEn={
@@ -94,7 +94,6 @@ export const systemDockBaseEn={
       "abandoned": "Sharing stopped for this version",
       "abandon": "Stop sharing this version"
     },
-    "previewDetails": "Preview details",
     "previewTitle": "Preview Widget",
     "previewReal": "Real data",
     "previewUseReal": "Use real data",
@@ -168,21 +167,15 @@ export const systemDockBaseEn={
     "copyPending": "Preparing your personal copy. This Widget stays available until the copy is ready.",
     "copyFailed": "The personal copy could not replace this Widget. Your current Widget and settings are kept.",
     "copyDetails": "Open copy details",
-    "copyName": "{{name}} (copy)",
     "versions": "Versions",
     "versionTitle": "Widget versions",
     "versionHint": "Preview a saved version. Apply it after review.",
     "currentVersion": "Current",
     "previewVersion": "Preview",
-    "versionSaved": "Version saved. Add it to Dock when you are ready.",
     "customize": "Customize",
     "copyCustomize": "Copy and customize",
-    "customName": "{{name}} (custom)",
-    "replaceWithCopy": "Apply and replace with copy",
-    "preserveInstance": "This keeps the instance name and position. The original stays available.",
     "usageSource": "Usage source",
     "allAgents": "All Agents",
-    "otherSources": "{{count}} more in details",
     "applyInstance": "Apply",
     "continue": "Continue",
     "noSavedVersion": "Save a version before adding this Widget.",
@@ -247,7 +240,6 @@ export const systemDockBaseEn={
     "applyFailed": "The changes could not be completed. Your choices are kept. Try again.",
     "commitPending": "Widget version saved. Dock changes are pending.",
     "conflict": "The version or Dock layout changed. Review a new preview before you apply.",
-    "applied": "Applied on this computer. Other computers confirm updates separately.",
     "sizeSmall": "Small",
     "sizeMedium": "Medium",
     "sizeLarge": "Large",
@@ -262,13 +254,7 @@ export const systemDockBaseEn={
     "search": "Search Widgets",
     "failed": "The Widget could not be opened. Your work is kept. Try again.",
     "creating": "Creating…",
-    "describe": "Describe what you want to see. Review the preview before you add the Widget.",
-    "build": "Build preview",
-    "building": "Building…",
     "example": "Example data",
-    "draft": "Draft",
-    "candidate": "Preview ready",
-    "buildFailed": "The preview could not be built. Continue editing and try again.",
     "impact": "{{count}} instances on this computer",
     "noMatches": "No matching Widgets",
     "addExisting": "Choose a Widget",

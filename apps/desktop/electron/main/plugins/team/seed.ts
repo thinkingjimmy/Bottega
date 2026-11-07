@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Unified native manifest validation, bounded main error vocabulary and host-owned seed directory.
+ * [INPUT]: Unified native manifest validation, canonical public Provider identity values, bounded main error vocabulary and host-owned seed directory.
  * [OUTPUT]: Complete editable official team source and optional first-revision build recovery after a durable failed catalog receipt.
  * [POS]: Production feature package seed; main RPC retains only persistent session/custody and durable feature services.
  */
@@ -7,6 +7,7 @@ import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { officialToolPlugins } from "../../../../shared/plugin-tools";
 import { unifiedPluginManifestSchema } from "@bottega/contracts/plugins/platform";
+import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
 import type { UnifiedPluginPlatform } from "../platform/service";
 import { errorMessage } from "../../ipc/errors";
 const object = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
@@ -14,7 +15,7 @@ const string = { type: "string" };
 const tools = [
   ["team_create", "Create a persistent team for this Lead Chat and its Project.", object({})],
   ["team_add_member", "Create a named persistent member. Blank context is the default; optional fork uses a completed Chat prefix.", object({
-    name: string, providerId: { enum: ["codex", "claude", "kimi", "opencode"] }, task: string, memberId: string,
+    name: string, providerId: { enum: Object.values(BUILTIN_PROVIDER_IDS) }, task: string, memberId: string,
     forkChatId: string, isolation: { enum: ["shared", "worktree"] },
   }, ["name", "providerId", "task"])],
   ["team_send", "Send one stable-identity message to a member or lead. Delivery is separate from processing.", object({ memberId: string, body: string, messageId: string }, ["memberId", "body"])],

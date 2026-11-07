@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Only this locale definition labels.
- * [OUTPUT]: The complete weatherFr Weather copy object.
+ * [OUTPUT]: The complete weatherFr Weather copy object; the unused city-result instruction is excluded.
  * [POS]: Deferred locale data; no other locale or aggregate dependency.
  */
 import {weatherFrDefinition} from '../definitions/fr';
@@ -13,7 +13,6 @@ export const weatherFr={
   "locating": "Localisation…",
   "located": "Position trouvée",
   "noCities": "Aucune ville trouvée.",
-  "chooseResult": "Sélectionnez une ville dans les résultats.",
   "denied": "Accès à la position refusé. Choisissez une ville ou autorisez cet accès dans les réglages système.",
   "disabled": "La localisation est désactivée. Choisissez une ville ou activez-la dans les réglages système.",
   "timeout": "La localisation a expiré. Réessayez ou choisissez une ville.",

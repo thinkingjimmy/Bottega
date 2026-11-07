@@ -1,5 +1,5 @@
 # [INPUT]: Depends on electron-vite output including the unpacked native Keychain policy, the electronFuses flip (RunAsNode, NODE_OPTIONS and inspect off, ad-hoc re-sign; TASK-35 slice 6), the afterPack bundled-Node step (scripts/node-runtime/after-pack.mjs), the out/system-dock native helpers and recovery LaunchAgent plist, test-receipt exclusion, the keep-node-module-types hook, root LICENSE, original sumo ISC notice, system skills, immutable Design factory payload, Base GUI SDK/toolchain/component/Starter resources, compiler native payloads, icons and the checked macOS system icon catalog, entitlements, and pinned react-grab assets
-# [OUTPUT]: Produces, without npm sourcemaps (OPT-33 A) or unused App GUI dependency formats, localized diagnostics and CLI/server payloads and with only the UI languages' Chromium locale packs (OPT-33 B), Bottega macOS arm64 DMG (UDBZ) / ZIP (deflate -9), Windows x64 NSIS, and Linux x64 AppImage (gzip squashfs) artifacts whose packaged app.name is Bottega (own userData, never the dev directory), with the pinned Node at Resources/runtime/node/<platform>-<arch> signed with its own entitlements and the runtime manifest beside it (TASK-34), an offline fail-closed App GUI compiler, the self-contained runtime entries including plugin file/compiler programs and their runtime-entries.json unpacked beside the ASAR so a plain Node can run them (TASK-35; non-production builds also unpack the private connectivity smoke), no test-only receipt, TypeScript declaration files kept and the whole node_modules tree unpacked next to the ASAR for the packaged compiler, and no vendored Codex/Claude CLI platform packages (the product only spawns the user's own CLI), and on macOS the signed Bottega Dock helpers under Resources/system-dock/bin, the recovery agent plist under Contents/Library/LaunchAgents, and Apple Events/Downloads/Location usage descriptions with unpacked immutable official weather source/runtime
+# [OUTPUT]: Produces, without npm sourcemaps (OPT-33 A) or unused App GUI dependency formats, localized diagnostics and CLI/server payloads and with only the UI languages' Chromium locale packs and configured macOS purpose locale aliases (OPT-33 B), Bottega macOS arm64 DMG (UDBZ) / ZIP (deflate -9), Windows x64 NSIS, and Linux x64 AppImage (gzip squashfs) artifacts whose packaged app.name is Bottega (own userData, never the dev directory), with the pinned Node at Resources/runtime/node/<platform>-<arch> signed with its own entitlements and the runtime manifest beside it (TASK-34), an offline fail-closed App GUI compiler, the self-contained runtime entries including plugin file/compiler programs and their runtime-entries.json unpacked beside the ASAR so a plain Node can run them (TASK-35; non-production builds also unpack the private connectivity smoke), no test-only receipt, TypeScript declaration files kept and the whole node_modules tree unpacked next to the ASAR for the packaged compiler, and no vendored Codex/Claude CLI platform packages (the product only spawns the user's own CLI), and on macOS the signed Bottega Dock helpers under Resources/system-dock/bin, the recovery agent plist under Contents/Library/LaunchAgents, and Apple Events/Downloads/Location usage descriptions with unpacked immutable official weather source/runtime
 # [POS]: The shared desktop packaging configuration; macOS uses a checked native ICNS and named system icon catalog. Release signing stays fail-closed in release scripts. The public workflow's build-only mode remains unsigned; its signed and draft modes use this Developer ID and notarization configuration.
 
 appId: com.jimmywong.bottega
@@ -16,6 +16,7 @@ extraMetadata:
 compression: maximum
 # OPT-33 B: only the Chromium locale packs of the UI languages (APP_LOCALES) and their region variants, so native chrome (Open/Save
 # panels, menus) stays in the UI's language; each name in both styles, because mac keeps .lproj (underscore) and win/linux keep .pak (dash).
+# The copied Simplified Chinese macOS purpose strings also require the exact native name zh-Hans.
 # Derived and checked by config/electron-locale.test.mjs.
 electronLanguages:
   - en-US
@@ -24,6 +25,7 @@ electronLanguages:
   - en_GB
   - zh-CN
   - zh_CN
+  - zh-Hans
   - zh-TW
   - zh_TW
   - ja

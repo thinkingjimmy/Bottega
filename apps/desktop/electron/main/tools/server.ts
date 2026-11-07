@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on MCP SDK stdio transport, shared static tools, specification/condition description, invocation identity/digest helpers and main Unix socket, and statusError from main/errors
- * [OUTPUT]: Provides the standalone MCP stdio process: registers only the lease-allowed builtin tools, claims its lease once on one persistent Unix-socket connection (the token from the environment is single use) and forwards each call and cancel on it with an identity of (session nonce, JSON-RPC request id, tool) plus a content digest, and exits when its CLI's stdin ends; tools/list descriptions carry all model-facing semantics
+ * [INPUT]: Depends on the low-level MCP Server/stdio SDK, frozen lease snapshots, invocation identity/digest, private bridge, bounded result/error adapters and main error vocabulary
+ * [OUTPUT]: Provides frozen lease-only discovery, one-use persistent claims, invocation identity and cancellation; preserves protocol refusals and returns bounded tool execution errors without exposing private origin metadata
  * [POS]: The MCP-facing subprocess boundary; performs protocol adaptation only, never reads app storage directly, and forwards every call through bridge.ts
  */
 
@@ -10,9 +10,9 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { ToolSnapshot } from "./registry";
-import { statusError } from "../ipc/errors";
+import { errorMessage, statusError } from "../ipc/errors";
 import { toolInvocationId, toolRequestDigest } from "./invocation";
-import { toBuiltinCallToolResult } from "./result";
+import { toBuiltinCallToolError, toBuiltinCallToolResult } from "./result";
 
 const socketPath = process.env.AI_CHAT_TOOLS_SOCKET;
 const token = process.env.AI_CHAT_TOOLS_TOKEN;
@@ -26,7 +26,7 @@ const sessionNonce = randomUUID();
 const bridgeToken = token;
 type BridgeResponse =
   | { id: string; ok: true; result: unknown }
-  | { id: string; ok: false; status: number; error: string };
+  | { id: string; ok: false; status: number; error: string; errorKind: "protocol" | "tool" };
 
 /*
  * One persistent connection for the life of this process. The token from the environment is a single-use
@@ -57,7 +57,7 @@ function bridge() {
       if (!waiter) continue;
       waiting.delete(response.id);
       if (response.ok) waiter.resolve(response.result);
-      else waiter.reject(statusError(response.status, response.error));
+      else waiter.reject(statusError(response.status, response.error, response.errorKind === "tool" ? { toolExecutionError: true } : {}));
     }
   });
   const lost = (cause?: Error) => {
@@ -112,7 +112,13 @@ function call(tool: string, args: unknown, extra: { requestId: string | number; 
     args,
     invocationId: toolInvocationId(sessionNonce, extra.requestId, tool),
     requestDigest: toolRequestDigest(tool, args),
-  }, extra.signal).then((value) => toBuiltinCallToolResult(value, wireCap, tool));
+  }, extra.signal).then((value) => {
+    try { return toBuiltinCallToolResult(value, wireCap, tool); }
+    catch (cause) { return toBuiltinCallToolError(errorMessage(cause), wireCap); }
+  }, (cause: unknown) => {
+    if (!cause || typeof cause !== "object" || !("toolExecutionError" in cause) || cause.toolExecutionError !== true) throw cause;
+    return toBuiltinCallToolError(errorMessage(cause), wireCap);
+  });
 }
 
 const server = new Server({ name: "bottega", version: "1.0.0" }, { capabilities: { tools: {} } });

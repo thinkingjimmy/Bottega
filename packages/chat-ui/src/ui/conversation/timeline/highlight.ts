@@ -1,6 +1,6 @@
 /**
- * [INPUT]: A row id, the live document and the shared MessageContent message-content slot.
- * [OUTPUT]: Provides findTranscriptTarget, measureOutlineTops (one query for all outline entries), scrollTranscriptTo, cancelTranscriptScroll, settleTranscriptBottom and highlightTranscriptTarget with bubble-scoped user emphasis and reduced-motion support.
+ * [INPUT]: A row id, the live document, shared MessageContent slot and bounded ResizeObserver notifications for explicit message navigation.
+ * [OUTPUT]: Provides findTranscriptTarget, measureOutlineTops (one query for all outline entries), scrollTranscriptTo, cancelTranscriptScroll, settleTranscriptBottom and highlightTranscriptTarget with bounded user-cancellable bubble alignment, coalesced resize corrections, bubble-scoped emphasis and reduced-motion support.
  * [POS]: The timeline's only DOM reach; window.ts decides which row, this file finds and lights it.
  */
 export function findTranscriptTarget(id: string, root: ParentNode = document) {
@@ -33,43 +33,86 @@ const pendingScrolls = new WeakMap<HTMLElement, () => void>();
 export function cancelTranscriptScroll(scroller: HTMLElement) {
   pendingScrolls.get(scroller)?.();
 }
+function emphasisTarget(node: HTMLElement) {
+  return node.querySelector<HTMLElement>('.is-user > [data-slot="message-content"]') ?? node;
+}
 /** Correct after visible row and Fold measurements, unless the user takes control. */
-function settleTranscriptScroll(scroller: HTMLElement, align: () => void, corrections = 2) {
+function settleTranscriptScroll(scroller: HTMLElement, align: () => void, corrections = 2, navigationTarget?: HTMLElement) {
   cancelTranscriptScroll(scroller);
-  let frame = 0, remaining = corrections;
+  let frame: number | undefined;
+  let remaining = corrections, active = true, scheduled = false;
+  let allowance = navigationTarget ? 8 : corrections;
+  let observer: ResizeObserver | undefined;
+  let expiry: ReturnType<typeof setTimeout> | undefined;
   const key = (event: KeyboardEvent) => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) cancel(); };
   const cancel = () => {
-    cancelAnimationFrame(frame);
+    if (!active) return;
+    active = false;
+    if (frame !== undefined) cancelAnimationFrame(frame);
+    frame = undefined;
+    scheduled = false;
+    clearTimeout(expiry);
+    observer?.disconnect();
     scroller.removeEventListener("wheel", cancel);
     scroller.removeEventListener("touchstart", cancel);
     scroller.removeEventListener("keydown", key);
+    scroller.removeEventListener("pointerdown", cancel);
+    scroller.removeEventListener("transcript-latest", cancel);
     pendingScrolls.delete(scroller);
   };
-  const schedule = () => { frame = requestAnimationFrame(() => { frame = requestAnimationFrame(correct); }); };
+  const schedule = () => {
+    if (!active || scheduled) return;
+    scheduled = true;
+    frame = requestAnimationFrame(() => {
+      if (!active) return;
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        scheduled = false;
+        correct();
+      });
+    });
+  };
   const correct = () => {
-    if (!scroller.isConnected) { cancel(); return; }
+    if (!active || !scroller.isConnected || (navigationTarget && !navigationTarget.isConnected)) { cancel(); return; }
     align();
-    if (--remaining > 0) schedule(); else cancel();
+    if (--allowance === 0) { cancel(); return; }
+    if (--remaining > 0) schedule(); else if (!observer) cancel();
   };
   pendingScrolls.set(scroller, cancel);
   scroller.addEventListener("wheel", cancel, { passive: true });
   scroller.addEventListener("touchstart", cancel, { passive: true });
   scroller.addEventListener("keydown", key);
+  if (navigationTarget && typeof ResizeObserver !== "undefined") {
+    // A seek must survive deferred row sizes without retaining scroll authority indefinitely.
+    observer = new ResizeObserver(() => {
+      if (!active) return;
+      remaining = Math.min(corrections, allowance);
+      schedule();
+    });
+    const content = navigationTarget.closest<HTMLElement>("[data-transcript-content]") ?? navigationTarget;
+    observer.observe(content);
+    observer.observe(scroller);
+    if (navigationTarget !== content) observer.observe(navigationTarget);
+    scroller.addEventListener("pointerdown", cancel, { passive: true });
+    scroller.addEventListener("transcript-latest", cancel);
+    expiry = setTimeout(cancel, 2_000);
+  }
   align(); schedule();
 }
 export function scrollTranscriptTo(scroller: HTMLElement, node: HTMLElement, _behavior: ScrollBehavior) {
+  const target = emphasisTarget(node);
   settleTranscriptScroll(scroller, () => {
-    if (!node.isConnected) return;
-    const top = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    if (!target.isConnected) return;
+    const top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
     scroller.scrollTo({ top: Math.max(0, top - 16), behavior: "auto" });
-  });
+  }, 2, target);
 }
 export function settleTranscriptBottom(scroller: HTMLElement, follow: () => void) {
   settleTranscriptScroll(scroller, follow, 4);
 }
 
 export function highlightTranscriptTarget(node: HTMLElement) {
-  const target = node.querySelector<HTMLElement>('.is-user > [data-slot="message-content"]') ?? node;
+  const target = emphasisTarget(node);
   target.classList.remove("ring-2", "ring-primary/60");
   void target.offsetWidth;
   target.classList.add(

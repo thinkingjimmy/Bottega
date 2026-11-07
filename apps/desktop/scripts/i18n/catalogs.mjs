@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Exact product translation leaves, including Artifact History/import/System, Settings palette, App enablement and portable conversation copy.
+ * [INPUT]: Exact product translation leaves, including Artifact History/import/System, Settings palette, App enablement and portable conversation copy. Includes exact complete native dependency, Workflow isolation and plugin-management dictionary leaves.
  * [OUTPUT]: translationCatalogFiles, the closed set of complete locale dictionaries.
  * [POS]: Copy-audit policy data; UI and execution modules remain subject to sink checks.
  */
@@ -10,6 +10,9 @@ export const translationCatalogFiles = new Set([
   "apps/cloud-web/src/shell/copy.ts",
   "apps/cloud-web/src/push/copy.ts",
   "apps/cloud-web/src/server-tunnel/copy.ts",
+  "apps/desktop/electron/main/plugins/engineering/dependency/copy.ts",
+  "apps/desktop/src/components/bases/workflow/isolation/copy.ts",
+  "apps/desktop/src/lib/plugin-platform/copy.ts",
   "apps/desktop/electron/main/preview/session/copy.ts",
   "packages/base-ui/src/ui/workflow/details/copy.ts",
   "packages/chat-ui/src/artifacts/live/copy.ts",

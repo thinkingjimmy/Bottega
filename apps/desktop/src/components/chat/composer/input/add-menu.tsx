@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Shared dropdown primitives, attachment actions, canonical main-owned host-view declarations and the composer capability flags.
- * [OUTPUT]: ChatAddMenu.
+ * [INPUT]: Shared dropdown primitives, attachment actions, the existing resident composer generation/readiness projection and composer capability flags.
+ * [OUTPUT]: ChatAddMenu with the existing resident plugin actions and fail-closed generation checks in Main and App windows.
  * [POS]: Composer attachment, plugin and Plan menu presentation.
  */
 import { useProjectImportAction } from "@ai-chat/chat-ui/artifact-projects";
@@ -9,8 +9,6 @@ import { type RichInputHandle } from "@ai-chat/ui/components/ai-elements/rich-in
 import { ComposerAddMenu as SharedComposerAddMenu } from "@ai-chat/chat-ui/composer-controls/add";
 import type { ChatSessionController } from "../../runtime/use-chat-session";
 import { useSketchComposer } from "../../sketch/host/use-sketch-composer";
-import { useRuntimePlugins } from "@/lib/plugin-platform/projection/runtime";
-import { pluginContextCopy } from "@/lib/plugin-platform/context-copy";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 
 export function ChatAddMenu({
@@ -27,13 +25,10 @@ export function ChatAddMenu({
   sketch: ReturnType<typeof useSketchComposer>;
 }) {
   const { t, i18n } = useAppTranslation();
-  const native = useRuntimePlugins(),copy=pluginContextCopy(i18n.language);
-  const sketchHost=native.items.find(item=>item.manifest.contributions.some(contribution=>contribution.kind==="composer"&&contribution.hostViewId==="sketch-composer"));
-  const plugins=sketch.plugins.map(entry=>entry.id==="sketch"?{...entry,disabled:entry.disabled||!sketchHost?.runtimeReady,reason:!sketchHost?.runtimeReady?copy.unavailable:entry.reason}:entry);
   const attachments = usePromptInputAttachments(), project = useProjectImportAction();
   return <>{project.dialog}<SharedComposerAddMenu project={project.action} locale={i18n.language} disabled={disabled}
     files={controller.imageInputAvailable ? { run: () => { editor.current?.saveSelection(); attachments.openFileDialog(); } } : undefined}
-    plugins={controller.imageInputAvailable ? plugins : []}
+    plugins={controller.imageInputAvailable ? sketch.plugins : []}
     preload={controller.imageInputAvailable && !sketch.newDisabled ? sketch.preload : undefined}
     plan={{ active: controller.planMode, disabled: turnControlsDisabled || controller.skillsLoading || !controller.planSupported,
       reason: !controller.planSupported ? t("chat.composer.planUnavailable") : !controller.planMode && !controller.planAvailable ? controller.skillsError || t("chat.composer.planCheck") : undefined,

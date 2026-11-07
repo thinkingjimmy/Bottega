@@ -1,9 +1,9 @@
 /**
  * [INPUT]: Depends on React, the shared ConfirmationDialog, errorMessage, workbench-copy and the plugins bridge.
- * [OUTPUT]: Provides usePluginSwitch — the card/detail switch: turning on needs no confirmation; turning off first reads the impact and
+ * [OUTPUT]: Provides the pure PluginDisableImpactDescription shared by original and unified Workflow reviews, and usePluginSwitch — the card/detail switch: turning on needs no confirmation; turning off first reads the impact and
  *           confirms it (configurations, workflows, runs, Chats, plugins that stop working, the plugin's own effects); refusals are read
  *           by code through Electron's IPC wrapper (busy waits until the catalog changes, changed files keep it off) — and its dialog.
- * [POS]: Shared by the plugins page and the detail page, so both switch exactly alike (T-P3: every switch confirms with its impact).
+ * [POS]: Shared impact display for original and unified native Workflow reviews; mutation remains with each existing switch authority (T-P3: every switch confirms with its impact).
  */
 import { useRef, useState, type ReactNode } from "react";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
@@ -13,6 +13,42 @@ import type { PluginView, PluginsBridge } from "@ai-chat/cloud-protocol/contract
 import type { PluginDisableImpact } from "@ai-chat/cloud-protocol/contracts/plugins/impact";
 import type { CardState } from "./card";
 import { pluginText } from "./copy";
+
+export function PluginDisableImpactDescription({ impact, pluginId, name, workbench, locale, computerName }: {
+  impact: PluginDisableImpact; pluginId: string; name: string; workbench: WorkbenchCopy; locale: string; computerName?: string;
+}) {
+  const copy = workbench.plugins;
+  /* Configs and workflows are named (a bounded sample, then "and N more"); runs and Chats are counted by their totals. */
+  const more = (shown: number, total: number) => total > shown ? [pluralWorkbench(copy, "impactMore", locale, total - shown)] : [];
+  const lines = [
+    ...impact.agentConfigs.items.map(config => formatWorkbench(copy.impactConfigs, { config: config.name })),
+    ...more(impact.agentConfigs.items.length, impact.agentConfigs.total),
+    ...impact.workflows.items.map(item => formatWorkbench(copy.impactWorkflows, { workflow: item.name, name })),
+    ...more(impact.workflows.items.length, impact.workflows.total),
+    ...(impact.runs.total ? [pluralWorkbench(copy, "impactRuns", locale, impact.runs.total, { name })] : []),
+    ...(impact.readOnlyChats.total ? [pluralWorkbench(copy, "impactChats", locale, impact.readOnlyChats.total, { name })] : []),
+    ...impact.effects.items.map(effect => pluginText(effect.label, workbench)),
+  ];
+  const dependents = impact.dependents.items.map(item => formatWorkbench(copy.dependentLine, { plugin: pluginText(item.name, workbench), name }));
+  return (
+    <div className="flex flex-col gap-3 text-left">
+      <p>{formatWorkbench(copy.turnOffBody, { name, computer: computerName ?? copy.thisComputer })}</p>
+      {pluginId === "artifact" && <p>{copy.builtin.artifact.disableHint}</p>}
+      {dependents.length > 0 && (
+        <div className="flex flex-col gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3" data-testid="turn-off-dependents">
+          <p className="font-medium text-amber-900 dark:text-amber-300">{copy.dependentsTitle}</p>
+          <ul className="list-disc space-y-1 pl-5">{dependents.map(line => <li key={line}>{line}</li>)}</ul>
+        </div>
+      )}
+      {lines.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <p className="font-medium text-foreground">{copy.whatChanges}</p>
+          <ul className="list-disc space-y-1 pl-5" data-testid="turn-off-impacts">{lines.map(line => <li key={line}>{line}</li>)}</ul>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function usePluginSwitch({ bridge, workbench, locale, computerName, plugins }: {
   bridge: PluginsBridge | null;
@@ -58,42 +94,13 @@ export function usePluginSwitch({ bridge, workbench, locale, computerName, plugi
     catch { setFailed(formatWorkbench(copy.switchFailed, { name: nameOf(plugin) })); }
     finally { setPreviewing(null); }
   };
-  /* Configs and workflows are named (a bounded sample, then "and N more"); runs and Chats are counted by their totals. */
-  const more = (shown: number, total: number) => total > shown ? [pluralWorkbench(copy, "impactMore", locale, total - shown)] : [];
-  const impact = confirm?.impact, name = confirm ? nameOf(confirm.plugin) : "";
-  const lines = impact ? [
-    ...impact.agentConfigs.items.map(config => formatWorkbench(copy.impactConfigs, { config: config.name })),
-    ...more(impact.agentConfigs.items.length, impact.agentConfigs.total),
-    ...impact.workflows.items.map(item => formatWorkbench(copy.impactWorkflows, { workflow: item.name, name })),
-    ...more(impact.workflows.items.length, impact.workflows.total),
-    ...(impact.runs.total ? [pluralWorkbench(copy, "impactRuns", locale, impact.runs.total, { name })] : []),
-    ...(impact.readOnlyChats.total ? [pluralWorkbench(copy, "impactChats", locale, impact.readOnlyChats.total, { name })] : []),
-    ...impact.effects.items.map(effect => pluginText(effect.label, workbench)),
-  ] : [];
-  const dependents = impact ? impact.dependents.items.map(item => formatWorkbench(copy.dependentLine, { plugin: pluginText(item.name, workbench), name })) : [];
+  const name = confirm ? nameOf(confirm.plugin) : "";
   const dialog = (
     <ConfirmationDialog
       open={Boolean(confirm)}
       busy={pending !== null}
       title={confirm ? formatWorkbench(copy.turnOffTitle, { name }) : ""}
-      description={confirm ? (
-        <div className="flex flex-col gap-3 text-left">
-          <p>{formatWorkbench(copy.turnOffBody, { name, computer: computerName ?? copy.thisComputer })}</p>
-          {confirm.plugin.id === "artifact" && <p>{copy.builtin.artifact.disableHint}</p>}
-          {dependents.length > 0 && (
-            <div className="flex flex-col gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3" data-testid="turn-off-dependents">
-              <p className="font-medium text-amber-900 dark:text-amber-300">{copy.dependentsTitle}</p>
-              <ul className="list-disc space-y-1 pl-5">{dependents.map(line => <li key={line}>{line}</li>)}</ul>
-            </div>
-          )}
-          {lines.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <p className="font-medium text-foreground">{copy.whatChanges}</p>
-              <ul className="list-disc space-y-1 pl-5" data-testid="turn-off-impacts">{lines.map(line => <li key={line}>{line}</li>)}</ul>
-            </div>
-          )}
-        </div>
-      ) : ""}
+      description={confirm ? <PluginDisableImpactDescription impact={confirm.impact} pluginId={confirm.plugin.id} name={name} workbench={workbench} locale={locale} computerName={computerName}/> : ""}
       confirmLabel={copy.turnOff}
       confirmTone="destructive"
       onConfirm={() => { if (confirm) void change(confirm.plugin, false); }}
