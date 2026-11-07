@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on durable App records, the required folder root, verified source export, host-version admission, the host locale, generation builder/consent and existing grant, cutover and serialization authorities.
- * [OUTPUT]: AppStore v16 single writer for records, portable identity/source baselines, retained custody, independent update publication fences, known App IDs, scope-aware status broadcasts a read-only Base GUI grant projection, verified generation history and fresh-consent source restoration.
+ * [OUTPUT]: AppStore v16 single writer for records, portable identity/source baselines, retained uninstall custody, independent update publication fences, known App IDs, scope-aware status broadcasts a read-only Base GUI grant projection, verified generation history and fresh-consent source restoration.
  * [POS]: Canonical App record and broadcast authority; the folder catalog holds every record, and this facade serializes mutations and prevents stale projections.
  */
 
@@ -625,12 +625,22 @@ export class AppStore {
     return this.generationConsent.promote(appId, expectedConsentRevision);
   }
 
-  async remove(appId: string) {
+  remove(appId: string) { return this.removeRecord(appId); }
+  removeRetained(appId: string, requestId: string) {
+    if (!requestId || requestId.length > 256) throw new Error("APP_RETENTION_INPUT_INVALID");
+    return this.removeRecord(appId, requestId);
+  }
+  hasRetainedRemoval(appId: string, requestId: string) { return this.folder.hasRetainedRemoval(appId, requestId); }
+  private async removeRecord(appId: string, retainedRequestId?: string) {
     assertUpdateIdle(this.get(appId));
     this.assertWritableAuthority();
     await this.queue.enqueue(async () => {
       const current = this.records.get(appId);
-      if (!current) return;
+      if (!current) {
+        if (retainedRequestId && !await this.hasRetainedRemoval(appId, retainedRequestId)) throw new Error("APP_RETENTION_RECEIPT_MISSING");
+        return;
+      }
+      if (retainedRequestId && await this.hasRetainedRemoval(appId, retainedRequestId)) throw new Error("APP_RETENTION_REQUEST_REUSED");
       assertUpdateIdle(current);
       await assertCapturedAppSourceRetained(this, appId);
       this.records.delete(appId);
@@ -638,7 +648,7 @@ export class AppStore {
       this.portableCatalog = { ...previousCatalog, entries: previousCatalog.entries.map(entry => entry.descriptor.appId === appId
         ? { ...entry, installation: "not-installed" as const, installedGenerationId: null, installedPackageRevision: null, installedPublication: null } : entry) };
       try {
-        await this.persist();
+        await this.persist(retainedRequestId ? { appId, requestId: retainedRequestId } : undefined);
       } catch (cause) {
         this.records.set(appId, current);
         this.portableCatalog = previousCatalog;
@@ -725,7 +735,7 @@ export class AppStore {
     );
   }
 
-  private async persist() {
+  private async persist(retained?: { appId: string; requestId: string }) {
     this.assertWritableAuthority();
     const apps = this.snapshot();
     const content = JSON.stringify(
@@ -738,7 +748,7 @@ export class AppStore {
       null,
       2
     );
-    try { await this.folder.write(parseStore(JSON.parse(content))); } catch (cause) { this.authority = "degraded-corrupt"; throw cause; }
+    try { await this.folder.write(parseStore(JSON.parse(content)), retained); } catch (cause) { this.authority = "degraded-corrupt"; throw cause; }
     this.announce(apps);
   }
 

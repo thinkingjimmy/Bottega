@@ -8,7 +8,7 @@ import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type { AppDomainIdentity } from "../../../../shared/ipc/apps/apps-ipc";
 import type { FrozenAppReferenceCapability } from "../../../../shared/apps/model/app-lifecycle";
-import type { BaseToolsAvailability } from "../../../../shared/builtin-tools";
+import type { BaseToolsAvailability } from "../../../../shared/plugin-tools";
 import { allocateAppInstructions } from "./grant-budget";
 import { parseSkillFrontmatter } from "../../skills/catalog/skills-catalog-scan";
 

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron storage clearing, Node fs, ordered backend App-scoped cleanup and removeServeAck from apps/runtime/serve-loop.
- * [OUTPUT]: Provides installLogPath and cleanupAppFiles, which removes every unowned file or state left behind by a deleted App
+ * [OUTPUT]: installLogPath and cleanupAppFiles remove unowned App state while retained uninstall preserves origin storage, source and private config.
  * [POS]: apps module's single unowned-file cleanup list for App deletion; every new unowned path must be registered here. Ledger-backed data (`app-data/<appId>`) is out of scope — it is disposed by `settleDeleteData` via cascade discard or, under retain-data, archived into `app-data-archives/<archiveId>`
  */
 
@@ -16,7 +16,7 @@ export function installLogPath(userData: string, appId: string) {
 }
 
 export async function cleanupAppFiles(
-  paths: { userData: string; appsRoot: string; stagingRoot?: string },
+  paths: { userData: string; appsRoot: string; stagingRoot?: string; retainState?: boolean; clearOriginStorage?(origin: string): Promise<void> },
   record: AppRecord,
   origin: string
 ) {
@@ -25,11 +25,11 @@ export async function cleanupAppFiles(
   const steps = [
     {
       label: "origin 存储",
-      promise: session.defaultSession.clearStorageData({ origin }),
+      promise: paths.retainState ? Promise.resolve() : paths.clearOriginStorage ? paths.clearOriginStorage(origin) : session.defaultSession.clearStorageData({ origin }),
     },
     {
       label: "App 目录",
-      promise: rm(appDir, { recursive: true, force: true }),
+      promise: paths.retainState ? Promise.resolve() : rm(appDir, { recursive: true, force: true }),
     },
     {
       label: "staging 目录",
@@ -73,7 +73,7 @@ export async function cleanupAppFiles(
     },
     {
       label: "App 配置",
-      promise: rm(join(userData, "app-config", `${appId}.json`), {
+      promise: paths.retainState ? Promise.resolve() : rm(join(userData, "app-config", `${appId}.json`), {
         force: true,
       }),
     },

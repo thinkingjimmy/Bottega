@@ -9,12 +9,12 @@ import type { HistoryBinding, HistoryPosition } from "../../../../shared/chat-ag
 import { historyToolInputSchema } from "../../../../shared/chat-agent/history-tool";
 import type { ChatStore } from "../../chats/chat-store";
 import type { BuiltinMcpLease } from "../../tools/lease";
-import type { BuiltinToolset } from "../../tools/registry";
+import type { PluginToolset } from "../../tools/registry";
 import { builtinCallToolResultBytes } from "../../tools/result";
 import { deliverHistoryAttachment, type HistoryAttachmentPorts } from "./attachments";
 type Page = { binding: HistoryBinding; position: HistoryPosition };
 type HistoryLease = { binding: HistoryBinding; calls: number; bytes: number; attachmentBytes: number; pages: Map<string, Page>; tail: Promise<unknown>; dead: boolean };
-export function createChatHistoryToolset(store: Pick<ChatStore, "readHistory">, attachments?: HistoryAttachmentPorts): BuiltinToolset {
+export function createChatHistoryToolset(store: Pick<ChatStore, "readHistory">, attachments?: HistoryAttachmentPorts): PluginToolset {
   const leases = new WeakMap<BuiltinMcpLease, HistoryLease>();
   return { read_chat_history: async (args, context) => {
     const input = historyToolInputSchema.parse(args);

@@ -6,10 +6,10 @@
 
 import { HANDOFF_RECEIVER } from "../history/receiver";
 import type {
-  BuiltinToolName,
+  PluginToolName,
   BuiltinTurnKind,
-} from "../../../../shared/builtin-tools";
-import { productContextFragments } from "../../../../shared/builtin-tools";
+} from "../../../../shared/plugin-tools";
+import { productContextFragments } from "../../../../shared/plugin-tools";
 import { closeEnvelope, openEnvelope } from "../../../../shared/product/product-envelope";
 
 export type SkillSummary = Readonly<{
@@ -38,7 +38,7 @@ export type FinalTurnProjection = Readonly<{
   handoff?: import("../../../../shared/chat-agent/history").FrozenHandoff;
   freshSession?: boolean;
   turnKind: BuiltinTurnKind;
-  allowedTools: readonly BuiltinToolName[];
+  allowedTools: readonly PluginToolName[];
   appInstructions: string;
   skills: readonly SkillSummary[];
   skillsCapable?: boolean;

@@ -6,6 +6,7 @@
 import { chmod, cp, lstat, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { isErrnoCode } from "../../persistence/durable-json";
+import {isPluginDependencyPath,prunePluginDependencies} from './plugins/rebase';
 
 export type TransferPorts = {
   /** True when the folder at this path is the one being moved; nothing is retired on the word of a stranger. */
@@ -32,6 +33,7 @@ async function inventory(root: string) {
   const walk = async (directory: string) => {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
+      if(isPluginDependencyPath(root,path))continue;
       if (entry.isDirectory()) { entries.set(relative(root, path), -1); await walk(path); }
       else entries.set(relative(root, path), entry.isFile() ? (await lstat(path)).size : -1);
     }
@@ -51,6 +53,7 @@ export async function transferFolder(from: string, to: string, ports: TransferPo
     if (sourceLeft) await retireIdentity(from);
     return { kind: "already-moved", sourceLeft };
   }
+  await prunePluginDependencies(from);
   if (!source) throw new Error("LIBRARY_MOVE_SOURCE_MISSING");
   try { await rename(from, to); return { kind: "renamed", sourceLeft: false }; }
   catch (error) { if (!isErrnoCode(error, "EXDEV")) throw error; }
@@ -100,7 +103,8 @@ export async function copyAcross(from: string, to: string, ports: TransferPorts)
   ports.progress?.(0, expected.size);
   try {
     await cp(from, copy, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true, verbatimSymlinks: true,
-      filter: () => {
+      filter: path => {
+        if(isPluginDependencyPath(from,path))return false;
         if (ports.signal?.aborted) throw new Error(MOVE_CANCELLED);
         ports.progress?.(Math.min(++completed, expected.size), expected.size); return true;
       } });

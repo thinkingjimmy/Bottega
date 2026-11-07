@@ -11,7 +11,7 @@ import { composedProviderCatalog } from "../../providers/host/catalog";
 import { fallbackTitle } from "../../chats/chat-commit";
 import { join } from "node:path";
 import { workflowSkillSelection, workflowToolSelection } from "../../agent-configs/selection";
-import { workflowTurnPolicyFor } from "../../workflows/turn-policy";
+import { workflowExecutionWorkspace, workflowTurnPolicyFor } from "../../workflows/turn-policy";
 import type { AgentBackendId, AgentWorkspaceScope, BackendCapabilities } from "../../../../shared/ipc/agent/agent-ipc";
 import type { TurnProjectContext } from "../../../../shared/product/product-resource-scope";
 
@@ -351,6 +351,7 @@ type ManualPrepareDependencies = {
     backend: import("../../../../shared/ipc/agent/agent-ipc").AgentBackendId;
     builtinTools: "none" | "read" | "mutate";
     planMode: boolean;
+    mode?: import("@bottega/contracts/plugins/platform").PluginModeSelection;
   }>) => Promise<ProjectToolsPreparationSnapshot> | ProjectToolsPreparationSnapshot;
   histories?: {
     export(opaqueId: string): Promise<{ title: string; transcript: string } | null>;
@@ -405,9 +406,10 @@ export function createManualTurnPreparer({
           projectId,
         })
       : resolveWorkspace(stagingScope);
-    const workspace = persistence.kind === "adopt"
+    const baseWorkspace = persistence.kind === "adopt"
       ? importedWorkspace(persistence.input.importOrigin.originalCwd, resolved.workspace) ?? resolved.workspace
       : resolved.workspace;
+    const workspace = submission.workflow ? await workflowExecutionWorkspace(submission.turn.requestId, baseWorkspace, submission.workflow.runId) : baseWorkspace;
     const backend = submission.turn.turnOptions.backend;
     const target = await backendRuntimeRegistry.executionTarget(backend, runtime, {
       cwd: workspace, model: submission.turn.turnOptions.model ?? undefined,
@@ -435,6 +437,7 @@ export function createManualTurnPreparer({
       backend: toolsBackend,
       builtinTools: runtime.capabilities.builtinTools,
       planMode: Boolean(submission.turn.planMode),
+      mode: submission.turn.turnOptions.mode,
     });
     const workflowPolicy = workflowTurnPolicyFor(submission.turn.requestId);
     const projectTools = submission.workflow && resolvedTools ? workflowToolSelection(resolvedTools, workflowPolicy) : resolvedTools;

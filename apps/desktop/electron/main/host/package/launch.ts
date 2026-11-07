@@ -8,11 +8,13 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { buildSeatbeltProfile, spawnRuntimeReadAccess, withHostSandboxMarker } from "../../backends/sandbox/seatbelt";
+import { foreignSensitive } from "../../backends/sandbox/fences";
 import { canonicalPath, SANDBOX_EXEC, sbplString } from "../../backends/sandbox/sbpl";
 import type { AgentProcessLaunch } from "../../backends/contracts/types";
 
 export type PackageFence = {
   identity: string;
+  trustedPlugin?: boolean;
   providerId?: string;
   readRoots: readonly string[];
   writeRoots?: readonly string[];
@@ -39,6 +41,13 @@ export function fencePackageLaunch(launch: AgentProcessLaunch, fence: PackageFen
     protectedReadOnlyRoots: [...(fence.protectedRoots ?? []), ...access.roots],
     deniedReadRoots: fence.deniedReadRoots, readOnlyWorkspace: Boolean(fence.workspace && mode === "read-only"),
   });
+  if (fence.trustedPlugin) {
+    const foreign = foreignSensitive(undefined, { env: process.env, userHome: homedir() });
+    for (const path of [...foreign.roots, ...foreign.files]) {
+      const denied = canonicalPath(path, "plugin sensitive path");
+      profile += `(deny file-read* (subpath ${sbplString(denied)}))\n(deny file-write* (subpath ${sbplString(denied)}))\n`;
+    }
+  }
   if (fence.controlRoot) {
     const control = canonicalPath(fence.controlRoot, "package control root");
     profile += `(deny file-write* (subpath ${sbplString(control)}))\n(deny file-write* (literal ${sbplString(dirname(control))}))\n`;

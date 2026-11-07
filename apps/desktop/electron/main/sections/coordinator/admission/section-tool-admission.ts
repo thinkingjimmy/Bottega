@@ -12,7 +12,7 @@ import type { SettingsStore } from "../../../settings/settings-store";
 import type { ChatsService } from "../../../chats/service/chats-service";
 import { backendById } from "../../../backends";
 import { assertSectionBackendReady } from "../../backend-access";
-import type { BuiltinToolContext } from "../../../tools/registry";
+import type { PluginToolContext } from "../../../tools/registry";
 import {
   rootChainId,
   sectionRef,
@@ -60,7 +60,7 @@ export class SectionToolAdmission {
 
   async send(
     input: { sectionId: string; message: string; expectReply: boolean },
-    context: BuiltinToolContext
+    context: PluginToolContext
   ): Promise<RelayToolStatus> {
     if (!this.dependencies.accepting()) {
       return { status: "rejected", detail: "Bottega is quitting, so this Section accepts no new messages." };
@@ -138,7 +138,7 @@ export class SectionToolAdmission {
       inheritProject?: boolean;
       contextSectionIds: string[];
     },
-    context: BuiltinToolContext
+    context: PluginToolContext
   ): Promise<{
     section_id: string;
     first_turn: "started" | "paused" | "rejected" | "idle";
@@ -271,7 +271,7 @@ export class SectionToolAdmission {
 
   async promote(
     input: PromoteInput,
-    context: BuiltinToolContext
+    context: PluginToolContext
   ): Promise<{
     section_id: string;
     first_turn: "idle" | "rejected";
@@ -296,7 +296,7 @@ export class SectionToolAdmission {
   private async admitPromotion(
     intentId: string,
     input: PromoteInput,
-    context: BuiltinToolContext
+    context: PluginToolContext
   ): Promise<{
     section_id: string;
     first_turn: "idle" | "rejected";

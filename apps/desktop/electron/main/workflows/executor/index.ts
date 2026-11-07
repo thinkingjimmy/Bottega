@@ -144,7 +144,7 @@ export class WorkflowExecutor {
     const requestId = this.ports.newRequestId();
     /* The policy and the expected report exist before the turn does: the turn's context and its tool lease read them at start. */
     /* Review also reads the run's evidence, from a host directory outside the workspace that it cannot write (W16). */
-    const developChat = role === "review" ? this.ports.chatOf(run.record, "develop") : null;
+    const developChat = role === "review" ? this.ports.chatOf(run.record, "develop", run.runId) : null;
     /* AGT-06 (a): the frozen effective Base scope; a config frozen without one reads only (the cap fails closed). */
     const guarantees = (config as FrozenLike | undefined)?.guarantees, base = (config as FrozenLike | undefined)?.scope?.effective?.tools?.base;
     const memory = (config as FrozenLike | undefined)?.scope?.effective?.memory;

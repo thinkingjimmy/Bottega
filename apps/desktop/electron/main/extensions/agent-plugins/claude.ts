@@ -17,7 +17,7 @@ const overlayWrites = new Map<string, Promise<void>>();
 type OverlayRead =
   | Readonly<{ state: "missing" }>
   | Readonly<{ state: "error" }>
-  | Readonly<{ state: "ready"; disabledPluginIds: readonly string[] }>;
+  | Readonly<{ state: "ready"; disabledPluginIds: readonly string[]; enabledPluginIds: readonly string[] }>;
 
 export type ClaudePluginOptions = Readonly<{ userHome?: string; claudePluginsPath?: string; claudeSettingsPath?: string }>;
 
@@ -31,7 +31,7 @@ export function claudePlugins(userData: string, options: ClaudePluginOptions = {
   async function disabledIds(): Promise<readonly string[]> {
     const overlay = await readOverlay(overlayPath);
     if (overlay.state === "missing") return [];
-    if (overlay.state === "error") throw new Error("Claude plugin disable overlay 无法验证");
+    if (overlay.state === "error") throw new Error("Claude plugin overlay cannot be verified");
     return overlay.disabledPluginIds;
   }
 
@@ -42,6 +42,7 @@ export function claudePlugins(userData: string, options: ClaudePluginOptions = {
         return { backendId: "claude", policy: "managed", inventoryState: "error", plugins: [] };
       }
       const disabled = new Set(overlay.state === "ready" ? overlay.disabledPluginIds : []);
+      const forcedEnabled = new Set(overlay.state === "ready" ? overlay.enabledPluginIds : []);
       const enabledPlugins = asObject(asObject(jsonValue(settings))?.enabledPlugins);
       const plugins = asObject(asObject(jsonValue(registry))?.plugins);
       const result: AgentPluginInventoryEntry[] = [];
@@ -56,7 +57,7 @@ export function claudePlugins(userData: string, options: ClaudePluginOptions = {
           displayName: id.split("@")[0] || id,
           source,
           origin: "user",
-          enabled: enabledPlugins?.[id] !== false && !disabled.has(id),
+          enabled: forcedEnabled.has(id) || enabledPlugins?.[id] !== false && !disabled.has(id),
           state: (await pathState(installRoot)) ? "ready" : "error",
         });
       }
@@ -67,13 +68,18 @@ export function claudePlugins(userData: string, options: ClaudePluginOptions = {
 
     async setEnabled(pluginId, enabled) {
       if (!validPluginId(pluginId)) throw new Error("pluginId 无效");
+      const registry = await readJson(pluginsPath);
+      if (registry.state !== "ready" || !Object.hasOwn(asObject(asObject(registry.value)?.plugins) ?? {}, pluginId)) throw new Error("Native plugin is not installed");
       await withOverlayWrite(overlayPath, async () => {
-        const disabled = new Set(await disabledIds());
-        if (enabled) disabled.delete(pluginId);
-        else disabled.add(pluginId);
+        const overlay = await readOverlay(overlayPath);
+        if (overlay.state === "error") throw new Error("Claude plugin overlay cannot be verified");
+        const disabled = new Set(overlay.state === "ready" ? overlay.disabledPluginIds : []);
+        const forcedEnabled = new Set(overlay.state === "ready" ? overlay.enabledPluginIds : []);
+        if (enabled) { disabled.delete(pluginId); forcedEnabled.add(pluginId); }
+        else { disabled.add(pluginId); forcedEnabled.delete(pluginId); }
         await mkdir(join(overlayPath, ".."), { recursive: true });
         const temporary = `${overlayPath}.${randomUUID()}.tmp`;
-        await writeFile(temporary, `${JSON.stringify({ version: 1, disabledPluginIds: [...disabled].sort() }, null, 2)}\n`,
+        await writeFile(temporary, `${JSON.stringify({ version: 1, disabledPluginIds: [...disabled].sort(), enabledPluginIds: [...forcedEnabled].sort() }, null, 2)}\n`,
           { encoding: "utf8", mode: 0o600 });
         await rename(temporary, overlayPath);
       });
@@ -83,9 +89,12 @@ export function claudePlugins(userData: string, options: ClaudePluginOptions = {
     async sessionConfig(inventory) {
       const built = await (projection ??= new ClaudePluginProjection(userData)).build(inventory);
       try {
-        const claudeDisabledPluginIds = await disabledIds();
-        return built.paths.length || claudeDisabledPluginIds.length
-          ? { claudePluginPaths: built.paths, claudeDisabledPluginIds, releaseClaudePluginProjection: built.release }
+        const overlay = await readOverlay(overlayPath);
+        if (overlay.state === "error") throw new Error("Claude plugin overlay cannot be verified");
+        const claudeDisabledPluginIds = overlay.state === "ready" ? overlay.disabledPluginIds : [];
+        const claudeEnabledPluginIds = overlay.state === "ready" ? overlay.enabledPluginIds : [];
+        return built.paths.length || claudeDisabledPluginIds.length || claudeEnabledPluginIds.length
+          ? { claudePluginPaths: built.paths, claudeDisabledPluginIds, claudeEnabledPluginIds, releaseClaudePluginProjection: built.release }
           : undefined;
       } catch (cause) {
         await built.release();
@@ -110,8 +119,9 @@ async function readOverlay(path: string): Promise<OverlayRead> {
   if (read.state !== "ready") return read;
   const value = asObject(read.value);
   const ids = value?.disabledPluginIds;
-  if (value?.version !== 1 || !Array.isArray(ids) || ids.some((id) => typeof id !== "string" || !validPluginId(id)) || new Set(ids).size !== ids.length) {
+  const enabled = value?.enabledPluginIds ?? [];
+  if (value?.version !== 1 || !Array.isArray(ids) || ids.some((id) => typeof id !== "string" || !validPluginId(id)) || new Set(ids).size !== ids.length || !Array.isArray(enabled) || enabled.some(id => typeof id !== "string" || !validPluginId(id) || ids.includes(id)) || new Set(enabled).size !== enabled.length) {
     return { state: "error" };
   }
-  return { state: "ready", disabledPluginIds: ids as string[] };
+  return { state: "ready", disabledPluginIds: ids as string[], enabledPluginIds: enabled as string[] };
 }

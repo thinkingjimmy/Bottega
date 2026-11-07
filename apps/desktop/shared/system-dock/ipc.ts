@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod, Dock layout/local state, narrow Widget quick entries, task/Agent/usage identities and the shared locale type; host form contracts are type-only dependencies.
- * [OUTPUT]: Provides least-privilege Dock channels, pathless download visuals, task face/detail snapshots and identity-fenced Chat opening, validated intents including placement-fenced drag removal, isolated bridges and the main-window Settings contract. Includes strict App pin intents, pinned App IDs and live App emoji.
+ * [OUTPUT]: Provides least-privilege Dock channels, pathless download visuals, task face/detail snapshots and identity-fenced Chat opening, validated intents including placement-fenced drag removal, isolated bridges and the main-window Settings and weather-control contracts. Includes strict App pin intents, pinned App IDs and live App emoji.
  * [POS]: shared/system-dock transport contract; auxiliary renderers receive projections and opaque short-lived references only, never paths, accounts, shell, AX or Apple Event senders (INV-13).
  */
 import type {WidgetApiControl,WidgetApiReview} from './widgets/api/control';
@@ -15,7 +15,7 @@ import { aiActivityWidgetSchema, aiLimitsWidgetSchema, tasksWidgetSchema, type A
 import { dockPreferencePatchSchema, type DockLocalState, type DockMode, type RecoveryRegistration, type ReplacementPhase, type SuspendReason } from "./local-state";
 import type { MergeConflict } from "./merge";
 import type { DockDisplay, DockPlacementStatus } from "./displays";
-import type {WidgetAuthoringTarget,WidgetManagementSnapshot,WidgetPreview,WidgetApplyInput,WidgetApplyReceipt,WidgetVersionView,newDockWidgetSchema,editDockWidgetSchema,forkDockWidgetSchema,previewWidgetVersionSchema} from './widgets/authoring';
+import type {WidgetManagementSnapshot,WidgetPreview,WidgetApplyInput,WidgetApplyReceipt,WidgetVersionView,editDockWidgetSchema,previewWidgetVersionSchema} from './widgets/authoring';
 import type {CustomWidgetFace,CustomWidgetDetail} from './widgets/runtime';
 import type {WidgetInstanceForm,WidgetInstanceReceipt,widgetInstancePauseSchema,widgetInstanceRemoveSchema,widgetBaseRevokeSchema} from './widgets/management';
 import {dockWidgetEntrySchema} from './widgets/entry';
@@ -33,6 +33,7 @@ export const SYSTEM_DOCK_CHANNEL = {
   intent: "system-dock:intent",
   icons: "system-dock:icons",
   downloadVisual: "system-dock:download-visual",
+  pluginSurface: "system-dock:plugin-surface",
 } as const;
 
 export type TrashState = "empty" | "full" | "unknown";
@@ -175,6 +176,7 @@ export const dockIntentSchema = z.discriminatedUnion("kind", [
 ]);
 export type DockIntent = z.infer<typeof dockIntentSchema>;
 export type SystemDockBridge = {
+  pluginSurface(input: z.infer<typeof import("./widgets/plugin").pluginDockSurfaceSchema>): Promise<import("@bottega/contracts/plugins/surface/native").PluginSurfaceDescriptor | unknown>;
   role: "bar" | "panel";
   snapshot(): Promise<DockBarSnapshot | PanelSnapshot>;
   intent(intent: DockIntent): Promise<void>;
@@ -238,6 +240,10 @@ export { dockPreferencePatchSchema };
 export type SetupConfirm = z.infer<typeof setupConfirmSchema>;
 export type ConflictChoice = z.infer<typeof conflictChoiceSchema>;
 export type SystemDockSettingsBridge = {
+  weatherControl(input: import("./widgets/weather").WeatherControl): Promise<import("./widgets/weather").WeatherControlResult>;
+  pluginWidgetForm(input: z.infer<typeof import("./widgets/plugin").pluginWidgetFormInputSchema>): Promise<import("./widgets/plugin").PluginWidgetForm>;
+  savePluginWidget(input: z.infer<typeof import("./widgets/plugin").savePluginWidgetSchema>): Promise<import("./widgets/plugin").PluginWidgetReceipt>;
+  removePluginWidget(input: z.infer<typeof import("./widgets/plugin").removePluginWidgetSchema>): Promise<import("./widgets/plugin").PluginWidgetReceipt>;
   widgetInstallReview(input:{itemId:string}):Promise<import('./widgets/install/types').WidgetInstallReview>;
   confirmWidgetInstall(input:{operationId:string;reviewId:string}):Promise<import('./widgets/install/types').WidgetInstallResult>;
   widgetInstallOperation(input:{operationId:string}):Promise<import('./widgets/install/types').WidgetInstallResult|null>;
@@ -257,10 +263,6 @@ export type SystemDockSettingsBridge = {
   widgetUpdateForm(input:{previewId:string;itemId:string}):Promise<WidgetInstanceForm>;
   stageWidgetUpdate(input:StageWidgetUpdate):Promise<WidgetUpdateReview>;
   onWidgetsChanged(listener:()=>void):()=>void;
-  newWidget(input:z.infer<typeof newDockWidgetSchema>):Promise<WidgetAuthoringTarget>;
-  editWidget(input:z.infer<typeof editDockWidgetSchema>):Promise<WidgetAuthoringTarget>;
-  forkWidget(input:z.infer<typeof forkDockWidgetSchema>):Promise<WidgetAuthoringTarget>;
-  buildWidget(input:z.infer<typeof editDockWidgetSchema>):Promise<WidgetPreview>;
   instancePreview(input:{itemId:string}):Promise<WidgetInstanceForm>;
   savedWidgetPreview(input:{definitionId:string;sourceInstallationId?:string}):Promise<WidgetInstanceForm>;
   submitWidgetInstance(input:WidgetApplyInput):Promise<WidgetInstanceReceipt>;

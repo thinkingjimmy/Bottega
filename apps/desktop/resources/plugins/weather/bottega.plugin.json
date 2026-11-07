@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "id": "bottega-weather",
+  "name": "Weather",
+  "description": "Current weather for your location or a selected city. Personal and non-commercial use.",
+  "version": "1.0.0",
+  "source": {
+    "kind": "official",
+    "format": "bottega",
+    "editable": false
+  },
+  "dataContract": "weather-v1",
+  "slots": {
+    "declares": [],
+    "injects": [
+      {
+        "slot": "dock.widgets",
+        "ownerPluginId": "host"
+      }
+    ]
+  },
+  "contributions": [
+    {
+      "kind": "widget",
+      "id": "current",
+      "name": "Weather",
+      "entry": "card.js",
+      "slot": "dock.widgets",
+      "customCard": false,
+      "summary": {
+        "method": "summary",
+        "refreshMs": 900000,
+        "timeoutMs": 10000
+      },
+      "settingsSchema": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "default": {
+              "mode": "current"
+            },
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "const": "current"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "const": "city"
+                  },
+                  "city": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "region": {
+                        "type": "string"
+                      },
+                      "country": {
+                        "type": "string"
+                      },
+                      "latitude": {
+                        "type": "number"
+                      },
+                      "longitude": {
+                        "type": "number"
+                      },
+                      "timeZone": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "region",
+                      "country",
+                      "latitude",
+                      "longitude",
+                      "timeZone"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "mode",
+                  "city"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "location"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "kind": "service",
+      "id": "weather",
+      "name": "Weather data",
+      "entry": "service.js"
+    }
+  ]
+}

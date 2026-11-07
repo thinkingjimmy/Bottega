@@ -1,8 +1,9 @@
 /**
- * [INPUT]: The canonical Provider catalog, Agent submission contracts and explicit validation dependencies.
+ * [INPUT]: Canonical Provider/native option facts, strict host mode snapshots and Agent submission contracts.
  * [OUTPUT]: validateAgentTurnOptions.
  * [POS]: Agent validation options boundary; admission and authority checks stay mandatory.
  */
+import { pluginModeSelectionSchema } from "@bottega/contracts/plugins/platform/selection/mode";
 import { builtinProviderCatalog, knownBackend } from "../../../../shared/providers/catalog";
 import type { AgentPermissionMode, AgentTurnOptions } from "../../../../shared/ipc/agent/agent-ipc";
 import { backendRegistry, turnBackend } from "../../backends";
@@ -23,6 +24,7 @@ export function validateAgentTurnOptions(value: unknown): ChatTurnOptions {
     value,
     [
       "backend",
+      "mode",
       "model",
       "reasoningEffort",
       ...(descriptor.serviceTier ? ["serviceTier"] : []),
@@ -30,6 +32,7 @@ export function validateAgentTurnOptions(value: unknown): ChatTurnOptions {
     ],
     "Agent turnOptions"
   );
+  const mode = raw.mode === undefined ? undefined : pluginModeSelectionSchema.parse(raw.mode);
   descriptor.validateTurnOptions(value);
   const permissionMode = raw.permissionMode as AgentPermissionMode;
   /* 必填与可选的差别已由 descriptor.validateTurnOptions 全部说完：codex 缺
@@ -37,6 +40,7 @@ export function validateAgentTurnOptions(value: unknown): ChatTurnOptions {
      条按后端字面量分流的返回，第四家来的时候还要再改一次。 */
   return {
     backend,
+    ...(mode ? { mode } : {}),
     ...(typeof raw.model === "string" ? { model: raw.model } : {}),
     ...(typeof raw.reasoningEffort === "string"
       ? { reasoningEffort: raw.reasoningEffort }

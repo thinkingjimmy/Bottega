@@ -10,7 +10,7 @@ import type {
   BackendRuntimeStatus,
   BuiltinBackendInfo,
 } from "../ipc/agent/agent-ipc";
-import { builtinToolSpec } from "../builtin-tools";
+import { toolSpec } from "../plugin-tools";
 import type { ManualMcpServerView } from "../ipc/settings/mcp-servers-ipc";
 import type {
   EffectiveResourceState,
@@ -59,7 +59,7 @@ function resolveBuiltinBackendSupport(
   if (backend.runtimeStatus !== "installed") {
     return unsupported(backend, "runtime-unavailable", backend.detail);
   }
-  const spec = builtinToolSpec(toolId);
+  const spec = toolSpec(toolId);
   if (
     spec?.backendAllowlist &&
     !spec.backendAllowlist.includes(backend.backendId)

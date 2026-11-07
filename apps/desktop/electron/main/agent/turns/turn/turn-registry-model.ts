@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Agent IPC, chats IPC, product failure, sections IPC, the shared turn reducer's draft and SubagentRegistry types, and agent/controls/completion's InteractionState
- * [OUTPUT]: Provides the turn model the registry keeps: TurnOrigin (manual, relay, or a workflow step with its run, step, attempt and role) and turnMessageId, SourceTerminal, TurnCleanup, TurnPersist, RegistryTurn, the startup, retry and steer states, SubagentOutcomeStatus, TurnChildTask, SteerOperation, TurnEntry, RetryClaim, DraftObservation, and the isTombstone, blocksNewTurn and awaitsUserResponse predicates
+ * [OUTPUT]: Provides the turn model the registry keeps: TurnOrigin (manual, relay, or a workflow step with its run, step, attempt and role) and turnMessageId, SourceTerminal, TurnCleanup, TurnPersist, RegistryTurn, the startup, retry and steer states, SubagentOutcomeStatus, TurnChildTask, SteerOperation, TurnEntry, RetryClaim, DraftObservation, and the isTombstone, blocksNewTurn and awaitsUserResponse predicates TurnOrigin includes main-owned persistent member ownership.
  * [POS]: apps/desktop/electron/main/agent/turns/turn; Type and predicate half of the turn lifecycle; turn-registry.ts owns the state machine over these, agent/ re-exports TurnOrigin from here. No Electron dependency.
  */
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
@@ -34,7 +34,8 @@ export type TurnOrigin =
       userMessageId: string;
     }
   | { kind: "relay" }
-  | ({ kind: "workflow"; userMessageId: string } & WorkflowTurnSource);
+  | ({ kind: "workflow"; userMessageId: string } & WorkflowTurnSource)
+  | ({ kind: "member"; userMessageId: string } & import("@bottega/contracts/plugins/team").PluginMemberSessionFacts);
 
 /** The persisted message a turn answers, for mechanics keyed by it (sent-prompt evidence, session recovery, fresh retry); a relay has none. */
 export function turnMessageId(origin: TurnOrigin | undefined): string | undefined {

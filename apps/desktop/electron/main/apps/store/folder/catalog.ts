@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on App content, source availability and the profile-local catalog through AppStore's sole queue.
- * [OUTPUT]: Stores forward-tolerant app.json separately from installation authority, grants, ciphertext and publication receipts.
+ * [OUTPUT]: Stores forward-tolerant app.json and journaled permanent retained removals separately from installation authority, grants, ciphertext and publication receipts.
  * [POS]: App folder persistence adapter; restored source requires local installation before execution.
  */
 import { lstat, readFile, readdir, rename, rm } from "node:fs/promises";
@@ -35,7 +35,8 @@ const contentBinding = z.object({ contentRevision: z.number().int().nonnegative(
 type ContentBinding = z.infer<typeof contentBinding>;
 const localSchema = z.object({ ...storeSchema.shape, apps: z.array(localRecord), contentBindings: z.record(z.string(), contentBinding).default({}) }).strict();
 const binding = (content: Content) => ({ contentRevision: content.contentRevision, hash: createHash("sha256").update(canonicalJson(content)).digest("hex") });
-const intentSchema = z.object({ version: z.literal(1), operationId: z.string().uuid(), local: localSchema, contents: z.array(contentSchema), removed: z.array(appRecordSchema.shape.id) }).strict();
+const retainedRemovalSchema = z.object({ appId: appRecordSchema.shape.id, requestId: z.string().min(1).max(256) }).strict();
+const intentSchema = z.object({ retainedRemovals: z.array(retainedRemovalSchema).max(1).default([]), version: z.literal(1), operationId: z.string().uuid(), local: localSchema, contents: z.array(contentSchema), removed: z.array(appRecordSchema.shape.id) }).strict();
 const empty = () => parseStore({ schemaVersion: SCHEMA_VERSION, apps: [], portable: emptyAppPortableCatalog(), retiredIds: [] });
 /** ENOENT, invalid shape and unparsable bytes describe the object; any other errno describes this computer and must abort. */
 const unreadableContent = (error: unknown) =>
@@ -89,7 +90,7 @@ export class AppFolderCatalog {
     /* The intent carries the field baseline of its own commit, so replaying it forward is the only restart
        that keeps installation authority, grants and publication receipts bound to the content they describe. */
     for (const content of pending) await durableReplaceFile(await this.contentPath(content.id), JSON.stringify(content, null, 2) + "\n");
-    for (const id of intent.removed) await trashLibraryObject(this.requireRoot(), "apps", id, intent.operationId);
+    await this.removeContents(intent);
     await durableReplaceFile(this.path, JSON.stringify(intent.local) + "\n");
     await rm(path); await syncDirectory(this.userData);
   }
@@ -138,10 +139,22 @@ export class AppFolderCatalog {
     }
     return parseStore(result);
   }
-  async write(file: StoreFile) {
+  async hasRetainedRemoval(appId: string, requestId: string) {
+    return (await import("./retained")).hasRetainedAppFolder(join(this.requireRoot(), "apps"), appId, requestId);
+  }
+  private async removeContents(intent: z.infer<typeof intentSchema>) {
+    for (const id of intent.removed) {
+      const retained = intent.retainedRemovals.find(item => item.appId === id);
+      if (retained) await (await import("./retained")).retainAppFolder(join(this.requireRoot(), "apps"), id, retained.requestId);
+      else await trashLibraryObject(this.requireRoot(), "apps", id, intent.operationId);
+    }
+  }
+  async write(file: StoreFile, retained?: z.infer<typeof retainedRemovalSchema>) {
     if (!this.root()) { if (file.apps.length || file.portable.entries.length) throw new Error("LIBRARY_NOT_CONFIGURED"); return; }
+    if (retained && (file.apps.some(app => app.id === retained.appId) || !this.contents.has(retained.appId))) throw new Error("APP_RETENTION_RECORD_CHANGED");
     const contents: Content[] = [];
     const ids = new Set([...file.apps.map(app => app.id), ...file.portable.entries.filter(entry => !entry.tombstoned).map(entry => entry.descriptor.appId)]);
+    if (retained) ids.delete(retained.appId);
     for (const id of ids) {
       const app = file.apps.find(item => item.id === id), descriptor = file.portable.entries.find(item => item.descriptor.appId === id)?.descriptor;
       const before = this.contents.get(id), metadata = app ? Object.fromEntries(portableKeys.map(key => [key, app[key]])) : {
@@ -158,11 +171,11 @@ export class AppFolderCatalog {
       apps: [...file.apps.map(app => ({ ...Object.fromEntries(Object.entries(app).filter(([key]) => !(portableKeys as readonly string[]).includes(key))),
         id: app.id, contentRevision: contents.find(content => content.id === app.id)!.contentRevision })),
         ...[...this.unreadable.values()].flatMap(saved => saved.record ? [saved.record] : [])] });
-    const intent = intentSchema.parse({ version: 1, operationId: randomUUID(), local, contents, removed: [...this.contents.keys()].filter(id => !ids.has(id)) });
+    const intent = intentSchema.parse({ retainedRemovals: retained ? [retained] : [], version: 1, operationId: randomUUID(), local, contents, removed: [...this.contents.keys()].filter(id => !ids.has(id)) });
     await durableReplaceFile(`${this.path}.intent`, JSON.stringify(intent) + "\n"); await this.checkpoint?.("intent");
     for (const content of contents) if (canonicalJson(this.contents.get(content.id) ?? null) !== canonicalJson(content))
       await durableReplaceFile(await this.contentPath(content.id), JSON.stringify(content, null, 2) + "\n");
-    for (const id of intent.removed) await trashLibraryObject(this.requireRoot(), "apps", id, intent.operationId);
+    await this.removeContents(intent);
     await this.checkpoint?.("content"); await durableReplaceFile(this.path, JSON.stringify(local, null, 2) + "\n"); await this.checkpoint?.("commit");
     await rm(`${this.path}.intent`); await syncDirectory(this.userData); this.contents = new Map(contents.map(content => [content.id, content]));
   }

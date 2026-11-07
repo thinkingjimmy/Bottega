@@ -5,9 +5,9 @@
  */
 
 import {
-  BUILTIN_TOOL_SPECS,
-  type BuiltinToolName,
-} from "../../../../shared/builtin-tools";
+  registeredToolSpecs,
+  type PluginToolName,
+} from "../../../../shared/plugin-tools";
 import type { ProviderId } from "@bottega/contracts/model/provider";
 import type {
   ProjectBuiltinToolView,
@@ -21,6 +21,7 @@ import type {
   TurnProjectContext,
 } from "../../../../shared/product/resource-scope";
 import type { ProjectStore } from "../../projects/store/project-store";
+import { modeToolSelection } from "../../sections/coordinator/turns/mode-admission";
 import { projectBuiltinTools } from "../issuance";
 import type {
   ManualMcpServersStore,
@@ -30,7 +31,7 @@ import type { ProjectToolPolicyStore } from "./store";
 
 export type GlobalBuiltinToolDefaults = Readonly<{
   revision: number;
-  disabledTools: readonly BuiltinToolName[];
+  disabledTools: readonly PluginToolName[];
 }>;
 
 export type FrozenManualMcpCandidate = Readonly<{
@@ -49,14 +50,14 @@ export type ResolvedProjectToolsSnapshot = Readonly<{
   workspace: string | null;
   policyRevisions: Readonly<{ global: number; project: number | null }>;
   mcpScopeRevisions: Readonly<{ global: number; project: number | null }>;
-  builtinIntent: Readonly<{ disabledTools: readonly BuiltinToolName[] }>;
-  allowedTools: readonly BuiltinToolName[];
+  builtinIntent: Readonly<{ disabledTools: readonly PluginToolName[] }>;
+  allowedTools: readonly PluginToolName[];
   mcpCandidates: readonly FrozenManualMcpCandidate[];
 }>;
 
 export function freezeProjectToolPreference(input: Readonly<{
-  builtinTools: readonly BuiltinToolName[];
-  globalDisabledTools: readonly BuiltinToolName[];
+  builtinTools: readonly PluginToolName[];
+  globalDisabledTools: readonly PluginToolName[];
   policy: ProjectToolPolicyPayload | null;
 }>) {
   const globalDisabled = new Set(input.globalDisabledTools);
@@ -74,10 +75,10 @@ export function freezeProjectToolPreference(input: Readonly<{
 export function projectBuiltinInventory(input: Readonly<{
   globalDisabledTools: readonly string[];
   policy: ProjectToolPolicyPayload;
-  backendSupport: (toolId: BuiltinToolName) => readonly ResourceBackendSupportView[];
+  backendSupport: (toolId: PluginToolName) => readonly ResourceBackendSupportView[];
 }>): readonly ProjectBuiltinToolView[] {
   const globalDisabled = new Set(input.globalDisabledTools);
-  return BUILTIN_TOOL_SPECS
+  return registeredToolSpecs()
     .filter((spec) => !("exactIssued" in spec) || spec.exactIssued !== true)
     .map((spec) => {
       const override = input.policy.builtinOverrides[spec.name] ?? null;
@@ -124,7 +125,7 @@ export class ProjectToolsResolver {
     private readonly projects: ProjectStore,
     private readonly policies: ProjectToolPolicyStore,
     private readonly mcpServers: ManualMcpServersStore,
-    private readonly builtinRegistry: readonly BuiltinToolName[],
+    private readonly builtinRegistry: readonly PluginToolName[],
     private readonly globalDefaults: () => GlobalBuiltinToolDefaults
   ) {}
 
@@ -134,6 +135,7 @@ export class ProjectToolsResolver {
     backend: ProviderId;
     builtinTools: "none" | "read" | "mutate";
     planMode: boolean;
+    mode?: import("@bottega/contracts/plugins/platform").PluginModeSelection;
   }>): ResolvedProjectToolsSnapshot {
     const { projectId } = input;
     const projectContext = this.projects.turnContext(projectId);
@@ -169,6 +171,7 @@ export class ProjectToolsResolver {
       },
       builtinIntent: { disabledTools: intent.disabledTools },
       allowedTools: projectBuiltinTools({
+        ...modeToolSelection({backend:input.backend,mode:input.mode}),
         builtinTools: input.builtinTools,
         backend: input.backend,
         planMode: input.planMode,

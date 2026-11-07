@@ -6,6 +6,6 @@
 import { createContext, useContext } from "react";
 import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
 /** `openUsage` remembers `trigger` for the return focus; `agent` picks the Usage tab, else the page keeps its own default. */
-export type SettingsNavigation = { openUsage(trigger: HTMLElement | null, agent?: AgentBackendId): void; openAgents(): void; openUpdates(): void; openAccount(): void };
+export type SettingsNavigation = { close?(): void; openUsage(trigger: HTMLElement | null, agent?: AgentBackendId): void; openAgents(): void; openUpdates(): void; openAccount(): void };
 export const SettingsNavigationContext = createContext<SettingsNavigation | null>(null);
 export const useSettingsNavigation = () => useContext(SettingsNavigationContext);

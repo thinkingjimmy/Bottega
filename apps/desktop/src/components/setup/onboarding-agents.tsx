@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Setup installation checks, backend identities, installation admission, the Settings list primitives, SetupRowTile and localized recovery controls.
- * [OUTPUT]: Provides the onboarding Agent list card: one row per installed/catalogued Agent, including package Providers with an Installed badge and check, a sign-in action for signed-out CLIs, or an install action.
+ * [INPUT]: Depends on Setup installation checks, backend identities, installation admission, the Settings list primitives, SetupRowTile, the shared diagnostic notice and localized recovery controls.
+ * [OUTPUT]: Provides the onboarding Agent list card: one row per installed/catalogued Agent, including package Providers with an Installed badge and check, a sign-in action for signed-out CLIs, or an install action; failed CLI probes retain copyable diagnostics and an installation repair action.
  * [POS]: The single Agent setup surface (install and sign-in); Settings › Providers links here, Settings › Updates owns versions.
  */
 import { Check, Download, LogIn } from "lucide-react";
@@ -15,6 +15,8 @@ import { isAgentInstalled } from "@/lib/settings/onboarding/onboarding-gate";
 import type { AgentBackendId, BackendInfo } from "../../../shared/ipc/agent/agent-ipc";
 import { useProviderCatalog } from "@/lib/provider-catalog/hooks";
 import { SetupFeedbackNotice } from "./backend-feedback";
+import { ProductFailureNotice } from "@ai-chat/ui/components/feedback/failure-notice";
+import { agentFailureNoticeLabels } from "@/components/agent-failure-notice";
 import { backendSetupPresentation } from "./backend-parts";
 import { SetupRowTile } from "./row-tile";
 
@@ -34,6 +36,7 @@ function InstallationRow({ backend }: { backend: BackendInfo }) {
   const waiting = Boolean(backend.setupAction);
   const checking = !waiting && (backend.runtimeStatus === "unknown" || setup.busy[backend.id] === "recheck");
   const checkFailed = backend.runtimeStatus === "error";
+  const repairable = builtin && checkFailed && ["probe-failed", "cannot-start"].includes(backend.availability?.runtimeIssue ?? "");
   const feedback = setup.feedback[backend.id];
   /* Onboarding is the one place Agents are set up, so an installed CLI that is signed out gets its sign-in here. */
   const signIn = installed && (builtin || backend.loginAvailable) && backendSetupPresentation(backend, setup.now).loginAction === "login";
@@ -47,7 +50,12 @@ function InstallationRow({ backend }: { backend: BackendInfo }) {
     </SettingsButton>
     : installed ? <Check className="size-4 text-emerald-700 dark:text-emerald-400" strokeWidth={2.2} aria-hidden="true" />
     : waiting || checking ? <Spinner className="size-4 text-muted-foreground" />
-    : checkFailed ? <SettingsButton variant="outline" disabled={busy} onClick={() => void setup.recheckBackend(backend.id)}>{t("setup.checkAgain")}</SettingsButton>
+    : checkFailed ? <div className="flex items-center gap-2">
+      {repairable && <SettingsButton variant="outline" disabled={busy} onClick={() => void setup.terminalAction(backend.id, "install")}>
+        <Download />{t("setup.install")}
+      </SettingsButton>}
+      <SettingsButton variant="outline" disabled={busy} onClick={() => void setup.recheckBackend(backend.id)}>{t("setup.checkAgain")}</SettingsButton>
+    </div>
     : !builtin ? <SettingsButton variant="outline" disabled={busy} onClick={() => void setup.recheckBackend(backend.id)}>{t("setup.checkAgain")}</SettingsButton>
     : <SettingsButton variant="outline" disabled={busy} onClick={() => void setup.terminalAction(backend.id, "install")}>
       {busy ? <Spinner className="size-3.5" /> : <Download />}{t("setup.install")}
@@ -56,6 +64,11 @@ function InstallationRow({ backend }: { backend: BackendInfo }) {
     <SettingsRow leading={<SetupRowTile><AgentBackendIcon backend={backend.id} className="size-5" /></SetupRowTile>}
       label={backend.displayName} description={description} control={control}
       badge={installed && <SettingsBadge>{t("onboarding.agentInstalled")}</SettingsBadge>} />
+    {checkFailed && !checking && !waiting && !feedback && backend.reason && <div className="pr-4 pb-3 pl-[76px]">
+      <ProductFailureNotice compact labels={agentFailureNoticeLabels(t)} copy={{
+        title: t("setup.feedback.check"), explanation: "", resolution: "", diagnostic: backend.reason,
+      }} />
+    </div>}
     {feedback && <div className="pr-4 pb-3 pl-[76px]"><SetupFeedbackNotice feedback={feedback} disabled={busy}
       onRetry={() => void (feedback.kind === "clipboard" || feedback.operation === "check"
         ? setup.recheckBackend(backend.id) : setup.terminalAction(backend.id, retryOperation))} /></div>}

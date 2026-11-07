@@ -1,15 +1,15 @@
 /**
- * [INPUT]: Depends on BrowserPanelService/CdpHarness, the shared BrowserAction and builtin-tool domain specs, the BuiltinToolset contract, and the main error vocabulary (statusError)
+ * [INPUT]: Depends on BrowserPanelService/CdpHarness, the shared BrowserAction and builtin-tool domain specs, the PluginToolset contract, and the main error vocabulary (statusError)
  * [OUTPUT]: Provides canAccess and createBrowserToolset; read/write tab authorization is decided once per call from the lease chat (own tabs; the person's tab only while the person selected it and it shows; never another Chat's, E3-01), and browser_tabs reports which tabs are sleeping
  * [POS]: The only adapter between the browser domain and the builtin-tool platform; handlers never trust renderer identity or an Agent-claimed owner
  */
 
 import {
-  BUILTIN_TOOL_DOMAINS,
+  toolBudget,
   type BrowserAction,
-} from "../../../shared/builtin-tools";
+} from "../../../shared/plugin-tools";
 import { statusError } from "../ipc/errors";
-import type { BuiltinToolset } from "../tools/registry";
+import type { PluginToolset } from "../tools/registry";
 import { BrowserPanelService } from "./browser-service";
 import { CdpHarness } from "./cdp-harness";
 
@@ -40,10 +40,10 @@ const wireTitle = (title: string) => title.slice(0, 512);
 export function createBrowserToolset(
   browser: BrowserPanelService,
   harness: CdpHarness
-): BuiltinToolset {
+): PluginToolset {
   const wireBudget = (leaseBudget: number) =>
     Math.min(
-      BUILTIN_TOOL_DOMAINS.browser.logicalResultByteLimit,
+      toolBudget("browser").logicalResultByteLimit,
       leaseBudget
     ) - RESULT_ENVELOPE_BYTES;
   const requireAccess = (

@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on SubagentSpawnService and the incarnation-bound BuiltinToolContext
+ * [INPUT]: Depends on SubagentSpawnService and the incarnation-bound PluginToolContext
  * [OUTPUT]: Provides createSubagentToolset, binding the static spawn_subagent spec to the parent turn narrow channel
  * [POS]: apps/desktop/electron/main/agent/subagents; The only layer of adaptation to the general built-in tool platform in the agent domain; Do not accept any arbitrary domain parameters such as chatId/requestId
  */
 
 import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
-import type { BuiltinToolset } from "../../tools/registry";
+import type { PluginToolset } from "../../tools/registry";
 import {
   SubagentSpawnService,
   type SpawnSubagentInput,
@@ -13,7 +13,7 @@ import {
 
 export function createSubagentToolset(
   service = new SubagentSpawnService()
-): BuiltinToolset {
+): PluginToolset {
   return {
     spawn_subagent: (args, context) =>
       service.spawn(

@@ -5,7 +5,7 @@
  */
 
 import { z } from "zod";
-import { read, type BuiltinToolSpec } from "../builtin-tools/platform";
+import { read, type PluginToolSpec } from "../plugin-tools/platform";
 export const HISTORY_SEARCH_GUIDANCE = "Search uses lexical AND: every whitespace-separated token must match the same saved message. " +
   "Search one distinctive term for each missing fact, not a list of unrelated questions. " +
   "When lookup is available, retrieve consequential missing facts before declaring them unsaved. " +
@@ -46,4 +46,4 @@ export const HISTORY_TOOL_SPECS = [{
     "Limits: 8 calls per turn; text reads 20 records / 16 KiB per response and 96 KiB per turn; attachment results respect the current CLI wire cap and a separate 4 MiB turn budget. Search scans at most 200 candidates / 256 KiB. " +
     "Follow pageCursor in the original mode; chunkCursor continues the same record in chunk mode. Missing content is not recreated.",
   inputSchema: historyToolInputSchema, annotations: read,
-}] as const satisfies readonly BuiltinToolSpec[];
+}] as const satisfies readonly PluginToolSpec[];

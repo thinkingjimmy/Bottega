@@ -24,7 +24,7 @@ import {
   serialize,
   storeError,
   type JsonCasStoreDependencies,
-} from "../json-cas-store";
+} from "../persistence/json-cas-store";
 
 const SCHEMA_VERSION = 2;
 const MAX_SERVERS_PER_SCOPE = 32;

@@ -68,6 +68,7 @@ export type BuiltinTurnToolPolicy = Readonly<{
 }>;
 
 export type TurnProjectionInput = Readonly<{
+  mode?: import("@bottega/contracts/plugins/platform").PluginModeSelection;
   handoff?: AgentSendPayload["handoff"];
   freshSession?: boolean;
   conversationId: string;

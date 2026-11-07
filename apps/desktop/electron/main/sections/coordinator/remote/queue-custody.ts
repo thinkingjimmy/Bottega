@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Ledger drafts, authenticated remote source identity and revision-bound queue references.
- * [OUTPUT]: Source pause gates and durable single-owner queue claims, transfer and rollback.
+ * [OUTPUT]: Source pause gates and durable single-owner queue claims, transfer and rollback. Excludes persistent member intents from user queue control.
  * [POS]: Queue custody primitives shared by admission, Steer and scheduler mutations.
  */
 import type { LedgerState } from "../state/ledger-schema";
@@ -12,7 +12,7 @@ import { failManualWithCapsule } from "../submission-outcome";
 export { sourceQueuePaused, setSourceQueuePaused } from "./source-pause";
 
 export function queueRows(state: DeepReadonly<LedgerState>, chatId: string) {
-  return Object.values(state.manualIntents).filter(intent => intent.conversationId === chatId && intent.origin.kind !== "workflow" &&
+  return Object.values(state.manualIntents).filter(intent => intent.conversationId === chatId && intent.origin.kind !== "workflow" && intent.origin.kind !== "member" &&
     ["queued", "appended"].includes(intent.phase) && !intent.attempts.some(attempt => attempt.phase !== "failed"))
     .sort((a, b) => a.sequence - b.sequence || a.id.localeCompare(b.id));
 }

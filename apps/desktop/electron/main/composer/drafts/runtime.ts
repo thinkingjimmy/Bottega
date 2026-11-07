@@ -7,6 +7,7 @@
 
 import { app } from "electron";
 import { z } from "zod";
+import { pluginModeSelectionSchema, pluginPrepareAuthoringInputSchema } from "@bottega/contracts/plugins/platform";
 import type { CloudBuildConfig } from "@ai-chat/cloud-protocol";
 import { BLANK_DRAFT_PREFIX, COMPOSER_DRAFTS_CHANNEL, type ComposerDraftKey, type SaveComposerDraftInput } from "../../../../shared/composer/drafts-ipc";
 import type { AgentWorkspaceScope } from "../../../../shared/ipc/agent/agent-ipc";
@@ -41,6 +42,8 @@ const saveSchema = keySchema.extend({
     }).strict()).max(20) }).strict(),
     pendingAcks: z.array(z.object({ kind: z.enum(["manual", "steer"]), id }).strict()).max(64),
     workspaceIdentityKey: z.string().max(4096),
+    mode: pluginModeSelectionSchema.optional(),
+    pluginAuthoring: pluginPrepareAuthoringInputSchema.extend({ displayName: z.string().max(160).optional() }).optional(),
     projectId: id.nullable(),
   }).strict().nullable(),
   fileScopes: z.record(id, scopeSchema),

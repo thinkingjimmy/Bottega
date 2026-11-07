@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Host header with a side-panel-trigger slot, the shared Chat minimum-width policy, one conversation surface, the retained side-panel slot and navigation guards.
- * [OUTPUT]: One responsive Chat workspace tree with a shared 180px conversation minimum, a stable column during panel takeover and an open trigger hidden while its panel is open.
+ * [OUTPUT]: One responsive Chat workspace tree with a shared 360px conversation minimum, a stable column during panel takeover and an open trigger hidden while its panel is open.
  * [POS]: Shared page layout; transport adapters supply data and controls without owning columns or panel placement.
  */
 import type { ReactNode, Ref } from "react";

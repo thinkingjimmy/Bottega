@@ -6,7 +6,7 @@
 import type { AgentWorkspaceScope } from "../../../../shared/ipc/agent/agent-ipc";
 import type { TurnProjectContext } from "../../../../shared/product/product-resource-scope";
 import { type SkillInfo, type SkillsListInput, type SkillsScope } from "../../../../shared/ipc/agent/skills-ipc";
-import { type BuiltinToolName } from "../../../../shared/builtin-tools";
+import { type PluginToolName } from "../../../../shared/plugin-tools";
 import { type EffectiveSkillCandidate, type SkillGenerationRef } from "../../skills-management/custody/effective-snapshot";
 
 export type CatalogSkill = Omit<SkillInfo, "ownerScope"> & {
@@ -54,7 +54,7 @@ export type SkillsCatalogDependencies = {
   allowedTools?: (
     backend: SkillsListInput["backend"],
     planMode: boolean
-  ) => readonly BuiltinToolName[] | Promise<readonly BuiltinToolName[]>;
+  ) => readonly PluginToolName[] | Promise<readonly PluginToolName[]>;
   /** Renderer ambient projection resolves the same Project preference as preparation. */
   toolPolicyForScope?: (input: Readonly<{
     scope: SkillsScope;
@@ -66,7 +66,7 @@ export type SkillsCatalogDependencies = {
 
 export type FrozenSkillsToolPolicy = Readonly<{
   /** Main-authoritative per-turn projection. No live Settings read is allowed. */
-  allowedTools: readonly BuiltinToolName[];
+  allowedTools: readonly PluginToolName[];
   /** Project/resource digest used to fence callers and diagnostics. */
   policyDigest: string;
 }>;

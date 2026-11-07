@@ -21,7 +21,8 @@ export function newChatBackend(settings: Preferences, available: (id: ChatAgentI
 }
 
 export function learnChatPreferences(settings: Preferences, options: ChatTurnOptions, write: ChatPreferenceWrite) {
-  const builtin = builtinOptions(options);
+  const parsed = builtinOptions(options);
+  const builtin = parsed ? (({ mode: _mode, ...preferences }) => preferences)(parsed) : null;
   const current = builtin ? settings.defaultChatOptionsByBackend[builtin.backend] : undefined;
   if (write.expectedModel !== undefined && current?.model !== write.expectedModel) return null;
   const defaults = builtin && !write.agentOnly && JSON.stringify(current) !== JSON.stringify(builtin)
@@ -41,7 +42,8 @@ export function catalogChatOptions(options: AgentTurnOptions, model: BackendMode
 }
 
 export function isFactoryChatOptions(options: AgentTurnOptions) {
-  return JSON.stringify(builtinOptions(options)) === JSON.stringify(backendDefaults({}, options.backend));
+  const { mode: _mode, ...preferences } = options;
+  return JSON.stringify(builtinOptions(preferences)) === JSON.stringify(backendDefaults({}, options.backend));
 }
 
 export function createChatPreferenceIntents() {

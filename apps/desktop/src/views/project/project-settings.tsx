@@ -22,7 +22,7 @@ import { ProjectSkillsSettings } from "@/components/settings/project/skills/sett
 import {
   BuiltinToolsSection,
   type BuiltinToolsSectionPort,
-} from "@/components/settings/tools/builtin-tools-section";
+} from "@/components/settings/tools/plugin-tools-section";
 import {
   McpServersSection,
   useMcpServersPort,

@@ -6,14 +6,14 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";
-import { paletteInputSchema, paletteReportSchema } from "../../../../shared/builtin-tools/agent/dataviz";
+import { paletteInputSchema, paletteReportSchema } from "../../../../shared/plugin-tools/agent/dataviz";
 import provenance from "../../../../resources/skills/dataviz/provenance.json";
 import { runtimePort } from "../../runtime";
-import type { BuiltinToolset } from "../../tools/registry";
+import type { PluginToolset } from "../../tools/registry";
 const execute = promisify(execFile);
 const source = provenance.files.find(file => file.target === "scripts/validate_palette.js")!;
 
-export function createDatavizToolset(): BuiltinToolset {
+export function createDatavizToolset(): PluginToolset {
   return { validate_palette: async (args, context) => {
     context.signal.throwIfAborted();
     const input = paletteInputSchema.parse(args);

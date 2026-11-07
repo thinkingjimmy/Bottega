@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React, prompt context/admission, native Blob reading, typed attachment commands, localized UI text, and abort-aware submission gates.
- * [OUTPUT]: Provides PromptInput/PromptInputBody with native image conversion, fresh-count admission, per-submission tokens, exactly-once final settlement, and an optional owner-held submission gate.
+ * [OUTPUT]: Provides PromptInput/PromptInputBody with native image conversion, fresh-count admission, per-submission tokens, exactly-once draft consumption at durable acceptance or completion, final settlement, and an optional owner-held submission gate.
  * PromptInputMessage may retain an original review request key supplied by its durable owner.
  * [POS]: packages/ui/src/components/ai-elements/prompt; The submission and attachment-admission core of ai-elements PromptInput; provider and local paths share the same pure selection rules
  */
@@ -75,7 +75,11 @@ export interface PromptInputMessage {
   submissionData?: unknown;
 }
 
-export type PromptInputSubmitContext = { signal: AbortSignal };
+export type PromptInputSubmitContext = {
+  signal: AbortSignal;
+  /** Consume the original draft once durable acceptance is known, without waiting for later work. */
+  consume: () => void;
+};
 
 export type PromptInputProps = Omit<
   HTMLAttributes<HTMLFormElement>,
@@ -348,6 +352,7 @@ export const PromptInput = ({
       const signal = submissionLifecycleRef.current.signal;
       const form = event.currentTarget;
       let restoreTextOnError: (() => void) | undefined;
+      let consumed = false;
       try {
         throwIfSubmissionAborted(signal);
         // A shared gate reports through its subscription.
@@ -375,6 +380,20 @@ export const PromptInput = ({
           files,
           input,
         };
+        const consume = () => {
+          if (consumed || signal.aborted) return;
+          consumed = true;
+          consumeAfterSubmit(prepared.files);
+          const unchanged = inputAdapter
+            ? JSON.stringify(inputAdapter.snapshot()) === submittedInput
+            : usingProvider
+              ? controller.textInput.value === plainText
+              : true;
+          if (!clearIfUnchanged || unchanged) {
+            if (inputAdapter) inputAdapter.clear();
+            else if (usingProvider) controller.textInput.clear();
+          }
+        };
         const convertedFiles = await awaitSubmissionStep(signal, () =>
           Promise.all(
             prepared.files.map(async (item) => {
@@ -388,24 +407,15 @@ export const PromptInput = ({
           onSubmit(
             { ...prepared, files: convertedFiles },
             event,
-            { signal }
+            { signal, consume }
           )
         );
         throwIfSubmissionAborted(signal);
-        consumeAfterSubmit(prepared.files);
-        const unchanged = inputAdapter
-          ? JSON.stringify(inputAdapter.snapshot()) === submittedInput
-          : usingProvider
-            ? controller.textInput.value === plainText
-            : true;
-        if (!clearIfUnchanged || unchanged) {
-          if (inputAdapter) inputAdapter.clear();
-          else if (usingProvider) controller.textInput.clear();
-        }
+        consume();
       } catch (cause) {
         // prepareSubmission（冻结/校验）抛错必须浮出：静默吞掉等于「点了没反应」
         if (!signal.aborted) {
-          restoreTextOnError?.();
+          if (!consumed) restoreTextOnError?.();
           onError?.({
             code: "submit",
             message:

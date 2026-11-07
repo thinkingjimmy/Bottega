@@ -10,18 +10,19 @@ import { LibraryError } from "../errors";
 import { openLibraryIdentity, readLibraryIdentity } from "../identity";
 import { acquireLibraryLock } from "../lock";
 import { readPublisher } from "../publisher";
-import { assertAdmissibleLibraryRoot } from "./admission";
+import { assertAdmissibleLibraryRoot, assertLibraryOutsideUserData } from "./admission";
 
 export async function acquireLibraryAccess(input: { root: string; installationId: string; userData?: string;
   expectedId?: string | null; machineIdHash?: () => Promise<string | null>; create?: boolean; requireIdentity?: boolean; signal?: AbortSignal }) {
   const check = () => input.signal?.throwIfAborted();
   check();
+  await assertLibraryOutsideUserData(input.root, input.userData);
   if (input.create) await mkdir(input.root, { recursive:true, mode:0o700 });
   const present = await stat(input.root).catch(error => { if (isErrnoCode(error, "ENOENT")) return null; throw error; });
   check();
   if (!present?.isDirectory()) throw new LibraryError("missing");
   const root = await realpath(input.root);
-  await assertAdmissibleLibraryRoot(root);
+  await assertAdmissibleLibraryRoot(root, input.userData);
   const control = join(root, ".bottega");
   const existing = await lstat(control).catch(error => { if (isErrnoCode(error, "ENOENT")) return null; throw error; });
   if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) throw new LibraryError("control-invalid");

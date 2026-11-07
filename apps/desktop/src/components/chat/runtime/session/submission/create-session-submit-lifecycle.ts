@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React layout lifecycle, renderer locale/catalog runtime, submission status setters, the Sections recovery-wait query, session refs, message projection, and attachment preview combinator
- * [OUTPUT]: Provides keyed submission lifecycle, acknowledges unsequenced queues without fabricating canonical messages, and useRecoveryWaitNotice (the Chat view names why startup recovery holds its queued message once it has waited 15 s)
+ * [INPUT]: Depends on React layout lifecycle, renderer locale/catalog runtime, submission status setters, the Sections recovery-wait query, session refs, canonical Chat events, message projection, and attachment preview combinator
+ * [OUTPUT]: Provides keyed submission lifecycle and exact-message persistence observation, acknowledges unsequenced queues without fabricating canonical messages, and useRecoveryWaitNotice (the Chat view names why startup recovery holds its queued message once it has waited 15 s)
  * [POS]: apps/desktop/src/components/chat/runtime/session/submission; The renderer lifecycle adapter for chat/runtime/session; The naked setter is isolated and blocks the old Chat that has been transferred to the main from re-infesting the current view. Post-send navigation is deliberately absent: the fence rightly voids late receipts after a keyed remount, so page switching belongs to the route's draft-residence observation, never to receipts
  */
 
@@ -22,6 +22,7 @@ import type {
 } from "../../../../../../shared/ipc/content/chats-ipc";
 import type {
   ManualTurnReceipt,
+  ManualTurnSubmission,
 } from "../../../../../../shared/ipc/content/sections-ipc";
 import {
   createDraft,
@@ -32,12 +33,36 @@ import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { effectiveLocale } from "@/lib/appearance/i18n-locale";
 import { translate } from "../../../../../../shared/i18n/runtime";
 import { getRecoveryWait } from "@/lib/clients/sections-client";
+import { onChatsEvent } from "@/lib/chat/session/chats-client";
 import {
   appendLivePreviews,
   type LiveAttachmentPreview,
 } from "../../files/chat-attachments";
 
 type Setter<T> = Dispatch<SetStateAction<T>>;
+
+/** Persistence can reach the transcript before Agent startup returns its admission receipt. */
+export function observePersistedSubmission(
+  submission: ManualTurnSubmission,
+  signal: AbortSignal,
+  onPersisted?: () => void
+) {
+  if (!onPersisted || signal.aborted) return () => {};
+  const chatId = submission.turn.scope.conversationId;
+  const incarnationId = submission.precondition.kind === "absent"
+    ? submission.precondition.proposedIncarnationId : submission.precondition.incarnationId;
+  const messageId = submission.persistence.kind === "append"
+    ? submission.persistence.input.message.id : submission.persistence.input.firstMessage.id;
+  let consumed = false;
+  return onChatsEvent(event => {
+    if (consumed || signal.aborted || (event.type !== "messages" && event.type !== "messages-delta")) return;
+    if (event.chatId !== chatId || event.incarnationId !== incarnationId) return;
+    const messages = event.type === "messages" ? event.messages : event.appended;
+    if (!messages.some(message => message.id === messageId && message.role === "user")) return;
+    consumed = true;
+    onPersisted();
+  });
+}
 
 /* A message held by startup recovery waits quietly at first; past this it says why, and keeps the reason current until it sends. */
 const RECOVERY_NOTICE_DELAY_MS = 15_000;

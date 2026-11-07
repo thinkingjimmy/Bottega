@@ -6,8 +6,8 @@
 
 import {
   BUILTIN_WIRE_BYTE_LIMIT,
-  type BuiltinToolName,
-} from "../../../shared/builtin-tools";
+  type PluginToolName,
+} from "../../../shared/plugin-tools";
 
 type BuiltinImageResult = Readonly<{
   type: "builtin-image";
@@ -75,7 +75,7 @@ function truncateField(
 export function toBuiltinCallToolResult(
   value: unknown,
   limit = BUILTIN_WIRE_BYTE_LIMIT,
-  tool?: BuiltinToolName
+  tool?: PluginToolName
 ) {
   let safe = value;
   if (

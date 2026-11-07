@@ -295,6 +295,7 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
   })();
   const widgetPackages:WidgetCloudPort={available:()=>!widgetsClosed&&accountScopeAdmission({config,deviceId,binding,account:service,crypto:contentCrypto}).kind==='admitted',
     catalog:async(...args)=>(await loadWidgets()).catalog(...args),watchCatalog:(changed,failed)=>{let stopped=false,release=()=>{};void loadWidgets().then(owner=>{if(!stopped)release=owner.watchCatalog(changed,failed);}).catch(error=>{if(!stopped)failed(error);});return()=>{stopped=true;release();};},
+    publishPlugin:async(...args)=>(await loadWidgets()).publishPlugin!(...args),reviewPlugin:async(...args)=>(await loadWidgets()).reviewPlugin!(...args),downloadPlugin:async(...args)=>(await loadWidgets()).downloadPlugin!(...args),
     publish:async(...args)=>(await loadWidgets()).publish(...args),review:async(...args)=>(await loadWidgets()).review(...args),download:async(...args)=>(await loadWidgets()).download(...args),
     retire:async(...args)=>(await loadWidgets()).retire(...args),close:async()=>{widgetsClosed=true;await widgetLoading?.catch(()=>null);await widgetConnection?.close();}};
   const pluginSurfaces = new NativePluginSurfaces({config,crypto:contentCrypto,transport,

@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on shell-free executable discovery, platform PATH/environment facts, the shared RUNTIME_TTL_MS freshness window, cancellable runtime/version probes, the provider host traits (built-in tool minimum versions) and startup/boot/composition-hooks (a restricted discovery another entry of this build may set; never in production)
- * [OUTPUT]: Provides distinct executables in GUI/login-shell/common-path order before alternate environments, version validation, login-shell PATH cache expiry for explicit rechecks, and exact OS launch/crash classification without interpreting network failures as startup failures.
+ * [INPUT]: Depends on shell-free executable discovery, platform PATH/environment facts, the shared RUNTIME_TTL_MS freshness window, cancellable runtime/version probes, the provider host traits (built-in tool minimum versions), the shared diagnostic redactor, and startup/boot/composition-hooks (a restricted discovery another entry of this build may set; never in production)
+ * [OUTPUT]: Provides distinct executables in GUI/login-shell/common-path order before alternate environments, version validation with bounded redacted command failures, login-shell PATH cache expiry for explicit rechecks, and exact OS launch/crash classification without interpreting network failures as startup failures.
  * [POS]: The backends are found when running the kernel; The lifecycle of the asynchronous process is called by its Runtime Registry flight unified with the canceled and drained
  */
 
-import { execFile } from "node:child_process";
+import { execFile, type ExecFileException } from "node:child_process";
+import { acpDiagnosticRedactionOptions, redactAcpDiagnostic } from "../acp/trace";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -233,13 +234,21 @@ export async function runtimeVersionAsync(
       encoding: "utf8",
       env,
       timeout: VERSION_PROBE_TIMEOUT_MS,
+      maxBuffer: 64 * 1024,
       signal,
     });
-    return normalizeCliVersion(String(stdout).trim());
+    const version = normalizeCliVersion(String(stdout).trim());
+    if (!version) throw new Error("Version command returned no semantic version.");
+    return version;
   } catch (cause) {
     signal?.throwIfAborted();
-    if (isProcessStartupFailure(cause)) throw cause;
-    return undefined;
+    const error = (cause instanceof Error ? cause : new Error(String(cause))) as ExecFileException & { stderr?: string };
+    const detail = error.killed ? `Version probe timed out after ${VERSION_PROBE_TIMEOUT_MS} ms.`
+      : typeof error.code === "number" ? `Version command exited with code ${error.code}: ${error.stderr?.trim() || error.message}`
+      : error.message;
+    throw Object.assign(new Error(redactAcpDiagnostic(detail, acpDiagnosticRedactionOptions(env))), {
+      code: error.code, signal: error.signal, killed: error.killed,
+    });
   }
 }
 

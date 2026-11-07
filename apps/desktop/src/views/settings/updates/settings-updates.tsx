@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on SettingsPage, Settings layout primitives, the Setup context, update-client stores, lib/updates CLI verdicts, the Updates rows, react-router and Updates i18n
- * [OUTPUT]: Provides UpdatesSettingsView — Bottega plus every installed provider CLI with per-row and Update all actions, the App-compatibility requirement and the preview-platform note
+ * [OUTPUT]: Provides UpdatesSettingsView — Bottega plus every installed provider CLI with a grouped title/description, fixed page/row actions and download-only Update all, the App-compatibility requirement and the preview-platform note
  * [POS]: apps/desktop/src/views/settings/updates; Settings › Updates page composition; each row owns its own verdict, this file owns ordering, the page-open check and the Update all sequence
  */
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
-import { Download, RefreshCw, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { SettingsPage } from "@/components/page-shell";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
@@ -15,12 +15,12 @@ import { useSetupRefresh } from "@/components/providers/availability/use-setup-r
 import {
   SettingsButton,
   SettingsCanvas,
-  SettingsList,
   SettingsSection,
   SettingsSurface,
 } from "@/components/settings/settings-layout";
-import { AppUpdateRow, appUpdateAction, runAppUpdate } from "@/components/settings/updates/app-update-row";
+import { AppUpdateRow, appUpdateAction } from "@/components/settings/updates/app-update-row";
 import { CliUpdateRow } from "@/components/settings/updates/cli-update-row";
+import { UpdateList } from "@/components/settings/updates/update-row";
 import { appInfoStore, updateStore } from "@/lib/platform/update-client";
 import { cliUpdateStore, describeCliUpdate, isUpdatableCli } from "@/lib/updates/cli-updates";
 
@@ -33,6 +33,7 @@ export function UpdatesSettingsView() {
   const appInfo = useSyncExternalStore(appInfoStore.subscribe, appInfoStore.getSnapshot);
   const cli = useSyncExternalStore(cliUpdateStore.subscribe, cliUpdateStore.getSnapshot);
   const [checking, setChecking] = useState(false);
+  const [updatingAll, setUpdatingAll] = useState(false);
 
   /* Opening the page is the question "is anything new?", so it asks once; there is no polling. */
   useEffect(() => {
@@ -44,26 +45,37 @@ export function UpdatesSettingsView() {
   const providers = (setup.status?.backends ?? []).filter(isUpdatableCli);
   const outdated = providers.filter((backend) => describeCliUpdate(backend, cli).kind === "available");
   const appAction = appUpdateAction(update);
-  const pending = outdated.length + (appAction === "install" || appAction === "restart" ? 1 : 0);
+  const pending = outdated.length + (appAction === "install" ? 1 : 0);
+  const busy = checking || updatingAll || cli.updating.size > 0 || ["checking", "downloading", "installing"].includes(update.phase);
 
   const checkAll = async () => {
+    if (busy) return;
     setChecking(true);
     await Promise.all([updateStore.check(), ...providers.map((backend) => setup.refreshLatest(backend.id))]).catch(() => undefined);
     setChecking(false);
   };
-  /* Providers first, Bottega last: installing Bottega restarts the app and would cut the queue short. */
+  /* Bulk updates may download Bottega, but only its explicit row action may restart it. */
   const updateAll = async () => {
-    await Promise.all(outdated.map((backend) => cliUpdateStore.update(backend.id, backend.version)));
-    if (appAction === "install" || appAction === "restart") await runAppUpdate(updateStore.getSnapshot());
+    if (busy || pending === 0) return;
+    setUpdatingAll(true);
+    try {
+      await Promise.all(outdated.map((backend) => cliUpdateStore.update(backend.id, backend.version)));
+      if (appAction === "install" && appUpdateAction(updateStore.getSnapshot()) === "install") {
+        await updateStore.downloadAndInstall();
+      }
+    } finally {
+      setUpdatingAll(false);
+    }
   };
   const requirement = update.appRequirement;
 
   return (
-    <SettingsPage title={t("settings.updates.title")} actions={pending > 0
-      ? <SettingsButton onClick={() => void updateAll()}><Download />{t("settings.updates.updateAll")}</SettingsButton>
-      : <SettingsButton variant="outline" disabled={checking} onClick={() => void checkAll()}>
-        <RefreshCw className={checking ? "animate-spin motion-reduce:animate-none" : ""} />{t("settings.updates.check")}
-      </SettingsButton>}>
+    <SettingsPage title={t("settings.updates.title")} description={t("settings.updates.description")} actions={<>
+      <SettingsButton variant="outline" disabled={busy} aria-busy={checking || update.phase === "checking"} onClick={() => void checkAll()}>
+        {t("settings.updates.check")}
+      </SettingsButton>
+      <SettingsButton aria-busy={updatingAll} disabled={busy || pending === 0} onClick={() => void updateAll()}>{t("settings.updates.updateAll")}</SettingsButton>
+    </>}>
       <SettingsCanvas>
         {requirement && <section className="space-y-3 rounded-lg border p-4" data-testid="app-update-requirement">
           <p className="text-sm" role="status">{t("appHost.requiredContext", { name: requirement.context.candidate.appName, minimum: requirement.context.minBottegaVersion ?? "—", current: update.currentVersion })}</p>
@@ -72,16 +84,13 @@ export function UpdatesSettingsView() {
             <Button variant="ghost" onClick={() => void updateStore.dismissAppRequirement()}>{t("appHost.dismiss")}</Button>
           </div>
         </section>}
-        <SettingsSection
-          title={t("settings.updates.title")}
-          description={t("settings.updates.description")}
-        >
-          <SettingsList>
-            <AppUpdateRow />
-            {providers.map((backend) => <CliUpdateRow key={backend.id} backend={backend} />)}
-          </SettingsList>
-          {setup.status && providers.length === 0 && <p className="pt-3 text-muted-foreground text-xs">{t("settings.updates.empty")}</p>}
-        </SettingsSection>
+        <section aria-label={t("settings.updates.title")} className="space-y-4">
+          <UpdateList>
+            <AppUpdateRow disabled={checking || updatingAll || cli.updating.size > 0} />
+            {providers.map((backend) => <CliUpdateRow key={backend.id} backend={backend} disabled={checking || updatingAll} />)}
+          </UpdateList>
+          {setup.status && providers.length === 0 && <p className="text-xs text-muted-foreground">{t("settings.updates.empty")}</p>}
+        </section>
         {appInfo?.platformSupport.tier === "preview" && (
           <SettingsSection title={t("settings.updates.platformSupport")} description={t("settings.updates.previewDescription")}>
             <SettingsSurface className="px-4 py-3">

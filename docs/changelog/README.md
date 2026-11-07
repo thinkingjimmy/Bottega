@@ -5,6 +5,24 @@
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
 
+## 2026-11-07 — v0.4.0
+
+[Download 0.4.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0) for macOS on Apple silicon (ARM64).
+
+- **Build one plugin with several capabilities.** Combine pages, Widgets, tools, services and Chat modes. Manage official features, existing Apps and personal plugins in one catalog. Use multiple Chats in one source Project, managed dependency installation and version recovery. Valid builds update local instances automatically; failed builds retain the working version.
+- **Work as a team.** Keep member Chats, tasks, dependencies and messages in the selected Project. Open a member's Chat to add instructions. Team and Workflow writes can use isolated workspaces and reviewed merges. Choose a Chat mode before sending the first message; it stays fixed afterward.
+- **Share on your terms.** The first Share enables encrypted source and runtime delivery for that plugin and account. Later versions sync under the same consent. Each receiving computer reviews and accepts the complete package, without dependency installation or compilation. Changing accounts requires another first Share.
+- **Add Weather without setup code.** Choose current location or search for cities from Settings and Dock Add. Each instance keeps its own location. No Agent, account or API key is required. Read current temperature, conditions and details, refresh manually, or refresh every 15 minutes while visible. Hidden or disabled instances stop requests. Failed reads retain marked last-good data for the same place. Current-location coordinates stay local.
+- **Keep Chat clear and readable.** Saved messages clear their sent text and images before Agent startup completes, while later input stays intact. Local viewed images open again across reloads and restarts within the Project's file permissions. Agent identity appears throughout live replies. A side panel leaves at least 360px for Chat when the window permits it.
+- **Recover updates and CLI discovery.** Bottega and installed Agents share one Updates page with clear row actions, progress and expandable errors. Update all finishes Agent updates before downloading Bottega; restarting requires an explicit action. Failed CLI checks expose technical details and focused repair or recheck actions.
+- **Restore the system Dock cleanly.** The replacement bar appears only after takeover is active. It hides and closes its panels before system Dock restoration, including renderer recovery and suspended takeover.
+
+**Compatibility and trust.** This release uses protocol **26**. Update connected desktops and reload Bottega Web after the coordinated service update. Existing content, sync passwords and account keys remain. Backend plugins run trusted local code and can use host credentials. Plugin switches control Bottega contributions; they do not disable a Provider's own native tools. Arbitrary native modules and remote scripts are outside the supported compatibility scope.
+
+**Validation limits.** Dock remains Alpha and requires macOS 27.x with Apple silicon. Successful native location approval, complete Teams across all four Providers, physical two-computer delivery and physical-input or assistive-technology checks retain separate acceptance scope. Existing Artifact acceptance limits remain unchanged.
+
+**Licenses.** Bottega first-party code remains MIT. Modified Canvas, Slides and Design System editor forks retain the BaoCut Community License and original notices. Other bundled materials retain their own terms. The root MIT license does not replace component licenses or grant separate commercial distribution or hosting rights.
+
 ## 2026-11-05 — v0.3.0
 
 [Download 0.3.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.3.0) for macOS on Apple silicon (ARM64).

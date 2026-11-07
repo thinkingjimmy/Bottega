@@ -11,6 +11,7 @@ import { durableReplaceFile } from "../../persistence/durable-json";
 import { readPublisher } from "../../library/publisher";
 import { libraryDirectory, libraryObjectId } from "../../library/paths";
 import { assertWorkspaceDisjoint } from "../fs-utils";
+import {unifiedPluginManifestSchema} from '@bottega/contracts/plugins/platform';
 
 const HINTS_FILE = "local-hints.json";
 /* A folder open is not a reason to fsync one file per Project: the directory is rewritten when it moves,
@@ -56,7 +57,10 @@ export async function resolveHintedDirectory(hint: LocalHint, gate: { root: stri
     const info = await lstat(dir);
     // A path that has become a link, or now resolves elsewhere, is a different directory than the one that was granted.
     if (!info.isDirectory() || info.isSymbolicLink() || await realpath(dir) !== dir) return null;
-    assertWorkspaceDisjoint(dir, [gate.root]);
+    const local=dir.startsWith(gate.root+'/')?dir.slice(gate.root.length+1):'';
+    const plugin=/^plugins\/([A-Za-z0-9_-]{1,128})\/source$/.exec(local);
+    if(plugin){const manifest=unifiedPluginManifestSchema.parse(await readJson(join(dir,'bottega.plugin.json')));if(manifest.id!==plugin[1])return null;}
+    else assertWorkspaceDisjoint(dir, [gate.root]);
   } catch { return null; }
   return dir;
 }

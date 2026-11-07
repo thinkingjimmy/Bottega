@@ -63,7 +63,8 @@
     "./artifacts/design/anchors": "./src/artifacts/design/core/anchors.ts",
     "./artifacts/design/capability": "./src/artifacts/design/core/capability.ts",
     "./artifacts/design/parameters": "./src/artifacts/design/core/parameters.ts",
-    "./artifacts/design/summary": "./src/artifacts/design/core/summary.ts"
+    "./artifacts/design/summary": "./src/artifacts/design/core/summary.ts",
+    "./plugins/*": "./src/plugins/*.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

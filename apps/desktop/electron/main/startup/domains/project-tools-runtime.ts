@@ -4,7 +4,7 @@
  * [POS]: Startup composition seam for Project-scoped Tools; keeps persistence, Skills, and deletion wiring out of the Electron lifecycle root
  */
 
-import { BUILTIN_TOOL_NAMES } from "../../../../shared/builtin-tools";
+import { registeredToolNames } from "../../../../shared/plugin-tools";
 import type { SkillsCatalog, SkillsCatalogDependencies } from "../../skills/catalog/skills-catalog";
 import { backendRuntimeRegistry } from "../../backends";
 import type { ChatStore } from "../../chats/chat-store";
@@ -29,12 +29,12 @@ function createResolver(input: Readonly<{
     input.projects,
     input.policies,
     input.manualMcpServers,
-    BUILTIN_TOOL_NAMES.filter((name) => name !== "use_skill"),
+    registeredToolNames().filter((name) => name !== "use_skill"),
     () => {
       const disabled = new Set(input.settings.get().disabledBuiltinTools);
       return {
         revision: input.settings.envelope().revision,
-        disabledTools: BUILTIN_TOOL_NAMES.filter((name) => disabled.has(name)),
+        disabledTools: registeredToolNames().filter((name) => disabled.has(name)),
       };
     }
   );

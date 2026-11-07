@@ -193,7 +193,8 @@ export const claudeInteractiveSessionMeta = (turn: Pick<BackendTurnOptions, "fil
                   : "ask-for-approval",
                 undefined,
                 turn.backendSessionConfig?.claudeDisabledPluginIds,
-                turn.skillIsolation?.deniedRoots
+                turn.skillIsolation?.deniedRoots,
+                turn.backendSessionConfig?.claudeEnabledPluginIds
               ),
               ...(plugin.memoryOff ? { autoMemoryEnabled: false } : {}),
             }),

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Apps/Projects/Chats/Bases services, the canonical effective-workspace resolver, profile-local share staging, lifecycle, current locale, SkillsCatalog, settings/archive, package import/share, Agent turn control, and the extension trust anchor (Electron's packaged flag and resources path)
+ * [INPUT]: Apps/Projects/Chats/Bases, private configuration presence and retained-folder proofs, effective workspaces, lifecycle/share/Agent controls and the extension trust anchor.
  * [OUTPUT]: Provides shared lifecycle admission, conversion and install recovery, and separate local App removal using the existing drain, Chat, grant and data participants. U06-d: configures the Apps service's Edit Chat notice for a declined extension. Binds enablement to active Chat cancellation, retained queue wakeup, notices, window closure and managed-preview cleanup across all historical App Chats.
- * [POS]: Apps-domain composition root; configures surface workspace authority before publication and wires Project grant commits to durable Project publication; ChatsService owns session record publication
+ * [POS]: Apps composition root; wires original retained-uninstall facts/finalizers, surface authority and Project grants; ChatsService owns session publication.
  */
 
 import { queuedComposerDraft } from "../composer/drafts/runtime";
@@ -52,6 +52,7 @@ import { AppGenerationBuildParticipantRegistry } from "../lifecycle/generation/b
 import { AppGenerationRetirementCoordinator } from "../lifecycle/generation/retirement";
 import { app } from "electron";
 import { join } from "node:path";
+import { existsSync } from "node:fs";
 import { createAppExtensionIntegration } from "../extensions/integration/app-extension-composition";
 import { readTrustAnchor } from "../extensions/trust/anchor";
 import { createExtensionTrustGate } from "../extensions/trust/gate";
@@ -570,7 +571,9 @@ function configureDelete(
       dependencies.bases.promoteRetainedAppBase(projectId).then(() => undefined),
     convertToBaseCustody: (projectId, appId) =>
       dependencies.projects.retainBaseCustodyHeld(projectId, appId).then(() => undefined),
-    removeShell: (record) => dependencies.apps.removeBaseShell(record),
+    removeShell: (record, options) => dependencies.apps.removeBaseShell(record, options),
+    configurationPresent: appId => existsSync(join(dependencies.apps.userData, "app-config", `${appId}.json`)),
+    hasRetainedRemoval: (appId, requestId) => dependencies.apps.store.hasRetainedRemoval(appId, requestId),
     closeAdmission: (appId) => dependencies.apps.closeDeleteAdmission(appId),
     settleBuilds: (appId) => dependencies.apps.settleDeleteBuilds(appId),
     retireGeneration: (appId, generationId) =>

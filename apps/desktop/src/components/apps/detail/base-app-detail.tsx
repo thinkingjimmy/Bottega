@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on localized surface migration failure projection; Depends on Base App lifecycle/generation, the main-owned AppRecordProjection, declaresBaseGui, BaseWorkbench/AppGuiSurface, trusted file-export IPC, shared editor and skill-feedback hooks, use-chat, routing, and window surface capsule checkpoints
- * [OUTPUT]: Provides BaseAppDetail with a main-derived studioSurfaceReady gate that discloses every requested capability and offers allow/decline, visible surface failures and reauthorization on the App route, uniformly styled tri-zone header actions, stable GUI frame ownership during pending refresh with fail-closed error reset, shared skill-failure feedback with persistent menu recovery, explicit App-window handoff, generation-bound native file export, Use panel/dock, Editor navigation, settings, and normal-close checkpoints
+ * [INPUT]: Depends on localized surface migration failure projection; Depends on Base App lifecycle/generation, the main-owned AppRecordProjection, declaresBaseGui, BaseWorkbench/AppGuiSurface, trusted file-export IPC, shared editor and skill-feedback hooks, use-chat, native or delegated page routing, and window surface capsule checkpoints
+ * [OUTPUT]: Provides BaseAppDetail with a main-derived studioSurfaceReady gate that discloses every requested capability and offers allow/decline, visible surface failures and reauthorization on the App route, uniformly styled tri-zone header actions, stable GUI frame ownership during pending refresh with fail-closed error reset, shared skill-failure feedback with persistent menu recovery, explicit App-window handoff, generation-bound native file export, Use panel/dock, Editor navigation, settings, normal-close checkpoints, and hosted App/Data choices that retain the canonical plugin route
  * [POS]: Resident Base App Studio; the App-window shell removes global chrome while this component keeps the same main and third-panel product structure
  */
 
@@ -86,7 +86,7 @@ type MainSurface = "app" | "data";
    open，弹窗与它共命，永远开不起来。故开关上提到这一层。 */
 type Overlay = "none" | "readme" | "share" | "workbench";
 
-export function BaseAppDetail({ record }: { record: AppRecordProjection }) {
+export function BaseAppDetail({ record, hosted = false }: { record: AppRecordProjection; hosted?: boolean }) {
   const needsStudio = declaresBaseGui(record);
   /* 判据只有一份，而且在 main 手里：studioSurfaceReady 与 surface 的放行
      读同一组八项事实。renderer 从前自己比 generationId + contentDigest 两
@@ -100,7 +100,7 @@ export function BaseAppDetail({ record }: { record: AppRecordProjection }) {
     needsStudio && record.state === "ready" && record.studioSurfaceReady !== true;
   return askForConsent
     ? <StudioAccessGate record={record} />
-    : <AuthorizedBaseAppDetail record={record} />;
+    : <AuthorizedBaseAppDetail record={record} hosted={hosted} />;
 }
 
 function StudioAccessGate({ record }: { record: AppRecordProjection }) {
@@ -163,13 +163,13 @@ function StudioAccessGate({ record }: { record: AppRecordProjection }) {
   );
 }
 
-function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
+function AuthorizedBaseAppDetail({ record, hosted }: { record: AppRecordProjection; hosted: boolean }) {
   const { t } = useAppTranslation();
   const skillFeedback = useAppSkillFeedback(record);
   const { loading, ownerKey, error } = useAppBase(record);
   const navigate = useNavigate();
   const openEditor = useAppEditor(record.id);
-  const { surface } = useParams<{ surface?: string }>();
+  const { surface: routeSurface } = useParams<{ surface?: string }>();
   /* Chat tab 里的 GUI 没有数据页可切，只能把 open-data-view 转成一次跳转。
      viewId 随 location.state 过来，落在同一个 requestedView 上——两条入口
      一个消费点，不再有「跳过来了但视图没选中」这种半成品。 */
@@ -180,6 +180,12 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
      move gives the Studio back, so the page syncs again. */
   const holdsStudio = useHoldsSurface(residenceSurface);
   const checkpoint = readSurfaceCheckpoint(residenceSurface).route;
+  const [hostedSurface, setHostedSurface] = useState<MainSurface | undefined>(
+    checkpoint.mainSurface === "app" || checkpoint.mainSurface === "data"
+      ? checkpoint.mainSurface
+      : undefined
+  );
+  const surface = hosted ? hostedSurface : routeSurface;
   const initialRightSurface = checkpoint.rightSurface;
   const [rightSurface, setRightSurface] = useState<RightSurface>(
     initialRightSurface === "settings" ||
@@ -250,8 +256,10 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
     !hasAppSurface &&
     surface !== "data";
   const standalone = windowContext().role === "app-window";
-  const selectMainSurface = (next: MainSurface) =>
-    navigate(`/apps/${record.id}/${next}`, { replace: true });
+  const selectMainSurface = (next: MainSurface) => {
+    if (hosted) setHostedSurface(next);
+    else navigate(`/apps/${record.id}/${next}`, { replace: true });
+  };
   const handleHostAction = async (
     action: BaseGuiHostAction,
     context: Readonly<{ trustedGestureAt: number | null }>
@@ -295,7 +303,7 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
   };
 
   useEffect(() => {
-    if (loading || !ownerKey || gui.loading || waitingForStudioSurface || appSurfaceError) return;
+    if (hosted || loading || !ownerKey || gui.loading || waitingForStudioSurface || appSurfaceError) return;
     const target = surface === "app" && !hasGui && !gui.error
       ? "data"
       : surface === "app" || surface === "data"
@@ -305,7 +313,7 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
     navigate(`/apps/${record.id}/${target}`, {
       replace: true,
     });
-  }, [appSurfaceError, gui.error, gui.loading, hasGui, loading, navigate, ownerKey, record.id, surface, waitingForStudioSurface]);
+  }, [appSurfaceError, gui.error, gui.loading, hasGui, hosted, loading, navigate, ownerKey, record.id, surface, waitingForStudioSurface]);
 
   useEffect(() => {
     checkpointSurface(residenceSurface, {

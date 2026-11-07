@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on electron-vite, Vite React/Tailwind plugins, esbuild, Node paths, Rollup diagnostics, cloud assembly configuration and the native Keychain/maintained Canvas build plugins
+ * [INPUT]: Depends on electron-vite, Vite React/Tailwind plugins, esbuild, Node paths, Rollup diagnostics, cloud assembly configuration and the native Keychain/Core Location, official plugin package, maintained Canvas and independent worker build plugins
  * [OUTPUT]: Provides the fixed production desktop assembly, out entry selection, CSP, renderer module reports, and utility workers.
  * [POS]: Electron build entry coordinating main/preload rebuilds, process restarts, and renderer output and module code-highlighting workers
  */
@@ -15,7 +15,10 @@ import { build, type Plugin, type Rollup } from "vite";
 import { resolveCloudAssembly, workbenchUiFor } from "./config/cloud-assembly";
 import { NODE_ENTRY_FILES, NODE_PACKAGES, type NodeEntry } from "./electron/main/runtime/model";
 import { canvasRuntime } from "./config/native/canvas-runtime";
+import { officialPlugins } from "./config/native/official-plugins";
+import { weatherLocation } from "./config/native/weather-location";
 import { keychainPolicy } from "./config/native/keychain-policy";
+import { isolatedProcessWorkers } from "./config/native/process-workers";
 const cloudAssembly = resolveCloudAssembly("production");
 /* Keep offline test defaults separate from the default-on development and production UI. */
 const workbenchUi = workbenchUiFor(cloudAssembly, process.env.BOTTEGA_WORKBENCH_UI);
@@ -83,11 +86,13 @@ function auxiliaryPreload(): Plugin {
    the two ACP adapters, which the runtime port checks before every launch. */
 const RUNTIME_ENTRY_SOURCES: Record<NodeEntry, string> = {
     "package-host": "electron/main/host/package/entry.ts",
+    "plugin-files": "electron/main/runtime/programs/plugin-files-entry.ts",
     "package-provider": "electron/main/providers/bridge/entry.ts",
     "custody-guardian": "electron/main/custody/guardian-entry.ts",
     "builtin-tools-server": "electron/main/tools/server.ts",
     "codec-host": "electron/main/bases/media-host/codec-host-entry.ts",
     "app-gui-compiler": "electron/main/workers/app-gui-compiler-entry.ts",
+    "plugin-compiler": "electron/main/plugins/engineering/compiler/entry.ts",
     "process-watchdog": "electron/main/runtime/programs/watchdog-entry.ts",
     "repair-supervisor": "electron/main/runtime/programs/repair-supervisor-entry.ts",
     "palette-validator": "electron/main/skills/dataviz/entry.ts",
@@ -98,6 +103,7 @@ const selfContainedInputs = new Set<string>();
 function selfContained(path: string) { selfContainedInputs.add(path); return path; }
 const ADAPTER_PACKAGE_ENTRIES: Record<(typeof NODE_PACKAGES)[number], string> = {
     "claude-agent-acp": "node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js",
+    "pnpm": "node_modules/pnpm/bin/pnpm.cjs",
 };
 /* Evaluates a self-contained CommonJS build inside this config (the layout of the built-in Provider packages): the workspace's TypeScript
    packages cannot be imported by the config directly, and the generator needs only Node built-ins. */
@@ -274,7 +280,7 @@ const onwarn: Rollup.WarningHandlerWithDefault = (warning, defaultHandler) => {
 };
 export default defineConfig({
     main: {
-        plugins: [keychainPolicy(), runtimeEntries(), buildFlavor(), canvasRuntime(resolve(__dirname, "../../packages/canvas-runtime"))],
+        plugins: [keychainPolicy(), weatherLocation(), officialPlugins(__dirname), runtimeEntries(), isolatedProcessWorkers(resolve(__dirname), { esbuild: ESBUILD, onwarn, define: cloudDefines }), buildFlavor(), canvasRuntime(resolve(__dirname, "../../packages/canvas-runtime"))],
         define: { ...cloudDefines,
             /* Non-production mains may load the private entries built beside them; production compiles the loader out. */
             __BOTTEGA_PRIVATE_ENTRIES__: JSON.stringify(cloudAssembly.flavor !== "production"),

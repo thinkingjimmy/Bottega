@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on i18next interpolation syntax
- * [OUTPUT]: Provides the Apps English catalog, first-party preset copy, contextual authorization copy, operation-specific progress copy, and the structural reference for translated Apps catalogs; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
+ * [OUTPUT]: Provides the Apps English catalog, first-party preset copy, contextual authorization copy, operation-specific progress copy, and the structural reference for translated Apps catalogs; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: English copy for Apps discovery, install, lifecycle, authorization, Studio, sharing, and non-cancellable deletion surfaces; assembled by the matching top-level locale
  */
@@ -396,16 +396,15 @@ export const appsEn = {
       "reviewFailed": "Unable to check this conversion. Try again.",
       "retry": "Check conversion"
     },
-    generatedDescription: "{{name}} shared Base App",
+    generatedDescription: "{{name}} shared Base plugin",
     uncertain: "The previous submission result is unknown. Retry with the exact original parameters to confirm it.",
-    enterName: "Enter an App name",
-    failed: "Save as App failed",
-    title: "Save as App",
-    description: "Create an App: promote the current Base to shared App data and turn this chat into its edit session.",
+    enterName: "Enter a plugin name",
+    failed: "Save as plugin failed",
+    title: "Save as plugin",
     name: "Name",
     icon: "Icon",
     chooseIcon: "Choose icon {{icon}}",
-    submit: "Create App",
+    submit: "Save plugin",
   },
   detail: {
     startFailed: "App launch failed",

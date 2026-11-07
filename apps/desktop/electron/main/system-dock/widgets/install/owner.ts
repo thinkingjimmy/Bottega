@@ -250,7 +250,7 @@ export class WidgetInstallations {
         );
     return operation ? this.result(operation) : null;
   }
-  installedDefinitions(){const scope=this.scope();return installedWidgetDefinitions(this.file.read(state=>state.confirmations),scope,this.ports.config.layout().items.filter((item):item is CustomWidgetItem=>item.kind==='widget'&&item.widget.type==='custom').map(item=>customWidgetItemSchema.parse(item))).map(value=>{const source=this.ports.packages.origin(value.reference);return{...value,...(source?{sourceChatId:source.chatId}:{})};});}
+  installedDefinitions(){const scope=this.scope();return installedWidgetDefinitions(this.file.read(state=>state.confirmations),scope,this.ports.config.layout().items.filter((item):item is CustomWidgetItem=>item.kind==='widget'&&item.widget.type==='custom').map(item=>customWidgetItemSchema.parse(item)));}
   savedDefinition(subject:Subject){const scope=this.scope();this.assertAvailable(subject);return savedInstalledWidget(this.file.read(state=>state.confirmations),scope,subject,this.ports.packages,()=>this.assertScope(scope));}
   progress() {
     return this.currentProgress ? structuredClone(this.currentProgress) : null;
@@ -429,7 +429,6 @@ export class WidgetInstallations {
           reference: original.reference,
           descriptor: packet.descriptor,
           bytes,
-          ...(checked.sourceChat?{sourceChat:checked.sourceChat}:{}),
         };
         await this.ports.packages.install(frozen, original.operationId);
         current();

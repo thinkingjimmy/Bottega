@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on Node fs/os/path, the folder identity reader, the shared containment test and LibraryError.
- * [OUTPUT]: Provides resolveLibraryChoice (a picked directory → the folder Bottega may take over, possibly a new `Bottega` subfolder), suggestLibraryFolder (the first home-level name onboarding can offer without a picker), assertAdmissibleLibraryRoot and holdsForeignEntries.
+ * [INPUT]: Depends on Node fs/os/path, folder identity, canonical profile paths, containment and LibraryError.
+ * [OUTPUT]: Provides folder selection, protected-root and userData overlap admission, suggestions and foreign-entry detection.
  * [POS]: The single folder admission rule for first selection, Locate, Start New, moves and every open; destructive paths re-check it before they act.
  */
 import { lstat, readdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join, parse } from "node:path";
+import { basename, dirname, join, parse, resolve } from "node:path";
 import { isErrnoCode } from "../../persistence/durable-json";
 import { LibraryError } from "../errors";
 import { readLibraryIdentity } from "../identity";
@@ -21,11 +21,33 @@ const TRASH_SEGMENTS = new Set([".trash", ".trashes", "$recycle.bin"]);
 const VOLUME_PARENT = /^(?:\/Volumes|\/media(?:\/[^/]+)?|\/mnt|\/run\/media\/[^/]+)$/;
 /* Written by the OS or Bottega itself; they do not make a folder "someone else's". */
 const INCIDENTAL = new Set([".DS_Store", ".localized", "Icon\r", "desktop.ini", "Thumbs.db"]);
-const LIBRARY_ENTRIES = new Set([".bottega", ".trash", "apps", "bases", "chats", "projects", "skills", ...INCIDENTAL]);
+const LIBRARY_ENTRIES = new Set([".bottega", ".trash", "apps", "bases", "chats", "projects", "plugins", "skills", "workflows", ...INCIDENTAL]);
 
 export type LibraryChoice = Readonly<{ root: string; subfolder: boolean }>;
 
 const fold = (value: string) => value.normalize("NFC").toLowerCase();
+
+/** Resolve existing ancestors too: a new destination may be reached through a linked parent. */
+async function canonicalDestination(path: string): Promise<string> {
+  const absolute = resolve(path);
+  try { return await realpath(absolute); }
+  catch (error) {
+    if (!isErrnoCode(error, "ENOENT")) throw error;
+    const parent = dirname(absolute);
+    if (parent === absolute) throw error;
+    return join(await canonicalDestination(parent), basename(absolute));
+  }
+}
+
+export async function assertLibraryOutsideUserData(root: string, userData?: string) {
+  if (!userData) return;
+  const [folder, profile] = await Promise.all([canonicalDestination(root), canonicalDestination(userData)]);
+  const left = process.platform === "darwin" ? fold(folder) : folder;
+  const right = process.platform === "darwin" ? fold(profile) : profile;
+  if (isUnder(left, right) || isUnder(right, left)) {
+    throw new LibraryError("unsafe-folder", "LIBRARY_USER_DATA_OVERLAP: Choose a folder outside Bottega settings and runtime data.");
+  }
+}
 
 async function canonicalHome() {
   return realpath(homedir()).catch(() => homedir());
@@ -61,7 +83,8 @@ async function directoryState(path: string): Promise<"missing" | "empty" | "libr
 }
 
 /** Throws unless `root` (already canonical) may be the Bottega folder. */
-export async function assertAdmissibleLibraryRoot(root: string) {
+export async function assertAdmissibleLibraryRoot(root: string, userData?: string) {
+  await assertLibraryOutsideUserData(root, userData);
   if (insideTrash(root) || await protectedFolder(root, await canonicalHome())) {
     throw new LibraryError("unsafe-folder", `LIBRARY_UNSAFE_FOLDER: ${root}`);
   }
@@ -72,8 +95,9 @@ export async function assertAdmissibleLibraryRoot(root: string) {
  * anything else — a protected folder, or one that already holds someone's files — is offered a new
  * `Bottega` folder inside it, which the caller confirms before it is created.
  */
-export async function resolveLibraryChoice(picked: string): Promise<LibraryChoice> {
+export async function resolveLibraryChoice(picked: string, userData?: string): Promise<LibraryChoice> {
   const canonical = await realpath(picked);
+  await assertLibraryOutsideUserData(canonical, userData);
   const home = await canonicalHome();
   if (insideTrash(canonical)) throw new LibraryError("unsafe-folder", `LIBRARY_UNSAFE_FOLDER: ${canonical}`);
   if (!await protectedFolder(canonical, home)) {
@@ -81,6 +105,7 @@ export async function resolveLibraryChoice(picked: string): Promise<LibraryChoic
     if (state === "library" || state === "empty") return { root: canonical, subfolder: false };
   }
   const nested = join(canonical, "Bottega");
+  await assertLibraryOutsideUserData(nested, userData);
   if (await protectedFolder(nested, home) || await directoryState(nested) === "foreign") {
     throw new LibraryError("unsafe-folder", `LIBRARY_UNSAFE_FOLDER: ${canonical}`);
   }

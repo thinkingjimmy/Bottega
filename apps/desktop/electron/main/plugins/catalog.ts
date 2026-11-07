@@ -67,6 +67,8 @@ export type CatalogPorts = {
   disableHostPackage(item: HostPackage): Promise<void>;
   /** The Registry's re-enable: the same package as it was, refused (as a PluginError) when its files changed or it is still turning off. */
   reenableHostPackage(item: HostPackage): Promise<void>;
+  nativePluginSwitchable?(backendId: string): boolean;
+  setNativePluginEnabled?(backendId: string, pluginId: string, enabled: boolean): Promise<void>;
   nativePlugins(): Promise<readonly { backendId: string; plugins: readonly AgentPluginInventoryEntry[] }[]>;
   agentConfigs(): readonly AgentConfigView[];
   /** Names of the Projects with an enabled workflow binding. */
@@ -122,7 +124,7 @@ export class PluginCatalog {
         this.manifests.set(item.installIdentity, await this.ports.hostManifest(item.installIdentity).catch(() => null));
       }
       this.natives = (await this.ports.nativePlugins().catch(() => [])).flatMap(backend =>
-        backend.plugins.filter(plugin => plugin.origin === "user").map(plugin => nativeEntry(backend.backendId, plugin)));
+        backend.plugins.filter(plugin => plugin.origin === "user").map(plugin => nativeEntry(backend.backendId, plugin, Boolean(this.ports.setNativePluginEnabled && this.ports.nativePluginSwitchable?.(backend.backendId)))));
     }
     return this.entriesSync();
   }
@@ -198,6 +200,13 @@ export class PluginCatalog {
     if (!descriptor.turnOff.allowed) throw new PluginError(descriptor.turnOff.reason === "always-on" ? "plugin-always-on" : "plugin-not-switchable");
     if (enabled && entry.unsupported) throw new PluginError("plugin-unsupported");
     if (enabled && !entry.enabled && descriptor.turnOn.mode === "setup") throw new PluginError("plugin-setup-required");
+    if (descriptor.source === "agent-native") {
+      if (!entry.managedBy || !entry.nativeId || !this.ports.setNativePluginEnabled) throw new PluginError("plugin-not-switchable");
+      await this.ports.setNativePluginEnabled(entry.managedBy, entry.nativeId, enabled);
+      await this.entries();
+      this.emit();
+      return;
+    }
     const owner = this.owner(pluginId);
     if (owner) {
       if (!owner.setEnabled) throw new PluginError("plugin-not-switchable");
@@ -295,6 +304,21 @@ export class PluginCatalog {
   /** The package restarted with its current settings. */
   restarted(pluginId: string, revision = this.pendingRestart.get(pluginId)) {
     if (this.pendingRestart.get(pluginId) === revision && this.pendingRestart.delete(pluginId)) this.emit();
+  }
+  credentialPort(): import("./process/credentials").PluginCredentialPort {
+    const resolve = async (key: string) => {
+      const split = key.lastIndexOf("/");
+      if (split < 1) throw new Error("Invalid plugin credential identity");
+      const pluginId = key.slice(0, split), fieldId = key.slice(split + 1);
+      const entry = await this.fieldsOf(pluginId);
+      if (!entry.descriptor.settings.some(field => field.id === fieldId && field.type === "secret" && field.owner === "store")) throw new Error("Plugin credential is unavailable");
+      return { pluginId, fieldId, fields: entry.descriptor.settings };
+    };
+    return {
+      list: async () => (await this.entries()).flatMap(entry => entry.descriptor.settings.filter(field => field.type === "secret" && field.owner === "store").map(field => `${entry.descriptor.id}/${field.id}`)),
+      read: async key => { const value = await resolve(key); const values = await this.ports.settings.packageValues(value.pluginId, value.fields); const secret = values[value.fieldId]; return typeof secret === "string" ? secret : null; },
+      write: async (key, secret) => { const value = await resolve(key); await this.ports.settings.submit(value.pluginId, value.fields, { [value.fieldId]: secret }); this.emit(); },
+    };
   }
   /** What a Provider adapter may send: only values a person changed (C.5: a default sends no override). */
   providerOverrides(providerId: string): Promise<Record<string, SettingValue>> {

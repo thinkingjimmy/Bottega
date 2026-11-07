@@ -29,7 +29,6 @@ const schema = z
     schema: z.literal("bottega.widget-review/v1"),
     reference: z.string(),
     descriptor: widgetPackageDescriptorSchema,
-    sourceChat:z.object({chatId:z.string().min(1).max(160)}).strict().optional(),
     manifestText: z.string().max(BUDGET.runtimeFileBytes),
   })
   .strict();
@@ -38,7 +37,6 @@ const digest = (bytes: Uint8Array) =>
 export function buildWidgetPackageReview(
   packet: ReturnType<typeof verifyPackage>,
   reference: string,
-  sourceChat?:{chatId:string},
 ): Buffer {
   const entry = packet.files.find(
     (file) => file.path === "runtime/plugin.json",
@@ -50,7 +48,6 @@ export function buildWidgetPackageReview(
       schema: "bottega.widget-review/v1",
       reference,
       descriptor: packet.descriptor,
-      ...(sourceChat?{sourceChat}:{}),
       manifestText: Buffer.from(entry.content, "base64").toString("utf8"),
     }),
   );
@@ -112,5 +109,5 @@ export function verifyWidgetPackageReview(
       `sha256:${hashCanonical({ dock: manifest.dock, operations: manifest.operations })}`
   )
     throw new Error("WIDGET_REVIEW_CONTRACT_CHANGED");
-  return { descriptor, manifest,...(review.sourceChat?{sourceChat:review.sourceChat}:{}) };
+  return { descriptor, manifest };
 }

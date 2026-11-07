@@ -114,7 +114,7 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
     case "widget-cancel": service.dropDraft(intent.itemId); service.refreshPanelDemand(); service.schedule(); return;
     case "refresh-usage": {
       const item = service.layoutItem(intent.itemId);
-      if (item?.kind === "widget") {if(item.widget.type==='custom')await service.ports.custom?.refresh(item.id);else await service.usage.refresh(service.drafts.get(item.id) ?? item.widget);}
+      if (item?.kind === "widget") {if(item.widget.type==='custom'||item.widget.type==='plugin')await service.ports.custom?.refresh(item.id);else await service.usage.refresh(service.drafts.get(item.id) ?? item.widget);}
       return;
     }
     case "open-full-usage": {

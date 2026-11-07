@@ -6,44 +6,24 @@
 
 import { randomUUID } from "node:crypto";
 import { createConnection, type Socket } from "node:net";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  BUILTIN_TOOL_NAMES,
-  BUILTIN_TOOL_SPECS,
-  builtinToolDescription,
-  builtinToolWireSchema,
-  type BuiltinToolName,
-} from "../../../shared/builtin-tools";
+import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import type { ToolSnapshot } from "./registry";
 import { statusError } from "../ipc/errors";
 import { toolInvocationId, toolRequestDigest } from "./invocation";
 import { toBuiltinCallToolResult } from "./result";
 
 const socketPath = process.env.AI_CHAT_TOOLS_SOCKET;
 const token = process.env.AI_CHAT_TOOLS_TOKEN;
-const allowedRaw = process.env.AI_CHAT_TOOLS_ALLOWED;
 const wireCap = Number(process.env.AI_CHAT_TOOLS_WIRE_CAP);
-if (
-  !socketPath ||
-  !token ||
-  allowedRaw === undefined ||
-  !Number.isSafeInteger(wireCap) ||
-  wireCap <= 0
-) {
-  throw new Error("内置 MCP 缺少 socket/token/allowed/wire cap 环境");
+if (!socketPath || !token || !Number.isSafeInteger(wireCap) || wireCap <= 0) {
+  throw new Error("Plugin MCP requires socket, token and wire budget");
 }
 const bridgeSocketPath = socketPath;
 /* One MCP session = one server process; minted before any request so every call of the session shares it. */
 const sessionNonce = randomUUID();
 const bridgeToken = token;
-const allowed = new Set(
-  allowedRaw
-    .split(",")
-    .filter((name): name is BuiltinToolName =>
-      BUILTIN_TOOL_NAMES.includes(name as BuiltinToolName)
-    )
-);
-
 type BridgeResponse =
   | { id: string; ok: true; result: unknown }
   | { id: string; ok: false; status: number; error: string };
@@ -96,7 +76,7 @@ function bridgeRequest(
     | { kind: "claim" }
     | {
         kind: "call";
-        tool: BuiltinToolName;
+        tool: string;
         args: unknown;
         invocationId: string;
         requestDigest: string;
@@ -125,7 +105,7 @@ function bridgeRequest(
   });
 }
 
-function call(tool: BuiltinToolName, args: unknown, extra: { requestId: string | number; signal?: AbortSignal }) {
+function call(tool: string, args: unknown, extra: { requestId: string | number; signal?: AbortSignal }) {
   return bridgeRequest({
     kind: "call",
     tool,
@@ -135,45 +115,23 @@ function call(tool: BuiltinToolName, args: unknown, extra: { requestId: string |
   }, extra.signal).then((value) => toBuiltinCallToolResult(value, wireCap, tool));
 }
 
-const server = new McpServer(
-  { name: "ai-chat-tools", version: "1.0.0" },
-  {
-    jsonSchemaValidator: {
-      getValidator: () => () => ({
-        valid: false,
-        data: undefined,
-        errorMessage: "内置 MCP 不支持 elicitation",
-      }),
-    },
-  }
-);
+const server = new Server({ name: "bottega", version: "1.0.0" }, { capabilities: { tools: {} } });
 
-for (const spec of BUILTIN_TOOL_SPECS) {
-  if (!allowed.has(spec.name)) continue;
-  server.registerTool(
-    spec.name,
-    {
-      description: builtinToolDescription(spec, [...allowed]),
-      // wire 形态必须无 $ref（Moonshot 400）；强校验在 main bridge，不在此
-      inputSchema: builtinToolWireSchema(spec).shape,
-      annotations: spec.annotations,
-    },
-    (args: Record<string, unknown>, extra) =>
-      call(spec.name, args, extra)
-  );
-}
-
-server.server.oninitialized = () => {
-  void bridgeRequest({ kind: "claim" }).catch((cause) => {
-    console.error("[builtin-mcp] ready failed", cause);
-    process.exitCode = 1;
-    void server.close();
+void (async () => {
+  const claim = await bridgeRequest({ kind: "claim" }) as { tools: ToolSnapshot[] };
+  const frozen = Object.freeze(claim.tools);
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: frozen.map(tool => ({
+    name: tool.name, description: tool.description, inputSchema: tool.inputSchema as { type: "object"; [key: string]: unknown }, annotations: tool.annotations,
+  })) }));
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+    if (!frozen.some(tool => tool.name === request.params.name)) throw statusError(403, "Tool was not issued for this turn");
+    return call(request.params.name, request.params.arguments ?? {}, extra);
   });
-};
-
-void server.connect(new StdioServerTransport()).catch((cause) => {
-  console.error("[builtin-mcp] startup failed", cause);
+  await server.connect(new StdioServerTransport());
+})().catch(cause => {
+  console.error("[plugin-mcp] startup failed", cause);
   process.exitCode = 1;
+  connection?.destroy();
 });
 
 /* The CLI owns this process: once its end of stdin is gone nobody can call a tool, and the persistent bridge

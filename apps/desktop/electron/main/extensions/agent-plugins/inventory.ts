@@ -48,6 +48,8 @@ export class AgentPluginInventory {
     }));
   }
 
+  canSetEnabled(backendId: string) { return Boolean(this.hooksOf(backendId)?.setEnabled); }
+
   /** Refused for a provider whose plugin code cannot toggle one plugin in the product. */
   async setEnabled(backendId: string, pluginId: string, enabled: boolean) {
     const setEnabled = this.hooksOf(backendId)?.setEnabled;

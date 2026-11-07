@@ -6,7 +6,7 @@
  *           SettingsRefusal.
  * [POS]: The store owner of appendix C.5: `<userData>/plugin-settings/<plugin>.json` keeps only changed values; secrets live apart in
  *        `plugin-settings/secrets/<plugin>.json` (0600, the same plain-file-in-userData custody as manual MCP secrets) and never leave main
- *        except to their own package. `owner: "adapter"` fields never reach this store; the catalog routes them to their owner.
+ *        except to their owning package or the trusted unified plugin credential broker. `owner: "adapter"` fields never reach this store; the catalog routes them to their owner.
  */
 import { createHash } from "node:crypto";
 import { join } from "node:path";
@@ -71,7 +71,7 @@ export class PluginSettingsStore {
     }));
   }
 
-  /** A package's own settings (settings.get): defaults filled, secrets in clear. Never called for another package. */
+  /** Owning package settings or trusted plugin credential access: defaults filled, secrets in clear. */
   async packageValues(pluginId: string, fields: readonly SettingField[]): Promise<Record<string, SettingValue | null>> {
     const { values, secrets } = await this.open(pluginId);
     const stored = values.read(file => file.values), hidden = secrets.read(file => file.values);

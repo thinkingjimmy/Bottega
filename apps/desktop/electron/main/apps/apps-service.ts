@@ -1,7 +1,7 @@
 /**
  * [INPUT]: App service composition, durable lifecycle/store/runtime owners, Extension/navigation collaborators and trusted Apps IPC.
- * [OUTPUT]: App lifecycle, availability, installation/configuration, cloud projections, build/rebuild and exact Use/Edit navigation with independent preset update and existing custody recovery.
- * [POS]: App composition root; owns lifecycle, authority and late-bound collaborators, including the isolated plugin gateway delegate.
+ * [OUTPUT]: App lifecycle/configuration, exact Use/Edit navigation, public deletion and main-only retained uninstall through original custody/recovery owners.
+ * [POS]: App composition root; owns lifecycle and late-bound collaborators, including isolated gateway and unified Base/Web/Server adapter removal ports.
  */
 
 import { assertUpdateIdle } from "./updates/guard";
@@ -21,7 +21,7 @@ import type {
   AppRecordProjection,
   RemoveAppMode,
 } from "../../../shared/ipc/apps/apps-ipc";
-import type { BaseToolsAvailability } from "../../../shared/builtin-tools";
+import type { BaseToolsAvailability } from "../../../shared/plugin-tools";
 import type { ExtensionTurnIdentity } from "../../../shared/ipc/settings/extensions-ipc";
 import type { TurnProjectContext } from "../../../shared/product/product-resource-scope";
 import type { AppLocale } from "@ai-chat/ui/lib/locale";
@@ -32,7 +32,7 @@ import type { AppGenerationBuildParticipantRegistry } from "../lifecycle/generat
 import type { AppNavigationService } from "./turn/app-navigation";
 import type { AppChatSlots } from "./turn/app-chat-slots";
 import type { AppDataMigrationPort } from "./maintenance/app-data-migrations";
-import type { AppDeleteService } from "./conversion/app-delete";
+import type { AppDeleteService, AppDeleteShellOptions } from "./conversion/app-delete";
 import { BaseAppRenamer } from "./conversion/app-rename";
 import { AppMutationCoordinator } from "./source/app-source-coordinator";
 import type { AppAttachmentFence } from "./attachments/attachment-fence";
@@ -95,6 +95,8 @@ export class AppsService {
   private readonly lifecycleMutations = new AppMutationCoordinator();
 
   private window: BrowserWindow | null = null;
+  private readonly runtimeStates = new Map<string, import("../../../shared/ipc/apps/apps-ipc").AppRuntimeState>();
+  private readonly eventListeners = new Set<(event: AppInstallEvent) => void>();
   private declinedNotice: ((notice: DeclinedNotice) => Promise<void>) | null = null;
   private gatewayWarning: string | null = null;
   private saveAsAppService: SaveAsAppService | null = null;
@@ -513,7 +515,7 @@ export class AppsService {
   settleDeleteData(record: AppRecord, mode: RemoveAppMode) {
     return this.parts.deleteCoordinator.settleData(record, mode);
   }
-  removeBaseShell(record: AppRecord) { return this.parts.deleteCoordinator.removeBaseShell(record); }
+  removeBaseShell(record: AppRecord, options?: AppDeleteShellOptions) { return this.parts.deleteCoordinator.removeBaseShell(record, options); }
   acquireTurnApps(input: {
     conversationId: string;
     requestId: string;
@@ -567,7 +569,7 @@ export class AppsService {
       cutover: (operation) => this.withGuiCutover(appId, operation),
     });
   }
-  private remove(appId: string, mode?: RemoveAppMode, requestId = "") {
+  remove(appId: string, mode?: RemoveAppMode, requestId = "") {
     assertUpdateIdle(this.store.get(appId));
     return removeApp({
       appId,
@@ -578,6 +580,12 @@ export class AppsService {
       deleteService: this.appDeleteService,
       markDeleteStalled: (message) => this.markDeleteStalled(appId, message),
     });
+  }
+  uninstall(appId: string, requestId: string) {
+    assertUpdateIdle(this.store.get(appId));
+    return removeApp({ appId, requestId, uninstall: true, store: this.store,
+      maintenanceGate: this.parts.maintenanceGate, deleteService: this.appDeleteService,
+      markDeleteStalled: message => this.markDeleteStalled(appId, message) });
   }
   private requireGrantAuthority() {
     return requireConfigured(this.grantAuthority, "App grant authority");
@@ -590,7 +598,17 @@ export class AppsService {
     if (!record) throw new Error("App 不存在");
     return record;
   }
+  runtimeState(appId: string) { return this.runtimeStates.get(appId) ?? "stopped"; }
+  onEvent(listener: (event: AppInstallEvent) => void) {
+    this.eventListeners.add(listener);
+    return () => { this.eventListeners.delete(listener); };
+  }
   private emit(event: AppInstallEvent) {
+    if (event.type === "runtime") this.runtimeStates.set(event.appId, event.state);
+    if (event.type === "removed") this.runtimeStates.delete(event.appId);
+    for (const listener of this.eventListeners) {
+      try { listener(event); } catch (cause) { console.warn("[apps] event observer failed", cause); }
+    }
     publishAppEvent({
       event,
       window: this.window,

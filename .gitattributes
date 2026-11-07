@@ -20,3 +20,22 @@ OFL.txt -text
 # Unified-diff context lines and native logs retain their original spaces and bytes.
 DEV/chat/artifact-design/adaptation.patch -text whitespace=-blank-at-eol
 DEV/chat/artifact-design/evidence/**/*.log -text whitespace=-blank-at-eol
+
+# Captured acceptance output and source snapshots keep their measured bytes.
+DEV/platform/unified-plugin-platform/implementation/**/*.log -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/**/*.tap -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/**/*.html -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/**/*.patch -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/system-dock/weather/evidence/**/*.log -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/checks/ui-native-1b6b/coherent-first/production/4-catalog.ts -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/checks/workflow-launch/after/generated-cli.cjs -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/checks/workflow-launch/before/generated-cli.cjs -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/verification/final-startup-1b6b/source/catalog-projection.ts -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/verification/final-startup-1c0c/source/catalog-projection.ts -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/verification/final-startup-47ba/source/catalog-projection.ts -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/verification/final-startup-99c2/source/catalog-projection.ts -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/verification/final-startup-b483/source/catalog-projection.ts -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/verification/member-cloud-metadata.txt -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/verification/ui-index/live-reload/source-after/01-catalog.ts -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/verification/ui-index/pending-load/after/1-catalog.ts -text whitespace=-blank-at-eol,-blank-at-eof
+DEV/platform/unified-plugin-platform/implementation/verification/ui-index/pending-load/catalog-before.ts -text whitespace=-blank-at-eol,-blank-at-eof

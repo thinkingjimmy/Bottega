@@ -3,6 +3,7 @@
  * [OUTPUT]: Owns 60-second runtime and five-minute full checks, cancellation-preserved evidence, independent startup facts, separate candidate and scoped purpose eligibility and a read-only per-CLI account fingerprint, for any Provider id its resolver runs (a built-in or an available package Provider; an id it does not is refused by name and stores nothing): discovery bounded by the flight's own deadline, the version run on the backend's declared arguments, the list over the resolver's ids and forget for a package Provider that stopped being available.
  * [POS]: The only owner of the backends running time and discovery/auth subprocess; Chat, Section, Settings and Background tasks cannot detect CLI on their own
  * Warm installed/unsupported snapshots revalidate executable identity; discovered versions carry versionIdentity.
+ * Recovery from a missing/error snapshot clears runtime-only diagnostics and authentication errors; established authentication remains independent.
  * Full checks authenticate installed and unsupported versions independently; only quota-purpose launches may use a Provider with independent quota version policy.
  */
 
@@ -646,11 +647,14 @@ export class BackendRuntimeRegistry {
     this.environmentIdentities.set(backend, environmentIdentity);
     this.evidence.update(backend, { capabilityKnowledge: "known", runtimeIssue: candidate.kind === "unsupported" ? "unsupported" : undefined,
       runtimeCheck: { phase: "complete", startedAt: this.evidence.now(), checkedAt: this.evidence.now(), expiresAt: this.evidence.now() + RUNTIME_TTL_MS } });
+    const prior = previous?.snapshot;
+    const priorPresent = prior?.generation === generation &&
+      (prior.runtimeStatus === "installed" || prior.runtimeStatus === "unsupported") ? prior : undefined;
     const snapshot: PresentSnapshot = {
       runtimeStatus: candidate.kind, runtime, capabilities,
-      reason: reason ?? (previous?.snapshot.generation === generation ? previous.snapshot.reason : undefined),
-      authStatus: previous?.snapshot.generation === generation ? previous.snapshot.authStatus :
-        this.authFlights.has(backend) && !this.authFlights.get(backend)!.controller.signal.aborted ? "checking" : "unknown", generation,
+      reason: reason ?? (priorPresent?.runtimeStatus === candidate.kind ? priorPresent.reason : undefined),
+      authStatus: priorPresent?.authStatus ??
+        (this.authFlights.has(backend) && !this.authFlights.get(backend)!.controller.signal.aborted ? "checking" : "unknown"), generation,
     };
     signal.throwIfAborted();
     if (!this.publish(backend, generation, { snapshot, identity })) return this.resolve(backend);

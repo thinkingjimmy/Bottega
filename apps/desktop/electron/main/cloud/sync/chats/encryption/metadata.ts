@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Existing account transport, admitted crypto owner and original Chat delivery checkpoints.
- * [OUTPUT]: Request-bound heads, receipt-first recovery for every prepared operation, exactly frozen ciphertext metadata delivery, and the idempotent R-35 workflow-role repair.
+ * [OUTPUT]: Request-bound heads, receipt-first recovery for every prepared operation, exactly frozen ciphertext metadata delivery, and the idempotent R-35 workflow-role repair. Exposes exact owner-only missing member identity repair.
  * [POS]: Main metadata codec adapter; original SQLite outbox remains the only durable task owner.
  */
 import { protocolHeader, canonicalJson, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
@@ -40,6 +40,14 @@ export class EncryptedChatMetadata {
     const frozen = await prepareChatMetadataOperation(original, head, crypto, signal);
     const receipt = await this.input.transport.mutate("chats/metadata:apply", { ...header, operation: frozen.transport });
     return openChatMetadataReceipt(receipt, crypto, signal);
+  }
+  async setMemberSession(head: CloudChatHead, memberSession: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts) {
+    const crypto = this.input.crypto(), header = this.header;
+    const operation = { operationId: hashChatContent(["member-session", head.chat.id, head.chat.incarnationId, memberSession, head.chat.cloudRevision]),
+      chatId: head.chat.id, payloadHash: "0".repeat(64), command: { kind: "set-member-session" as const,
+        incarnationId: head.chat.incarnationId, expectedRevision: head.chat.cloudRevision, memberSession } };
+    const frozen = await prepareChatMetadataOperation({ ...operation, payloadHash: hashChatMetadataOperation(operation) }, head, crypto);
+    return openChatMetadataReceipt(await this.input.transport.mutate("chats/metadata:apply", { ...header, operation: frozen.transport }), crypto);
   }
   async deliver(checkpoints: ChatDeliveryCheckpoints, operation: ChatMetadataOperation, signal?: AbortSignal) {
     const crypto = this.input.crypto(), header = this.header, key = `cipher-metadata:${operation.operationId}`;

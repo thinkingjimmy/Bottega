@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node net/fs/crypto, custody line protocol and socket path asserted by shared/builtin-tools
+ * [INPUT]: Depends on Node net/fs/crypto, custody line protocol and socket path asserted by shared/plugin-tools
  * [OUTPUT]: Provides GuardianControlChannel: a 0600 Unix socket server with per-custody tokens, constant-time authentication, hello/activated/failed message routing, and activate/stand-down commands; every accepted socket is tracked, so close() converges even when a connection never completed hello
  * [POS]: Custody's main-process control channel; only carries the wire protocol — it knows nothing of journal phase and decides nothing about which process to kill
  */
@@ -8,7 +8,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname } from "node:path";
-import { assertUnixSocketPath } from "../../../shared/builtin-tools";
+import { assertUnixSocketPath } from "../../../shared/plugin-tools";
 import type { ProcessIdentity } from "../../../shared/apps/model/app-lifecycle";
 import {
   CUSTODY_LINE_LIMIT,

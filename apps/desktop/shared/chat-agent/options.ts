@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on canonical public option schemas, the bounded Provider id and shared Agent option types
+ * [INPUT]: Depends on lightweight public mode selection and canonical option schemas, the bounded Provider id and shared Agent option types
  * [OUTPUT]: Provides the exact option schema, factory defaults and pure default resolution; and
  *           TASK-11 S3-b's Chat-side widening: ChatAgentId, builtinAgent / builtinOptions (the one narrowing back to a built-in), chatSyncExclusion (the one reason a Chat stays local-only), packageTurnOptionsSchema / PackageTurnOptions (the one shape a package
  *           Provider's turn options take) and chatTurnOptionsSchema / ChatTurnOptions (a built-in id only in its built-in shape)
@@ -15,6 +15,7 @@ export { turnOptionsSchema, defaultsSchema } from "@ai-chat/cloud-protocol/chats
 import { agentBackendIdSchema, turnOptionsSchema } from "@ai-chat/cloud-protocol/chats/options";
 import { providerIdSchema, type ProviderId } from "@ai-chat/cloud-protocol/contracts/provider-id-schema";
 import { z } from "zod";
+import { pluginModeSelectionSchema } from "@bottega/contracts/plugins/platform/selection/mode";
 
 /** The Agent a Chat record names (its `agent`, `session.backend`, each reply's `backend`): a built-in or a package Provider's id. */
 export type ChatAgentId = ProviderId;
@@ -24,6 +25,7 @@ export const chatAgentIdSchema = providerIdSchema;
 export const packageTurnOptionsSchema = z.object({
   backend: providerIdSchema.refine(id => !agentBackendIdSchema.safeParse(id).success, "a built-in Provider takes its own options"),
   permissionMode: z.literal("ask-for-approval"),
+  mode: pluginModeSelectionSchema.optional(),
   model: z.string().regex(/^[A-Za-z0-9._:/@+-]{1,128}$/).optional(),
 }).strict();
 export type PackageTurnOptions = z.infer<typeof packageTurnOptionsSchema>;
@@ -70,5 +72,12 @@ export function backendDefaults(defaults: DefaultChatOptionsByBackend, backend: 
 export function backendDefaults(defaults: DefaultChatOptionsByBackend, backend: ChatAgentId): ChatTurnOptions {
   const builtin = agentBackendIdSchema.safeParse(backend);
   if (!builtin.success) return packageTurnOptionsSchema.parse({ backend, permissionMode: "ask-for-approval" });
-  return structuredClone(turnOptionsSchema.parse(defaults[builtin.data] ?? DEFAULT_CHAT_OPTIONS_BY_BACKEND[builtin.data]));
+  const { mode: _mode, ...options } = turnOptionsSchema.parse(defaults[builtin.data] ?? DEFAULT_CHAT_OPTIONS_BY_BACKEND[builtin.data]);
+  return structuredClone(options);
+}
+
+/** A Chat keeps its first-send mode across all option changes and Agent switches. */
+export function assertChatModeLocked(current: import("@bottega/contracts/plugins/platform").PluginModeSelection | undefined, next: import("@bottega/contracts/plugins/platform").PluginModeSelection | undefined) {
+  const key = (mode: typeof current) => `${mode?.pluginId ?? ""}/${mode?.id ?? "standard"}`;
+  if (key(current) !== key(next)) throw new Error("Chat mode is locked after the first send. Start a new Chat to change it.");
 }

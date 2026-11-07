@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsUpdatesEn structural type
- * [OUTPUT]: Provides settingsUpdatesEs, the Spanish Settings › Updates catalog; failure recovery uses shared retry and manual-download copy
+ * [OUTPUT]: Provides settingsUpdatesEs, the Spanish Settings › Updates catalog; unified row actions and collapsed failure details use shared update, retry and manual-download copy
  * [POS]: Spanish leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
@@ -8,13 +8,15 @@ import type { settingsUpdatesEn } from "./en";
 
 export const settingsUpdatesEs: typeof settingsUpdatesEn = {
   title: "Actualizaciones",
-  description: "Gestiona las actualizaciones de Bottega y de los CLI de los proveedores.",
+  description: "Gestiona las actualizaciones de Bottega y de tus Agents.",
+  updatingShort: "Actualizando…",
+  showDetails: "Ver detalles",
+  hideDetails: "Ocultar detalles",
   updateAll: "Actualizar todo",
   updateOne: "Actualizar {{name}}",
   upToDate: "{{name}} está actualizado",
   updating: "Actualizando {{name}}…",
   latestUnknown: "Última versión desconocida",
-  cliFailed: "La actualización falló",
   cliUnchanged: "El actualizador terminó, pero la versión no cambió. Prueba a actualizar en Terminal.",
   cliTimeout: "La actualización tardó demasiado y se detuvo.",
   cliUnavailable: "Este CLI no se puede actualizar desde aquí.",
@@ -34,7 +36,6 @@ export const settingsUpdatesEs: typeof settingsUpdatesEn = {
   failedShort: "Error de actualización",
   checkFailedShort: "Error al buscar actualizaciones",
   manualShort: "Descargar nueva versión",
-  downloadContinue: "Puedes seguir usando Bottega mientras se descarga la actualización.",
   downloading: "Descargando {{version}}",
   installing: "Actualización descargada · reiniciando para instalarla",
   failed: "Error de actualización: {{message}}",
@@ -45,7 +46,7 @@ export const settingsUpdatesEs: typeof settingsUpdatesEn = {
   backgroundFailed: "La última comprobación automática falló",
   backgroundFailedOpen: "Las comprobaciones automáticas fallan; abre Actualizaciones para ver los detalles",
   check: "Buscar actualizaciones",
-  upgrade: "Actualizar ahora",
+  upgrade: "Actualizar",
   manualUpgrade: "Abrir página de descarga",
   unavailable: "El servicio de actualización está disponible en la aplicación instalada",
   platformSupport: "Compatibilidad de plataforma",

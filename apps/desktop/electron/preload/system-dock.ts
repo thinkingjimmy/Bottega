@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron contextBridge/ipcRenderer, the launch argument naming this window's role, and (type-only) the isolated Bottega Dock channel contract.
- * [OUTPUT]: Exposes `window.systemDock` with snapshots, intents, opaque icon/download visual lookups and bounded change subscriptions to Dock main frames only.
+ * [OUTPUT]: Exposes `window.systemDock` with snapshots, intents, opaque icon/download visual lookups, exact-item plugin Surface calls and bounded change subscriptions to Dock main frames only.
  * [POS]: Isolated Dock bar/panel preload; no product settings, arbitrary file paths, shell, account, AX, or Apple Event bridge is reachable from here (INV-13).
  */
 
@@ -16,16 +16,19 @@ const CHANNEL: typeof SYSTEM_DOCK_CHANNEL = {
   intent: "system-dock:intent",
   icons: "system-dock:icons",
   downloadVisual: "system-dock:download-visual",
+  pluginSurface: "system-dock:plugin-surface",
 };
 const ROLE_ARGUMENT = "--system-dock-role=";
 const role = process.argv.find((argument) => argument.startsWith(ROLE_ARGUMENT))?.slice(ROLE_ARGUMENT.length);
+const invoke = (channel: string) => (...args: unknown[]) => ipcRenderer.invoke(channel, ...args);
 /* Fail closed: a window launched without a known role gets no bridge at all rather than a guessed one. */
 if (process.isMainFrame && (role === "bar" || role === "panel")) contextBridge.exposeInMainWorld("systemDock", {
   role,
-  snapshot: () => ipcRenderer.invoke(CHANNEL.snapshot),
-  intent: (intent) => ipcRenderer.invoke(CHANNEL.intent, intent),
+  snapshot: invoke(CHANNEL.snapshot),
+  intent: invoke(CHANNEL.intent),
   icons: (keys) => ipcRenderer.invoke(CHANNEL.icons, [...keys]),
-  downloadVisual: (input) => ipcRenderer.invoke(CHANNEL.downloadVisual, input),
+  downloadVisual: invoke(CHANNEL.downloadVisual),
+  pluginSurface: invoke(CHANNEL.pluginSurface),
   onChanged(listener) {
     const receive = (_event: IpcRendererEvent, value: DockBarSnapshot | PanelSnapshot) => listener(value);
     ipcRenderer.on(CHANNEL.changed, receive);

@@ -20,6 +20,7 @@ import type { CleanupResult } from "../process/process-group";
 import { type TurnRegistry } from "../turns/turn/turn-registry";
 import { blocksNewTurn, type SourceTerminal } from "../turns/turn/turn-registry-model";
 import { prepareTurnCommit } from "../turns/commit/commit";
+import {hasPluginSourceTurn,releasePluginSourceTurn} from '../../plugins/integration/turns';
 import type {
   AgentBridgeOptions,
   AgentEventPayload,
@@ -309,7 +310,7 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
             if (childCleanupError) await turns.drainChildren(entry);
             if (!entry.turn) return;
             const resolved = entry.resolvedInput, sessionConfig = entry.backendSessionConfig, context = entry.context;
-            if (source.type === "done" && await entry.turn.transferBackground?.(async () => {
+            if (source.type === "done" && !hasPluginSourceTurn(entry) && await entry.turn.transferBackground?.(async () => {
               await resolved?.release();
               await sessionConfig?.releaseClaudePluginProjection?.();
               if (context) await options.releaseContext?.(context);
@@ -326,6 +327,7 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
             entry.backendSessionConfig = undefined;
             if (entry.context) await options.releaseContext?.(entry.context);
           });
+          await releasePluginSourceTurn(entry);
         } finally {
           entry.processLease?.release();
           entry.processLease = undefined;

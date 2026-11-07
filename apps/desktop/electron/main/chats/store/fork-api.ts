@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ChatStoreState, strict fork contracts, generation-fenced timeline paging, pure fork construction policy, SQLite operation receipts, explicit unknown-outcome errors, and main/errors
- * [OUTPUT]: Provides exact native/imported source-prefix reads, receipt-first replay, and durable creation for independent forked Chat records
+ * [OUTPUT]: Provides exact native/imported source-prefix reads, receipt-first replay, and durable creation for independent forked Chat records Atomic member child creation retains initial mode and original portable publication ownership.
  * [POS]: Focused fork mutation collaborator behind the ChatStore facade; it owns no queue or state outside the shared ChatStoreState cell
  */
 
@@ -11,6 +11,7 @@ import type {
   ChatRecord,
   ChatTimelineCursor,
 } from "../../../../shared/ipc/content/chats-ipc";
+import { assertChatModeLocked } from "../../../../shared/chat-agent/options";
 import { metadataOf } from "../projection/chat-summary";
 import { assertChatId } from "../chat-guards";
 import { CHAT_MESSAGE_LIMIT } from "../schema/chat-schema";
@@ -25,6 +26,8 @@ import type { ChatStoreState } from "./state";
 import { statusError } from "../../ipc/errors";
 
 type ForkIdentity = Readonly<{
+  initialMode?: import("@bottega/contracts/plugins/platform").PluginModeSelection;
+  memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts;
   requestId: string;
   childChatId: string;
   sourceChatId: string;
@@ -92,6 +95,7 @@ export class ChatForkStoreApi {
         homeDir: input.homeDir,
         executionDir: input.executionDir,
         mode: input.mode,
+        initialMode: input.initialMode,
         anchorMessageId: input.anchorMessageId,
         anchorSeq: input.anchorSeq,
         now: this.state.now(),
@@ -102,6 +106,7 @@ export class ChatForkStoreApi {
         record,
         deviceId: this.state.requireDeviceId(),
         lifecycleKind: "native" as const,
+        ...(input.memberSession ? { memberSession: input.memberSession } : {}),
         expectedAggregateRevision: null,
       };
       const outcome = await database.execute({ ...command, requestHash: requestHash(command) });
@@ -191,6 +196,7 @@ export class ChatForkStoreApi {
     targetId: string | null
   ) {
     const existing = await this.state.readRecord(input.childChatId);
+    if (input.initialMode) assertChatModeLocked(existing.options?.mode, input.initialMode);
     const exact = kind === "upsert-record" && targetId === input.childChatId &&
       existing.parentChatId === input.sourceChatId &&
       existing.parentIncarnationId === input.sourceIncarnationId &&

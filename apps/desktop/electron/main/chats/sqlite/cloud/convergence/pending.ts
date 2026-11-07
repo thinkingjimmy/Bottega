@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on complete authenticated mirror bodies, frozen business sources, permanent original receipts and native history.
- * [OUTPUT]: Provides a revision-bound target for preserving closed same-owner legacy differences through the existing recovery Fork.
+ * [OUTPUT]: Provides a revision-bound target for preserving closed same-owner legacy differences through the existing recovery Fork. Preserves managed member ownership during convergence.
  * [POS]: Read-only convergence admission; it cannot publish content, acknowledge a queue row or bypass two-phase custody.
  */
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
@@ -35,7 +35,7 @@ export function pendingConvergenceTarget(db: SqliteDatabase, reader: ChatReposit
     native.messages.length > LIMIT || native.supersededBranches?.length || Object.keys(native.subagents ?? {}).length ||
     !download?.complete || download.bodyRevision !== head.bodyRevision) return null;
   // A local content timestamp can advance without authoring another metadata operation.
-  const { updatedAt: _localTime, ...facts } = portableFacts(native, head.chat.cloudRevision, head.chat.workflowRole);
+  const { updatedAt: _localTime, ...facts } = portableFacts(native, head.chat.cloudRevision, head.chat.workflowRole, head.chat.memberSession);
   const { updatedAt: _cloudTime, ...confirmed } = head.chat;
   if (canonicalJson(facts) !== canonicalJson(confirmed) || (native.archivedAt ?? null) !== head.archivedAt) return null;
   const local = new Map(native.messages.map(message => [message.id, message]));

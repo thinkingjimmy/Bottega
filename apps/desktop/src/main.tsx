@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, window context, surface migration, shared feedback toasts, ArchiveCelebrationHost, SketchHost, startup marks, and the build-gated cloud account lifecycle.
- * [OUTPUT]: Composes persistent providers with system typography, window-level feedback hosts before route effects, App recovery, two-step onboarding without the Memory copy section, settings navigation (including background-surface requests, build-flagged Agent configs and Plugins, named plugin details and legacy Memory/Dock aliases), route-independent ProductApp sketch and archive celebration hosts, and the catalog-loaded/product-loading/gate-open startup milestones.
+ * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, window context, surface migration, shared feedback toasts, ArchiveCelebrationHost, SketchHost, lazy unified plugin update/page hosts, startup marks, and the build-gated cloud account lifecycle.
+ * [OUTPUT]: Composes persistent providers with system typography, window-level feedback hosts before route effects, App recovery, two-step onboarding without the Memory copy section, settings navigation (including background-surface requests, build-flagged Agent configs and Plugins, named plugin details and legacy Memory/Dock aliases), route-independent ProductApp sketch/archive/update hosts, declared plugin page routes, and the catalog-loaded/product-loading/gate-open startup milestones.
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
 import { SettingsNavigationContext } from "@/components/providers/navigation/context";
@@ -100,6 +100,8 @@ import {
 } from "@/lib/platform/window-surfaces-client";
 import { panelSlotStore } from "@/components/chat/side-panel/panel-slot-store";
 
+const PluginUpdateNotices=lazy(()=>import("@/components/plugins/updates").then(module=>({default:module.PluginUpdateNotices})));
+const PluginPage = lazy(() => import("@/components/plugins/page").then(module => ({ default: module.PluginPage })));
 const AppDetailView = lazy(() =>
   import("@/views/apps/app-detail").then((module) => ({
     default: module.AppDetailView,
@@ -437,7 +439,8 @@ function ProductApp() {
   }
 
   return (
-    <SettingsNavigationContext.Provider value={{ openUsage: (trigger, agent) => { settingsReturnFocus.current = trigger; selectSettings("usage"); setUsageAgent(agent ?? null); }, openAgents: () => selectSettings("providers"), openUpdates: () => selectSettings("updates"), openAccount: () => selectSettings("account") }}>
+    <SettingsNavigationContext.Provider value={{ close: closeSettings, openUsage: (trigger, agent) => { settingsReturnFocus.current = trigger; selectSettings("usage"); setUsageAgent(agent ?? null); }, openAgents: () => selectSettings("providers"), openUpdates: () => selectSettings("updates"), openAccount: () => selectSettings("account") }}>
+    <Suspense fallback={null}><PluginUpdateNotices /></Suspense>
     <AppsProvider>
       <HistoryProvider>
         <ProjectsProvider>
@@ -510,6 +513,7 @@ function ProductApp() {
                                 path="/bases/:ownerKind/:ownerId"
                                 element={<BaseDetailView />}
                               />
+                              <Route path="/plugins/:pluginId/:contributionId" element={<PluginPage />} />
                               <Route path="/apps" element={<AppsListView />} />
                               <Route
                                 path="/apps/:id/:surface?"

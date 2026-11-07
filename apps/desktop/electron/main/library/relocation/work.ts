@@ -21,6 +21,7 @@ const PROBES: Record<string, Probe> = {
     busy: value => values(value.chats).some(record => ["planned", "materialized", "prepared", "rollingBack"].includes(String(record.phase))) },
   purge: { file: "chat-purge-journal.json", busy: value => values(value.intents).some(intent => intent.phase !== "completed") },
   lifecycle: { file: join("lifecycle", "intents.json"), busy: value => items(value.intents).length > 0 },
+  "workflow-isolation": { file: join("workflows", "isolation", "workspaces.json"), busy: value => items(value.entries).some(entry => entry.status === "preparing") },
   custody: { file: join("agent-custody", "turns.json"), busy: value => items(value.entries).some(entry => entry.phase !== "released") },
 };
 

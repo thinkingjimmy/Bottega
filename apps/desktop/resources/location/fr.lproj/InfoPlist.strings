@@ -1,0 +1,3 @@
+/* Location purpose shown by macOS for the preinstalled Weather Widget. */
+NSLocationUsageDescription = "Lorsque vous choisissez le Widget Météo, Bottega utilise votre position pour afficher la météo actuelle.";
+NSLocationWhenInUseUsageDescription = "Lorsque vous choisissez le Widget Météo, Bottega utilise votre position pour afficher la météo actuelle.";

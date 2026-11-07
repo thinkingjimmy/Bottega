@@ -19,7 +19,6 @@ export const widgetLifecycleControlSchema = z.discriminatedUnion("kind", [
   widgetUninstallSchema
     .extend({ kind: z.literal("definition-review") })
     .strict(),
-  widgetUninstallSchema.extend({ kind: z.literal("definition-edit") }).strict(),
   widgetUninstallSchema
     .extend({
       kind: z.literal("definition-install-review"),
@@ -62,10 +61,6 @@ export type WidgetRetirementResult = {
   localComplete: boolean;
 };
 export type WidgetLifecycleResult =
-  | {
-      kind: "source-edit";
-      target: { chatId: string; sourceInstallationId: string };
-    }
   | { kind: "install-review"; review: import("./types").WidgetInstallReview }
   | { kind: "definition-review"; review: WidgetRetirementReview }
   | { kind: "definition-result"; result: WidgetRetirementResult | null }

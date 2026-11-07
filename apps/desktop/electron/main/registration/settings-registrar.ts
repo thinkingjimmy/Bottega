@@ -118,7 +118,7 @@ async function chooseChatHomesRoot(
   if (!isUsableDirectory(selected)) throw new Error(translate(locale, "settings.native.folderUnavailable"));
   /* Opening the picker at home and pressing Open is the easy mistake; a folder that already holds
      the person's files is never taken over, only offered a new Bottega folder inside it. */
-  const choice = await withLibraryCopy(store, () => resolveLibraryChoice(selected));
+  const choice = await withLibraryCopy(store, () => resolveLibraryChoice(selected, app.getPath("userData")));
   if (choice.subfolder && !await confirmNestedFolder(window, locale, dirname(choice.root), choice.root)) return null;
   return openLibraryAt(chatHomes, store, choice.root, choice.subfolder ? dirname(choice.root) : choice.root);
 }

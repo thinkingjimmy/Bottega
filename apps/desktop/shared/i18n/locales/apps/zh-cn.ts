@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Simplified Chinese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
+ * [OUTPUT]: Provides the Apps Simplified Chinese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Simplified Chinese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -396,16 +396,15 @@ export const appsZhCN: typeof appsEn = {
       "reviewFailed": "暂时无法核对转换状态，请重试。",
       "retry": "核对转换状态"
     },
-    generatedDescription: "{{name}} 的共享 Base App",
+    generatedDescription: "{{name}} 的共享 Base 插件",
     uncertain: "上次提交结果未知，只能用原参数重试确认。",
-    enterName: "请输入 App 名称",
-    failed: "Save as App 失败",
-    title: "Save as App",
-    description: "将创建 App：当前 Base 升级为 App 共享数据，本 chat 转为它的编辑会话。",
+    enterName: "请输入插件名称",
+    failed: "保存为插件失败",
+    title: "保存为插件",
     name: "名称",
     icon: "图标",
     chooseIcon: "选择图标 {{icon}}",
-    submit: "创建 App",
+    submit: "保存插件",
   },
   detail: {
     startFailed: "App 启动失败",

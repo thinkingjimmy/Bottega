@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on component-catalog.mjs, apps/desktop/runtime-dependencies.json (package slice membership and appGui set), the installed production dependency graph and lockfile, package os/cpu/libc constraints and license bytes, Lightning CSS's detect-libc dependency on Linux, explicit runtime/build source slices with three reviewed public export transformations, signed components, Starters, legacy GUI SDK bytes, external release/platform public keys, and optional measured performance evidence
- * [OUTPUT]: Generates and checks the component catalog, exact-source App/composer/Dock/Sketch SDK resources and toolchain metadata from the host-eligible graph, including native esbuild, legacy SDK custody, compact identities and public-equivalent performance receipts without changing thresholds.
+ * [OUTPUT]: Generates/checks exact-source toolchain resources and public-equivalent performance receipts; an explicit measurement-preparation command archives prior bytes and marks changed inputs pending without changing thresholds or release gates.
  * [POS]: apps/desktop/scripts/generation; App GUI release metadata authority; receipts consume generated digests instead of hand-maintained placeholders; `--check` runs first in the desktop `typecheck`, so a drifting source change fails there
  */
 
@@ -16,6 +16,13 @@ const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const outputRoot = join(desktopRoot, "resources/app-gui-toolchain");
 const desktopRequire = createRequire(join(desktopRoot, "package.json"));
 const check = process.argv.includes("--check");
+const measurementIndex=process.argv.indexOf('--begin-performance-measurement');
+const performanceArchive=measurementIndex<0?null:process.argv[measurementIndex+1];
+if(measurementIndex>=0){
+  if(check)throw new Error('Performance measurement preparation cannot run in check mode');
+  if(!performanceArchive||performanceArchive.startsWith('--'))throw new Error('Performance measurement preparation requires a new evidence archive file');
+  if(process.env.BOTTEGA_APP_GUI_PERFORMANCE_EVIDENCE)throw new Error('Performance measurement preparation cannot import incoming evidence');
+}
 const componentCatalog = await syncComponentCatalog(join(desktopRoot, "resources/app-gui-components"), { check });
 const desktopPackage = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
 
@@ -395,7 +402,15 @@ async function retainPerformanceEvidence(baseline) {
   const path = process.env.BOTTEGA_APP_GUI_PERFORMANCE_EVIDENCE;
   const incomingBytes = path ? await readFile(resolve(path)) : null;
   const incoming = incomingBytes ? JSON.parse(incomingBytes.toString("utf8")) : null;
-  const retained = JSON.parse(await readFile(join(outputRoot, "app-gui-performance-baseline.json"), "utf8").catch(() => "null"));
+  const retainedBytes=await readFile(join(outputRoot, "app-gui-performance-baseline.json")).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
+  const retained = retainedBytes?JSON.parse(retainedBytes.toString('utf8')):null;
+  if(performanceArchive){
+    if(!retainedBytes)throw new Error('The previous performance baseline must exist before measurement preparation');
+    const target=resolve(performanceArchive);await mkdir(dirname(target),{recursive:true,mode:0o700});
+    await writeFile(target,retainedBytes,{flag:'wx',mode:0o600});
+    process.stdout.write('[app-gui-metadata] archived prior performance evidence; current runtime measurements are pending\n');
+    return;
+  }
   for (const item of retained?.requiredPlatforms ?? []) {
     if (item.status !== "passed" || item.platform === incoming?.platform) continue;
     const target = baseline.requiredPlatforms.find(entry => entry.platform === item.platform);

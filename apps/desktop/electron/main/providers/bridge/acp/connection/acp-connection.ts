@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AgentProcessHost launch/delivered custody, AcpProcessEvidence, the framing guard/trace tee/outbound sink transport chain, the ACP SDK client and the startup budget tracker
- * [OUTPUT]: Provides AcpConnection — one child process plus one completed ACP handshake, with a mutable turn handler slot (attach/detach), request/notify delegation, session binding, exit observation and close
+ * [OUTPUT]: Provides AcpConnection — one child process plus one completed ACP handshake, with a mutable turn handler slot (attach/detach), request/notify delegation, session binding, exit observation and close Exposes negotiated session-fork capability.
  * [POS]: The ACP process-and-handshake owner; AcpTurn keeps only the per-turn protocol state machine and may either own a private connection or borrow a resident one
  */
 
@@ -113,6 +113,10 @@ export class AcpConnection {
 
   get supportsSteering() {
     return this.steering;
+  }
+
+  get supportsFork() {
+    return Boolean((this.negotiated?.agentCapabilities as { sessionCapabilities?: { fork?: unknown } } | undefined)?.sessionCapabilities?.fork);
   }
 
   /** 进程已死或 transport 已断：所有者据此拒绝复用，而不是再试一次。 */

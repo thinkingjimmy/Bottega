@@ -2,10 +2,11 @@
 
 /**
  * [INPUT]: Depends on shared Chat row actions/rename, Sidebar primitives, effective confetti preference, immediate archive feedback, data providers, archive restore client, product navigation, reorder row-props, and i18n
- * [OUTPUT]: Renders canonical Chat rows with a focus-preserving archive action, single-flight success, owner badges, post-archive recovery that yields to toast View, and the optional drag ghost / drop indicator; exports ChatDropIndicator and chatRowDropAttributes for sibling row kinds An off-screen Chat whose queue is paused shows a muted pause mark (F-34c).
+ * [OUTPUT]: Renders canonical Chat rows with a focus-preserving archive action, single-flight success, owner badges, post-archive recovery that yields to toast View, and the optional drag ghost / drop indicator; nests canonical member Chats under their Lead; exports ChatDropIndicator and chatRowDropAttributes for sibling row kinds An off-screen Chat whose queue is paused shows a muted pause mark (F-34c).
  * [POS]: Shared chat row unit of components/sidebar/chat, consumed by the Chats, Activity, and Project sublists; unifies both hover/focus feedback levels, leaves list-item semantics to its caller and drag state to reorder/
  */
 
+import { TeamMemberRows } from "@/components/plugins/team/navigation";
 import { projectAvailability } from "../../../../shared/agent-availability/projection";
 import { AVAILABILITY_STATE_KEYS } from "../../../../shared/agent-availability/copy";
 import { ChatOwnerBadge } from "../cloud/rows";
@@ -405,6 +406,7 @@ export function ChatThreadItem({
           archiveChat: t("chat.sidebar.archiveChat"), archiveHint: t("settings.general.archiveConfettiTooltip") }}
       />
 
+      <TeamMemberRows leadChatId={chat.id} />
       <SidebarRenameDialog
         open={renameOpen}
         currentName={chat.title ?? ""}

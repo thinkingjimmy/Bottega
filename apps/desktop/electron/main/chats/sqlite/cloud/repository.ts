@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the sole worker database, scope mode, canonical readers/writers and lifecycle-specific deletion custody.
- * [OUTPUT]: Routes original synchronization/removal transactions, exact worker-owned admission snapshots, atomic guarded convergence targets and retained-root outbox identity.
+ * [OUTPUT]: Routes original synchronization/removal transactions, exact worker-owned admission snapshots, atomic guarded convergence targets and retained-root outbox identity. Original Chat publication retains main-owned member facts.
  * [POS]: Composed ChatRepository collaborator; every mutation shares its existing operation receipt transaction.
  */
 import { isAbsolute } from "node:path";
@@ -397,6 +397,7 @@ export class ChatCloudRepository {
     const enrolling = row.cloud_state === "local-only";
     /* R-35: a new workflow Chat's role rides its create into the first upload; nothing stores it locally. */
     const workflowRole = command.kind === "upsert-record" ? command.workflowRole : undefined;
+    const memberSession = command.kind === "upsert-record" ? command.memberSession : undefined;
     if (enrolling) {
       if (this.mode.kind === "local-only" || !enrollmentOpen(this.mode) || !this.db.prepare(`SELECT 1 FROM cloud_sync_state
         WHERE environment=? AND user_id=? AND initial_manifest_json IS NOT NULL`)
@@ -421,14 +422,14 @@ export class ChatCloudRepository {
     const optionsOperation = enrolling ? null : captureOptionsEdit(this.db, scope, command.operationId, command.kind, facts);
     enqueueSource(this.db, { id: command.operationId, scope, chatId, entityKind: !enrolling && importing ? "generation" : !enrolling && message ? "message" : "chat",
       kind: enrolling ? "initialize" : command.kind === "cloud-mutate" && command.action.type === "commit-classification" ? "classification-commit" : command.kind, revision: facts.chatRecordRevision,
-      payload: { ...(enrolling || importing ? frozenChatSource(this.db, facts, record, Number(row.cloud_revision), workflowRole) :
+      payload: { ...(enrolling || importing ? frozenChatSource(this.db, facts, record, Number(row.cloud_revision), workflowRole, memberSession) :
         { chat: portableFacts(facts, Number(row.cloud_revision)) }), ...(record && !enrolling ? { messages: record.messages,
         subagents: record.subagents ?? {}, branches: record.supersededBranches ?? [] } : {}),
         ...(imported ? { imported } : {}), ...(optionsOperation ? { optionsOperation } : {}),
         ...(!enrolling && message ? { message } : {}), ...(!enrolling && "notice" in command ? { notices: [command.notice] } : {}),
         ...(!enrolling && "nextSeq" in command ? { throughSeq: command.nextSeq - 1 } : {}),
         ...(!enrolling && "subagents" in command ? { subagents: command.subagents } : {}) }, now: this.now() });
-    if (enrolling) captureInitialMetadata(this.db, scope, command.operationId, { chat: portableFacts(facts, 0, workflowRole),
+    if (enrolling) captureInitialMetadata(this.db, scope, command.operationId, { chat: portableFacts(facts, 0, workflowRole, memberSession),
       lifecycleKind: String(row.lifecycle_kind), archivedAt: facts.archivedAt ?? null });
     else captureMetadataEdit(this.db, scope, command.operationId, facts);
   }

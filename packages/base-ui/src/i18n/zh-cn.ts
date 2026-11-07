@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on the structural type of the English basesEn catalog
- * [OUTPUT]: Provides basesZhCN, the Simplified Chinese catalog for every Base, synchronization review, Project conversion and embedded-chart surface
+ * [OUTPUT]: Provides basesZhCN, the Simplified Chinese catalog for every Base, synchronization review, Project/Base-plugin promotion and embedded-chart surfaces
  * [POS]: Shared Base language catalog in i18n.
  */
 
@@ -59,7 +59,7 @@ export const basesZhCN: BasesCatalog = {
   },
   header: {
     openApp: "打开 App",
-    saveAsApp: "保存为 App",
+    saveAsApp: "保存为插件",
     importExport: "导入与导出",
     importExportAria: "Base 导入与导出",
     exportCsv: "导出 CSV",

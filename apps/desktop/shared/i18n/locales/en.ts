@@ -265,7 +265,7 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
       moreBaseActions: "More Base actions",
       more: "More",
       openApp: "Open App",
-      saveAsApp: "Save as App",
+      saveAsApp: "Save as plugin",
       downloadCsv: "Download CSV",
       openNamedPanel: "Open {{name}}",
       unavailableNamedPanel: "{{name}} unavailable: {{reason}}",

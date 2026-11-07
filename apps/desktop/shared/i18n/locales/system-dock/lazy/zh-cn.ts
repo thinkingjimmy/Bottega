@@ -1,13 +1,17 @@
 /**
- * [INPUT]: None; plain zh-cn copy.
- * [OUTPUT]: Provides systemDockLazyZhCN, localized deferred Dock copy including API consent, credential controls and structured request failures.
+ * [INPUT]: Localized Dock copy and the shared weather translation dictionary.
+ * [OUTPUT]: Provides systemDockLazyZhCN, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../zh-cn.ts.
  */
 
 import type { systemDockLazyEn } from "./en";
 
+import {weatherZhCN} from '../../../../system-dock/widgets/weather/locales/zh-cn';
+
 export const systemDockLazyZhCN: typeof systemDockLazyEn = {
+  weather: weatherZhCN,
   widgets: {
+    summaryRefreshFailed: "摘要刷新失败。已保留上次的摘要。",
     api: {"connectionRouting":"按系统代理连接。代理模式通过 Cloudflare 加密解析服务域名。","title":"外部 API","consent":"允许在这台电脑上执行此请求。","parameters":"将发送的参数","noParameters":"没有额外参数。","apiKey":"API 密钥","bearerToken":"Bearer 令牌","set":"已设置","unset":"未设置","save":"保存连接","saved":"连接已保存。","test":"测试连接","tested":"连接测试已完成。","revoke":"撤销访问权限","clear":"清除已保存密钥","chooseCopy":"选择已保存密钥","copy":"复制已保存密钥","copyHint":"这会创建独立副本。密钥更改后，请分别更新每个副本。","failed":"无法更新连接。你的选择已保留。","loadFailed":"无法检查此请求。请在应用前重试。","retry":"重试","invalid":"请确认每项 API 请求，并设置所需凭据。","httpStatus":"HTTP {{status}}。","retryAt":"可在 {{time}} 后重试。","attribution":"来源：{{name}}","yes":"是","no":"否","failures":{"network":"无法连接。请检查网络后重试。","timeout":"请求超时。可在准备好后重试。","proxy-required":"此连接需要受支持的网络路径。","http":"服务未能完成此请求。","mapping":"响应不符合声明的数据格式。","budget":"请求或响应超出允许限制。","authorization":"请检查已保存密钥和请求权限。","unknown-result":"请求可能已发送。请在重试前检查结果。"}},
     definitionDelete: {"title": "从账号删除 {{name}}", "hint": "停止此 Widget，并移除相关 Dock 实例。其他电脑收到删除记录后停止运行。保留源 Project 和创作 Chat。", "confirm": "删除个人 Widget", "removing": "正在删除 Widget…", "removed": "已从账号删除。", "pending": "已停止此 Mac 上的访问，清理或账号同步尚未完成。请重试此操作。"},
     uninstall: {"title": "从此 Mac 卸载 {{name}}", "hint": "移除此电脑上的运行版本和数据许可。保留 Dock 位置和创作 Chat。再次安装需要重新确认。", "confirm": "从此 Mac 卸载", "removing": "正在卸载 Widget…", "removed": "已从此 Mac 卸载。", "pending": "已停止本机访问，清理尚未完成。请重试此操作。"},
@@ -19,6 +23,7 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     actions: {"openBase":"打开 Base：{{name}}","openTask":"打开任务：{{name}}","openUsage":"打开用量：{{name}}","failed":"无法完成此操作。请重试。"},
     base: {"groups":"分组记录","history":"历史记录","range":"日期范围：{{from}} 至 {{to}}（不含结束日期）","hint":"为当前实例选择 Base、字段和筛选条件。","search":"搜索 Base","loadFailed":"无法加载 Base，请重试。","narrowSearch":"请按名称搜索更多 Base。","source":"Base {{index}}","base":"Base","chooseBase":"选择 Base","unavailable":"Base 不可用","fieldFor":"{{field}} 对应的字段","chooseField":"选择字段","readFields":"读取字段","readField":"读取 {{field}}","filters":"筛选条件","filterField":"筛选字段","condition":"条件","equals":"等于","notEquals":"不等于","lessThan":"小于","greaterThan":"大于","onDay":"在指定日期","value":"值","timeZone":"时区","emptyValue":"空值","checked":"已勾选","unchecked":"未勾选","addFilter":"添加条件","removeFilter":"移除条件","consent":"允许在当前电脑上只读访问这些 Base 和字段。","invalid":"请选择 Base 和字段，检查筛选条件，并确认只读访问。","revoke":"撤销 Base 访问","records":"所选记录"},
     detailStopped: "Widget 详情已停止。请重试或编辑 Widget。",
+    copyPending: "正在准备个人副本。副本就绪前，当前 Widget 可继续使用。", copyFailed: "个人副本暂时无法替换此 Widget。当前 Widget 和设置均已保留。", copyDetails: "打开副本详情",
     copyName: "{{name}}（副本）",
     versions: "版本", versionTitle: "Widget 版本", versionHint: "预览已保存的版本，确认后再应用。", currentVersion: "当前版本", previewVersion: "预览", versionSaved: "版本已保存。你可以稍后将其加入 Dock。",
     customize: "自定义", copyCustomize: "复制并自定义", customName: "{{name}}（自定义）", replaceWithCopy: "应用并替换为副本", preserveInstance: "保留当前实例名称和位置，原版仍可添加。", usageSource: "用量来源", allAgents: "全部 Agent", otherSources: "详情中还有 {{count}} 项",

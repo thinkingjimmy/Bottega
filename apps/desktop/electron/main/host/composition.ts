@@ -2,7 +2,7 @@
  * [INPUT]: Depends on Electron app/utilityProcess/MessageChannelMain, the operation runtime (refs + registry), the descendant registry,
  *          process custody with exact-owner descendant recording, PackagePorts holds, abortable timer waits, the process port and UtilityHost.
  * [OUTPUT]: Provides hostExitCleanup and createHostRuntime / HostRuntime: initialize/create/get/remove/close, isIdle/drain across host
- *           activity, package holds and both process owners, package-port attachment and exit subscriptions. remove shares concurrent
+ *           activity, package holds and both process owners, package-port attachment, trusted plugin RPC/fenced child execution and exit subscriptions. remove shares concurrent
  *           disposal and preserves a replacement slot; package RPC uses its channel owner and ref-less RPC its App-surface principal.
  * [POS]: The single owner of utility hosts in main; routes every bridge request through a capability ref to the principal it was issued for, starts custody-mode processes through the guardian (a Provider bridge only as the launch main sealed on its execution ref, whose turn is then bound to that child's host-custody owner, B2-01), tells onExit listeners about every host exit, and cleans a host's process groups whenever that host exits
  */
@@ -21,6 +21,7 @@ import { UtilityHost } from "./utility-host";
 import type { BridgeMessage, HostLaunchPlan, HostToBridge } from "./protocol";
 import { isPackagePortOperation, type PackagePorts } from "../extensions/host/ports";
 import { hostPackagePrincipal } from "../operations/principals";
+import type { JsonValue } from "@bottega/contracts/core/canonical";
 import type { TurnProcessOwner } from "../backends/contracts/types";
 
 export type HostRuntime = ReturnType<typeof createHostRuntime>;
@@ -55,7 +56,8 @@ export function createHostRuntime(options: { userData: string; mainDirectory: st
   const custody = new HostProcessCustody({ userData: options.userData, mainDirectory: options.mainDirectory });
   if (options.dependencies) custody.bindDependencies(options.dependencies);
   const processes = new HostProcessPort(descendants, custody);
-  const hosts = new Map<string, { host: UtilityHost; aborts: AbortController; fence?: PackageFence }>();
+  type PluginRpc = (operation: string, input: unknown, signal: AbortSignal) => Promise<JsonValue>;
+  const hosts = new Map<string, { host: UtilityHost; aborts: AbortController; fence?: PackageFence; pluginRpc?: PluginRpc }>();
   const exits = hostExitCleanup({ cleanHost: hostId => processes.cleanHost(hostId), warn: (...args) => console.warn(...args) });
   let closed = false;
   /* Late-bound: the Extension integration that owns host packages is composed after this runtime. */
@@ -88,6 +90,16 @@ export function createHostRuntime(options: { userData: string; mainDirectory: st
   const handle = async (hostId: string, signal: AbortSignal, message: Exclude<BridgeMessage, { t: "hello" | "refused" | "invoke-result" }>, reply: (message: HostToBridge) => void) => {
     const { refs, registry } = options.operations;
     if (message.t === "rpc") {
+      const pluginRpc = hosts.get(hostId)?.pluginRpc;
+      if (pluginRpc) {
+        try {
+          const result = await pluginRpc(message.request.operation, message.request.input, signal);
+          if (!signal.aborted) reply({ t: "rpc-result", response: { v: 1, id: message.request.id, ok: true, result } });
+        } catch (cause) {
+          if (!signal.aborted) reply({ t: "rpc-result", response: { v: 1, id: message.request.id, ok: false, error: { code: "operation-failed", message: (cause as Error).message.slice(0, 2048) } } });
+        }
+        return;
+      }
       const caller = packagePorts?.caller(hostId);
       /* Package ports act for the package that owns this host channel; the caller never names a package. */
       if (caller && isPackagePortOperation(message.request.operation)) {
@@ -154,7 +166,7 @@ export function createHostRuntime(options: { userData: string; mainDirectory: st
     descendants, custody,
     /** Before any host starts: groups a crashed previous life left behind are cleaned by PGID + birth, custody entries converge. */
     initialize: async () => { const cleaned = await descendants.reconcile(); await custody.initialize(); return cleaned; },
-    create(plan: HostLaunchPlan, overrides: { helloTimeoutMs?: number; afterFork?(host: UtilityHost): void; packageFence?: PackageFence } = {}) {
+    create(plan: HostLaunchPlan, overrides: { helloTimeoutMs?: number; afterFork?(host: UtilityHost): void; packageFence?: PackageFence; pluginRpc?: PluginRpc } = {}) {
       if (closed) throw new Error("host runtime is closed");
       if (hosts.has(plan.hostId)) throw new Error(`host ${plan.hostId} already exists`);
       let aborts = new AbortController();
@@ -182,8 +194,34 @@ export function createHostRuntime(options: { userData: string; mainDirectory: st
           exits.onExit(plan.hostId);
         },
       });
-      hosts.set(plan.hostId, { host, aborts, fence: overrides.packageFence });
+      hosts.set(plan.hostId, { host, aborts, fence: overrides.packageFence, pluginRpc: overrides.pluginRpc });
       return host;
+    },
+    async runPluginProcess(hostId: string, input: { command: string; args: string[]; cwd: string; env?: Record<string, string>; timeoutMs?: number; stdin?: string }, signal: AbortSignal) {
+      const entry = hosts.get(hostId);
+      if (!entry?.pluginRpc || !entry.fence?.trustedPlugin || entry.fence.providerId) throw new Error("Plugin process channel is unavailable");
+      signal.throwIfAborted();
+      const launch = fencePackageLaunch({ command: input.command, args: input.args, cwd: input.cwd,
+        env: { ...entry.host.plan.env, ...input.env, HOME: entry.host.plan.env.HOME } }, { ...entry.fence, network: true });
+      let processId: string | null = null, stdout = "", stderr = "";
+      let finish!: (value: { code: number | null; signal: string | null; stdout: string; stderr: string }) => void;
+      let fail!: (cause: unknown) => void;
+      const completed = new Promise<{ code: number | null; signal: string | null; stdout: string; stderr: string }>((resolve, reject) => { finish = resolve; fail = reject; });
+      const cancellation = AbortSignal.any([signal, entry.aborts.signal, AbortSignal.timeout(input.timeoutMs ?? 30_000)]);
+      const abort = () => { if (processId) void processes.kill(hostId, processId).catch(() => undefined); fail(cancellation.reason); };
+      cancellation.addEventListener("abort", abort, { once: true });
+      try {
+        const spawned = await processes.spawn(hostId, { ...launch, args: [...launch.args], env: Object.fromEntries(Object.entries(launch.env).flatMap(([key, value]) => typeof value === "string" ? [[key, value]] : [])), exactEnv: true }, message => {
+          if (message.t === "process-event") {
+            if (message.stream === "stdout") stdout += message.data; else stderr += message.data;
+            if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) > 4 * 1024 * 1024) { if (processId) void processes.kill(hostId, processId); fail(new Error("Plugin process output exceeds budget")); }
+          } else if (message.t === "process-exit") finish({ code: message.code, signal: message.signal, stdout, stderr });
+        });
+        processId = spawned.processId;
+        if (cancellation.aborted) abort();
+        await processes.write(hostId, processId, input.stdin, true);
+        return await completed;
+      } finally { cancellation.removeEventListener("abort", abort); }
     },
     get: (hostId: string) => hosts.get(hostId)?.host ?? null,
     isIdle,

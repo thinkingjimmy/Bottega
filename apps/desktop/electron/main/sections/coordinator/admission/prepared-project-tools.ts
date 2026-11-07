@@ -9,7 +9,7 @@ import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { BuiltinToolName } from "../../../../../shared/builtin-tools";
+import type { PluginToolName } from "../../../../../shared/plugin-tools";
 import type { ManualMcpEligibility } from "../../../../../shared/ipc/settings/mcp-servers-ipc";
 import type {
   ProductResourceScope,
@@ -55,10 +55,10 @@ export type ProjectToolsPreparationSnapshot = Readonly<{
     project: number | null;
   }>;
   builtinIntent: Readonly<{
-    disabledTools: readonly BuiltinToolName[];
+    disabledTools: readonly PluginToolName[];
   }>;
   /** Preparation-time runtime projection used by explicit Skill requirements. */
-  allowedTools: readonly BuiltinToolName[];
+  allowedTools: readonly PluginToolName[];
   mcpCandidates: readonly FrozenManualMcpCandidate[];
 }>;
 
@@ -91,7 +91,7 @@ export type FrozenProjectToolsReceipt = Readonly<{
   policyRevisions: ProjectToolsPreparationSnapshot["policyRevisions"];
   mcpScopeRevisions: ProjectToolsPreparationSnapshot["mcpScopeRevisions"];
   builtinIntent: ProjectToolsPreparationSnapshot["builtinIntent"];
-  allowedTools: readonly BuiltinToolName[];
+  allowedTools: readonly PluginToolName[];
   manualMcpDecisions: SealedMcpCandidatesRef["candidates"];
   explicitSkills: readonly ExplicitSkillRequirementReceipt[];
   sealedMcpCandidates: SealedMcpCandidatesRef;

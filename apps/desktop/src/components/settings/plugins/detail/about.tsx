@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on lucide icons, Settings layout primitives including the named icon action, workbench-copy, the plugins bridge (detail), the shared switch state,
- *           shared GUI history, stage/requirement metadata, the card's icon and the read-only sections.
+ *           shared GUI history, native Provider control-range facts, stage/requirement metadata, the card's icon and the read-only sections.
  * [OUTPUT]: Provides PluginControl (the switch, "Turn on…" / "Set up…", or a fixed badge — the same decision as a card) and
  *           PluginAboutPage — a plugin's introduction: hero (icon, name, publisher and health, summary, the control and, when it has
  *           settings, a Settings icon before the control), the one banner that matters, About, What it can do, Works with, In use, Versions
@@ -8,6 +8,7 @@
  * [POS]: Opened from a card in All plugins or by a background surface naming a plugin (openPlugins(pluginId)). All plugins introduces;
  *        settings live on the sidebar entry's page (settings-page.tsx). An Agent-native plugin is read only and says who manages it.
  */
+import { ProviderNativeTools } from "../platform/provider-tools";
 import type { ReactNode } from "react";
 import { PluginRequirement, PluginStage } from "./metadata";
 import { Lock, Settings, TriangleAlert } from "lucide-react";
@@ -103,6 +104,7 @@ export function PluginAboutPage({ pluginId, bridge, workbench, locale, plugins, 
       <PluginBanners detail={detail} workbench={workbench} note={switching.state.notes[detail.id]} onOpenRelated={onOpenRelated} />
       <AboutSection detail={detail} workbench={workbench} />
       <CapabilitiesSection detail={detail} workbench={workbench} />
+      {detail.kind === "provider" && <ProviderNativeTools providerId={detail.id} locale={locale} />}
       {!native && <WorksWithSection detail={detail} workbench={workbench} names={names} onOpenPlugin={onOpenPlugin} />}
       <InUseSection detail={detail} workbench={workbench} />
       <PluginHistoryList id={pluginId} locale={locale} onEdit={onEditSource ? () => onEditSource(pluginId) : undefined} />

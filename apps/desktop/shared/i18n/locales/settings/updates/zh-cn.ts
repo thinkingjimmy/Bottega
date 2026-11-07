@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsUpdatesEn structural type
- * [OUTPUT]: Provides settingsUpdatesZhCN, the Simplified Chinese Settings › Updates catalog; failure recovery uses shared retry and manual-download copy
+ * [OUTPUT]: Provides settingsUpdatesZhCN, the Simplified Chinese Settings › Updates catalog; unified row actions and collapsed failure details use shared update, retry and manual-download copy
  * [POS]: Simplified Chinese leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
@@ -8,13 +8,15 @@ import type { settingsUpdatesEn } from "./en";
 
 export const settingsUpdatesZhCN: typeof settingsUpdatesEn = {
   title: "更新",
-  description: "管理 Bottega 与各 Provider CLI 的更新。",
+  description: "管理 Bottega 与 Agent 的更新。",
+  updatingShort: "正在更新",
+  showDetails: "查看详情",
+  hideDetails: "收起详情",
   updateAll: "全部更新",
   updateOne: "更新 {{name}}",
   upToDate: "{{name}} 已是最新",
   updating: "正在更新 {{name}}…",
   latestUnknown: "最新版本未知",
-  cliFailed: "更新失败",
   cliUnchanged: "更新程序已结束，但版本没有变化。可以试试在终端中更新。",
   cliTimeout: "更新耗时过长，已停止。",
   cliUnavailable: "这个 CLI 无法在这里更新。",
@@ -34,7 +36,6 @@ export const settingsUpdatesZhCN: typeof settingsUpdatesEn = {
   failedShort: "更新失败",
   checkFailedShort: "检查更新失败",
   manualShort: "下载新版本",
-  downloadContinue: "下载期间，你可以继续使用 Bottega。",
   downloading: "正在下载 {{version}}",
   installing: "更新已下载 · 即将重启安装",
   failed: "更新失败：{{message}}",
@@ -44,7 +45,7 @@ export const settingsUpdatesZhCN: typeof settingsUpdatesEn = {
   backgroundFailed: "上次自动检查失败",
   backgroundFailedOpen: "自动检查更新持续失败，点击查看详情",
   check: "检查更新",
-  upgrade: "立即升级",
+  upgrade: "更新",
   manualUpgrade: "打开下载页",
   unavailable: "更新服务仅在安装包中可用",
   platformSupport: "平台支持",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the existing current-account Cloud head/page/review ports and the terminal local definition owner.
- * [OUTPUT]: Provides WidgetAccountDirectory with revision-driven verified zero-instance metadata, original source Chat routing and received revocation delivery.
+ * [OUTPUT]: Provides WidgetAccountDirectory with revision-driven legacy Widget metadata, strict packet-format separation and received revocation delivery.
  * [POS]: Deferred account discovery; it downloads no runtime archive, creates no writable source and grants no execution or data access.
  */
 import {
@@ -46,21 +46,6 @@ export class WidgetAccountDirectory {
     );
   }
   preparing(subject:WidgetPackageSubject,reference:string){return this.cacheScope===canonicalJson(this.ports.scope())&&this.pending.has(hashCanonical([{definitionId:subject.definitionId,sourceInstallationId:subject.sourceInstallationId},reference]));}
-  edit(subject: WidgetPackageSubject) {
-    if (this.cacheScope !== canonicalJson(this.ports.scope()))
-      throw new Error("WIDGET_CATALOG_ACCOUNT_CHANGED");
-    const value = this.entries.get(
-      hashCanonical({
-        definitionId: subject.definitionId,
-        sourceInstallationId: subject.sourceInstallationId,
-      }),
-    )?.view;
-    if (!value?.sourceChatId) throw new Error("DOCK_WIDGET_SOURCE_UNAVAILABLE");
-    return {
-      chatId: value.sourceChatId,
-      sourceInstallationId: subject.sourceInstallationId,
-    };
-  }
   reconcile() {
     if (this.closed) return;
     const key = canonicalJson(this.ports.scope()),
@@ -157,7 +142,7 @@ export class WidgetAccountDirectory {
                 current();
                 continue;
               }
-              if (!entry.latest) continue;
+              if (!entry.latest || entry.latest.format === "bottega-plugin/v1") continue;
               const id = hashCanonical(entry.subject),
                 identity = canonicalJson(entry.latest),
                 previous = this.entries.get(id);
@@ -180,9 +165,6 @@ export class WidgetAccountDirectory {
                   reference: entry.latest.reference,
                   name: checked.manifest.name,
                   description: "",
-                  ...(checked.sourceChat
-                    ? { sourceChatId: checked.sourceChat.chatId }
-                    : {}),
                 },
               });
               if (next.size > WIDGET_PACKAGE_BUDGET.retainedPackages)

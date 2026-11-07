@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on original lifecycle gates, canonical Chat fences, reservations, prepared staging trusted remote connection checks, and the main-only workflow source (refused next to a remote submission).
- * [OUTPUT]: Promotes exact input custody, deferring ordinary append sequences/context to dispatch while retaining imported-replay and authorization fences.
+ * [OUTPUT]: Promotes exact input custody, deferring ordinary append sequences/context to dispatch while retaining imported-replay and authorization fences. Admits main-owned persistent member source without renderer authority.
  * [POS]: apps/desktop/electron/main/sections/coordinator/turns; Manual-turn admission entry point for sections/coordinator; ConversationCoordinator supplies only the conversation/project gate and scheduling callbacks
  */
 
+import { assertChatModeLocked, resolveChatMode } from "./mode-admission";
 import { assertSwitchSource, switchEligibility } from "../agent-switch/eligibility";
 import { freezeManualContext } from "../agent-switch/context";
 import { freezeSwitch } from "../agent-switch/prepare";
@@ -81,8 +82,9 @@ export async function submitManualAdmission(
     throw new Error("人工 turn intent 格式无效");
   }
   const remote = runtime.remote ?? dependencies.ledger.read(state => state.submissionReservations[submission.intentId]?.remoteSubmission?.context);
-  const { workflow } = submission;
+  const { workflow, memberSession } = submission;
   if (workflow && remote) throw new Error("WORKFLOW_SUBMISSION_CANNOT_BE_REMOTE");
+  if (memberSession && (remote || workflow)) throw new Error("MEMBER_SUBMISSION_CANNOT_CLAIM_ANOTHER_SOURCE");
   const userMessage = remoteUserMessage(manualUserMessage(submission.persistence), remote);
   const conversationId = submission.turn.scope.conversationId;
   const submissionHash = canonicalHash(submission);
@@ -216,7 +218,7 @@ export async function submitManualAdmission(
         const candidate = {
           id: submission.intentId,
           conversationId,
-          origin: remote?.origin ?? (workflow ? { kind: "workflow" as const, ...workflow } : undefined),
+          origin: remote?.origin ?? (workflow ? { kind: "workflow" as const, ...workflow } : memberSession ? { kind: "member" as const, ...memberSession } : undefined),
           remoteSubmission: dependencies.ledger.read(state => state.submissionReservations[submission.intentId]?.remoteSubmission),
           payload: sequence
             ? freezeSwitch(tagRemotePrepared(await freezeManualContext(lease.prepared, dependencies, sequence), remote), dependencies, submissionHash, sequence)
@@ -303,6 +305,7 @@ async function assertManualBackend(
   chats: CoordinatorDependencies["chats"]
 ) {
   const backend = submission.turn.turnOptions.backend;
+  resolveChatMode(submission.turn.turnOptions);
   if (submission.persistence.kind !== "append") {
     if (submission.persistence.input.agent !== backend) {
       throw new Error("人工 turn backend 与持久化 Agent 不一致");
@@ -311,6 +314,7 @@ async function assertManualBackend(
   }
   const record = chats.store.getMetadata(submission.persistence.input.chatId);
   if (!record) throw new Error("人工 turn 的目标聊天不存在");
+  assertChatModeLocked(record.options?.mode, submission.turn.turnOptions.mode);
   if (submission.agentSwitch) return;
   if (submission.expectedAgentRevision !== undefined && record.agentRevision !== submission.expectedAgentRevision) {
     throw new Error("AGENT_REVISION_STALE");

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on pathless installed/account Widget metadata, current instance counts and host management callbacks.
- * [OUTPUT]: Provides WidgetAccountDefinitions with distinct Add, original source editing, local uninstall and account deletion actions.
+ * [OUTPUT]: Provides WidgetAccountDefinitions with distinct Add, local uninstall and account deletion actions.
  * [POS]: Shared Settings definition directory; listing or choosing a definition never installs or executes code.
  */
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
@@ -16,7 +16,6 @@ export function WidgetAccountDefinitions({
   busy,
   onAdd,
   onInstall,
-  onEdit,
   onUninstall,
   onDelete,
 }: {
@@ -25,7 +24,6 @@ export function WidgetAccountDefinitions({
   busy: boolean;
   onAdd(key: string): void;
   onInstall(value: WidgetAccountDefinition, button: HTMLButtonElement): void;
-  onEdit(value: Subject): void;
   onUninstall(value: Subject, button: HTMLButtonElement): void;
   onDelete(value: Subject, button: HTMLButtonElement): void;
 }) {
@@ -56,13 +54,6 @@ export function WidgetAccountDefinitions({
                   onClick={() => onAdd(definition.key)}
                 >
                   {t("systemDock.widgets.add")}
-                </SettingsButton>
-                <SettingsButton
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => onEdit(definition)}
-                >
-                  {t("systemDock.widgets.edit")}
                 </SettingsButton>
                 <SettingsButton
                   variant="outline"
@@ -108,13 +99,6 @@ export function WidgetAccountDefinitions({
                   }
                 >
                   {t("systemDock.widgets.add")}
-                </SettingsButton>
-                <SettingsButton
-                  variant="outline"
-                  disabled={busy || !definition.sourceChatId}
-                  onClick={() => onEdit(definition)}
-                >
-                  {t("systemDock.widgets.edit")}
                 </SettingsButton>
                 <SettingsButton
                   variant="outline"

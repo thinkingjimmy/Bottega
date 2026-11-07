@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical submissions, staged resources, main Skill custody and typed design-reference authorization; main-resolved native-file authorization source separate from final execution/Skill workspace.
- * [OUTPUT]: Immutable manual/workflow preparation, retained user-file snapshots, pinned Skill generations and design-reference validation before admission effects.
+ * [OUTPUT]: Immutable manual/workflow preparation, retained user-file snapshots, pinned Skill generations and design-reference validation before admission effects. Preserves trusted persistent member ownership in durable preparation.
  * [POS]: Coordinator admission boundary; package Providers still freeze no Skill catalog.
  */
 
@@ -126,6 +126,7 @@ export type PreparedPersistence =
 
 export type PreparedManualTurn = {
   remoteContext?: import("../remote/model").RemoteContext;
+  memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts;
   sequences?: import("../../../../../shared/chat-agent/sequences").TurnSequences;
   ownerCommit?: import("../../../chats/sqlite/cloud/execution/commit").OwnerCommit;
   agentSwitch?: ManualTurnSubmission["agentSwitch"];
@@ -591,6 +592,7 @@ export async function prepareManualTurn(
         );
     await acquirePreparedSkillReferences(skillSelection);
     const body = {
+      memberSession: submission.memberSession,
       agentSwitch: submission.agentSwitch,
       expectedAgentRevision: submission.expectedAgentRevision,
       intentId: submission.intentId,

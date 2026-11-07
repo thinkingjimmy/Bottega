@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on SQLite canonical facts, immutable source retention and portable allowlists.
- * [OUTPUT]: Provides immutable native snapshots with lifecycle, archive, sequence, local-commit and message-count evidence, plus deletion custody; a new workflow Chat's first snapshot carries its role (R-35), which no local record holds. The initial snapshot enrolls each local Chat through enrollChat, skipping a package Provider's by name (TASK-11 S3-b).
+ * [OUTPUT]: Provides immutable native snapshots with lifecycle, archive, sequence, local-commit and message-count evidence, plus deletion custody; a new workflow Chat's first snapshot carries its role (R-35), which no local record holds. The initial snapshot enrolls each local Chat through enrollChat, skipping a package Provider's by name (TASK-11 S3-b). Preserves persistent member facts in the original portable snapshot.
  * [POS]: Snapshot boundary runs inside one worker transaction; subsequent edits join the same outbox.
  */
 import type { SqliteDatabase } from "../connection";
@@ -15,21 +15,21 @@ import { captureInitialMetadata } from "./delivery/metadata-capture";
 import { enrollChat } from "./initialization/enrollment";
 
 /** `workflowRole` (R-35) is given only for a new workflow Chat's first upload; the local record never holds it. */
-export function portableFacts(facts: ChatFacts, cloudRevision: number, workflowRole?: ChatWorkflowRole) {
+export function portableFacts(facts: ChatFacts, cloudRevision: number, workflowRole?: ChatWorkflowRole, memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts) {
   return portableChatSchema.parse({ id: facts.id, incarnationId: facts.incarnationId, title: facts.title,
     agent: facts.agent, options: facts.options, agentRevision: facts.agentRevision,
     classification: projectChatClassification(facts), cloudRevision, createdAt: facts.createdAt, updatedAt: facts.updatedAt,
-    ...portableForkLineage(facts), ...(facts.sortKey === undefined ? {} : { sortKey: facts.sortKey }), ...(workflowRole ? { workflowRole } : {}) });
+    ...portableForkLineage(facts), ...(facts.sortKey === undefined ? {} : { sortKey: facts.sortKey }), ...(workflowRole ? { workflowRole } : {}), ...(memberSession ? { memberSession } : {}) });
 }
 export function frozenChatSource(db: SqliteDatabase, facts: ChatFacts, record: ReturnType<ChatRepositoryReader["getRecord"]>,
-  cloudRevision: number, workflowRole?: ChatWorkflowRole) {
+  cloudRevision: number, workflowRole?: ChatWorkflowRole, memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts) {
   const row = db.prepare("SELECT lifecycle_kind,next_seq FROM chats WHERE id=?").get(facts.id) as Row;
   const saved = record ? readSavedNative(db, record) : null, messages = saved?.messages ?? [];
   // Fork/import prefixes establish reading history, never a local user-commit baseline.
   const firstUserSeq = facts.startState.kind === "started-exact" ? facts.startState.firstUserMessageSeq : null;
   const committed = firstUserSeq !== null ? messages.filter(message => message.role === "user" &&
     message.seq >= firstUserSeq && message.seq > (facts.inheritedThroughSeq ?? 0)).at(-1) : undefined;
-  return { chat: portableFacts(facts, cloudRevision, workflowRole), lifecycleKind: String(row.lifecycle_kind), archivedAt: facts.archivedAt ?? null,
+  return { chat: portableFacts(facts, cloudRevision, workflowRole, memberSession), lifecycleKind: String(row.lifecycle_kind), archivedAt: facts.archivedAt ?? null,
     nextSeq: row.next_seq === null ? 1 : Number(row.next_seq), lastCommittedUserSeq: committed?.seq ?? null,
     messages, subagents: saved?.subagents ?? {}, branches: record?.supersededBranches ?? [] };
 }

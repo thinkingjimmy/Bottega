@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on portable Chat facts and deterministic JSON/hash primitives.
- * [OUTPUT]: Provides closed initial/metadata commands, immutable receipts and stable payload hashes.
+ * [INPUT]: Lightweight portable member ownership validator; Depends on portable Chat facts and deterministic JSON/hash primitives.
+ * [OUTPUT]: Provides closed initial/metadata commands, immutable receipts and stable payload hashes. Exports owner-only one-time member identity repair commands.
  * [POS]: Ordinary metadata (title, archive, manual sortKey) cannot change classification, Agent options, execution ownership or the workflow role; only the owner desktop's set-workflow-role sets a missing role (R-35).
  */
 import { z } from "zod";
+import { pluginMemberSessionFactsSchema } from "@bottega/contracts/plugins/team/member";
 import { cloudIdSchema as id } from "../auth";
 import { canonicalJson } from "../encryption/encoding";
 import { versionSchema as rev } from "../scalars";
@@ -17,6 +18,7 @@ export const chatMetadataOperationSchema = z.object({ operationId: id, chatId: i
     z.object({ kind: z.literal("patch"), incarnationId: id, expectedRevision: rev, changes: chatMetadataPatchSchema }).strict(),
     /* R-35: the owner desktop's repair for a workflow Chat that reached the cloud without its role; one role per Chat, for good. */
     z.object({ kind: z.literal("set-workflow-role"), incarnationId: id, expectedRevision: rev, workflowRole: chatWorkflowRoleSchema }).strict(),
+    z.object({ kind: z.literal("set-member-session"), incarnationId: id, expectedRevision: rev, memberSession: pluginMemberSessionFactsSchema }).strict(),
   ]),
 }).strict().refine(value => value.command.kind !== "create" || value.chatId === value.command.chat.id && value.command.chat.cloudRevision === 0);
 export type ChatMetadataOperation = z.infer<typeof chatMetadataOperationSchema>;

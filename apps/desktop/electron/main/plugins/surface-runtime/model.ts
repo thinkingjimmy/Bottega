@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on strict plugin manifests, shared remote catalog limits, the GUI build service and compiled digest contracts.
- * [OUTPUT]: Provides at most 64 authored plugin owners, manual Dock candidates, bounded generation retention pins with optional account custody, source provenance and runtime authority ports.
+ * [OUTPUT]: Provides retained Surface source identities, manual Dock candidates, bounded generation retention pins with optional account custody, source provenance and runtime authority ports without an author-Chat field.
  * [POS]: Plugin surface runtime model; grants/settings remain host-owned and never come from an artifact.
  */
 import { z } from "zod";
@@ -16,7 +16,7 @@ export type GenerationCustodyScope = z.infer<typeof generationCustodyScopeSchema
 const digests = z.object({manifestDigest:digest,sourcePackageDigest:digest,contentDigest:digest,buildReceiptDigest:digest}).strict();
 const file = z.object({path:z.string().min(1).max(1024).refine(path=>!path.startsWith("/") && !path.includes("\\") && path.split("/").every(part=>part && part!=="." && part!=="..")),bytes:z.number().int().nonnegative(),sha256:digest}).strict();
 export const generationSchema = z.object({generationId,createdAt:z.number().int().nonnegative(),manifest:pluginGuiManifestSchema,digests,files:z.array(file).max(512),available:z.boolean()}).strict();
-export const recordSchema = z.object({pluginId:id,origin:z.enum(["local","official"]).default("local"),ownerChatId:z.string().min(1).max(160),sourceRoot:z.string().min(1).max(32768),enabled:z.boolean(),authoringManifest:pluginGuiManifestSchema.nullable().default(null),
+export const recordSchema = z.object({pluginId:id,origin:z.enum(["local","official"]).default("local"),sourceRoot:z.string().min(1).max(32768),enabled:z.boolean(),authoringManifest:pluginGuiManifestSchema.nullable().default(null),
  activeGenerationId:generationId.nullable(),candidateGenerationId:generationId.nullable().default(null),previousGenerationId:generationId.nullable(),generations:z.array(generationSchema).max(256),
  retentionPins:z.array(z.object({id:z.string().regex(/^[A-Za-z0-9_-]{8,128}$/),generationId,scope:generationCustodyScopeSchema.optional()}).strict()).max(128).default([]),
  lastActivation:z.object({operationId:z.string().regex(/^[A-Za-z0-9_-]{8,128}$/),generationId,expectedPrevious:generationId.nullable()}).strict().nullable().default(null),
@@ -34,7 +34,7 @@ export const runtimeFileSchema = z.object({schemaVersion:z.literal(1),plugins:z.
 });
 export type PluginGeneration = z.infer<typeof generationSchema>;
 export type PluginRuntimeRecord = z.infer<typeof recordSchema>;
-export type PluginRuntimeAuthorization = Readonly<{pluginId:string;generationId:string;manifest:PluginGuiManifest;previousManifest:PluginGuiManifest|null;ownerChatId:string;reason:"install"|"rebuild"|"activate"|"serve"}>;
+export type PluginRuntimeAuthorization = Readonly<{pluginId:string;generationId:string;manifest:PluginGuiManifest;previousManifest:PluginGuiManifest|null;reason:"install"|"rebuild"|"activate"|"serve"}>;
 export type PluginRuntimeOptions = Readonly<{
  compiler:Pick<AppGuiBuildService,"prepare">;
  /** Only the main-owned seed composition supplies this canonical source authority. */

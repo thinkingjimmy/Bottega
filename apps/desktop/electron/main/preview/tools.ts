@@ -4,9 +4,9 @@
  * [POS]: Agent tool boundary; a tool cannot choose its Chat, permissions, environment or cloud identity.
  */
 import { encodeArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
-import type { BuiltinToolset } from "../tools/registry";
+import type { PluginToolset } from "../tools/registry";
 import { previewFeature } from "./session/runtime";
-export function createPreviewToolset(): BuiltinToolset {
+export function createPreviewToolset(): PluginToolset {
   const feature = () => { const value = previewFeature(); if (!value || !value.consent.enabled()) throw new Error("tunnel-plugin-disabled"); return value; };
   return {
     preview_server_start: async (args, { lease, signal }) => {

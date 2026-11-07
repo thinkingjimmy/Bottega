@@ -4,10 +4,11 @@
  * [OUTPUT]: Provides startDurableDrafts (save debounced, a queue change at once, empty deletes; restore into an empty composer, then save what was typed while it loaded; the blank page keyed by Project; a quit's flush that waits for first loads still in flight and says whether every held draft is on disk) and the installed
  *           instance's restoreDurableDraft / flushDurableDrafts
  * Flush drains restores, timers and the save chain to a stable revision before acknowledging persistence.
- * Fixed design chips and original review request keys survive save/restore and surface transfer.
+ * Mode/source-authoring identities, fixed design chips and original review request keys survive save/restore and surface transfer.
  * [POS]: lib/chat-composer's F-12 renderer port; main owns the files and the file-grant rules, this owns when to save and how a restore lands
  */
 
+import { readAgentDraft, updateAgentDraft } from "@/lib/chat-agent-draft/state";
 import type { RichValue } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import type { AgentWorkspaceScope } from "../../../../shared/ipc/agent/agent-ipc";
 import { BLANK_DRAFT_PREFIX, type ComposerDraftsBridgeApi, type DurableComposerDraft, type DurableQueueItem } from "../../../../shared/composer/drafts-ipc";
@@ -56,6 +57,8 @@ function toDurable(state: ComposerState, chatId: string, blank = false) {
     richValue, unavailableAttachments, queue: { paused: state.queue.paused, items },
     pendingAcks: pendingComposerAcks().filter((ack) => ack.chatId === chatId).map(({ kind, id }) => ({ kind, id })),
     workspaceIdentityKey: state.workspaceIdentityKey, projectId: state.projectId,
+    ...(state.pluginAuthoring ? { pluginAuthoring: state.pluginAuthoring } : {}),
+    ...(readAgentDraft(chatId).options.mode ? { mode: readAgentDraft(chatId).options.mode } : {}),
   };
   return { draft, fileScopes };
 }
@@ -246,12 +249,14 @@ function applyRestore(chatId: string, draft: DurableComposerDraft) {
     ...current,
     workspaceIdentityKey: draft.workspaceIdentityKey,
     projectId: draft.projectId,
+    ...(draft.pluginAuthoring ? { pluginAuthoring: draft.pluginAuthoring } : {}),
     draft: { richValue, files: [] },
     unavailableAttachments: [...draft.unavailableAttachments],
     fileResources,
     // A restored queue never sends by itself: it waits, paused and marked, for the person to resume.
     queue: { ...current.queue, items, paused: items.length > 0, ...(items.length ? { restored: items.length } : {}), error: null, revision: current.queue.revision + 1 },
   }));
+  if (draft.mode) updateAgentDraft(chatId, current => current.canonical ? current : ({ ...current, options: { ...current.options, mode: draft.mode } }));
   for (const ack of draft.pendingAcks) registerPendingComposerAck({ ...ack, chatId });
 }
 

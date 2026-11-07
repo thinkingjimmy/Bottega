@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on hash-verified prepared Project/Tools/Skill receipts, durable ManualTurnIntent, ChatsService, SettingsStore, session-plan rebuild, and Agent start ports
- * [OUTPUT]: Pins queued preparation before sequence reservation, freezes current history and boundaries, then persists trusted users before exact dispatch and session recovery; the turn's origin comes from the intent's recorded origin (a workflow step's stays workflow and carries no Skills selection); an append runs on the Chat's own options, a package Provider's included.
+ * [OUTPUT]: Pins queued preparation before sequence reservation, freezes current history and boundaries, then persists trusted users before exact dispatch and session recovery; the turn's origin comes from the intent's recorded origin (a workflow step's stays workflow and carries no Skills selection); an append runs on the Chat's own options, a package Provider's included. Dispatches the original durable member origin.
  * Workflow turns carry their frozen Skill receipt and always create a fresh native session.
  * [POS]: apps/desktop/electron/main/sections/coordinator/turns; The durable manual-intent executor of sections/coordinator
  */
@@ -349,7 +349,7 @@ function durableTurnOrigin(
   userMessage: { id: string; content: string },
   origin: DeepReadonly<ManualTurnIntent["origin"]>
 ): TurnOrigin {
-  if (origin.kind === "workflow") return { ...origin, userMessageId: userMessage.id };
+  if (origin.kind === "workflow" || origin.kind === "member") return { ...origin, userMessageId: userMessage.id };
   return {
     kind: "manual",
     queryText: userMessage.content,

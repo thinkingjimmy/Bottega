@@ -1,9 +1,9 @@
 /**
- * [INPUT]: Depends on node Buffer only; its limit and wording equal shared/builtin-tools/platform's backstop (pinned by a test), without importing it.
+ * [INPUT]: Depends on node Buffer only; its limit and wording equal shared/plugin-tools/platform's backstop (pinned by a test), without importing it.
  * [OUTPUT]: Provides USER_DATA_SOCKETS (every socket main places under userData), userDataSocketHeadroom, UserDataSocketBudgetError and assertUserDataSocketBudget.
  * [POS]: Main-only socket budget: startup checks userData once before any custody or tool socket exists, and dev profiles check a name before creating it; kept out of platform.ts so the provider bridge bundle does not carry it.
  */
-/* Not imported from shared/builtin-tools/platform: that module also loads in the provider bridge, and a main-only importer
+/* Not imported from shared/plugin-tools/platform: that module also loads in the provider bridge, and a main-only importer
    splits it into its own shared chunk (about +570 B on the bridge). The wording is pinned equal to the backstop's by a test. */
 const UNIX_SOCKET_PATH_BYTE_LIMIT = 104;
 export const unixSocketPathMessage = (path: string) =>

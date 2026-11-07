@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Base references, workflow bindings, roles, run and confirmation contracts.
- * [OUTPUT]: Provides WorkflowsBridge and channel names, including defaults; typed setup/admission/resource refusals and ConfigApplySetting reports.
+ * [OUTPUT]: Provides WorkflowsBridge and channel names, including defaults; typed setup/admission/resource refusals and ConfigApplySetting reports. Includes explicit per-run worktree start and accepted-result revision/HEAD-bound merge.
  * [POS]: Shared desktop IPC contract for workflow setup, execution, interventions and subscriptions.
  * Preflight distinguishes missing identity from unmeasured capabilities.
  */
@@ -18,6 +18,7 @@ export const WORKFLOWS_CHANNEL = Object.freeze({
   projectRunCount: "workflows:project-run-count", retryStep: "workflows:retry-step", preflight: "workflows:preflight",
   defaults: "workflows:defaults",
   evidence: "workflows:evidence",
+  isolation: "workflows:isolation", mergeIsolation: "workflows:merge-isolation",
   changed: "workflows:changed", openConfirmation: "workflows:open-confirmation",
 } as const);
 
@@ -61,6 +62,12 @@ export type WorkflowRolePreflight = Readonly<{ ready: true }> | Readonly<{ ready
 export type WorkflowDefaults = { ready: true; provider: string; roles: EnableWorkflowInput["roles"] }
   | { ready: false; problems: WorkflowRolePreflight[] };
 
+export type WorkflowIsolationMergeInput = Readonly<{ operationId: string; expectedHead: string; expectedRunRevision: number }>;
+export type WorkflowIsolationMergeResult = Readonly<{ status: "prepared" | "applied" | "conflicted" | "blocked"; expectedHead: string;
+  memberCommit: string; mergeCommit?: string; conflicts: string[]; error?: string }>;
+export type WorkflowIsolationSnapshot = Readonly<{ runId: string; workspace: string; branch: string; baseCommit: string;
+  status: "ready" | "merged" | "conflicted"; expectedHead: string; memberCommit: string; dirty: boolean; merge?: WorkflowIsolationMergeResult }>;
+
 export interface WorkflowsBridge {
   defaults(projectId: string): Promise<WorkflowDefaults>;
   enableWorkflow(input: EnableWorkflowInput): Promise<WorkflowBinding>;
@@ -70,7 +77,9 @@ export interface WorkflowsBridge {
   runsForRecord(record: WorkflowRecordRef): Promise<WorkflowRun[]>;
   run(runId: string): Promise<WorkflowRun | null>;
   /** A second start on a record with an active run answers that run with `started: false`. */
-  start(input: { bindingId: string; rowId: string }): Promise<{ started: boolean; run: WorkflowRun }>;
+  start(input: { bindingId: string; rowId: string; isolation?: "worktree" }): Promise<{ started: boolean; run: WorkflowRun }>;
+  isolation(runId: string): Promise<WorkflowIsolationSnapshot | null>;
+  mergeIsolation(runId: string, input: WorkflowIsolationMergeInput): Promise<WorkflowIsolationMergeResult>;
   /** The operator, device and time are filled in by the host from the verified session; the input names none of them. */
   confirm(runId: string, stepId: string, input: ConfirmInput): Promise<WorkflowRun>;
   pause(runId: string): Promise<WorkflowRun>;

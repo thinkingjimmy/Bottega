@@ -12,7 +12,7 @@ import type { DockTasksPort } from '../tasks';
 import type { DockCustomWidgetsPort } from './ports';
 import type { DockWidgetDetailPort } from '../detail/ports';
 import type { WidgetRuntimeHealth } from '../../../../../shared/system-dock/widgets/native';
-export const WIDGET_COMMANDS = ['widgetApiControl','widgetInstallReview','confirmWidgetInstall','widgetInstallOperation','retryWidgetInstall','cancelWidgetInstall','widgetLifecycleControl','widgetDeliveryControl','widgetPreviewControl', 'widgetBaseDirectory', 'revokeWidgetBaseAccess', 'widgetUpdateReview', 'widgetUpdateForm', 'stageWidgetUpdate', 'widgetSnapshot', 'newWidget', 'editWidget', 'forkWidget', 'buildWidget', 'widgetPreview', 'widgetVersions', 'previewWidgetVersion', 'applyWidget', 'widgetOperation', 'instancePreview', 'savedWidgetPreview', 'submitWidgetInstance', 'officialWidgetPreview', 'submitOfficialWidget', 'setWidgetPaused', 'removeWidgetInstance'] as const;
+export const WIDGET_COMMANDS = ['widgetApiControl','widgetInstallReview','confirmWidgetInstall','widgetInstallOperation','retryWidgetInstall','cancelWidgetInstall','widgetLifecycleControl','widgetDeliveryControl','widgetPreviewControl', 'widgetBaseDirectory', 'revokeWidgetBaseAccess', 'widgetUpdateReview', 'widgetUpdateForm', 'stageWidgetUpdate', 'widgetSnapshot', 'widgetPreview', 'widgetVersions', 'previewWidgetVersion', 'applyWidget', 'widgetOperation', 'instancePreview', 'savedWidgetPreview', 'submitWidgetInstance', 'officialWidgetPreview', 'submitOfficialWidget', 'setWidgetPaused', 'removeWidgetInstance'] as const;
 export type WidgetCommand = (typeof WIDGET_COMMANDS)[number];
 export type DockWidgetFeaturePorts = {
   runtime: SystemDockRuntimePorts;

@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on Zod and canonical Agent identifiers
+ * [INPUT]: Depends on Zod, lightweight public mode selection and canonical Agent identifiers
  * [OUTPUT]: Provides strict switch intent and durable notice validators, and parseAgentSwitchIntent (a switch to or from a package Provider refused by its bare code, TASK-11 S3-b)
  * [POS]: Shared switch validation without runtime side effects
  */
 
 import { z } from "zod";
+import { pluginModeSelectionSchema } from "@bottega/contracts/plugins/platform/selection/mode";
 import { agentBackendIdSchema } from "../platform/agent-schema";
 import { providerIdSchema } from "@ai-chat/cloud-protocol/contracts/provider-id-schema";
 export const agentSwitchIntentSchema = z.object({
@@ -31,6 +32,7 @@ export const chatOptionsPatchSchema = z.object({
   expectedAgentRevision: z.number().int().nonnegative(),
   expectedChatRecordRevision: z.number().int().positive(),
   patch: z.object({
+    mode: pluginModeSelectionSchema.optional(),
     model: z.string().min(1).max(200).optional(),
     reasoningEffort: z.string().min(1).max(200).optional(),
     serviceTier: z.string().min(1).max(200).optional(),

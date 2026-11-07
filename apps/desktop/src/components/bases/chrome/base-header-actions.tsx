@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Base/Apps/Chats/Projects providers, router navigation, dialogs, menus, i18n, and structured client error codes
- * [OUTPUT]: Provides BaseHeaderActions (with the build-flagged Workflow group of a Project Base's ⋯ menu) and useBaseAppActions; XLSX issue disclosure stays local and Project promotion delegates original-request review to its dialog
+ * [OUTPUT]: Provides BaseHeaderActions (with the build-flagged Workflow group of a Project Base's ⋯ menu) and useBaseAppActions with the canonical Save as plugin entry; XLSX issue disclosure stays local and Project promotion delegates original-request review to its dialog
  * [POS]: Header action boundary for components/bases/chrome; transport codes are translated here and Base data mutations stay in providers
  */
 

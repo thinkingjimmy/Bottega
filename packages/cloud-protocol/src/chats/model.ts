@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on Zod, public IDs and canonical Agent options.
- * [OUTPUT]: Provides portable Chat facts and server-owned metadata/preparation heads with exact catalog revision baselines and exact-turn account read state.
+ * [INPUT]: Lightweight portable member ownership validator; Depends on Zod, public IDs and canonical Agent options.
+ * [OUTPUT]: Provides portable Chat facts and server-owned metadata/preparation heads with exact catalog revision baselines and exact-turn account read state. Portable facts include immutable persistent member ownership.
  * [POS]: Closed reading contract; local context, paths, sessions and grants have no representation.
  */
 import { acceptedQueueSchema } from "../remote/queue";
 import { z } from "zod";
+import { pluginMemberSessionFactsSchema } from "@bottega/contracts/plugins/team/member";
 import { cloudIdSchema as id } from "../auth";
 import { versionSchema as rev } from "../scalars";
 import { agentBackendIdSchema, turnOptionsSchema } from "./options";
@@ -29,7 +30,7 @@ export const chatWorkflowRoleSchema = z.enum(["plan", "develop", "review"]);
 export type ChatWorkflowRole = z.infer<typeof chatWorkflowRoleSchema>;
 export const portableChatSchema = z.object({ id, incarnationId: id, title: z.string().trim().min(1).max(200).nullable(),
   agent: agentBackendIdSchema, options: turnOptionsSchema, agentRevision: rev, classification: classificationSchema,
-  cloudRevision: rev, createdAt: rev, updatedAt: rev, sortKey: chatSortKeySchema.optional(), workflowRole: chatWorkflowRoleSchema.optional(), ...forkLineageFields,
+  cloudRevision: rev, createdAt: rev, updatedAt: rev, sortKey: chatSortKeySchema.optional(), workflowRole: chatWorkflowRoleSchema.optional(), memberSession: pluginMemberSessionFactsSchema.optional(), ...forkLineageFields,
 }).strict().refine(value => value.agent === value.options.backend && value.updatedAt >= value.createdAt, "Invalid portable Chat facts")
   .refine(value => {
     const present = [value.parentChatId, value.parentIncarnationId, value.parentMessageId, value.inheritedThroughSeq].filter(item => item != null).length;

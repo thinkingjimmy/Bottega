@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared ConversationParts, ConversationDraft, ConversationElapsed, ConversationSubagent and conversation Agent/process headings, tool rows and grouping, Message, Thinking, Terminal, Plan, image source custody, subagent, structured Agent failure notices, RegularChatTurn, fork actions, cold-turn projection, incarnation-fenced draft subscription, and Chat formatting components
- * [OUTPUT]: Subscribes to live drafts at the leaf, owns draft Plan expansion, and renders terminal partial replies without a running elapsed timer.
+ * [OUTPUT]: Subscribes to live drafts at the leaf, keeps the Agent heading visible while processing and streaming, owns draft Plan expansion, and renders terminal partial replies without a running elapsed timer.
  * [POS]: apps/desktop/src/components/chat/transcript/turns; Assistant-turn process renderer for chat/transcript; delegates non-plan terminal presentation to chat-regular-turn
  */
 
@@ -330,27 +330,33 @@ function DraftContent({
     );
 
   return (
-    <ConversationDraft active={active} label={label} editingPlan={Boolean(plan?.editing)}
-      elapsed={active && (projection.visibleCount > 0 || projection.streamingTexts.length > 0 || plan) && <ElapsedLabel startedAt={draft.startedAt} />}>
-      {renderParts(projection.beforePlan)}
-      {plan && (
-        <PlanCard
-          content={projection.cappedPlan}
-          copyable={false}
-          editing={plan.editing}
-          isExpanded={isPlanExpanded ?? false}
-          onToggle={onTogglePlan ? () => onTogglePlan(plan) : undefined}
-        />
-      )}
-      {renderParts(projection.afterPlan)}
-      {projection.streamingTexts.map(([itemId, text]) => (
-        <MessageContent key={itemId}>
-          <MessageResponse isAnimating={active && draft.streaming.has(itemId)}>
-            {projection.cappedStreaming.get(itemId) ?? text}
-          </MessageResponse>
-        </MessageContent>
-      ))}
-    </ConversationDraft>
+    <div>
+      <ConversationAgent
+        icon={<AgentBackendIcon backend={backendId ?? backendDisplayName} className="size-3" />}
+        label={backendDisplayName}
+      />
+      <ConversationDraft active={active} label={label} editingPlan={Boolean(plan?.editing)}
+        elapsed={active && (projection.visibleCount > 0 || projection.streamingTexts.length > 0 || plan) && <ElapsedLabel startedAt={draft.startedAt} />}>
+        {renderParts(projection.beforePlan)}
+        {plan && (
+          <PlanCard
+            content={projection.cappedPlan}
+            copyable={false}
+            editing={plan.editing}
+            isExpanded={isPlanExpanded ?? false}
+            onToggle={onTogglePlan ? () => onTogglePlan(plan) : undefined}
+          />
+        )}
+        {renderParts(projection.afterPlan)}
+        {projection.streamingTexts.map(([itemId, text]) => (
+          <MessageContent key={itemId}>
+            <MessageResponse isAnimating={active && draft.streaming.has(itemId)}>
+              {projection.cappedStreaming.get(itemId) ?? text}
+            </MessageResponse>
+          </MessageContent>
+        ))}
+      </ConversationDraft>
+    </div>
   );
 }
 

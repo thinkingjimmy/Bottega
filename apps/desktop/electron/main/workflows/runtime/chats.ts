@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on DurableJson and the workflow run contract's record shape.
- * [OUTPUT]: Provides WorkflowChatRegistry (`<root>/chats.json`): one persistent Chat per record × role, reused by every run and rework run of that record; roleOf (which Chats every Chat list leaves out) and titleOf (the fixed title a workflow Chat is created with); the Chat of a role for a record.
+ * [OUTPUT]: Provides WorkflowChatRegistry (`<root>/chats.json`): one persistent Chat per record × role, reused by every run and rework run of that record; roleOf (which Chats every Chat list leaves out) and titleOf (the fixed title a workflow Chat is created with); the Chat of a role for a record. Explicit isolated runs keep separate role Chats while shared record-role reuse remains the default.
  * [POS]: The workflow runtime's Chat index, loaded by the foundation before any window lists Chats (06 §4, plan maintenance 2026-09-25: Chats scoped to record × role, hidden from the Chat list, opened from the run detail and the record's Workflow block).
  */
 import { join } from "node:path";
@@ -9,7 +9,7 @@ import type { WorkflowRoleName } from "@ai-chat/cloud-protocol/contracts/workflo
 import type { WorkflowRun } from "@ai-chat/cloud-protocol/contracts/workflow/run";
 import { DurableJson } from "../../persistence/durable-json";
 
-const entrySchema = z.object({ recordKey: z.string().min(1).max(512), role: z.enum(["plan", "develop", "review"]), chatId: z.string().min(1).max(128),
+const entrySchema = z.object({ runId: z.string().min(1).max(128).optional(), recordKey: z.string().min(1).max(512), role: z.enum(["plan", "develop", "review"]), chatId: z.string().min(1).max(128),
   incarnationId: z.string().regex(/^[a-f0-9]{32}$/), createdAt: z.number().int(),
   /** Fixed at claim ("{role} · {task}", interface language): the Chat is created with it and never goes to title generation. */
   title: z.string().max(300).default("") }).strict();
@@ -26,17 +26,17 @@ export class WorkflowChatRegistry {
     this.roles = new Map(this.file.read(state => state.chats.map(item => [item.chatId, { role: item.role, title: item.title }] as const)));
   }
   closeAndFlush() { return this.file.closeAndFlush(); }
-  get(record: WorkflowRun["record"], role: WorkflowRoleName) {
+  get(record: WorkflowRun["record"], role: WorkflowRoleName, runId?: string) {
     const key = recordKeyOf(record);
-    return this.file.read(state => state.chats.find(item => item.recordKey === key && item.role === role) ?? null);
+    return this.file.read(state => state.chats.find(item => item.recordKey === key && item.role === role && item.runId === runId) ?? null);
   }
   /** Recorded before the Chat's first turn is submitted, so a crash in between still finds it (and never makes a second one). */
-  async claim(record: WorkflowRun["record"], role: WorkflowRoleName, chat: { chatId: string; incarnationId: string; title: string }, now: number) {
+  async claim(record: WorkflowRun["record"], role: WorkflowRoleName, chat: { chatId: string; incarnationId: string; title: string }, now: number, runId?: string) {
     const key = recordKeyOf(record);
     const entry = await this.file.mutate(state => {
-      const existing = state.chats.find(item => item.recordKey === key && item.role === role);
+      const existing = state.chats.find(item => item.recordKey === key && item.role === role && item.runId === runId);
       if (existing) return existing;
-      const entry = { recordKey: key, role, ...chat, createdAt: now };
+      const entry = { recordKey: key, role, ...chat, createdAt: now, ...(runId ? { runId } : {}) };
       state.chats.push(entry);
       return entry;
     });

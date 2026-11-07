@@ -16,7 +16,7 @@ import type {
   AppRecord,
 } from "../../../../shared/ipc/apps/apps-ipc";
 import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
-import type { BaseToolsAvailability } from "../../../../shared/builtin-tools";
+import type { BaseToolsAvailability } from "../../../../shared/plugin-tools";
 import type { AgentTurnCustodyDependency } from "../../../../shared/apps/model/app-lifecycle";
 import type { TurnProjectContext } from "../../../../shared/product/product-resource-scope";
 import type {

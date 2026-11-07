@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsUpdatesEn structural type
- * [OUTPUT]: Provides settingsUpdatesFr, the French Settings › Updates catalog; failure recovery uses shared retry and manual-download copy
+ * [OUTPUT]: Provides settingsUpdatesFr, the French Settings › Updates catalog; unified row actions and collapsed failure details use shared update, retry and manual-download copy
  * [POS]: French leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
@@ -8,13 +8,15 @@ import type { settingsUpdatesEn } from "./en";
 
 export const settingsUpdatesFr: typeof settingsUpdatesEn = {
   title: "Mises à jour",
-  description: "Gérez les mises à jour de Bottega et des CLI des fournisseurs.",
+  description: "Gérez les mises à jour de Bottega et de vos Agents.",
+  updatingShort: "Mise à jour…",
+  showDetails: "Voir les détails",
+  hideDetails: "Masquer les détails",
   updateAll: "Tout mettre à jour",
   updateOne: "Mettre à jour {{name}}",
   upToDate: "{{name}} est à jour",
   updating: "Mise à jour de {{name}}…",
   latestUnknown: "Dernière version inconnue",
-  cliFailed: "Échec de la mise à jour",
   cliUnchanged: "La mise à jour s’est terminée, mais la version n’a pas changé. Essayez dans le Terminal.",
   cliTimeout: "La mise à jour a pris trop de temps et a été arrêtée.",
   cliUnavailable: "Ce CLI ne peut pas être mis à jour d’ici.",
@@ -34,7 +36,6 @@ export const settingsUpdatesFr: typeof settingsUpdatesEn = {
   failedShort: "Échec de la mise à jour",
   checkFailedShort: "Échec de la vérification",
   manualShort: "Télécharger la nouvelle version",
-  downloadContinue: "Vous pouvez continuer à utiliser Bottega pendant le téléchargement.",
   downloading: "Téléchargement de {{version}}",
   installing: "Mise à jour téléchargée · redémarrage pour l’installer",
   failed: "Échec de la mise à jour : {{message}}",

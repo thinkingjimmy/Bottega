@@ -1,10 +1,10 @@
 /**
- * [INPUT]: ChatStore metadata, canonical assistant/Subagent proof, Gallery broker/cache/media and Base attachment authorization.
- * [OUTPUT]: Provides GalleryRuntime with synchronous Base wiring plus deferred cache GC/ingestion reconciliation, and source-device-bound image ingestion from exact canonical transcript facts without aggregate Chat reads.
+ * [INPUT]: ChatStore metadata, canonical assistant/Subagent proof, effective workspace authority, Gallery broker/cache/media and Base attachment authorization.
+ * [OUTPUT]: Provides GalleryRuntime with Base wiring, deferred reconciliation and workspace-authorized image recovery, including existing explicit path-only view records.
  * [POS]: Gallery/bootstrap composition root; isolates main/index.ts from restore, cache, and attachment port details
  */
 
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import {
   galleryOccurrenceKey,
   type GallerySourceRef,
@@ -17,6 +17,7 @@ import { DeviceIdentityStore } from "../../chats/device-identity/device-identity
 import { GalleryMediaCache } from "../media-cache";
 import { GalleryMediaService } from "../media-service";
 import { TurnEventsBroker } from "../turn-events-broker";
+import type { EffectiveWorkspaceResolver } from "../../workspace/files/workspace-resolver";
 
 export type GalleryRuntime = {
   cache: GalleryMediaCache;
@@ -32,7 +33,8 @@ export type GalleryRuntime = {
 export async function initializeGalleryRuntime(
   userData: string,
   store: ChatStore,
-  isActiveSource: (sourceRef: GallerySourceRef) => boolean
+  isActiveSource: (sourceRef: GallerySourceRef) => boolean,
+  resolveWorkspace: EffectiveWorkspaceResolver
 ): Promise<GalleryRuntime> {
   const sourceDeviceId = await new DeviceIdentityStore(userData).loadOrCreate();
   const cache = new GalleryMediaCache(join(userData, "gallery-media"));
@@ -41,7 +43,7 @@ export async function initializeGalleryRuntime(
     join(userData, "gallery-completions"),
     {
       resolveCanonicalSource: (sourceRef, subagentId) =>
-        resolveCanonicalImageSource(store, sourceRef, subagentId),
+        resolveCanonicalImageSource(store, sourceRef, subagentId, resolveWorkspace),
       resolveDurableSource: async (sourceRef) => {
         const record = await cache.lookup(sourceRef);
         if (!record) return null;
@@ -94,7 +96,8 @@ export async function initializeGalleryRuntime(
 export async function resolveCanonicalImageSource(
   store: ChatStore,
   sourceRef: Extract<GallerySourceRef, { kind: "transcript" }>,
-  subagentId: string | null = null
+  subagentId: string | null = null,
+  resolveWorkspace?: EffectiveWorkspaceResolver
 ) {
   const record = store.getMetadata(sourceRef.chatId);
   if (
@@ -105,9 +108,14 @@ export async function resolveCanonicalImageSource(
     return null;
   }
   const { image } = await canonicalImage(store, sourceRef, subagentId);
-  return image?.detail
-    ? { sourcePath: image.detail, readRoot: record.homeDir }
-    : null;
+  if (!image) return null;
+  // Earlier imageView records retained the explicit path only as their title.
+  const sourcePath = image.detail ||
+    (isAbsolute(image.title) || image.title.startsWith("~/") ? image.title : null);
+  if (!sourcePath) return null;
+  const workspace = resolveWorkspace?.({ kind: "conversation", conversationId: sourceRef.chatId });
+  if (workspace && workspace.kind !== "ready") return null;
+  return { sourcePath, readRoot: workspace?.workspace ?? record.homeDir };
 }
 
 function connectAttachmentMedia(

@@ -6,7 +6,7 @@
 
 import { createHash } from "node:crypto";
 import type { SubmissionErrorCode } from "../../../../shared/content/submission/submission";
-import type { BuiltinToolContext } from "../../tools/registry";
+import type { PluginToolContext } from "../../tools/registry";
 import { canonicalize } from "../../tools/invocation";
 import type {
   RelayExpectation,
@@ -65,7 +65,7 @@ export function codedError(code: SubmissionErrorCode) {
   return Object.assign(new Error(code), { code });
 }
 
-export function rootChainId(context: BuiltinToolContext) {
+export function rootChainId(context: PluginToolContext) {
   return stableId(
     "chain",
     `${context.lease.requestId}:${context.lease.generation}`

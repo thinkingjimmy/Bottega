@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React state, an optional stable toolbar action host, i18n, scope-aware Extension client commands, package cards/dialog, and Settings primitives
- * [OUTPUT]: Provides one flat owned-package lifecycle surface reusable by global and Project Settings, with a portal-mounted acquisition action in either scope or a section-level fallback
+ * [OUTPUT]: Provides one flat owned-package lifecycle surface reusable by global and Project Settings with optional canonical-adapter row exclusions, with a portal-mounted acquisition action in either scope or a section-level fallback
  * [POS]: apps/desktop/src/views/settings/extensions; Canonical Extension UI; CLI Agent-plugin diagnostics stay main-only and invalidations trigger qualified refetches
  */
 
@@ -56,12 +56,17 @@ export function ExtensionsContent({
   description,
   packageIdentity = null,
   toolbarActionHost,
+  excludeInstallIdentities = [],
+  excludeAdapterIds = [],
 }: {
   scope?: ProductResourceScope;
   projectLifecycleRevision?: number | null;
   description?: string;
   packageIdentity?: string | null;
   toolbarActionHost?: HTMLElement | null;
+  /** Canonical plugin adapters own these rows; lifecycle commands still use their original install authority. */
+  excludeInstallIdentities?: readonly string[];
+  excludeAdapterIds?: readonly string[];
 }) {
   const { t } = useAppTranslation();
   const authorityKey = `${productResourceScopeKey(scope)}@${projectLifecycleRevision ?? "none"}`;
@@ -244,12 +249,12 @@ export function ExtensionsContent({
               </span>
             </div>
           ) : snapshot!.packages.filter(
-              (record) => !packageIdentity || record.installIdentity === packageIdentity
+              (record) => (!packageIdentity || record.installIdentity === packageIdentity) && !excludeInstallIdentities.includes(record.installIdentity) && !excludeAdapterIds.includes(record.adapterId)
             ).length ? (
             <div className="space-y-3">
               {snapshot!.packages
                 .filter((record) =>
-                  !packageIdentity || record.installIdentity === packageIdentity
+                  (!packageIdentity || record.installIdentity === packageIdentity) && !excludeInstallIdentities.includes(record.installIdentity) && !excludeAdapterIds.includes(record.adapterId)
                 )
                 .map((record) => (
                 <ExtensionPackageCard

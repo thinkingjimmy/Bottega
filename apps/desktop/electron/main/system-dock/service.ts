@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron screen/power/shortcut/menu/shell, the Dock stores, native bridge adapters, entries, Usage and Tasks adapters, replacement controller, read-only signed-installation verification, window surfaces/geometry/panel lifecycle, projections, and caller ports (Bottega Apps, main-window destinations, tray refresh, background retention).
- * [OUTPUT]: Provides DockService: the single main-owned Dock runtime — enable/start/stop, actual mode, three-edge display directory/placement, grouped overflow-aware panel anchors and revision-fenced hover, authoritative presentation, bounded transparent-frame transitions, the revealed bar's native glass, lazy panel orchestration, bar/panel/settings snapshots with an always-reachable local host, independent Tasks activity and coalesced publication, consumer demand per ready visible surface, serialized startup cleanup, generation-fenced startup, renderer recovery, native-failure replacement suspension, placement-fenced drag-removal admission, item-anchored native menus with display-safe bounds, reference-only download visuals and resolution, disabled recovery responsibility, truthful recovery/permission health, keyboard entry, temporary hide, and the replacement admission facts. Settings snapshots include pinned Bottega App IDs.
+ * [OUTPUT]: Provides DockService: the single main-owned Dock runtime — enable/start/stop, actual mode, three-edge display directory/placement, grouped overflow-aware panel anchors and revision-fenced hover, takeover-gated presentation with synchronous surface retirement before restoration, bounded transparent-frame transitions, the revealed bar's native glass, lazy panel orchestration, bar/panel/settings snapshots with an always-reachable local host, independent Tasks activity and coalesced publication, consumer demand per ready visible surface, serialized startup cleanup, generation-fenced startup, renderer recovery, native-failure replacement suspension, placement-fenced drag-removal admission, item-anchored native menus with display-safe bounds, reference-only download visuals and resolution, disabled recovery responsibility, truthful recovery/permission health, keyboard entry, temporary hide, and the replacement admission facts. Settings snapshots include pinned Bottega App IDs.
  * [POS]: system-dock orchestrator; intents live in intents.ts and Settings flows in setup.ts, both acting through this service. It is the only writer of DockConfigStore's working layout and DockLocalStore.
  */
 
@@ -163,11 +163,12 @@ export class DockService {
         if (!this.native) return true;
         try { const info = await this.native.request({ op: "process-info", pid: owner.pid }); return info.alive && (info.startedAt === null || info.startedAt === owner.startedAt); }
         catch { return true; }
-      }, changed: () => { this.schedule(); this.ports.refreshMenu(); } }) : null;
+      }, changed: () => { if (!this.replacementReady()) { this.cancelTransition(); this.invalidateInteractions(); this.locationRevision++; }
+        this.publish(); this.ports.refreshMenu(); } }) : null;
     this.panel = new PanelLifecycle({
       create: () => this.createPanel(),
       place: (anchor) => this.placePanel(anchor),
-      stillValid: (request) => !this.runtime.locked && !this.runtime.temporarilyHidden && this.runtime.started && Boolean(this.runtime.placement && !this.runtime.placement.hidden) && (request.view.kind !== "detail" || this.layoutItem(request.view.itemId) !== undefined),
+      stillValid: (request) => this.replacementReady() && !this.runtime.locked && !this.runtime.temporarilyHidden && this.runtime.started && Boolean(this.runtime.placement && !this.runtime.placement.hidden) && (request.view.kind !== "detail" || this.layoutItem(request.view.itemId) !== undefined),
       presented: (request) => { this.onPanelPresented(request); },
       busy: (anchor) => { this.runtime.busy = anchor; this.schedule(); },
       failed: (cause) => console.warn("[system-dock] panel failed", cause),
@@ -238,6 +239,7 @@ export class DockService {
     const state = this.ports.local.get();
     return state.preferredMode === "replace" && state.replacementEnabled && this.capability.replacement ? "replace" : "coexist";
   }
+  private replacementReady() { return this.actualMode() !== "replace" || this.replacement?.status().phase === "active"; }
   async start() {
     if (this.runtime.started) return;
     if (this.quitRestore) throw new Error("DOCK_CLOSING");
@@ -251,7 +253,7 @@ export class DockService {
       this.ipc = new DockIpc({ snapshot: (role) => role === "bar" ? this.barSnapshot() : this.panelSnapshot(),
         intent: (role, intent) => {
           const admittedRevision = this.locationRevision;
-          const currentPlacement = () => admittedRevision === this.locationRevision && (role !== "bar" || !PLACEMENT_INTENTS.has(intent.kind)
+          const currentPlacement = () => this.replacementReady() && admittedRevision === this.locationRevision && (role !== "bar" || !PLACEMENT_INTENTS.has(intent.kind)
             || ("placementRevision" in intent && intent.placementRevision === this.locationRevision));
           if (intent.kind === "layout-ready") {
             assertCurrent();
@@ -478,7 +480,7 @@ export class DockService {
     this.schedule();
   }
   hover(role: DockRole, inside: boolean) {
-    if (!this.runtime.started || this.runtime.locked || this.runtime.temporarilyHidden) return;
+    if (!this.replacementReady() || !this.runtime.started || this.runtime.locked || this.runtime.temporarilyHidden) return;
     const isCurrent = this.captureInteraction();
     this.runtime.hover[role] = inside;
     const any = this.runtime.hover.bar || this.runtime.hover.panel;
@@ -504,7 +506,7 @@ export class DockService {
   barWindow() { const bar = this.runtime.bar; return bar && !bar.isDestroyed() ? bar : undefined; }
   /** Focused views remember the app that had focus so Escape can hand it back (INV-09). */
   async openPanel(request: OpenRequest) {
-    if (!this.runtime.started || this.runtime.locked || this.runtime.temporarilyHidden || !this.runtime.placement || this.runtime.placement.hidden) return;
+    if (!this.replacementReady() || !this.runtime.started || this.runtime.locked || this.runtime.temporarilyHidden || !this.runtime.placement || this.runtime.placement.hidden) return;
     if (!this.placePanel(request.anchor)) {
       this.panelSpaceUnavailable = true; this.publish();
       await this.ports.destination({ kind: "dock" });
@@ -575,7 +577,7 @@ export class DockService {
       trash: this.trash?.face() ?? "unknown",
       widgetFace: (item: Extract<DockItem, { kind: "widget" }>) => {
         const widget = item.widget;
-        const face:WidgetFace = widget.type==='custom'?(this.ports.custom?.face(item,state.edge)??{type:'custom',size:widget.size,state:'definition-missing',summary:null,description:null,readings:{}}):widget.type === "builtin.tasks" ? taskFace(this.ports.tasks)
+        const face:WidgetFace = (widget.type==='custom'||widget.type==='plugin')?(this.ports.custom?.face(item,state.edge)??{type:'custom',size:widget.size,state:'definition-missing',summary:null,description:null,readings:{}}):widget.type === "builtin.tasks" ? taskFace(this.ports.tasks)
           : widget.type === "builtin.ai-limits" ? this.usage.limitsFace(widget) : this.usage.activityFace(widget);
         return state.privacyMask ? maskFace(face) : face;
       },
@@ -608,9 +610,10 @@ export class DockService {
       if (globalShortcut.register(accelerator, () => { void this.openKeyboard(); })) this.runtime.shortcut = accelerator;
     } catch (cause) { console.warn("[system-dock] shortcut rejected", cause); }
   }
-  /** The active keyboard entry: reveal, then open the focusable navigation panel (D2, INV-09). */
+  /** Paused replacement opens Settings; an active entry reveals the navigation panel (D2, INV-09). */
   async openKeyboard() {
     if (!this.runtime.started || this.runtime.locked || this.runtime.temporarilyHidden) return;
+    if (!this.replacementReady()) { await this.ports.destination({ kind: "dock" }); return; }
     const current = this.panel.current();
     if (current.state === "visible" && current.request?.view.kind === "navigate") { this.panel.close(); return; }
     this.runtime.revealed = true; this.publish();
@@ -618,14 +621,14 @@ export class DockService {
   }
   captureInteraction() {
     const generation = this.generation, revision = this.locationRevision;
-    return () => this.runtime.started && generation === this.generation && revision === this.locationRevision && !this.quitRestore;
+    return () => this.replacementReady() && this.runtime.started && generation === this.generation && revision === this.locationRevision && !this.quitRestore;
   }
   private closeMenu() { this.contextMenu?.closePopup(); this.contextMenu = null; }
   showContextMenu(itemId: string | null) {
     this.closeMenu();
     const menu = this.ports.menus.item(this, itemId), window = this.barWindow();
     const placement = this.runtime.placement;
-    if (!menu || !window || !placement) return;
+    if (!this.replacementReady() || !menu || !window || !placement) return;
     const { pinned, running, overflow } = this.visibleItems();
     const visible = [...pinned, ...running], index = itemId ? visible.findIndex(item => item.id === itemId) : -1;
     if (itemId && index < 0) return;
@@ -691,14 +694,13 @@ export class DockService {
     if (this.runtime.locked) return hidden("locked-or-sleeping");
     if (this.runtime.temporarilyHidden) return hidden("user");
     if (this.barFailed) return hidden("renderer-failed");
-    if (!this.runtime.started || !this.barReady || this.quitRestore || this.unavailableRecovery || this.replacement?.status().pending) return hidden("not-ready");
+    if (!this.replacementReady() || !this.runtime.started || !this.barReady || this.quitRestore || this.unavailableRecovery || this.replacement?.status().pending) return hidden("not-ready");
     if (!placement) return hidden(this.locationReason === "no-display" ? "no-display" : "no-space");
     if (placement.hidden) return hidden("coexist-hide");
     if (this.transition) return hidden("transition");
     if (!placement.revealed && !state.showHandle) return hidden("autohide");
     return { presentation: placement.revealed ? "shown" : "handle", hiddenBy: null };
   }
-  /* ============================================================ snapshots */
   schedule() {
     if (this.publishQueued || !this.ready) return;
     this.publishQueued = true;

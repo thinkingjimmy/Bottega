@@ -8,10 +8,11 @@
 import type { ProviderId } from "@bottega/contracts/model/provider";
 import {
   allowedToolsFor,
-  builtinToolSpec,
-  type BuiltinToolName,
+  toolSpec,
+  pluginToolsAvailable,
+  type PluginToolName,
   type BuiltinTurnKind,
-} from "../../../shared/builtin-tools";
+} from "../../../shared/plugin-tools";
 import type { TurnOrigin } from "../agent/bridge/bridge-types";
 import { artifactEnabled } from "../artifacts/admission/state";
 
@@ -35,6 +36,7 @@ export function turnKindForOrigin(
 ): BuiltinTurnKind {
   if (origin?.kind === "manual") return "manual";
   if (origin?.kind === "workflow") return "workflow";
+  if (origin?.kind === "member") return "member";
   return "relay";
 }
 
@@ -45,6 +47,8 @@ export type BuiltinIssuanceInput = {
   origin: TurnOrigin | undefined;
   /** 本轮 resolveContext 时冻结的用户偏好；只过滤 ambient 工具。 */
   disabledTools?: readonly string[];
+  selectedPlugins?: readonly string[];
+  selectedTools?: readonly string[];
   /** Proven capable Skills custody exists for this exact turn. */
   useSkill?: boolean;
   /** 只属于当前 managed-worktree Chat 的精确 main-owned commit authority。 */
@@ -57,7 +61,7 @@ export type BuiltinIssuanceInput = {
 
 export function issueBuiltinMcpWhenAllowed<T>(
   input: BuiltinIssuanceInput,
-  issue: (allowedTools: BuiltinToolName[]) => T
+  issue: (allowedTools: PluginToolName[]) => T
 ) {
   const allowedTools = projectBuiltinTools(input);
   if (allowedTools.length === 0) return undefined;
@@ -67,21 +71,23 @@ export function issueBuiltinMcpWhenAllowed<T>(
 /** runtime CAS 后冻结的最终工具集合；lease 与产品上下文只读这一份结果。 */
 export function projectBuiltinTools(
   input: BuiltinIssuanceInput
-): BuiltinToolName[] {
+): PluginToolName[] {
   const access = builtinToolAccess(input);
   if (access === "none") return [];
   /* A role turn carries no Skills and commits nothing itself: only its step tools are exact-issued (AGT-06 (a)). */
   const person = turnKindForOrigin(input.origin) !== "workflow";
   const exact = [
-    ...(input.useSkill ? (["use_skill"] as BuiltinToolName[]) : []),
+    ...(input.useSkill ? (["use_skill"] as PluginToolName[]) : []),
     ...(person && input.managedWorktreeCommit && access === "mutate" && !input.planMode
-      ? (["commit_managed_worktree"] as BuiltinToolName[])
+      ? (["commit_managed_worktree"] as PluginToolName[])
       : []),
-    ...(input.workflowStepResult ? (["submit_step_result"] as BuiltinToolName[]) : []),
-    ...(input.workflowStepHistory ? (["read_step_history"] as BuiltinToolName[]) : []),
+    ...(input.workflowStepResult ? (["submit_step_result"] as PluginToolName[]) : []),
+    ...(input.workflowStepHistory ? (["read_step_history"] as PluginToolName[]) : []),
   ];
   return [...admittedTools(input), ...exact].filter((name) => {
-    const allowlist = builtinToolSpec(name)?.backendAllowlist;
+    const declaration = toolSpec(name);
+    if (!declaration || !pluginToolsAvailable(declaration.pluginId)) return false;
+    const allowlist = declaration.backendAllowlist;
     return !allowlist || allowlist.some(id => id === input.backend);
   });
 }
@@ -89,19 +95,23 @@ export function projectBuiltinTools(
 /** App instructions 与 lease 共同消费的 ambient 真相；精确签发工具不在其中。 */
 export function admittedAmbientTools(
   input: BuiltinIssuanceInput
-): BuiltinToolName[] {
+): PluginToolName[] {
   const access = builtinToolAccess(input);
   const turnKind = turnKindForOrigin(input.origin);
   if (access === "none") return [];
   const disabled = new Set(input.disabledTools ?? []);
   return allowedToolsFor(access, turnKind, input.planMode).filter((name) => {
-    if (disabled.has(name)) return false;
-    if (builtinToolSpec(name)?.domainId === "design" && !artifactEnabled()) return false;
-    const allowlist = builtinToolSpec(name)?.backendAllowlist;
+    const spec = toolSpec(name);
+    if (!spec || !pluginToolsAvailable(spec.pluginId)) return false;
+    if (disabled.has(name) || disabled.has(spec.identity)) return false;
+    if ((input.selectedPlugins !== undefined || input.selectedTools !== undefined) &&
+      !input.selectedPlugins?.includes(spec.pluginId) && !input.selectedTools?.includes(name) && !input.selectedTools?.includes(spec.identity)) return false;
+    if (toolSpec(name)?.domainId === "design" && !artifactEnabled()) return false;
+    const allowlist = toolSpec(name)?.backendAllowlist;
     return !allowlist || allowlist.some(id => id === input.backend);
   });
 }
 
-function admittedTools(input: BuiltinIssuanceInput): BuiltinToolName[] {
+function admittedTools(input: BuiltinIssuanceInput): PluginToolName[] {
   return admittedAmbientTools(input);
 }

@@ -9,7 +9,7 @@ import { freezePreviewFence } from "../../preview/process/fence";
 import { previewFeature } from "../../preview/session/runtime";
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
 import { builtinAgent } from "../../../../shared/chat-agent/options";
-import { baseToolsAvailability } from "../../../../shared/builtin-tools";
+import { baseToolsAvailability } from "../../../../shared/plugin-tools";
 import type { TurnProjectContext } from "../../../../shared/product/product-resource-scope";
 import type {
   AgentBridgeOptions,
@@ -49,6 +49,7 @@ export function turnProjectionInput(
 ): TurnProjectionInput {
   return {
     conversationId,
+    mode: payload.turnOptions.mode,
     handoff: payload.handoff, freshSession: !payload.session,
     requestId: payload.requestId,
     backendId,

@@ -78,10 +78,20 @@ Command output stays in the original command details. Background services show t
 
 ## Plugins
 
-- Open Settings › Plugins › All plugins to browse cards and read each plugin's capabilities, dependencies, source, and usage. Enabled plugins with settings have their own sidebar entries; Apps remain in the Apps page.
-- Manage Base (always on), the four built-in Providers, Workflow, Sketch, Memory, and Dock through the same plugin settings. Turning a plugin off keeps its saved content and settings; affected features explain the missing dependency.
-- Review the source, permissions, and signature of an eligible plugin package before confirming installation on its owning computer. Uninstalling a package and deleting its retained data are separate choices.
+- Browse official features, existing Apps, personal plugins and external Host Packages in one catalog. Read capabilities, dependencies, source and runtime status; external adapters keep their original settings and data owners.
+- Combine pages, Widgets, composer extensions, tools, services and Chat modes in one package. Ordinary use does not create a source Project. First authoring creates or reuses its Library Project; multiple Chats can work in that source.
+- Install dependencies with bundled Node and pnpm. Dependency scripts stay off by default and need explicit approval when required. Valid builds update local instances automatically; failed builds keep usable code. Recover code versions without reverting current data.
+- Choose a Chat mode before the first message. The mode then stays fixed; Agent and model selection keep their existing behavior.
+- Share explicitly to enable encrypted source/runtime delivery for one plugin and account. Later versions use that consent. Receiving computers review and accept complete packages without installing dependencies or compiling them.
+- Backend plugins run trusted local code and can use host credentials. Plugin switches control Bottega contributions; they do not disable a Provider's own native tools. Arbitrary native modules and remote scripts are outside the supported compatibility scope.
+- Turning a plugin off keeps content and settings. Missing dependencies suspend affected contributions and explain why. Code recovery, plugin removal and data deletion retain their separate owners.
 - Third-party Provider modules are not enabled in this release. The four built-in Providers remain the available production choices; no public plugin marketplace or SDK publication is included.
+
+## Teams
+
+- Start a Lead Chat in a Project, create named members and manage tasks, owners and dependencies. Open each member's Chat to add instructions. Member Chats stay under the Lead rather than entering the ordinary Chat list.
+- Keep member sessions, task records and messages across restarts. Message delivery and task completion have separate states; an unknown delivery is not silently sent again.
+- Codex and Claude can receive messages during a turn; Kimi and OpenCode queue them until idle. Team and Workflow writes can opt into isolated workspaces and reviewed merges. Complete real-Provider and physical-device acceptance retains the scope described in the changelog.
 
 ## App
 
@@ -146,7 +156,11 @@ Dock remains **Alpha**. Replacement, recovery across logout or restart, and disp
 
 ### Custom Widgets
 
-Create a Widget from Dock settings and continue editing in its source Chat. Preview and install with separate consent. Each instance has independent settings and Base/API grants. API credentials stay encrypted on this computer. Use standard or isolated details, approved actions and manual refresh. Receiving a private compiled package never grants execution or local data access automatically.
+Create a Widget from Dock settings and continue editing in its plugin source Project. Previewing remains optional. Valid local builds update installed instances automatically; failed builds keep the working version. Each instance has independent settings and Base/API grants. API credentials stay encrypted on this computer. Use standard or isolated details, approved actions and manual refresh. Share explicitly before enabling delivery to your account; receiving a compiled package never grants execution or local data access automatically.
+
+### Weather
+
+Weather is preinstalled. Add it from Settings or Dock Add, choose current location or search for a city, and keep independent instances for different places. No Agent, account or API key is required. View temperature, conditions, feels-like temperature, humidity, observation time and data source. Refresh manually or every 15 minutes while visible. Hiding or disabling it stops requests; failed reads keep marked last-good data for the same place. Current-location coordinates stay local. City selection is available when system location is off. Successful native location authorization retains its separate acceptance scope.
 
 ## Cloud Sync
 
@@ -187,11 +201,12 @@ Create a Widget from Dock settings and continue editing in its source Chat. Prev
 - Rebuild conversations from the folder when the local Chat database cannot be opened, while the previous database is preserved.
 - Move the folder from Settings › General, including to another disk, with every saved path following it; or erase all of Bottega's data on this computer while cloud data stays in your account.
 - Keep a Bottega folder with the computer that published it: the same computer takes it back after a reinstall, a cleared data folder, or a new profile with nothing to confirm, and another computer is refused by name. A folder that has never synchronized opens anywhere.
-- Back up the Bottega folder and complete application data before changing versions. 0.3.0 retains existing content and uses protocol 25; see the [upgrade guide](../getting-started/README.md#upgrading-to-030), including historical migration notes for older releases.
+- Back up the Bottega folder and complete application data before changing versions. 0.4.0 retains existing content and uses protocol 26; see the [upgrade guide](../getting-started/README.md#upgrading-to-040), including historical migration notes for older releases.
 
 ## Bundled runtime and Agent boundaries
 
 - Run Bottega's own tools — the built-in MCP server, the App interface compiler, the Agent adapters, and Apps' Node scripts — on a Node 24 runtime shipped inside the app, never on a Node from your PATH. App commands that use npm, pnpm, or yarn, and MCP servers you start with npx, still use your own Node.
+- Plugin dependency installs and builds use bundled Node and pnpm; they do not require a package manager on your PATH. This does not change the Node used by external App commands or MCP servers.
 - Each Agent CLI keeps its own sign-in. Codex command permissions can allow access to local credential files, including the GitHub CLI configuration folder; see [Codex command permissions](#codex-command-permissions).
 - Reviewing a plan does not change the selected execution mode. Codex can still request additional command permissions under that mode. Browser tools read only the Chat's own tabs and the tab you selected.
 - Refuse unsafe locations for the Bottega folder, such as your home folder or the root of a volume.

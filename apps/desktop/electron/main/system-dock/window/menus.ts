@@ -28,7 +28,7 @@ export function itemMenu(service: DockService, itemId: string | null): Menu | nu
       template.push({ label: translate(service.ports.locale(), "systemDock.menu.reveal"), click: perform(() => service.downloads.reveal()) });
   }
   if(item?.kind==='widget'&&service.ports.widgetEntry){
-    const custom=item.widget.type==='custom',paused=custom&&service.ports.custom?.face(item,'bottom').state==='paused';
+    const custom=item.widget.type==='custom'||item.widget.type==='plugin',paused=custom&&service.ports.custom?.face(item,'bottom').state==='paused';
     const entry=(kind:'configure'|'edit'|'fork'|'versions'|'pause'|'remove',key:string)=>template.push({id:'dock-widget-'+kind,label:translate(service.ports.locale(),'systemDock.widgets.'+key),click:perform(()=>service.ports.widgetEntry?.({kind,itemId:item.id}))});
     template.push({type:'separator'});
     entry('configure','configure');

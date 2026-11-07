@@ -7,6 +7,7 @@
  *           step's next step opens the Provider's settings, Plugins & Apps or the setup's Who does what, and Retry this step;
  *           a clicked confirmation reminder for one of its runs opens that run's details; a run waiting for the workspace (A-07)
  *           names the task of the run holding it and opens that run.
+ * Ordinary Start uses the shared workspace; an explicit worktree choice creates isolated runs and accepted results offer a reviewed merge.
  * First enablement keeps the clicked row and starts it immediately after confirmation.
  * Disabled Workflow choices expose their reason and Plugins & Apps action; built-in recipe names are localized by id.
  * [POS]: The desktop host of U04/U05 behind the workbench flag; it never wraps the workbench (it reports its surface through onSurface), so its lazy arrival cannot remount the workbench (T16). Runs are read per record (runsForRecord) and re-read on
@@ -35,6 +36,9 @@ import { useAppTranslation } from "@/components/providers/preferences/i18n-provi
 import { useChatDevices } from "@/lib/cloud/chat/access/devices";
 import { pendingRunToOpen, useProjectBinding, workflowsBridge } from "./bridge";
 import { useTurnedOffPlugins } from "@/components/settings/plugins/turned-off";
+import { Button } from "@ai-chat/ui/components/ui/button";
+import { WorkflowIsolationResult } from "./isolation/result";
+import { workflowIsolationCopy } from "./isolation/copy";
 import { WorkflowSetupHost } from "./entry";
 
 /** A refused start, by its code: Electron wraps IPC errors ("Error invoking remote method …: Error: <code>"), so the code is read
@@ -138,15 +142,16 @@ function RunsHost({ bridge, ownerKey, onSurface }: { bridge: WorkflowsBridge; ow
   const open = openRunId ? [...latest.values()].find(entry => entry.run.runId === openRunId) ?? null : null;
   const active = (rowId: string) => { const run = latest.get(rowId)?.run; return run && !["succeeded", "failed", "cancelled"].includes(run.state) ? run : null; };
   /* Start (or, with an active run, open it): one active run per record (06 §8). Needs the Project's workflow turned on. */
-  const startFor = async (rowId: string, bindingId = binding?.bindingId) => {
+  const startFor = async (rowId: string, bindingId = binding?.bindingId, isolation?: "worktree") => {
     if (!bindingId || disabled) return;
     try {
-      const { run } = await bridge.start({ bindingId, rowId });
+      const { run } = await bridge.start({ bindingId, rowId, ...(isolation ? { isolation } : {}) });
       setOpenRunId(run.runId);
     } catch (error) {
-      toast.error(startRefusal(error, workbench.run));
+      toast.error(startRefusal(error, workbench.run), isolation ? { description: errorMessage(error) } : undefined);
     }
   };
+  const isolationCopy = workflowIsolationCopy(i18n.language);
   const surface = useMemo(() => ({
     tag: (rowId: string) => {
       const entry = latest.get(rowId);
@@ -156,21 +161,24 @@ function RunsHost({ bridge, ownerKey, onSurface }: { bridge: WorkflowsBridge; ow
       if (disabled) return { choices: [], start: () => undefined, unavailable: workbench.run.startWorkflowOff,
         openPlugins: () => requestSettingsSection({ section: "plugins", plugin: "workflow" }) };
       const chain = stepChain(PLAN_DEVELOP_REVIEW, workbench.setup);
-      return { choices: binding ? [{ id: binding.bindingId, name: workflowRecipeName(PLAN_DEVELOP_REVIEW, workbench.setup), chain }] : [],
-        start: () => void startFor(rowId), setUp: () => setSettingUp({ kind: "new", rowId }) };
+      return { choices: binding ? [{ id: binding.bindingId, name: workflowRecipeName(PLAN_DEVELOP_REVIEW, workbench.setup), chain },
+          { id: `${binding.bindingId}:worktree`, name: isolationCopy.choice, chain: isolationCopy.chain }] : [],
+        start: (choiceId: string) => void startFor(rowId, binding?.bindingId, choiceId.endsWith(":worktree") ? "worktree" : undefined), setUp: () => setSettingUp({ kind: "new", rowId }) };
     },
     recordSection: (rowId: string) => {
       if (!binding || !snapshot) return null;
       const entry = latest.get(rowId);
       const record = { base: { ownerKey: ownerKey as `project:${string}`, ownerInstanceId: snapshot.meta.ownerInstanceId }, rowId };
       const wait = entry?.run.workspaceWait ?? null;
-      return <RecordWorkflowSection run={entry?.run ?? null} onOpenRun={entry ? () => setOpenRunId(entry.run.runId) : undefined}
+      return <div className="space-y-2"><RecordWorkflowSection run={entry?.run ?? null} onOpenRun={entry ? () => setOpenRunId(entry.run.runId) : undefined}
         waitingFor={wait ? holders.get(wait.heldByRunId)?.title ?? null : null} waitingForStuck={wait ? holders.get(wait.heldByRunId)?.stuck ?? false : false}
         onOpenHoldingRun={wait ? () => setOpenRunId(wait.heldByRunId) : undefined}
         onRun={disabled || active(rowId) ? undefined : () => void startFor(rowId)}
-        onOpenChat={role => void bridge.chatFor({ record }, role).then(chat => { if (chat) location.hash = `#/chat/${chat.chatId}`; })} />;
+        onOpenChat={role => void bridge.chatFor({ record }, role).then(chat => { if (chat) location.hash = `#/chat/${chat.chatId}`; })} />
+        {!disabled && !active(rowId) && <Button size="sm" variant="ghost" onClick={() => void startFor(rowId, binding.bindingId, "worktree")}>{isolationCopy.run}</Button>}
+      </div>;
     },
-  }), [latest, waiting, holders, binding, disabled, snapshot, ownerKey, bridge, workbench]);
+  }), [latest, waiting, holders, binding, disabled, snapshot, ownerKey, bridge, workbench, isolationCopy]);
   const row = open && snapshot?.rows.find(item => item.id === open.run.record.rowId);
   // T21-b: another signed-in device's name for "Already handled on …"; this computer and unknown devices stay unnamed.
   const { devices } = useChatDevices();
@@ -184,7 +192,7 @@ function RunsHost({ bridge, ownerKey, onSurface }: { bridge: WorkflowsBridge; ow
         facts={{ runLabel: formatWorkbench(workbench.run.label, { number: open.count }), taskTitle: title, computer: workbench.plugins.thisComputer, activeProvider: null, providerLabel: backendLabel,
           waitingFor: open.run.workspaceWait ? holders.get(open.run.workspaceWait.heldByRunId)?.title ?? null : null,
           waitingForStuck: open.run.workspaceWait ? holders.get(open.run.workspaceWait.heldByRunId)?.stuck ?? false : false,
-          deviceName: id => devices?.find(device => device.deviceId === id && !device.current)?.name ?? null }} />}
+          deviceName: id => devices?.find(device => device.deviceId === id && !device.current)?.name ?? null }}><WorkflowIsolationResult key={open.run.runId} bridge={bridge} run={open.run} locale={i18n.language}/></RunDetailsSheet>}
       {settingUp && projectId && <Suspense fallback={null}>
         {WorkflowSetupHost && <WorkflowSetupHost projectId={projectId} editing={settingUp.kind === "who"} initialStage={settingUp.kind === "who" ? "who" : undefined} onEnabled={settingUp.rowId ? enabled => startFor(settingUp.rowId!, enabled.bindingId) : undefined} onClose={() => setSettingUp(null)} />}
       </Suspense>}

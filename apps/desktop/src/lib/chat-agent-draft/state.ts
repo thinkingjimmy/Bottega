@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Agent options (a Chat's may be a package Provider's, TASK-11 S3-b), canonical Chat facts, and switch CAS contracts
- * [OUTPUT]: Provides once-initialized per-Chat drafts (ChatTurnOptions: a draft may start on a package Provider, an existing Chat never moves to or from one, and a package Chat keeps its own options), selection generations, and receipt-authorized native/adoption consumption, in a map bounded to the 8 most recently used clean drafts (C-07)
+ * [OUTPUT]: Provides once-initialized per-Chat drafts (ChatTurnOptions: a draft may start on a package Provider, an existing Chat never moves to or from one, and a package Chat keeps its own options), selection generations, and receipt-authorized native/adoption consumption preserving the locked mode across Agent changes, in a map bounded to the 8 most recently used clean drafts (C-07)
  * [POS]: Renderer draft state; navigation preserves drafts while process restart clears them
  */
 
@@ -69,7 +69,7 @@ export function beginAgentSelection(chatId: string, backend: ChatAgentId) {
   const expectedAgent = canonical ? builtinAgent(canonical.agent) : null, targetAgent = builtinAgent(backend);
   if (canonical && canonical.agent !== backend && (!expectedAgent || !targetAgent)) throw new Error("PROVIDER_UNAVAILABLE");
   updateAgentDraft(chatId, () => ({ ...state, generation, initialized: true, adoptionError: undefined,
-    options: canonical?.agent === backend ? draftOptions(canonical.options, state.options) : backendDefaults({}, backend),
+    options: canonical?.agent === backend ? draftOptions(canonical.options, state.options) : { ...backendDefaults({}, backend), ...(state.options.mode ? { mode: state.options.mode } : {}) },
     loading: canonical?.agent !== backend,
     pending: canonical && expectedAgent && targetAgent && canonical.agent !== backend ? { generation, stale: false, intent: {
       expectedAgent, expectedAgentRevision: canonical.agentRevision,

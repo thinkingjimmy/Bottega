@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron app/dialog/power events, on-demand bundled conversation-quit consent, localized copy, restart intent and the shared safe-quit coordinator.
+ * [INPUT]: Depends on Electron lifecycle events, product-aware WindowRetention, on-demand quit consent, localized copy, restart intent and the shared safe-quit coordinator.
  * [OUTPUT]: Application activation, login/update visibility, background notice, bounded system shutdown and consent before the normal draft/stop barriers.
  * [POS]: Desktop presence lifecycle wiring extracted from the root composition.
  */
@@ -56,10 +56,7 @@ export function createApplicationPresence(ports: { safeQuit(): SafeQuitCoordinat
     ports.onProtocolArgs?.(_argv);
     if ((data as { launchSource?: string })?.launchSource !== "login") retention.open();
   };
-  const allClosed = () => {
-    // A renderer replacement may temporarily leave no native product windows.
-    queueMicrotask(() => { if (!ports.safeQuit().finished && !ports.enabled() && !retention.recovering && !windowRegistry.list().length) void requestQuit(); });
-  };
+  const allClosed = () => retention.onAllWindowsClosed();
   const shutdown = ((event?: { preventDefault(): void }) => {
     systemEnding = true; event?.preventDefault();
     const timeout = setTimeout(() => app.exit(0), 8_000); timeout.unref();

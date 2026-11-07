@@ -17,7 +17,7 @@ import {
   serialize,
   storeError,
   type JsonCasStoreDependencies,
-} from "../json-cas-store";
+} from "../persistence/json-cas-store";
 
 const SCHEMA_VERSION = 1;
 const MAX_FILE_BYTES = 256 * 1024;

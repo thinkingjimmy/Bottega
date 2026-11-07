@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron shell, the Git runner, the progress window, i18n, shared folder admission, the erase finisher and completeRelocation.
+ * [INPUT]: Electron shell, the Git runner, progress/i18n, shared admission, erase completion and journal-gated relocation execution.
  * [OUTPUT]: Provides prepareFolderAtStartup: retires an erased profile's folder and carries out a pending move (cancellable from its window across volumes), returning the one sentence the person should read afterwards as a deferred translation.
  * [POS]: The composition root's single call before LibraryService.initialize; it adapts relocation to Electron and decides nothing about content.
  */
@@ -10,7 +10,7 @@ import { runGit } from "../../projects/git/git-runner";
 import { finishErase, sweepErasedProfile } from "../../profile-maintenance/erase";
 import type { LibrarySplash } from "../../startup/library/library-splash";
 import { markRelocationCancelled, readRelocation } from "./journal";
-import { completeRelocation, type RelocationPorts } from "./run";
+import type { RelocationPorts } from "./run";
 import { acquireLibraryAccess } from "../safety/open";
 import { DeviceIdentityStore } from "../../chats/device-identity/device-identity";
 import { machineIdFor } from "../../machine/machine-id";
@@ -35,6 +35,8 @@ export async function prepareFolderAtStartup(input: { userData: string; locale: 
   const onCancel = () => { void markRelocationCancelled(input.userData).catch(cause => console.warn("[library] cancel not recorded", cause)).finally(() => cancel.abort()); };
   // Revalidate recovered data on the next launch before any recorded paths are rewritten.
   const journal = await readRelocation(input.userData);
+  if (!journal) return null;
+  const { completeRelocation } = await import("./run");
   const admission = journal?.kind === "adopt" ? await acquireLibraryAccess({ root:journal.to,
     installationId:await new DeviceIdentityStore(input.userData).loadOrCreate(), userData:input.userData,
     expectedId:journal.libraryId, requireIdentity:true, machineIdHash:machineIdFor("cloud") }) : null;

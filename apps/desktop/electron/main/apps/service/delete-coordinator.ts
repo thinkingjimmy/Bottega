@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Apps lifecycle/usage/gateway gate, installer/runtime, generation/data/preferences/archive ledgers, Extension participant and non-main cleanup ports
- * [OUTPUT]: Provides AppDeleteCoordinator for admission closure, capability withdrawal, build abort, data/preferences disposition, drain evidence, and silent shell cleanup
+ * [OUTPUT]: AppDeleteCoordinator for admission/drain/grants/builds, data archives and retained uninstall preserving source, private config, origin and preference state.
  * [POS]: apps/service deletion side-effect executor; renderer removal publication belongs to the enclosing saga after every domain finalizer commits
  */
 
@@ -30,6 +30,7 @@ import type { AppStore } from "../store/app-store";
 import type { AppGrantAuthority } from "../attachments/grant-authority";
 import type { AppAttachmentSurfaceLeaseRegistry } from "../attachments/surface-leases";
 import { appDigest } from "../support";
+import type { AppDeleteShellOptions } from "../conversion/app-delete";
 
 type AppDeleteCoordinatorDependencies = {
   userData: string;
@@ -52,6 +53,7 @@ type AppDeleteCoordinatorDependencies = {
   stop(appId: string): Promise<void>;
   closeGuiSideEffects(appId: string): Promise<void>;
   deletePreferences(appId: string): Promise<void>;
+  clearOriginStorage?(origin: string): Promise<void>;
 };
 
 export class AppDeleteCoordinator {
@@ -239,7 +241,7 @@ export class AppDeleteCoordinator {
     await this.deps.serverCutover.removeAppData(record.id);
   }
 
-  async removeBaseShell(record: AppRecord) {
+  async removeBaseShell(record: AppRecord, options?: AppDeleteShellOptions) {
     await this.deps.installer.cancel(record.id);
     await this.deps.stop(record.id);
     await cleanupAppFiles(
@@ -247,12 +249,14 @@ export class AppDeleteCoordinator {
         userData: this.deps.userData,
         appsRoot: this.deps.store.appsRoot,
         stagingRoot: this.deps.store.stagingRoot,
+        retainState: Boolean(options?.retainedRequestId), clearOriginStorage: this.deps.clearOriginStorage,
       },
       record,
       this.deps.runtime.getOrigin(record.id)
     );
-    await this.deps.deletePreferences(record.id);
-    await this.deps.store.remove(record.id);
+    if (!options?.retainedRequestId) await this.deps.deletePreferences(record.id);
+    if (options?.retainedRequestId) await this.deps.store.removeRetained(record.id, options.retainedRequestId);
+    else await this.deps.store.remove(record.id);
   }
 
   private requireRecord(appId: string) {

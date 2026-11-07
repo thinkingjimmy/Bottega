@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the process-global renderer IPC registrar, the workflows bridge channels and contract schemas, and the composed workflow runtime.
- * [OUTPUT]: Provides registerWorkflows: the main window's `workflows:*` handlers behind window.workflows and the `changed` push; enableInputSchema, the strict turn-on request (renderer-supplied names are bounded and free of control and format characters). preflight takes the Project setup is for.
+ * [OUTPUT]: Provides registerWorkflows: the main window's `workflows:*` handlers behind window.workflows and the `changed` push; enableInputSchema, the strict turn-on request (renderer-supplied names are bounded and free of control and format characters). preflight takes the Project setup is for. Exposes explicit worktree start, isolation facts and accepted-result merge with revision/HEAD CAS.
  * The defaults channel accepts one validated Project id; known refusal codes survive Electron error serialization.
  * [POS]: The workflow runtime's renderer boundary (W12); the runtime is composed off the startup path, so each call waits for it: only the main window's top frame may call it; every argument is parsed here, and a confirmation carries only the strict client input — the operator is filled in by main.
  */
@@ -39,7 +39,10 @@ export function registerWorkflows(ready: Promise<WorkflowRuntime>, window: Brows
     .handle(WORKFLOWS_CHANNEL.setBindingEnabled, (bindingId, enabled) => when(runtime => runtime.setBindingEnabled(id.parse(bindingId), z.boolean().parse(enabled))))
     .handle(WORKFLOWS_CHANNEL.runsForRecord, (input) => when(runtime => runtime.runsForRecord(record.parse(input))))
     .handle(WORKFLOWS_CHANNEL.run, (runId) => when(runtime => runtime.run(id.parse(runId))))
-    .handle(WORKFLOWS_CHANNEL.start, (input) => when(runtime => runtime.start(z.object({ bindingId: id, rowId: id }).strict().parse(input))))
+    .handle(WORKFLOWS_CHANNEL.start, (input) => when(runtime => runtime.start(z.object({ bindingId: id, rowId: id, isolation: z.literal("worktree").optional() }).strict().parse(input))))
+    .handle(WORKFLOWS_CHANNEL.isolation, (runId) => when(runtime => runtime.isolation(id.parse(runId))))
+    .handle(WORKFLOWS_CHANNEL.mergeIsolation, (runId, input) => when(runtime => runtime.mergeIsolation(id.parse(runId),
+      z.object({ operationId: id, expectedHead: z.string().regex(/^[a-f0-9]{40,64}$/), expectedRunRevision: z.number().int().nonnegative() }).strict().parse(input))))
     .handle(WORKFLOWS_CHANNEL.confirm, (runId, stepId, input) => when(runtime => runtime.confirm(id.parse(runId), id.parse(stepId), confirmInputSchema.parse(input))))
     .handle(WORKFLOWS_CHANNEL.pause, (runId) => when(runtime => runtime.pause(id.parse(runId))))
     .handle(WORKFLOWS_CHANNEL.resume, (runId) => when(runtime => runtime.resume(id.parse(runId))))

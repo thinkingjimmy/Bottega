@@ -52,7 +52,7 @@ export function createMaintenanceActions(ports: MaintenanceActionPorts) {
   const root = () => ports.settings.get().libraryRoot ?? fail("settings.native.libraryMoveMissing");
   const plan = async (parent: string) => {
     if (ports.busy()) throw new LibraryMoveError("busy");
-    return planLibraryMove({ root: root(), parent, projectDirs: ports.projectDirs() });
+    return planLibraryMove({ root: root(), parent, projectDirs: ports.projectDirs(), userData: ports.userData });
   };
   const intents = new MaintenanceIntents();
   const consume = (kind: "move" | "erase", context: MaintenanceContext, token: unknown) => {

@@ -1,13 +1,17 @@
 /**
- * [INPUT]: None; plain ja copy.
- * [OUTPUT]: Provides systemDockLazyJa, localized deferred Dock copy including API consent, credential controls and structured request failures.
+ * [INPUT]: Localized Dock copy and the shared weather translation dictionary.
+ * [OUTPUT]: Provides systemDockLazyJa, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../ja.ts.
  */
 
 import type { systemDockLazyEn } from "./en";
 
+import {weatherJa} from '../../../../system-dock/widgets/weather/locales/ja';
+
 export const systemDockLazyJa: typeof systemDockLazyEn = {
+  weather: weatherJa,
   widgets: {
+    summaryRefreshFailed: "要約を更新できませんでした。前の要約を保持しています。",
     api: {"connectionRouting":"設定されている場合はシステムのプロキシを使用します。プロキシ利用時は Cloudflare が HTTPS 経由でサービスのドメイン名を解決します。","title":"外部 API","consent":"このコンピューターでこのリクエストを許可する。","parameters":"送信するパラメータ","noParameters":"追加のパラメータはありません。","apiKey":"API キー","bearerToken":"Bearer トークン","set":"設定済み","unset":"未設定","save":"接続を保存","saved":"接続を保存しました。","test":"接続をテスト","tested":"接続テストが完了しました。","revoke":"アクセスを取り消す","clear":"保存したキーを消去","chooseCopy":"保存したキーを選択","copy":"保存したキーをコピー","copyHint":"独立したコピーを作成します。キーが変わったら各コピーを個別に更新してください。","failed":"接続を更新できませんでした。選択内容は保持されます。","loadFailed":"リクエストを確認できませんでした。適用する前に再試行してください。","retry":"再試行","invalid":"各 API リクエストを確認し、必要な認証情報を設定してください。","httpStatus":"HTTP {{status}}。","retryAt":"{{time}} 以降に再試行できます。","attribution":"提供元：{{name}}","yes":"はい","no":"いいえ","failures":{"network":"接続できませんでした。ネットワークを確認して再試行してください。","timeout":"リクエストがタイムアウトしました。準備ができたら再試行してください。","proxy-required":"この接続には対応するネットワーク経路が必要です。","http":"サービスがリクエストを完了できませんでした。","mapping":"応答が宣言されたデータ形式と一致しません。","budget":"リクエストまたは応答が許容上限を超えました。","authorization":"保存したキーとリクエストの権限を確認してください。","unknown-result":"リクエストは送信された可能性があります。再試行する前に結果を確認してください。"}},
     definitionDelete: {"title": "アカウントから {{name}} を削除", "hint": "この Widget を停止し、関連する Dock インスタンスを削除します。他のコンピューターは削除通知を受信後に停止します。作成元の Project と Chat は保持されます。", "confirm": "個人用 Widget を削除", "removing": "Widget を削除中…", "removed": "アカウントから削除しました。", "pending": "この Mac でのアクセスを停止しました。削除またはアカウント同期は未完了です。同じ操作を再試行してください。"},
     uninstall: {"title": "この Mac から {{name}} をアンインストール", "hint": "この Mac の実行バージョンとデータ権限を削除します。Dock の位置と作成元の Chat は保持されます。再インストールには新たな確認が必要です。", "confirm": "この Mac からアンインストール", "removing": "Widget をアンインストール中…", "removed": "この Mac からアンインストールしました。", "pending": "ローカルアクセスを停止しました。削除は未完了です。同じ操作を再試行してください。"},
@@ -19,6 +23,7 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     actions: {"openBase":"Base を開く：{{name}}","openTask":"タスクを開く：{{name}}","openUsage":"使用量を開く：{{name}}","failed":"操作を完了できませんでした。再試行してください。"},
     base: {"groups":"グループ別のレコード","history":"履歴","range":"日付範囲：{{from}} から {{to}}（終了日は含まれません）","hint":"このインスタンスの Base、フィールド、フィルターを選択します。","search":"Base を検索","loadFailed":"Base を読み込めませんでした。再試行してください。","narrowSearch":"名前で検索して他の Base を探してください。","source":"Base {{index}}","base":"Base","chooseBase":"Base を選択","unavailable":"Base を利用できません","fieldFor":"{{field}} のフィールド","chooseField":"フィールドを選択","readFields":"読み取るフィールド","readField":"{{field}} を読み取る","filters":"フィルター","filterField":"対象フィールド","condition":"条件","equals":"等しい","notEquals":"等しくない","lessThan":"未満","greaterThan":"より大きい","onDay":"指定日","value":"値","timeZone":"タイムゾーン","emptyValue":"空","checked":"オン","unchecked":"オフ","addFilter":"フィルターを追加","removeFilter":"フィルターを削除","consent":"このコンピューターでこれらの Base とフィールドの読み取りを許可します。","invalid":"Base とフィールドを選択し、フィルターと読み取り権限を確認してください。","revoke":"Base アクセスを取り消す","records":"選択したレコード"},
     detailStopped: "Widget の詳細を停止しました。再試行するか Widget を編集してください。",
+    copyPending: "個人用コピーを準備しています。コピーの準備ができるまで、現在の Widget を使用できます。", copyFailed: "個人用コピーに切り替えられませんでした。現在の Widget と設定は保持されています。", copyDetails: "コピーの詳細を開く",
     copyName: "{{name}}（コピー）",
     versions: "バージョン", versionTitle: "Widget のバージョン", versionHint: "保存済みのバージョンをプレビューし、確認後に適用します。", currentVersion: "現在", previewVersion: "プレビュー", versionSaved: "バージョンを保存しました。後で Dock に追加できます。",
     customize: "カスタマイズ", copyCustomize: "複製してカスタマイズ", customName: "{{name}}（カスタム）", replaceWithCopy: "適用してコピーに置き換える", preserveInstance: "インスタンス名と位置を保持します。元の Widget も引き続き追加できます。", usageSource: "使用量のソース", allAgents: "すべての Agent", otherSources: "詳細にさらに {{count}} 件",

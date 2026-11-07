@@ -20,6 +20,7 @@ export type PluginEntry = Readonly<{
   unsupported: LocalizedText | null;
   turnedOffAt?: number;
   managedBy?: string;
+  nativeId?: string;
   origin?: string;
   /** Host packages: presentation, provider id and scope, for switching and Provider lookups. */
   providerId?: string;
@@ -47,10 +48,10 @@ export function packageEntry(installIdentity: string, manifest: HostPackageManif
   };
 }
 
-export const nativeEntry = (backendId: string, plugin: { id: string; displayName: string; source: string; enabled: boolean }): PluginEntry => ({
+export const nativeEntry = (backendId: string, plugin: { id: string; displayName: string; source: string; enabled: boolean }, switchable = false): PluginEntry => ({
   descriptor: { id: nativePluginId(backendId, plugin.id), kind: "feature", source: "agent-native", name: { text: plugin.displayName }, summary: null,
-    icon: backendId, provides: [], requires: [], turnOn: { mode: "direct" }, turnOff: { allowed: false, reason: "managed-by-agent" }, settings: [], capabilities: [] },
-  enabled: plugin.enabled, official: false, version: null, unsupported: null, managedBy: backendId, origin: plugin.source, switchable: false,
+    icon: backendId, provides: [], requires: [], turnOn: { mode: "direct" }, turnOff: switchable ? { allowed: true } : { allowed: false, reason: "managed-by-agent" }, settings: [], capabilities: [] },
+  enabled: plugin.enabled, official: false, version: null, unsupported: null, managedBy: backendId, nativeId: plugin.id, origin: plugin.source, switchable,
 });
 
 export const nodeOf = (entry: PluginEntry): PluginNode => ({ id: entry.descriptor.id, provides: entry.descriptor.provides, requires: entry.descriptor.requires,

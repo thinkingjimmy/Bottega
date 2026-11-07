@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on the structural type of the English basesEn catalog
- * [OUTPUT]: Provides basesFr, the French catalog for every Base, synchronization review, Project conversion and embedded-chart surface
+ * [OUTPUT]: Provides basesFr, the French catalog for every Base, synchronization review, Project/Base-plugin promotion and embedded-chart surfaces
  * [POS]: Shared Base language catalog in i18n.
  */
 
@@ -47,7 +47,7 @@ export const basesFr: BasesCatalog = {
   group: { unassigned: "Non attribué" },
   header: {
     openApp: "Ouvrir l’App",
-    saveAsApp: "Enregistrer comme App",
+    saveAsApp: "Enregistrer comme plugin",
     importExport: "Import et export",
     importExportAria: "Import et export de la Base",
     exportCsv: "Exporter en CSV",

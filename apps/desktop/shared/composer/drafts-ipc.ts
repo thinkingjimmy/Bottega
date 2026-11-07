@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared AgentWorkspaceScope
- * [OUTPUT]: Durable composer/queue contracts and bridge channels retaining original review request ID/time through reload and transfer.
+ * [OUTPUT]: Durable composer/queue contracts and bridge channels retaining mode/source intent and original review request ID/time through reload and transfer.
  * [POS]: Shared wire contract between the renderer's composer store and main's durable draft owner; file chips cross it as grant refs only, never paths
  */
 import type { AgentWorkspaceScope } from "../ipc/agent/agent-ipc";
@@ -33,6 +33,8 @@ export type DurableQueueItem = Readonly<{
 
 export type DurableComposerDraft = Readonly<{
   richValue: unknown;
+  mode?: import("@bottega/contracts/plugins/platform").PluginModeSelection;
+  pluginAuthoring?: import("@bottega/contracts/plugins/platform").PluginPrepareAuthoringInput & { displayName?: string };
   /** Draft image names (references only) plus rows already unavailable. */
   unavailableAttachments: readonly DurableUnavailable[];
   queue: Readonly<{ paused: boolean; items: readonly DurableQueueItem[] }>;

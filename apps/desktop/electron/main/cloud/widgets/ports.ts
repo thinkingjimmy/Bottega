@@ -14,7 +14,6 @@ export type FrozenWidgetPacket = {
   reference: string;
   descriptor: WidgetPackageDescriptor;
   bytes: Buffer;
-  sourceChat?:{chatId:string};
 };
 export type WidgetPackageRequest = {
   subject: WidgetPackageSubject;
@@ -27,6 +26,9 @@ export type WidgetCloudPort = {
   available(): boolean;
   catalog(cursor:string|null,signal?:AbortSignal):Promise<import("@ai-chat/cloud-protocol/widgets/catalog").WidgetCatalogPage>;
   watchCatalog(changed:(revision:number)=>void,failed:(error:unknown)=>void):()=>void;
+  publishPlugin?(packet: import("./plugins/codec").FrozenCloudPluginPacket, signal?: AbortSignal): Promise<WidgetPackageDelivery>;
+  reviewPlugin?(request: WidgetPackageRequest, signal?: AbortSignal): Promise<Awaited<ReturnType<WidgetCloudClient["reviewPlugin"]>>>;
+  downloadPlugin?(delivery: WidgetPackageDelivery, signal?: AbortSignal, progress?: (value: FileProgress) => void): Promise<Buffer>;
   publish(
     packet: FrozenWidgetPacket,
     signal?: AbortSignal,

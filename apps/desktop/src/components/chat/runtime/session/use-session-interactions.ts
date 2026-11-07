@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, locale, native CommandSink, Plan decisions, Section relay, current request refs, and chat-ui's approvalFailure (a failed approval or question answer shows its catalog line, never the raw error).
- * [OUTPUT]: Provides stable approval, question, Plan, stop, retry, and explicit authentication-retry actions through canonical submission.
+ * [OUTPUT]: Provides stable approval, question, Plan, stop, retry, and explicit authentication-retry actions through canonical submission, with an optional durable-message callback for draft consumption.
  * [POS]: The owner of the chat/runtime/session interaction status; Keep Plan Failed re-roll, relay Second confirmation and request-local cancel timing
  */
 
@@ -42,7 +42,7 @@ import { useAppTranslation } from "@/components/providers/preferences/i18n-provi
 
 export type SessionSubmit = (
   message: PromptInputMessage,
-  options?: { planIntent?: boolean; signal?: AbortSignal; authenticationRetry?: import("../../../../../shared/agent-availability/types").AuthenticationRetryIntent }
+  options?: { planIntent?: boolean; signal?: AbortSignal; onPersisted?: () => void; authenticationRetry?: import("../../../../../shared/agent-availability/types").AuthenticationRetryIntent }
 ) => Promise<void>;
 
 type SessionInteractionsInput = {

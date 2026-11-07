@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on durable PreparedManualTurn shapes, workspace/submission schemas, sealed Project Tools hydration, canonical backend runtime identity, staged blob bytes, exact Skill receipts, and shared staging custody
- * [OUTPUT]: Canonical prepared-turn hydration, frozen tool reprojection, custody release and exact design-reference revalidation before dispatch.
+ * [OUTPUT]: Canonical prepared-turn hydration, frozen tool reprojection, custody release and exact design-reference revalidation before dispatch. Retains trusted persistent member origin during replay.
  * [POS]: Prepared admission read boundary; the sibling staging primitive owns integrity/release while prepared-manual-turn owns writes
  */
 
@@ -136,6 +136,7 @@ export async function hydratePreparedTurn(
     prepared.precondition.kind === "existing" ? prepared.precondition.incarnationId : undefined, prepared.content.content.richValue);
   return {
     submission: {
+      memberSession: prepared.memberSession,
       agentSwitch: prepared.agentSwitch,
       expectedAgentRevision: prepared.expectedAgentRevision,
       intentId: prepared.intentId,

@@ -5,13 +5,18 @@
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
+import { z } from "zod";
+import type { ToolSnapshot } from "./registry";
 import {
   BUILTIN_MCP_READY_TIMEOUT_MS,
-  BUILTIN_TOOL_DOMAINS,
+  toolBudget,
   assertUnixSocketPath,
-  builtinToolSpec,
-  type BuiltinToolName,
-} from "../../../shared/builtin-tools";
+  toolSpec,
+  registeredToolSpecs,
+  toolDescription,
+  PLUGIN_MCP_SERVER_NAME,
+  type PluginToolName,
+} from "../../../shared/plugin-tools";
 import type { AgentBackendId } from "../../../shared/ipc/agent/agent-ipc";
 import { providerTraits } from "../../../shared/providers/traits";
 import { statusError } from "../ipc/errors";
@@ -21,7 +26,7 @@ import { artifactGeneration } from "../artifacts/admission/state";
 const INVOCATION_GUARD_LIMIT = 4096;
 
 export type BuiltinMcpServerSpec = {
-  name: "ai-chat-tools";
+  name: typeof PLUGIN_MCP_SERVER_NAME;
   command: string;
   args: string[];
   env: Record<string, string>;
@@ -34,7 +39,8 @@ export type BuiltinMcpLease = {
   requestId: string;
   generation: number;
   artifactGeneration?: string;
-  allowedTools: BuiltinToolName[];
+  allowedTools: PluginToolName[];
+  toolSnapshot?: readonly ToolSnapshot[];
   initiatorBackend: AgentBackendId;
   /** References the resource-owning Skills turn custody; the lease owns no Skill bytes or Registry refs. */
   skillsCustodyId?: string;
@@ -105,7 +111,7 @@ export class BuiltinMcpLeaseStore {
     incarnationId: string;
     requestId: string;
     generation: number;
-    allowedTools: BuiltinToolName[];
+    allowedTools: PluginToolName[];
     initiatorBackend: AgentBackendId;
     resultByteBudget?: number;
     skillsCustodyId?: string;
@@ -116,7 +122,7 @@ export class BuiltinMcpLeaseStore {
     const program = this.server();
     const socketToken = randomBytes(32).toString("hex");
     const allowedTools = [...new Set(input.allowedTools)].filter((name) =>
-      Boolean(builtinToolSpec(name))
+      Boolean(toolSpec(name))
     );
     const revokeController = new AbortController();
     const lease: BuiltinMcpLease = {
@@ -127,6 +133,12 @@ export class BuiltinMcpLeaseStore {
         input.resultByteBudget ??
         initiatorResultByteBudget(input.initiatorBackend),
       allowedTools,
+      toolSnapshot: Object.freeze(registeredToolSpecs().filter(spec => allowedTools.includes(spec.name)).map(spec => Object.freeze({
+        name: spec.name, identity: spec.identity, pluginId: spec.pluginId, toolId: spec.toolId, revision: spec.revision,
+        description: toolDescription(spec, allowedTools),
+        inputSchema: z.toJSONSchema(spec.wireInputSchema ?? spec.inputSchema, { unrepresentable: "any" }) as Record<string, unknown>,
+        outputSchema: spec.outputJsonSchema ?? {}, annotations: spec.annotations, domainId: spec.domainId, timeoutMs: spec.timeoutMs,
+      }))),
       socketToken,
       signal: revokeController.signal,
       state: "issued",
@@ -136,7 +148,7 @@ export class BuiltinMcpLeaseStore {
     return {
       lease,
       server: {
-        name: "ai-chat-tools",
+        name: PLUGIN_MCP_SERVER_NAME,
         command: program.command,
         args: [...program.args],
         env: {
@@ -170,7 +182,7 @@ export class BuiltinMcpLeaseStore {
     }
   }
 
-  authorize(token: string, tool: BuiltinToolName, connection: symbol) {
+  authorize(token: string, tool: PluginToolName, connection: symbol) {
     const lease = this.byToken.get(token);
     if (!lease || lease.state === "revoked" || lease.claimedBy !== connection) {
       throw statusError(401, "内置 MCP lease 无效或已撤销");
@@ -181,14 +193,14 @@ export class BuiltinMcpLeaseStore {
     return lease;
   }
 
-  consume(token: string, tool: BuiltinToolName, now = Date.now()) {
+  consume(token: string, tool: PluginToolName, now = Date.now()) {
     const lease = this.byToken.get(token);
     if (!lease || lease.state === "revoked") {
       throw statusError(401, "内置 MCP lease 无效或已撤销");
     }
-    const spec = builtinToolSpec(tool);
-    if (!spec) throw statusError(400, "未知内置工具");
-    const domain = BUILTIN_TOOL_DOMAINS[spec.domainId];
+    const spec = lease.toolSnapshot?.find(entry => entry.name === tool) ?? toolSpec(tool);
+    if (!spec) throw statusError(400, "Unknown plugin tool");
+    const domain = toolBudget(spec.domainId);
     const key = `${token}\0${domain.id}`;
     const calls = (this.calls.get(key) ?? []).filter(
       (timestamp) => now - timestamp < domain.rateWindowMs
@@ -198,6 +210,12 @@ export class BuiltinMcpLeaseStore {
     }
     calls.push(now);
     this.calls.set(key, calls);
+  }
+
+  describe(token: string, connection: symbol) {
+    const lease = this.byToken.get(token);
+    if (!lease || lease.state !== "ready" || lease.claimedBy !== connection) throw statusError(401, "Plugin MCP lease is invalid");
+    return lease.toolSnapshot ?? [];
   }
 
   /** Single use: the first connection to present the token owns the lease; any other presentation is refused. */

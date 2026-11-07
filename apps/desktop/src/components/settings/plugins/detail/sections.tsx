@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on lucide icons, Settings layout primitives, the Setup context with providerHealth and CliUpdateRow (a built-in
+ * [INPUT]: Depends on lucide icons, Settings layout primitives, the Setup context with providerHealth, UpdateList and CliUpdateRow (a built-in
  *           Provider's live CLI facts and one-click update), app i18n, workbench-copy, the report-issue button and the plugin detail.
  * [OUTPUT]: Provides the pieces both plugin pages compose: PluginBanners (the one most urgent state, with its fix), HealthSection,
  *           UsedBySection (settings page), and for the introduction AboutSection, CapabilitiesSection, WorksWithSection, InUseSection
@@ -16,6 +16,7 @@ import { useSetup } from "@/components/providers/setup-provider";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { providerHealth } from "@/components/settings/providers/provider-row";
 import { CliUpdateRow } from "@/components/settings/updates/cli-update-row";
+import { UpdateList } from "@/components/settings/updates/update-row";
 import { ReportIssueButton } from "@/components/report-issue-button";
 import { backendLabel, isAgentBackendId } from "@/lib/agent/agent-backends";
 import type { PluginDetail, PluginView } from "@ai-chat/cloud-protocol/contracts/plugins/catalog";
@@ -95,7 +96,7 @@ export function HealthSection({ detail, workbench, locale }: Props & { locale: s
         )}
       </SettingsList>
       {/* The same update row as Settings › Updates: one-click update, progress, verified failure and the Terminal fallback. */}
-      {backend && isAgentBackendId(backend.id) && backend.runtimeStatus === "installed" && <SettingsList><CliUpdateRow backend={{ ...backend, id: backend.id }} /></SettingsList>}
+      {backend && isAgentBackendId(backend.id) && backend.runtimeStatus === "installed" && <UpdateList><CliUpdateRow backend={{ ...backend, id: backend.id }} /></UpdateList>}
     </SettingsSection>
   );
 }

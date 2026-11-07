@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared ChatRecord/ChatSummary contracts and the message preview projection
- * [OUTPUT]: Provides ChatFacts, ChatMetadata, installWorkflowChatIndex / workflowChatTitle, and the one summary projection carrying canonical context, the workflow-owned role, fork lineage, execution capability, import origin, manual sortKey, and durable revisions
+ * [OUTPUT]: Provides ChatFacts, ChatMetadata, installWorkflowChatIndex / workflowChatTitle, and the one summary projection carrying canonical context, the workflow-owned role, fork lineage, execution capability, import origin, manual sortKey, and durable revisions Exports the persistent member index, main-only first-create identity/isolation, fixed names and portable member identity projection.
  * [POS]: apps/desktop/electron/main/chats/projection; The read-only projection sheet of the chats module; ChatStore metadata, ChatsService events, and renderer lists all derive from this one field list, so no second projection can grow
  */
 
@@ -13,11 +13,19 @@ import type { WorkflowChatRole } from "../../../../shared/placement/facts";
    Chat is created with its fixed title instead of going to title generation. */
 type WorkflowChatIndex = { roleOf(chatId: string): WorkflowChatRole | null; titleOf(chatId: string): string | null;
   entries(): Array<readonly [string, WorkflowChatRole]> };
+export type MemberChatCreation = Readonly<{ projectId: string; incarnationId: string; isolation: "shared" | "worktree" }>;
+type MemberChatIndex = { creationFor?(chatId: string): MemberChatCreation | null; facts(chatId: string): import("@bottega/contracts/plugins/team").PluginMemberSessionFacts | null; titleOf(chatId: string): string | null;
+  entries(): Array<readonly [string, import("@bottega/contracts/plugins/team").PluginMemberSessionFacts]> };
+let memberChats: MemberChatIndex | null = null;
+export function installMemberChatIndex(index: MemberChatIndex | null) { memberChats = index; }
+export const memberChatCreation = (chatId: string) => memberChats?.creationFor?.(chatId) ?? null;
+export const memberChatFacts = (chatId: string) => memberChats?.facts(chatId) ?? null;
+export const memberChatEntries = () => memberChats?.entries() ?? [];
 let workflowChats: WorkflowChatIndex | null = null;
 export function installWorkflowChatIndex(index: WorkflowChatIndex | null) { workflowChats = index; }
 /** Every workflow Chat with its role, for the cloud repair of a role a Chat's head lacks (R-35); empty until the index is installed. */
 export const workflowChatRoles = () => workflowChats?.entries() ?? [];
-export const workflowChatTitle = (chatId: string) => workflowChats?.titleOf(chatId) ?? null;
+export const workflowChatTitle = (chatId: string) => workflowChats?.titleOf(chatId) ?? memberChats?.titleOf(chatId) ?? null;
 /** The role of a workflow Chat of this computer, or null (R-35: sent with its first upload). */
 export const workflowChatRole = (chatId: string) => workflowChats?.roleOf(chatId) ?? null;
 const workflowRoleOf = (chatId: string) => workflowChats?.roleOf(chatId) ?? null;
@@ -120,6 +128,7 @@ export function summaryOfChat({
     ...(archivedAt ? { archivedAt, effectiveArchived: true } : {}),
     ...(sortKey === undefined ? {} : { sortKey }),
     ...(workflowRole ? { workflowRole } : {}),
+    ...(memberChatFacts(id) ? { memberSession: memberChatFacts(id)! } : {}),
   };
 }
 

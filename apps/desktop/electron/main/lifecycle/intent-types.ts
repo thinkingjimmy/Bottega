@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, the product's one canonical JSON digest (@bottega/contracts), and the shared five-locale enum
- * [OUTPUT]: Defines closed lifecycle inputs, phases and claims for App installation/removal, Home materialization, Project rescue and scope cleanup.
+ * [OUTPUT]: Closed lifecycle inputs/phases/claims, including main-only retained App uninstall alongside public removal modes.
  * [POS]: The type truth source of the lifecycle domain, covenant v3, second paragraph of the machine image; consumed by intent-store/admission-gate in a single direction
  */
 
@@ -111,7 +111,7 @@ const chatSlotInput = z
 const appDeleteInput = z
   .object({
     appId: z.string().min(1),
-    mode: z.enum(["cascade", "retain-data"]),
+    mode: z.enum(["cascade", "retain-data", "uninstall"]),
   })
   .strict();
 const openInput = z.record(z.string(), z.unknown());

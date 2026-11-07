@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Zod's closed schemas, Noble's synchronous SHA-256 implementation and the public contract's `id` scalar.
+ * [INPUT]: The lightweight Agent identity leaf, Zod's closed schemas, Noble's synchronous SHA-256 implementation and the public contract's `id` scalar.
  * [OUTPUT]: Native-compatible business IDs, immutable scope scalars and internal canonical metadata commitments.
  * [POS]: Shared validation only; callers export named domain commitments, never arbitrary dictionaries.
  */
@@ -7,7 +7,7 @@ import { z } from "zod";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { assertCrypto } from "../limits";
-import { agentBackendIdSchema } from "../../chats/options";
+import { agentBackendIdSchema } from "../../chats/identity/index";
 /* The opaque identifier is a public contract scalar; this domain keeps no copy. */
 import { id } from "@bottega/contracts/core/scalars";
 export { id };

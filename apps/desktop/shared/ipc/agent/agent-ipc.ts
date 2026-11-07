@@ -193,6 +193,7 @@ export type SessionRef = {
 export const SESSION_ID_BYTE_LIMIT = 128;
 
 export type ClaudeTurnOptions = {
+  mode?: import("@bottega/contracts/plugins/platform").PluginModeSelection;
   backend: "claude";
   model?: string;
   reasoningEffort?: string;
@@ -202,6 +203,7 @@ export type ClaudeTurnOptions = {
 };
 
 export type KimiTurnOptions = {
+  mode?: import("@bottega/contracts/plugins/platform").PluginModeSelection;
   backend: "kimi";
   model?: string;
   reasoningEffort?: string;
@@ -214,6 +216,7 @@ export type KimiTurnOptions = {
  * 自己取该模型的首个 variant。
  */
 export type OpencodeTurnOptions = {
+  mode?: import("@bottega/contracts/plugins/platform").PluginModeSelection;
   backend: "opencode";
   model?: string;
   reasoningEffort?: string;

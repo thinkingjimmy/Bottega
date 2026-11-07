@@ -5,7 +5,7 @@
  */
 
 import type { PromotableResultSource } from "../agent/subagents/subagent-spawn";
-import type { BuiltinToolContext } from "../tools/registry";
+import type { PluginToolContext } from "../tools/registry";
 import type { AgentBackendId } from "../../../shared/ipc/agent/agent-ipc";
 import type { PersistedSubagentStatus } from "../../../shared/ipc/content/chats-ipc";
 import { truncateUtf8 } from "../../../shared/content/truncate/truncate-utf8";
@@ -36,7 +36,7 @@ export type PromoteAdmissionPort = {
       note?: string;
       promotedFrom: PromoteProvenance;
     },
-    context: BuiltinToolContext
+    context: PluginToolContext
   ): Promise<{
     section_id: string;
     first_turn: "idle" | "rejected";
@@ -55,7 +55,7 @@ export async function promoteSubagentResult(
     inherit_project?: boolean;
     note?: string;
   },
-  context: BuiltinToolContext,
+  context: PluginToolContext,
   source: PromotableResultSource,
   coordinator: PromoteAdmissionPort
 ) {

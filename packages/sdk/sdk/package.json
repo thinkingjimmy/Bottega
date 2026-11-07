@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./host": "./src/host.ts",
-    "./record-ui": "./src/record-ui.ts"
+    "./record-ui": "./src/record-ui.ts",
+    "./plugin": "./src/plugin.ts"
   },
   "publishConfig": {
     "exports": {
@@ -23,6 +24,10 @@
       "./record-ui": {
         "types": "./dist/record-ui.d.ts",
         "import": "./dist/record-ui.js"
+      },
+      "./plugin": {
+        "types": "./dist/plugin.d.ts",
+        "import": "./dist/plugin.js"
       }
     }
   },

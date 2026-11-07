@@ -7,7 +7,7 @@
  */
 import { requestDigest } from "@ai-chat/cloud-protocol/contracts/canonical";
 import { stepReportSchema, type StepReport } from "@ai-chat/cloud-protocol/contracts/workflow/report";
-import type { BuiltinToolset } from "../tools/registry";
+import type { PluginToolset } from "../tools/registry";
 import { statusError } from "../ipc/errors";
 import { workflowTurnPolicyFor } from "./turn-policy";
 
@@ -40,7 +40,7 @@ export function installStepResultIntake(intake: StepResultIntake | null) { insta
  * `readSection` is the sections domain's own read_section (paging, byte budget and transcript projection alike); read_step_history
  * only fixes its target: the one development Chat the host linked to this review turn. Any other Chat is refused (TASK-18).
  */
-export function createWorkflowToolset(readSection: NonNullable<BuiltinToolset["read_section"]>): BuiltinToolset {
+export function createWorkflowToolset(readSection: NonNullable<PluginToolset["read_section"]>): PluginToolset {
   return {
     submit_step_result: (args, context) => {
       if (!installed) throw new Error("workflow-runtime-unavailable");

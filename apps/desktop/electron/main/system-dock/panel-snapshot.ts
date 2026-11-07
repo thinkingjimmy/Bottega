@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on DockService facts (layout, drafts, entries, Usage adapter, Bottega Apps, native resolution) and the shared panel DTOs.
+ * [INPUT]: Depends on DockService facts (layout, drafts, entries, Usage adapter, Bottega Apps, native resolution) the shared panel DTOs and unified plugin Widget candidates.
  * [OUTPUT]: Provides buildPanel (the single panel projection per view: detail for Downloads/Trash/Widgets/Tasks, add candidates with four groups and search, edit/navigate item lists, undo and draft) and addCandidates (the key→draft table the add intent resolves against). Bottega App candidates carry live emoji.
  * [POS]: system-dock panel projection; no side effects, privacy mask applied to values and file names (INV-06).
  */
@@ -48,6 +48,12 @@ export function addCandidates(service: DockService): CandidateTable {
     { kind: "widget", label: entryLabel(locale, "activity"), iconKey: null, group: "widget" });
   push("builtin.tasks", { kind: "widget", widget: defaultTasksWidget() },
     { kind: "widget", label: entryLabel(locale, "tasks"), iconKey: null, group: "widget" });
+  for (const definition of service.ports.custom?.candidates?.() ?? []) {
+    if (query && !definition.name.toLocaleLowerCase().includes(query)) continue;
+    table.candidates.push({key:definition.id,kind:'widget',label:definition.name,iconKey:null,group:'widget',
+      pinned:layout.items.some(item=>item.kind==='widget'&&item.widget.type==='plugin'&&`${item.widget.pluginId}.${item.widget.contributionId}`===definition.id),
+      ...(!definition.available?{note:'unavailable' as const}:{})});
+  }
   return table;
 }
 /** The panel's Usage consumer: the Widget detail it shows, as the draft while editing and the applied Widget otherwise. */
@@ -74,7 +80,7 @@ export function buildPanel(service: DockService): PanelSnapshot {
   }
   if (item.kind === "system" && item.entry === "system.trash") return { ...base, trash: service.trash?.snapshot() ?? { state: "unknown", emptying: false, automation: "unavailable", lastResult: "none" } };
   if (item.kind !== "widget") return base;
-  if(item.widget.type==='custom'){
+  if(item.widget.type==='custom'||item.widget.type==='plugin'){
     const detail=service.ports.custom?.detail(item,state.edge);if(!detail)return base;
     return{...base,customWidget:state.privacyMask?{...detail,name:'••••',data:[],face:maskFace(detail.face) as typeof detail.face}:detail};
   }

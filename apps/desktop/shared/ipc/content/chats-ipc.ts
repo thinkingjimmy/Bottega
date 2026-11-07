@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on public content budgets/terminal evidence/notices and desktop Agent, authority and submission contracts
- * [OUTPUT]: Defines canonical Chat content, native-resume or saved-generation adoption, paired remote provenance, and bounded runtime/timeline/IPC projections.
+ * [OUTPUT]: Defines canonical Chat content, native-resume or saved-generation adoption, paired remote provenance, and bounded runtime/timeline/IPC projections. Canonical projections include optional portable persistent member ownership.
  * [POS]: apps/desktop/shared/ipc/content; Backend-independent durable Chat wire authority shared by main, preload, and renderer
  */
 
@@ -265,6 +265,7 @@ export type ChatSummary = {
   effectiveArchived?: boolean;
   /** Set by main for a Chat a workflow owns (one per record × role); never persisted on the record, every Chat list leaves it out. */
   workflowRole?: WorkflowChatRole;
+  memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts;
 };
 
 export type ChatImportOrigin = Readonly<{

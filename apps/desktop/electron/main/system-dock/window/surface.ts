@@ -4,6 +4,7 @@
  * [POS]: system-dock/window trust boundary (INV-13); stale, destroyed or foreign senders are rejected before any intent reaches DockService.
  */
 
+import { pluginDockWidgets } from "../widgets/plugins/runtime";
 import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -37,6 +38,11 @@ type Handlers = { snapshot(role: DockRole): unknown; intent(role: DockRole, inte
 export class DockIpc {
   private readonly surfaces = new Map<DockRole, { window: BrowserWindow; url: string }>();
   constructor(private readonly handlers: Handlers) {
+    ipcMain.handle(SYSTEM_DOCK_CHANNEL.pluginSurface, (event, raw: unknown) => {
+      const role = this.trusted(event), owner = pluginDockWidgets();
+      if (!owner) throw new Error("Plugin Widget runtime is unavailable");
+      return owner.surface(raw, event.sender.id, role);
+    });
     ipcMain.handle(SYSTEM_DOCK_CHANNEL.snapshot, (event) => this.handlers.snapshot(this.trusted(event)));
     ipcMain.handle(SYSTEM_DOCK_CHANNEL.intent, (event, raw: unknown) => {
       const role = this.trusted(event);
@@ -72,6 +78,7 @@ export class DockIpc {
   close() {
     ipcMain.removeHandler(SYSTEM_DOCK_CHANNEL.snapshot); ipcMain.removeHandler(SYSTEM_DOCK_CHANNEL.intent); ipcMain.removeHandler(SYSTEM_DOCK_CHANNEL.icons);
     ipcMain.removeHandler(SYSTEM_DOCK_CHANNEL.downloadVisual);
+    ipcMain.removeHandler(SYSTEM_DOCK_CHANNEL.pluginSurface);
     this.surfaces.clear();
   }
 }

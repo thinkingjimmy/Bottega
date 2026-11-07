@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on durable JSON, exact package freezing, the authored generation owner and the current main-owned account/installation scope.
- * [OUTPUT]: Provides verified/repairable local archives, selective entry reads, exact retained-generation lookup, terminal full-source retirement, encrypted source Chat pointer custody, the original resumable delivery queue, exact completion receipts, explicit retry/abandon, receiver custody, same-generation source archive restoration, repair revision signals, account-scoped collection and orphan cleanup and the exact package ledger schema.
+ * [OUTPUT]: Provides verified/repairable local archives, selective entry reads, exact retained-generation lookup, terminal full-source retirement, the original resumable delivery queue, exact completion receipts, explicit retry/abandon, receiver custody, same-generation source archive restoration, repair revision signals, account-scoped collection and orphan cleanup and the exact package ledger schema.
  * [POS]: Private source-package custody owner; local application does not depend on Cloud availability or writable source after freezing.
  */
 import {createHash} from 'node:crypto';
@@ -15,10 +15,10 @@ import {DurableJson,durableReplaceBytes} from '../../../persistence/durable-json
 import type {PluginSurfaceRuntime} from '../service';
 import {BUDGET,freezePackage,verifyPackage} from './codec';
 import {removeWidgetArchives,removeWidgetAccountArchives,widgetArchiveDirectory,ensureWidgetArchiveDirectory} from './retention';
-const record=z.object({sourceChatId:z.string().min(1).max(160).optional(),reference:z.string().regex(/^sha256:[a-f0-9]{64}$/),descriptor:widgetPackageDescriptorSchema,bytes:z.number().int().nonnegative().max(BUDGET.packageBytes),operationIds:z.array(z.string().regex(/^[A-Za-z0-9_-]{8,128}$/)).max(256),retired:z.boolean().default(false),delivery:z.enum(['prepared','pending','delivered','abandoned','discarded']),error:z.literal('WIDGET_DELIVERY_FAILED').nullable().default(null),createdAt:z.number().int().nonnegative()}).strict();
+const record=z.object({reference:z.string().regex(/^sha256:[a-f0-9]{64}$/),descriptor:widgetPackageDescriptorSchema,bytes:z.number().int().nonnegative().max(BUDGET.packageBytes),operationIds:z.array(z.string().regex(/^[A-Za-z0-9_-]{8,128}$/)).max(256),retired:z.boolean().default(false),delivery:z.enum(['prepared','pending','delivered','abandoned','discarded']),error:z.literal('WIDGET_DELIVERY_FAILED').nullable().default(null),createdAt:z.number().int().nonnegative()}).strict();
 export const widgetPackageLedgerSchema=z.object({version:z.literal(1),packages:z.array(record).max(BUDGET.retainedPackages)}).strict();
 const schema=widgetPackageLedgerSchema;
-type Frozen={reference:string;descriptor:WidgetPackageDescriptor;bytes:Buffer;sourceChat?:{chatId:string}};
+type Frozen={reference:string;descriptor:WidgetPackageDescriptor;bytes:Buffer};
 type Scope={accountId:string;installationId:string};
 export class WidgetPackageStore{
  private readonly file:DurableJson<z.infer<typeof schema>>;
@@ -62,7 +62,7 @@ export class WidgetPackageStore{
   await this.file.mutate(state=>{
    const item=state.packages.find(value=>value.reference===frozen.reference);
    if(item){if(item.delivery==='abandoned'||item.delivery==='discarded'){item.delivery='prepared';item.error=null;}if(!item.operationIds.includes(operationId)){if(item.operationIds.length>=256)throw new Error('WIDGET_PACKAGE_OPERATION_CAPACITY');item.operationIds.push(operationId);}}
-   else state.packages.push({reference:frozen.reference,descriptor:frozen.descriptor,bytes:frozen.bytes.length,operationIds:[operationId],...(this.runtime.descriptor(frozen.descriptor.source.definitionId)?.ownerChatId?{sourceChatId:this.runtime.descriptor(frozen.descriptor.source.definitionId)!.ownerChatId}:{}),retired:false,delivery:'prepared',error:null,createdAt:Date.now()});
+   else state.packages.push({reference:frozen.reference,descriptor:frozen.descriptor,bytes:frozen.bytes.length,operationIds:[operationId],retired:false,delivery:'prepared',error:null,createdAt:Date.now()});
   });
   this.assertScope(scope);this.bumpArchive(frozen.reference);this.changed();return{reference:frozen.reference,delivery:original?.delivery??'prepared'};
  });}
@@ -77,7 +77,6 @@ export class WidgetPackageStore{
   if(!entry)throw new Error('WIDGET_PACKAGE_NOT_AVAILABLE');
   const started=performance.now(),value=await this.verified(reference,entry);this.assertScope(scope);if(performance.now()-started>=BUDGET.verifyMs)throw new Error('WIDGET_PACKAGE_VERIFY_TIMEOUT');return value.packet;
  }
- origin(reference:string){const value=this.file.read(state=>state.packages.find(value=>value.reference===reference&&!value.retired&&value.descriptor.source.accountId===this.scope().accountId));return value?.sourceChatId?{chatId:value.sourceChatId}:null;}
  descriptor(reference:string):WidgetPackageDescriptor|null{
   const account=this.scope().accountId;return this.file.read(state=>state.packages.find(value=>value.reference===reference&&!value.retired&&value.descriptor.source.accountId===account)?.descriptor??null);
  }
@@ -91,7 +90,7 @@ export class WidgetPackageStore{
   let bytes:Buffer|null=null;try{bytes=await readArchive(this.path(frozen.reference));}catch(error){if(!(error instanceof Error)||!('code'in error&&error.code==='ENOENT')&&!['WIDGET_PACKAGE_ARCHIVE_CHANGED','WIDGET_PACKAGE_ARCHIVE_INVALID'].includes(error.message))throw error;}
   if(bytes&&!bytes.equals(frozen.bytes)){let valid=true;try{verifyPackage(bytes,frozen.reference,frozen.descriptor.source);}catch{valid=false;}if(valid)throw new Error('WIDGET_PACKAGE_ARCHIVE_CHANGED');bytes=null;await removeWidgetArchives(widgetArchiveDirectory(this.userData,scope.accountId),[frozen.reference]);}
   if(!bytes){await removeWidgetArchives(widgetArchiveDirectory(this.userData,scope.accountId),[frozen.reference]);await durableReplaceBytes(this.path(frozen.reference),frozen.bytes);}this.assertScope(scope);this.invalid.delete(frozen.reference);
-  if(!original)await this.file.mutate(state=>{state.packages.push({reference:frozen.reference,descriptor:packet.descriptor,bytes:frozen.bytes.length,operationIds:[operationId],...(frozen.sourceChat?{sourceChatId:frozen.sourceChat.chatId}:{}),retired:false,delivery:'delivered',error:null,createdAt:Date.now()});});
+  if(!original)await this.file.mutate(state=>{state.packages.push({reference:frozen.reference,descriptor:packet.descriptor,bytes:frozen.bytes.length,operationIds:[operationId],retired:false,delivery:'delivered',error:null,createdAt:Date.now()});});
   this.bumpArchive(frozen.reference);this.changed();
  });}
  clearAccount(accountId:string){return this.enqueue(async()=>{
@@ -133,7 +132,7 @@ export class WidgetPackageStore{
   this.assertOpen();const scope=this.scope(),entry=this.file.read(state=>state.packages.find(value=>value.reference===reference&&!value.retired&&value.descriptor.source.accountId===scope.accountId));
   if(!entry)throw new Error('WIDGET_PACKAGE_NOT_AVAILABLE');
   const {bytes}=await this.verified(reference,entry);this.assertScope(scope);
-  return{reference,descriptor:structuredClone(entry.descriptor),bytes,...(entry.sourceChatId?{sourceChat:{chatId:entry.sourceChatId}}:{})};
+  return{reference,descriptor:structuredClone(entry.descriptor),bytes};
  }
  archiveRevision(reference:string){return this.archiveVersions.get(reference)??0;}
  private bumpArchive(reference:string){this.archiveVersions.set(reference,this.archiveRevision(reference)+1);}

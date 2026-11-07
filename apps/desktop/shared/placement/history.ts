@@ -1,15 +1,15 @@
 /**
  * [INPUT]: Depends on canonical chat placement facts
- * [OUTPUT]: Provides History-only visibility (workflow-owned Chats excluded) and stable comparison
+ * [OUTPUT]: Provides History-only visibility (Workflow/member-owned Chats excluded) and stable comparison
  * [POS]: History projection truth table; independent from all other product surfaces
  */
 
-import { hasCanonicalChatPlacement, isEffectivelyArchived, isHistoryVisible, isWorkflowChat, type ChatPlacementInput } from "./facts";
+import { hasCanonicalChatPlacement, isEffectivelyArchived, isHistoryVisible, isManagedChat, type ChatPlacementInput } from "./facts";
 
 export const appearsInHistory = (chat: ChatPlacementInput) =>
   hasCanonicalChatPlacement(chat) &&
   !isEffectivelyArchived(chat) &&
-  !isWorkflowChat(chat) &&
+  !isManagedChat(chat) &&
   isHistoryVisible(chat.startState) &&
   chat.context.kind !== "app-edit";
 

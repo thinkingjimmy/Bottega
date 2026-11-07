@@ -1,8 +1,8 @@
 /**
- * [INPUT]: Depends on the workflow binding store, run ledger, executor, evidence store, step-result intake, Base action ports, the Chat registry (loaded by the foundation) and dispatch, the built-in recipe, role admission over this computer's measurements, and host ports (coordinator, Chats, Projects, Bases, turn defaults, the verified operator, plugin state).
- * [OUTPUT]: Provides composeWorkflowRuntime (installing the result for workflowRuntime() in installed.ts): the composed runtime (the service behind window.workflows — enable a workflow, bindings, runs, start, confirm with the host operator, pause, resume, cancel, force stop, check result, retry a blocked step, preflight (E-03), rework, chatFor, projectRunCount, projectExists, confirmAs (a remote sender's verified operator), removeProject (a Project deleted or removed; archive and restore are followed from the Project's archivedAt, any writer, D3-02: an unanswered confirmation withdrawn, A2-03, the archive's pause restated as project-restored, V-02; archived Projects refuse new execution and leave the needs-you list), needsYou (including an Agent waiting on the person in a hidden workflow Chat; each item named by its record's task as it reads now) — plus turnSettled for the Chat machinery, onChanged, pauseForProvider and close); bindings are reconciled against every Base change, local or synced, and once at start. providerReadiness is awaited (E2-04). Role admission (the executor's and setup's preflight) shares one port set, and a partial apply (T21-c) is reported on the configuration by both.
+ * [INPUT]: Depends on the workflow binding store, run ledger, executor, evidence store, step-result intake, Base action ports, the Chat registry (loaded by the foundation) and dispatch, the built-in recipe, role admission over this computer's measurements, and host ports (selected Library root, coordinator, Chats, Projects, Bases, turn defaults, the verified operator, plugin state).
+ * [OUTPUT]: Provides composeWorkflowRuntime (installing the result for workflowRuntime() in installed.ts): the composed runtime (the service behind window.workflows — enable a workflow, bindings, runs, start, confirm with the host operator, pause, resume, cancel, force stop, check result, retry a blocked step, preflight (E-03), rework, chatFor, projectRunCount, projectExists, confirmAs (a remote sender's verified operator), removeProject (a Project deleted or removed; archive and restore are followed from the Project's archivedAt, any writer, D3-02: an unanswered confirmation withdrawn, A2-03, the archive's pause restated as project-restored, V-02; archived Projects refuse new execution and leave the needs-you list), needsYou (including an Agent waiting on the person in a hidden workflow Chat; each item named by its record's task as it reads now) — plus turnSettled for the Chat machinery, onChanged, pauseForProvider and close); bindings are reconciled against every Base change, local or synced, and once at start. providerReadiness is awaited (E2-04). Role admission (the executor's and setup's preflight) shares one port set, and a partial apply (T21-c) is reported on the configuration by both. Composes selected-Library per-run Git execution outside control data, durable queued-root recovery and accepted-result CAS publication.
  * defaults chooses the first admitted preferred Provider and verifies saved roles still use it; enable rechecks Project/Base ownership and role admission.
- * [POS]: The one place TASK-17's parts meet the running app (2.6). Everything durable lives under `<userData>/workflows`; runs execute only on this computer, the one that holds the Project.
+ * [POS]: The one place TASK-17's parts meet the running app (2.6). Run state and custody live under `<userData>/workflows`; executable worktrees live in the selected Library workflow namespace. Runs execute only on the computer that holds the Project.
  */
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -28,7 +28,7 @@ import { WorkflowExecutor, type AgentDispatch, type SettledTurn } from "../execu
 import { WorkflowRunLedger } from "../ledger";
 import { installStepResultIntake, StepResultIntake } from "../step-results";
 import type { WorkflowChatRegistry } from "./chats";
-import { workflowCommandExits } from "../turn-policy";
+import { installWorkflowExecutionResolver, workflowCommandExits } from "../turn-policy";
 import { createAgentDispatch, type DispatchPorts } from "./turn/dispatch";
 import { admitFrozen, appliedScopeDifferences, preflightRoles, turnOptionsFor, type FrozenLike, type ProviderReadiness } from "./turn/effective-config";
 import type { ConfigApplySetting } from "@ai-chat/cloud-protocol/contracts/workflow/bridge";
@@ -38,6 +38,8 @@ import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { installWorkflowRuntime } from "./installed";
 import { readWorkflowEvidence } from "./surface/evidence";
 import { WorkspaceLeases } from "./workspace-leases";
+import { openWorkflowIsolation } from "./isolation/worktrees";
+import type { WorkflowIsolationMergeInput } from "@ai-chat/cloud-protocol/contracts/workflow/bridge";
 import { hostEnforcedFor } from "../../agent-configs/runtime";
 import { assertProjectOpen, followProjectArchive, removeOrphanedProjectWorkflows, removeProjectWorkflows } from "./project-lifecycle";
 import type { AgentConfigService } from "../../agent-configs/service";
@@ -45,6 +47,8 @@ import type { WorkflowDefaults, WorkflowRolePreflight } from "@ai-chat/cloud-pro
 
 export type WorkflowRuntimeInput = {
   userData: string;
+  /** Required only for opt-in execution; control state never becomes Agent-writable. */
+  libraryRoot?(): string | null;
   /** Loaded and owned by the foundation: Chat lists ask it before this runtime exists. */
   chatRegistry: WorkflowChatRegistry;
   /** Live turns: the Chats whose Agent is waiting on the person (an open permission request or question), and a signal when that changes. */
@@ -121,9 +125,33 @@ export async function composeWorkflowRuntime(input: WorkflowRuntimeInput) {
   const changed = (event: { runId?: string; bindingId?: string }) => { for (const listener of listeners) listener(event); if (clockReady) scheduleClock(); };
   const base = createBaseActionPorts(input.bases);
   const bindingOf = (runId: string) => { const run = ledger.get(runId); return run ? bindings.get(run.bindingId) : null; };
+  const sharedWorkspaceOf = (run: WorkflowRun) => {
+    const project = input.projects.get(bindingOf(run.runId)?.projectId ?? "");
+    return project && project.workspaceBinding.kind !== "none" ? input.projects.resolveWorkspace(project.workspaceBinding) ?? null : null;
+  };
+  const isolation = await openWorkflowIsolation({ userData: input.userData, libraryRoot: input.libraryRoot, readRun: runId => ledger.get(runId) });
+  const isolated = (runId: string) => ledger.get(runId)?.inputs.workspaceMode === "worktree";
+  installWorkflowExecutionResolver(runId => {
+    if (!ledger.get(runId)) throw new Error("Workflow run is unavailable");
+    const execution = isolated(runId) ? isolation.execution(runId) : null;
+    if (isolated(runId) && !execution) throw new Error("Workflow isolated workspace is unavailable");
+    return execution;
+  });
+  const ensureWorkspace = async (run: WorkflowRun) => {
+    if (!isolated(run.runId)) return;
+    const workspace = sharedWorkspaceOf(run), binding = bindingOf(run.runId);
+    if (!workspace || !binding) throw new Error("workflow-project-unavailable");
+    await isolation.ensure({ runId: run.runId, projectId: binding.projectId, sourceWorkspace: workspace, ...(run.previousRunId ? { previousRunId: run.previousRunId } : {}) });
+  };
+  for (const run of ledger.list().filter(run => isolated(run.runId) && !["succeeded", "failed", "cancelled"].includes(run.state))) {
+    try { await ensureWorkspace(run); }
+    catch (cause) { await ledger.pause(run.runId); console.warn("[workflows] Isolated workspace requires repair", cause); }
+  }
   const executor = new WorkflowExecutor({ ledger, bindings, base, intake, evidence, leases, workflowEnabled: () => input.workflowEnabled(),
     agent: createAgentDispatch({ submit: submission => input.coordinator.submitManualTurn(submission), cancel: requestId => input.coordinator.cancelManualTurn(requestId), forceKill: requestId => input.turns.forceKill(requestId), verifyGroup: group => input.turns.verifyGroup(group),
       processOf: requestId => input.turns.processOf(requestId),
+      executionWorkspaceFor: runId => isolated(runId) ? isolation.execution(runId) : null,
+      chatScopeFor: runId => isolated(runId) ? runId : undefined,
       incarnationOf: chatId => input.chats.getIncarnationId(chatId) ?? null, registry, now: input.now,
       chatFacts: chatId => input.chats.getMetadata(chatId) ?? null, patchOptions: patch => input.chats.patchOptions(patch),
       chatTitle: (role, task) => workflowChatTitle(input.locale(), role, task), isBackend: input.isBackend,
@@ -147,10 +175,9 @@ export async function composeWorkflowRuntime(input: WorkflowRuntimeInput) {
         .then(notice => input.showNotification(notice, () => { for (const listener of opens) listener({ runId, stepId }); }))
         .catch(cause => console.warn("[workflows] confirmation reminder not shown", cause));
     },
-    chatOf: (record, role) => registry.get(record, role)?.chatId ?? null,
+    chatOf: (record, role, runId) => registry.get(record, role, runId && isolated(runId) ? runId : undefined)?.chatId ?? null,
     newRequestId: () => randomUUID(), workspaceOf: run => {
-      const project = input.projects.get(bindings.get(run.bindingId)?.projectId ?? "");
-      return project && project.workspaceBinding.kind !== "none" ? input.projects.resolveWorkspace(project.workspaceBinding) ?? null : null;
+      return isolated(run.runId) ? isolation.workspace(run.runId) : sharedWorkspaceOf(run);
     } });
   /* A-04: with the Workflow plugin off nothing new starts or goes on: no run, rework, resume, retry or check. */
   /* 2-design §115: an archived Project starts, resumes, retries or confirms nothing; its runs were paused when it was archived. */
@@ -292,12 +319,23 @@ export async function composeWorkflowRuntime(input: WorkflowRuntimeInput) {
     },
     runsForRecord: (record: WorkflowRecordRef) => ledger.list().filter(run => sameRecord(run, record)),
     run: (runId: string) => ledger.get(runId),
-    async start(request: { bindingId: string; rowId: string }) {
+    async start(request: { bindingId: string; rowId: string; isolation?: "worktree" }) {
       gate(bindings.get(request.bindingId)?.projectId);
-      const started = await ledger.start({ ...request, inputs: {} });
+      if (request.isolation === "worktree") {
+        const project = input.projects.get(bindings.get(request.bindingId)?.projectId ?? "");
+        const workspace = project && project.workspaceBinding.kind !== "none" ? input.projects.resolveWorkspace(project.workspaceBinding) : null;
+        if (!workspace) throw new Error("workflow-project-unavailable"); await isolation.preflight(workspace);
+      }
+      const started = await ledger.start({ bindingId: request.bindingId, rowId: request.rowId, inputs: request.isolation ? { workspaceMode: request.isolation } : {} });
+      try { await ensureWorkspace(started.run); } catch (cause) { await ledger.pause(started.run.runId); changed({ runId: started.run.runId }); throw cause; }
       changed({ runId: started.run.runId });
       if (started.started) void executor.advance(started.run.runId).then(() => changed({ runId: started.run.runId }));
       return started;
+    },
+    isolation: (runId: string) => isolation.status(runId),
+    async mergeIsolation(runId: string, request: WorkflowIsolationMergeInput) {
+      assertProjectOpen(() => archived(bindingOf(runId)?.projectId));
+      const result = await isolation.merge({ ...request, runId }); changed({ runId }); return result;
     },
     /* A-02: against the record as it is now; a changed task or criteria asks again and answers stale-proposal. */
     async confirm(runId: string, stepId: string, request: ConfirmInput) { return runtime.confirmAs(runId, stepId, request, input.operator()); },
@@ -312,6 +350,7 @@ export async function composeWorkflowRuntime(input: WorkflowRuntimeInput) {
       gate(bindingOf(runId)?.projectId);
       const binding = bindingOf(runId);
       if (!binding || binding.state !== "enabled") throw new Error("workflow-binding-not-enabled");
+      const run = ledger.get(runId); if (run) await ensureWorkspace(run);
       const next = await after(ledger.resume(runId));
       await executor.advance(runId); changed({ runId });
       return ledger.get(runId) ?? next;
@@ -325,13 +364,14 @@ export async function composeWorkflowRuntime(input: WorkflowRuntimeInput) {
     async startRework(runId: string, choice: "keep-plan" | "replan") {
       gate(bindingOf(runId)?.projectId);
       const started = await ledger.startRework(runId, choice, await freshRead(runId));
+      await ensureWorkspace(started.run);
       changed({ runId: started.run.runId });
       void executor.advance(started.run.runId).then(() => changed({ runId: started.run.runId }));
       return started.run;
     },
     chatFor(target: { runId: string } | { record: WorkflowRecordRef }, role: WorkflowRoleName) {
       const record = "runId" in target ? ledger.get(target.runId)?.record : { base: target.record.base as BaseRef, rowId: target.record.rowId };
-      const entry = record ? registry.get(record, role) : null;
+      const entry = record ? registry.get(record, role, "runId" in target && isolated(target.runId) ? target.runId : undefined) : null;
       return entry ? { chatId: entry.chatId } : null;
     },
     needsYou(): NeedsYouItem[] {
@@ -346,7 +386,7 @@ export async function composeWorkflowRuntime(input: WorkflowRuntimeInput) {
         // An archived Project's runs wait for it to be restored; nothing about them can be decided meanwhile.
         if (!binding || archived(binding.projectId)) return [];
         const waitingRole = run.state === "running" ? (["plan", "develop", "review"] as const).find(role => {
-          const chat = registry.get(run.record, role);
+          const chat = registry.get(run.record, role, isolated(run.runId) ? run.runId : undefined);
           return chat !== null && waitingChats.has(chat.chatId);
         }) : undefined;
         if (waitingRole) return [{ runId: run.runId, bindingId: run.bindingId, projectId: binding.projectId, record: run.record, recordTitle: titleOf(run, binding.base.taskNameColumnId),
@@ -387,7 +427,7 @@ export async function composeWorkflowRuntime(input: WorkflowRuntimeInput) {
     pauseForProvider: (providerId: string) => executor.pauseForProvider(providerId),
     /** A-04: the Workflow plugin was turned off: every unfinished run pauses after its current step. */
     pauseForWorkflowPlugin: () => executor.pauseForWorkflowPlugin(),
-    async close() { releaseWake(); clearTimeout(clockTimer); releaseBaseEvents(); releaseInteractions(); archive.stop(); await archive.settled(); await reconciling; installStepResultIntake(null); installWorkflowRuntime(null); await ledger.closeAndFlush(); await bindings.closeAndFlush(); await leases.closeAndFlush(); },
+    async close() { releaseWake(); clearTimeout(clockTimer); releaseBaseEvents(); releaseInteractions(); archive.stop(); await archive.settled(); await reconciling; installStepResultIntake(null); installWorkflowRuntime(null); installWorkflowExecutionResolver(null); await ledger.closeAndFlush(); await bindings.closeAndFlush(); await leases.closeAndFlush(); await isolation.close(); },
   };
   /* D3-02: the runs follow the Project's archivedAt from any writer (the archive service, a synced head from Web or phone), in order,
      and once for every bound Project now, so a change made before the runtime existed or cut by a crash converges here. */

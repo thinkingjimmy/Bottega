@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on catalogs.loadCatalog, the shared section registry, runtime registration and native/section catalogs (English static, the rest lazy)
- * [OUTPUT]: Provides translate (re-exported; importing it here keeps English native, memory and systemDock copy resident), loadMainCatalogs (shared + native + every section, what main awaits), loadNativeCatalog (registers `settings.native.*` for English plus one locale) and withNative (test-side merge into a full catalog)
+ * [INPUT]: Depends on catalogs.loadCatalog, section/runtime registration and native catalogs plus the non-Weather English Dock base; translated sections remain lazy.
+ * [OUTPUT]: Provides translate with synchronous native/Memory/Dock-base fallback, loadMainCatalogs, loadNativeCatalog and withNative; the partial Dock base never claims full renderer section readiness.
  * [POS]: Main-only entry of shared/i18n/native; main awaits it beside loadCatalog, the renderer never imports it (check-renderer-bundle enforces that)
  */
 
@@ -8,7 +8,7 @@ import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { loadCatalog } from "../catalogs";
 import { loadLocalizedSection } from "../section-registry";
 import { memoryLazyEn } from "../locales/memory/lazy/en";
-import { systemDockLazyEn } from "../locales/system-dock/lazy/en";
+import { systemDockBaseEn } from "../locales/system-dock/lazy/base";
 import { registerCatalogExtension } from "../runtime";
 import { nativeEn, type NativeCatalog } from "./en";
 
@@ -27,7 +27,7 @@ const english = extension(nativeEn);
 registerCatalogExtension("en", english);
 // Main shows Memory and Dock copy (menus, dialogs, shutdown) at any moment, so their English halves are resident here too.
 registerCatalogExtension("en", { memory: memoryLazyEn }, "memory");
-registerCatalogExtension("en", { systemDock: systemDockLazyEn }, "systemDock");
+registerCatalogExtension("en", { systemDock: systemDockBaseEn }, "systemDockNative");
 
 /** Like loadCatalog, `translate()` stays synchronous, so main must await this before any native dialog or menu copy. */
 export async function loadNativeCatalog(locale: AppLocale) {

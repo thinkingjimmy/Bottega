@@ -6,19 +6,20 @@
 import {z} from 'zod';
 import {hashCanonical,canonicalJson} from '@bottega/contracts/core/canonical-json';
 import {WIDGET_PACKAGE_BUDGET,widgetPackageSourceSchema} from '@bottega/contracts/plugins/dock/packages';
+import {pluginIdentitySchema,pluginDigestSchema} from '@bottega/contracts/plugins/platform/selection/mode';
 import {cloudIdSchema} from '../auth';
 import {MAX_BLOB_BYTES} from '../config';
 import {sha256Schema} from '../blobs';
 import {ciphertextFileDescriptorSchema,encryptedFileDescriptorSchema} from '../blobs/encrypted/model';
 
-export const widgetPackageSubjectSchema=z.object({definitionId:widgetPackageSourceSchema.shape.definitionId,sourceInstallationId:cloudIdSchema}).strict();
+export const widgetPackageSubjectSchema=z.object({definitionId:z.union([widgetPackageSourceSchema.shape.definitionId,pluginIdentitySchema]),sourceInstallationId:cloudIdSchema}).strict();
 export type WidgetPackageSubject=z.infer<typeof widgetPackageSubjectSchema>;
 export const widgetPackageRefSchema=z.string().regex(/^sha256:[a-f0-9]{64}$/);
 export const widgetPackageOwnerId=(input:WidgetPackageSubject)=>hashCanonical(['dock-widget',widgetPackageSubjectSchema.parse(input)]);
 const integer=z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const identity={subject:widgetPackageSubjectSchema,reference:widgetPackageRefSchema};
 const file=ciphertextFileDescriptorSchema.refine(value=>value.bytes<=MAX_BLOB_BYTES,'Widget ciphertext exceeds the private-file limit');
-const packageFields={...identity,generationId:widgetPackageSourceSchema.shape.generationId,contractDigest:widgetPackageRefSchema,
+const packageFields={...identity,format:z.literal('bottega-plugin/v1').optional(),generationId:z.union([widgetPackageSourceSchema.shape.generationId,pluginDigestSchema]),contractDigest:widgetPackageRefSchema,
  archiveBytes:integer.positive().max(WIDGET_PACKAGE_BUDGET.packageBytes),reviewBytes:integer.positive().max(WIDGET_PACKAGE_BUDGET.runtimeFileBytes),
  archiveSha256:sha256Schema,reviewSha256:sha256Schema};
 type FileIdentity={blobId:string;encryption:{domain?:string;owner:{kind:string;id:string};ownerGeneration:string|null;encryptedSpace:unknown}};

@@ -6,8 +6,8 @@
 
 import { createHash } from "node:crypto";
 import {
-  BUILTIN_TOOL_DOMAINS,
-} from "../../../../shared/builtin-tools";
+  toolBudget,
+} from "../../../../shared/plugin-tools";
 import {
   MESSAGE_BYTE_LIMIT,
 } from "../../../../shared/ipc/content/chats-ipc";
@@ -42,7 +42,7 @@ import {
   openSubagentChannel,
   type SubagentChannel,
 } from "../bridge/agent-bridge";
-import type { BuiltinToolContext } from "../../tools/registry";
+import type { PluginToolContext } from "../../tools/registry";
 import type { SubagentOutcomeStatus } from "../turns/turn/turn-registry-model";
 
 export type SpawnSubagentInput = {
@@ -70,7 +70,7 @@ export type PromotableResult = {
 export type PromotableResultSource = {
   peekResult(
     agentThreadId: string,
-    context: BuiltinToolContext
+    context: PluginToolContext
   ): PromotableResult | undefined;
 };
 
@@ -78,7 +78,7 @@ type SpawnDependencies = {
   runtimeRegistry: Pick<BackendRuntimeRegistry, "resolveForSpawn" | "operationEligibility">;
   executor: HeadlessExecutor;
   backendFor(id: AgentBackendId): BackendDescriptor;
-  openChannel(context: BuiltinToolContext): SubagentChannel | undefined;
+  openChannel(context: PluginToolContext): SubagentChannel | undefined;
   /** Plugins the person turned off for this provider in the product (only providers whose plugin hooks keep such a list). */
   disabledPluginIds(agent: AgentBackendId): Promise<readonly string[]>;
 };
@@ -86,7 +86,7 @@ type SpawnDependencies = {
 const EMPTY_RESULT = "(子任务无文本输出)";
 const RESULT_SUFFIX = "…[已截断]";
 const TOOL_RESULT_LIMIT =
-  BUILTIN_TOOL_DOMAINS.subagents.logicalResultByteLimit - 4 * 1024;
+  toolBudget("subagents").logicalResultByteLimit - 4 * 1024;
 const RESULT_CACHE_ENTRY_LIMIT = 16;
 const RESULT_CACHE_BYTE_LIMIT = 1024 * 1024;
 
@@ -138,7 +138,7 @@ export class SubagentSpawnService {
     };
   }
 
-  spawn(input: SpawnSubagentInput, context: BuiltinToolContext) {
+  spawn(input: SpawnSubagentInput, context: PluginToolContext) {
     const channel = this.dependencies.openChannel(context);
     if (!channel) throw statusError(409, "当前工具 lease 没有活跃父 turn");
     const id = subagentId(context.lease.leaseId, context.invocationId);
@@ -161,7 +161,7 @@ export class SubagentSpawnService {
   private async execute(
     id: string,
     input: SpawnSubagentInput,
-    context: BuiltinToolContext,
+    context: PluginToolContext,
     channel: SubagentChannel,
     deadline: TotalDeadline
   ) {

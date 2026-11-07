@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Receives the selected folder, content stores, the current locale and cloud-known Base identities from the composition root.
- * [OUTPUT]: Mounts Project content before Chat references, then Base families after all owners are available; a small unknown set is opened after the window (finishLibraryMount), a large one behind a progress window before it.
+ * [INPUT]: Receives the selected folder, content stores, awaited Skills/plugin remount ports, the current locale and cloud-known Base identities from the composition root.
+ * [OUTPUT]: Mounts Project content before Chat references, then Base families after all owners are available; first selection awaits plugin admission before ready. A small unknown set opens after the window, a large one behind a progress window before it.
  * [POS]: Folder startup and first-selection coordinator; each domain remains its sole durable writer.
  */
 import type { AppLocale } from "@ai-chat/ui/lib/locale";
@@ -25,6 +25,7 @@ export const deferLibraryOpening = (plan: MirrorPlan) =>
 
 type LibraryMount = {
   library: LibraryService; mirrors: ChatMirrorService; chats: ChatStore; remountSkills?: () => Promise<void> | undefined;
+  remountPlugins?: () => Promise<void>;
   projects: ProjectStore; bases: BaseStore; apps: AppStore; baseIdentities: Promise<ReadonlyMap<string, BaseIdentity>>;
   locale?: () => AppLocale;
 };
@@ -48,6 +49,7 @@ export async function mountLibraryContent(input: LibraryMount) {
     } else await mountAtStartup(input);
     const owners = await baseOwners(input);
     await input.bases.initialize(owners.identities, owners.projectIds);
+    if (reselected) await input.remountPlugins?.();
   };
   input.library.setMount(() => mount(true));
   await mount(false);

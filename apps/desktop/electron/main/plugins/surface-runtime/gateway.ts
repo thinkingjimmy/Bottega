@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the loopback gateway, verified plugin bytes, CSP policy and synchronous/asynchronous lease admission.
- * [OUTPUT]: Provides opaque composer/Dock leases with immutable files, strict role/window validation, shared CSP and revocation.
+ * [OUTPUT]: Provides opaque composer/Dock/unified contribution leases with exact nested entries and immutable files, strict role/window validation, shared CSP and revocation.
  * [POS]: Native isolated Surface transport shared by authored plugins and host-package record actions.
  */
 import { randomUUID, randomBytes } from "node:crypto";
@@ -13,8 +13,8 @@ import {DOCK_OPERATIONS,DOCK_SESSION_TIMING,type DockOperation} from '@bottega/c
 import {WIDGET_PACKAGE_BUDGET} from '@bottega/contracts/plugins/dock/packages';
 export type PluginSurfaceLease = PluginSurfaceDescriptor;
 export type DockSurfaceLease=Readonly<{kind:'dock';id:string;definitionId:string;generationId:string;origin:string;url:string;expiresAt:number;sandbox:'allow-scripts';operations:readonly DockOperation[]}>;
-type PublishedInput={generationId:string;artifactDigest:string;files:readonly {path:string;mime:string;bytes:Uint8Array;sha256:string}[];isValid():boolean;validate?():Promise<void>};
-type Lease = {view:PluginSurfaceLease|DockSurfaceLease;windowId:number;retainedBytes:number;available():boolean;validate():Promise<void>;release():void;files:Map<string,{mime:string;read():Promise<Uint8Array>}>};
+type PublishedInput={generationId:string;artifactDigest:string;entry?:string;files:readonly {path:string;mime:string;bytes:Uint8Array;sha256:string}[];isValid():boolean;validate?():Promise<void>};
+type Lease = {view:PluginSurfaceLease|DockSurfaceLease;windowId:number;retainedBytes:number;csp?:string;available():boolean;validate():Promise<void>;release():void;files:Map<string,{mime:string;read():Promise<Uint8Array>}>};
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; sandbox allow-scripts; frame-ancestors file: http://localhost:*";
 export class PluginSurfaceGateway {
   private origin:((id:string)=>string)|null=null;
@@ -39,13 +39,20 @@ export class PluginSurfaceGateway {
         files:new Map(intent.files.map(file=>[file.path,{mime:file.mime,read:file.read}]))});return structuredClone(view);
     }catch(cause){pin.release();throw cause;}
   }
-  issuePublished(input:{pluginId:string;generationId:string;artifactDigest:string;files:readonly {path:string;mime:string;bytes:Uint8Array;sha256:string}[];
-    sourceFormat:{id:string;version:number;readableVersions:readonly number[]};operations:readonly string[];isValid():boolean;validate?():Promise<void>},windowId:number):PluginSurfaceLease {
+  issuePublished(input:{pluginId:string;generationId:string;artifactDigest:string;entry?:string;files:readonly {path:string;mime:string;bytes:Uint8Array;sha256:string}[];
+    sourceFormat:{id:string;version:number;readableVersions:readonly number[]};operations:readonly string[];features?:readonly ('worker'|'wasm')[];isValid():boolean;validate?():Promise<void>},windowId:number):PluginSurfaceLease {
     if(!input.pluginId)throw new Error('Published plugin is unavailable');
     const {id,origin,files,total}=this.publishedFiles(input,{files:512,bytes:50_000_000});
-    const view:PluginSurfaceLease={id,pluginId:input.pluginId,generationId:input.generationId,origin,url:`${origin}/_plugin/${id}/index.html`,expiresAt:Date.now()+30*60_000,
+    const view:PluginSurfaceLease={id,pluginId:input.pluginId,generationId:input.generationId,origin,url:`${origin}/_plugin/${id}/${input.entry??'index.html'}`,expiresAt:Date.now()+30*60_000,
       readyNonce:randomBytes(24).toString("base64url"),sandbox:"allow-scripts",...pluginSurfaceDefinitionSchema.parse({sourceFormat:input.sourceFormat,operations:input.operations})};
-    this.leases.set(id,{view,windowId,retainedBytes:total,release:()=>{},available:input.isValid,validate:async()=>{if(!input.isValid())throw new Error("Published plugin generation is unavailable");await input.validate?.();},files});
+    let csp=CSP;
+    if(input.features?.includes('worker'))csp=csp.replace("worker-src 'none'","worker-src data:");
+    // Complete bundled data Workers retain an opaque origin and use only verified package assets.
+    if(input.features?.some(value=>value==='worker'||value==='wasm')){
+      csp=csp.replace("script-src 'self'",`script-src 'self' ${origin}${input.features.includes('wasm')?" 'wasm-unsafe-eval'":''}`);
+      csp=csp.replace("connect-src 'none'",`connect-src ${origin}`);
+    }
+    this.leases.set(id,{view,windowId,retainedBytes:total,csp,release:()=>{},available:input.isValid,validate:async()=>{if(!input.isValid())throw new Error("Published plugin generation is unavailable");await input.validate?.();},files});
     return structuredClone(view);
   }
   issueDock(input:PublishedInput&{definitionId:string;operations:readonly string[]},windowId:number):DockSurfaceLease{
@@ -65,7 +72,7 @@ export class PluginSurfaceGateway {
       if(file.path.startsWith('/')||file.path.includes('\\')||file.path.split('/').some(part=>!part||part==='.'||part==='..')||files.has(file.path)||sha256(file.bytes)!==file.sha256)throw new Error('Invalid published plugin file');
       const bytes=Uint8Array.from(file.bytes);files.set(file.path,{mime:file.mime,read:async()=>bytes});
     }
-    if(!files.has('index.html'))throw new Error('Plugin interface entry is missing');const id=randomUUID(),origin=this.origin(`plugin-${id}`);return{id,origin,files,total};
+    if(!files.has(input.entry??'index.html'))throw new Error('Plugin interface entry is missing');const id=randomUUID(),origin=this.origin(`plugin-${id}`);return{id,origin,files,total};
   }
   release(id:string,windowId:number) {if(this.leases.get(id)?.windowId===windowId)this.drop(id);}
   releaseWindow(windowId:number) {for(const [id,lease] of this.leases)if(lease.windowId===windowId)this.drop(id);}
@@ -104,7 +111,7 @@ export class PluginSurfaceGateway {
     try{await this.validateLease(id!,lease.windowId);}catch{return deny(410);}
     const file=lease.files.get(segments.join("/"));if(!file)return deny(404);
     let bytes:Uint8Array;try{bytes=await file.read();await this.validateLease(id!,lease.windowId);}catch{this.drop(id!);return deny(410);}
-    const headers:Record<string,string>={"Content-Type":file.mime,"Content-Length":String(bytes.byteLength),"Cache-Control":"no-store","Content-Security-Policy":CSP,
+    const headers:Record<string,string>={"Content-Type":file.mime,"Content-Length":String(bytes.byteLength),"Cache-Control":"no-store","Content-Security-Policy":lease.csp??CSP,
       "X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer","Permissions-Policy":"camera=(), microphone=(), geolocation=(), display-capture=(), usb=(), payment=()"};
     // The sandbox has an opaque origin; module scripts need this read-only CORS response.
     if(request.headers.origin==="null")headers["Access-Control-Allow-Origin"]="null";

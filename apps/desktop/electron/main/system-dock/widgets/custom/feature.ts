@@ -15,7 +15,7 @@ import {WidgetDeliveryQueue} from '../../../cloud/widgets/queue';
 import { powerMonitor,nativeTheme } from 'electron';
 import { backendRuntimeRegistry } from '../../../backends';
 import { builtinProviderCatalog, knownBackend } from '../../../../../shared/providers/catalog';
-import { newDockWidgetSchema, editDockWidgetSchema, applyDockWidgetSchema, widgetOperationQuerySchema, forkDockWidgetSchema, previewWidgetVersionSchema } from '../../../../../shared/system-dock/widgets/authoring';
+import { editDockWidgetSchema, applyDockWidgetSchema, widgetOperationQuerySchema, previewWidgetVersionSchema } from '../../../../../shared/system-dock/widgets/authoring';
 import { savedWidgetQuerySchema,widgetInstanceQuerySchema, widgetInstancePauseSchema, widgetInstanceRemoveSchema, widgetBaseRevokeSchema } from '../../../../../shared/system-dock/widgets/management';
 import { officialWidgetQuerySchema, submitOfficialWidgetSchema } from '../../../../../shared/system-dock/widgets/official';
 import { widgetUpdateReviewQuerySchema, widgetUpdateFormQuerySchema, stageWidgetUpdateSchema } from '../../../../../shared/system-dock/widgets/review';
@@ -26,7 +26,6 @@ import { translate } from '../../../../../shared/i18n/runtime';
 import { DockWidgetApplications } from '../../store/custom/applications';
 import { DockWidgetInstances } from '../../store/custom/instances';
 import { entryLabel } from '../../projection';
-import { officialDockContribution } from '../../../plugins/authoring/dock/templates';
 import { createDockWidgetDetail } from '../detail/lazy';
 import type { DockWidgetDetailPort } from '../detail/ports';
 import { createDockBaseData } from '../base/lazy';
@@ -43,7 +42,7 @@ export async function createDockWidgetFeature(input: DockWidgetFeaturePorts, cur
   const { runtime: ports, service, config, local, integration, tasks } = input, check = () => { if (!current())
     throw new Error('DOCK_WIDGET_FEATURE_CLOSED'); };
   check();
-  const { authoring, packages } = await integration.loadDock();
+  const { sources, packages } = await integration.loadDock();
   check();
   const disposers = new Map<string, () => void | Promise<void>>(), native: {
     owner?: DockWidgetDetailPort;
@@ -66,7 +65,7 @@ export async function createDockWidgetFeature(input: DockWidgetFeaturePorts, cur
     const base = ports.bases ? createDockBaseData({ bases: ports.bases, source: id => data.source(id), changed: () => { service.schedule(); native.owner?.reconcile(); } }) : undefined;
     if (base)
       disposers.set('base', () => base.close());
-    const applications:DockWidgetApplications = new DockWidgetApplications({ userData: ports.userData, config, runtime: integration.runtime, authoring, packages, scope: () => integration.dockScope(), locale: ports.locale, changed: input.changed,canApply:(id):boolean=>!installations.blocked({definitionId:id,sourceInstallationId:integration.dockScope().installationId}), api:apiHooks,validateData: (dock, widget) => data.validate(dock, widget) });
+    const applications:DockWidgetApplications = new DockWidgetApplications({ userData: ports.userData, config, runtime: integration.runtime, sources, packages, scope: () => integration.dockScope(), locale: ports.locale, changed: input.changed,canApply:(id):boolean=>!installations.blocked({definitionId:id,sourceInstallationId:integration.dockScope().installationId}), api:apiHooks,validateData: (dock, widget) => data.validate(dock, widget) });
     disposers.set('applications', () => applications.close());
     const data: DockCustomWidgets = new DockCustomWidgets({ scope: () => integration.dockScope(), locale: ports.locale, masked: () => local.get().privacyMask||apiLocked,
       item: id => { const item = config.layout().items.find(item => item.id === id); return item?.kind === 'widget' ? item : null; }, availability:item=>{if(item.widget.type!=='custom')return'definition-missing';const widget=item.widget;if(directory.preparing(widget.definition,widget.definition.packageRef))return'package-preparing';if(installations.progress()?.reference===widget.definition.packageRef)return'installing';return installations.confirmed(widget)||widget.definition.sourceInstallationId===integration.dockScope().installationId?'needs-setup':'needs-installation';},accepted: item => item.widget.type==='custom'&&installations.blocked(item.widget)?null:applications.accepted(item), packages, limits: ports.limits, history: ports.history, tasks, base,api,
@@ -80,7 +79,7 @@ export async function createDockWidgetFeature(input: DockWidgetFeaturePorts, cur
       stillSaved: widget => installations.confirmed(widget)||widget.definition.sourceInstallationId === integration.dockScope().installationId && integration.runtime.descriptor(widget.definition.definitionId)?.activeGenerationId === widget.definition.generationId && !applications.pendingDefinition(widget.definition.definitionId),
       saved: async (id,sourceInstallationId) => {
         if(sourceInstallationId&&sourceInstallationId!==integration.dockScope().installationId)return installations.savedDefinition({definitionId:id,sourceInstallationId});
-        if (!authoring.definitions().some(value => value.id === id) || applications.pendingDefinition(id))
+        if (!sources.definitions().some(value => value.id === id) || applications.pendingDefinition(id))
           throw new Error('DOCK_WIDGET_NOT_AVAILABLE');
         const record = integration.runtime.descriptor(id), generation = record?.generations.find(value => value.generationId === record.activeGenerationId && value.available);
         if (!generation || !('dock' in generation.manifest))
@@ -107,7 +106,7 @@ export async function createDockWidgetFeature(input: DockWidgetFeaturePorts, cur
     disposers.set('installation',()=>installations.close());
     const delivery=new WidgetDeliveryQueue(packages,{cloud:()=>integration.remote.widgets(),changed:input.changed});disposers.set('delivery',()=>delivery.close());
     const definitions:WidgetDefinitionLifecycle=new WidgetDefinitionLifecycle({userData:ports.userData,scope:()=>integration.dockScope(),cloud:()=>integration.remote.widgets(),changed:input.changed,
-      name:subject=>authoring.definitions().find(value=>value.id===subject.definitionId&&subject.sourceInstallationId===integration.dockScope().installationId)?.name??installations.installedDefinitions().find(value=>value.definitionId===subject.definitionId&&value.sourceInstallationId===subject.sourceInstallationId)?.name??translate(ports.locale(),'systemDock.widgets.untitled'),
+      name:subject=>sources.definitions().find(value=>value.id===subject.definitionId&&subject.sourceInstallationId===integration.dockScope().installationId)?.name??installations.installedDefinitions().find(value=>value.definitionId===subject.definitionId&&value.sourceInstallationId===subject.sourceInstallationId)?.name??translate(ports.locale(),'systemDock.widgets.untitled'),
       impact:subject=>{const items=config.layout().items.filter(item=>item.kind==='widget'&&item.widget.type==='custom'&&item.widget.definition.definitionId===subject.definitionId&&item.widget.definition.sourceInstallationId===subject.sourceInstallationId);return{instances:items.map(item=>({id:item.id,name:item.kind==='widget'?item.label??'':''})),identity:items.map(item=>({item,revision:item.kind==='widget'?applications.accepted(item)?.revision??null:null}))};},
       retireLocal:async(subject,operationId,scope)=>{
         const live=()=>{if(canonicalJson(integration.dockScope())!==canonicalJson(scope))throw new Error('WIDGET_DEFINITION_SCOPE_CHANGED');};live();delivery.cancelDefinition(subject);await api.retireDefinition(scope,subject.definitionId);live();
@@ -125,7 +124,6 @@ export async function createDockWidgetFeature(input: DockWidgetFeaturePorts, cur
       cancelWidgetInstall:value=>installations.cancel(widgetInstallOperationSchema.parse(value).operationId),
       widgetLifecycleControl:value=>{const request=widgetLifecycleControlSchema.parse(value);switch(request.kind){
         case 'definition-install-review':return installations.reviewDefinition({definitionId:request.definitionId,sourceInstallationId:request.sourceInstallationId},request.reference).then(review=>({kind:'install-review',review}));
-        case 'definition-edit':{const cached=installations.installedDefinitions().find(value=>value.definitionId===request.definitionId&&value.sourceInstallationId===request.sourceInstallationId)?.sourceChatId;return{kind:'source-edit',target:cached?{chatId:cached,sourceInstallationId:request.sourceInstallationId}:directory.edit(request)};}
         case 'definition-review':return{kind:'definition-review',review:definitions.review({definitionId:request.definitionId,sourceInstallationId:request.sourceInstallationId})};
         case 'definition-confirm':return definitions.confirm(request).then(result=>({kind:'definition-result',result}));
         case 'definition-operation':return{kind:'definition-result',result:definitions.operation(request.operationId)};
@@ -147,29 +145,9 @@ export async function createDockWidgetFeature(input: DockWidgetFeaturePorts, cur
         const labels = new Map(service.allItems().map(item => [item.id, item.label])), rows = config.layout().items.flatMap(item => { if (item.kind !== 'widget')
           return []; const mapping = item.widget.type === 'custom' ? applications.accepted(item) : null; return [{ id: item.id, definitionId: item.widget.type === 'custom' ? item.widget.definition.definitionId : item.widget.type, name: labels.get(item.id) ?? item.label ?? '', ...(item.widget.type==='custom'?{sourceInstallationId:item.widget.definition.sourceInstallationId,installation:mapping&&!installations.blocked(item.widget)&&canonicalJson(mapping.widget)===canonicalJson(item.widget)&&packages.available(item.widget.definition.packageRef)?'ready' as const:installations.requiresRepair(item.widget)?'repair' as const:configurable(item.widget)?'needs-setup' as const:directory.preparing(item.widget.definition,item.widget.definition.packageRef)?'preparing' as const:item.widget.definition.sourceInstallationId===integration.dockScope().installationId?'source-review' as const:mapping?'update' as const:'install' as const}:{}), ...(mapping ? { paused: mapping.paused, mappingRevision: mapping.revision } : {}) }]; });
         const deliveries:WidgetDeliveryView[]=packages.deliveryRecords().filter(entry=>entry.delivery!=='discarded').map(entry=>({definitionId:entry.descriptor.source.definitionId,reference:entry.reference,generationId:entry.descriptor.source.generationId,state:delivery.activeReference()===entry.reference?'transferring':entry.error?'failed':entry.delivery==='delivered'?'ready':entry.delivery==='prepared'?'preparing':entry.delivery==='pending'?'pending':'abandoned'}));
-        return {accountDefinitions:directory.definitions().filter(value=>!definitions.blocked(value)),retirements:definitions.pending(),installedDefinitions:installations.installedDefinitions().filter(value=>!definitions.blocked(value)),deliveries,installationProgress:installations.progress(),layoutRevision: config.snapshot().localRevision, instances: rows, definitions: authoring.definitions().filter(value=>!definitions.blocked({definitionId:value.id,sourceInstallationId:integration.dockScope().installationId})).map(definition => ({ ...definition,sourceInstallationId:integration.dockScope().installationId, instanceCount: rows.filter(instance => instance.definitionId === definition.id&&instance.sourceInstallationId===integration.dockScope().installationId).length })) };
+        return {accountDefinitions:directory.definitions().filter(value=>!definitions.blocked(value)),retirements:definitions.pending(),installedDefinitions:installations.installedDefinitions().filter(value=>!definitions.blocked(value)),deliveries,installationProgress:installations.progress(),layoutRevision: config.snapshot().localRevision, instances: rows, definitions: sources.definitions().filter(value=>!definitions.blocked({definitionId:value.id,sourceInstallationId:integration.dockScope().installationId})).map(definition => ({ ...definition,sourceInstallationId:integration.dockScope().installationId, instanceCount: rows.filter(instance => instance.definitionId === definition.id&&instance.sourceInstallationId===integration.dockScope().installationId).length })) };
       },
-      newWidget: value => authoring.create(newDockWidgetSchema.parse(value), ports.locale()), editWidget: value => authoring.edit(editDockWidgetSchema.parse(value).definitionId),
-      forkWidget: value => {
-        const request = forkDockWidgetSchema.parse(value);
-        return authoring.createFork(request, ports.locale(), async () => {
-          const target = config.layout().items.find(item => item.id === request.itemId);
-          if (target?.kind !== 'widget')
-            throw new Error('DOCK_WIDGET_NOT_FOUND');
-          const widget = target.widget, instanceName = service.allItems().find(item => item.id === target.id)?.label ?? target.label ?? '';
-          const name = widget.type === 'custom' ? authoring.definitions().find(definition => definition.id === widget.definition.definitionId)?.name ?? instanceName : entryLabel(ports.locale(), widget.type === 'builtin.tasks' ? 'tasks' : widget.type === 'builtin.ai-limits' ? 'limits' : 'activity');
-          const nameKey = widget.type === 'custom' ? 'systemDock.widgets.copyName' : 'systemDock.widgets.customName', marker = '__widget_name__', pattern = translate(ports.locale(), nameKey, { name: marker }), remaining = 80 - [...pattern.replace(marker, '')].length, forkName = translate(ports.locale(), nameKey, { name: [...name].slice(0, Math.max(1, remaining)).join('') });
-          if (target.widget.type === 'custom') {
-            const accepted = applications.accepted(target);
-            if (!accepted || canonicalJson(accepted.widget) !== canonicalJson(target.widget))
-              throw new Error('DOCK_INSTANCE_CONFLICT');
-            await packages.read(target.widget.definition.packageRef);
-            return { name: forkName, seed: { target, instanceName, source: { kind: 'package' as const, reference: target.widget.definition.packageRef } } };
-          }
-          return { name: forkName, seed: { target, instanceName, source: { kind: 'official' as const, revision: 1 as const, dock: officialDockContribution(target.widget, (key, values) => translate(ports.locale(), key, values)) } } };
-        });
-      },
-      buildWidget: value => applications.build(editDockWidgetSchema.parse(value).definitionId), widgetPreview: value => applications.preview(editDockWidgetSchema.parse(value).definitionId), widgetVersions: value => applications.versions(editDockWidgetSchema.parse(value).definitionId),
+      widgetPreview: value => applications.preview(editDockWidgetSchema.parse(value).definitionId), widgetVersions: value => applications.versions(editDockWidgetSchema.parse(value).definitionId),
       previewWidgetVersion: value => { const request = previewWidgetVersionSchema.parse(value); return applications.previewVersion(request.definitionId, request.generationId); },
       applyWidget: async (value) => { const receipt = await applications.apply(applyDockWidgetSchema.parse(value)); if (receipt.itemIds[0])
         service.highlight(receipt.itemIds[0]); service.schedule(); return receipt; },
@@ -188,7 +166,7 @@ export async function createDockWidgetFeature(input: DockWidgetFeaturePorts, cur
     check();
     await applications.reconcileLayout();
     check();
-    const retention=new DockWidgetRetention(packages,applications,()=>[...applications.retainedReferences(),...instances.retainedReferences(),...installations.retainedReferences(),...authoring.retainedReferences()]);disposers.set('retention',()=>retention.close());retention.reconcile();
+    const retention=new DockWidgetRetention(packages,applications,()=>[...applications.retainedReferences(),...instances.retainedReferences(),...installations.retainedReferences(),...sources.retainedReferences()]);disposers.set('retention',()=>retention.close());retention.reconcile();
     directory.reconcile();definitions.wake();delivery.wake();void installations.recover().catch(error=>console.warn('[widgets] installation recovery failed',error));
     return { data, detail, invoke: (command, value,webContentsId) => { check(); return handlers[command](value,webContentsId); }, health: () => ({ ...detail.health(), base: base?.health() ?? { consumers: 0, flights: 0, timers: 0 },api:api.health(),preview:previews.health() }), reconcile: () => {directory.reconcile();definitions.wake();retention.reconcile();delivery.wake();if(current())void installations.recover().catch(error=>console.warn('[widgets] installation recovery failed',error));previews.reconcile();data.reconcile(); detail.reconcile(); if(current())void applications.reconcileLayout().catch(error=>console.warn('[system-dock] Widget acceptance retirement failed',error)); }, close };
   }

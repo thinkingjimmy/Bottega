@@ -92,6 +92,9 @@ export function createWidgetCloudConnection(ports: Ports): WidgetCloudPort {
         release=ports.transport.watchWidgetCatalog(admitted.header,value=>{if(!stopped)changed(value.revision);},error=>{if(!stopped)failed(error);});
       }catch(error){stop();throw error;}return stop;
     },
+    publishPlugin: (packet, signal) => execute("publish", signal, owner => (owner as WidgetPackagePublisher).publish(packet, signal)),
+    reviewPlugin: (request, signal) => execute("read", signal, owner => (owner as WidgetCloudClient).reviewPlugin(request, signal)),
+    downloadPlugin: (delivery, signal, progress) => execute("read", signal, owner => (owner as WidgetCloudClient).downloadPlugin(delivery, signal, progress)),
     publish: (packet, signal) =>
       execute("publish", signal, (owner) =>
         (owner as WidgetPackagePublisher).publish(packet, signal),

@@ -156,7 +156,7 @@ export function claudeHeadlessSettings(
       };
       network: { allowedDomains: string[]; strictAllowlist: boolean };
     };
-    enabledPlugins?: Record<string, false>;
+    enabledPlugins?: Record<string, boolean>;
   };
   if (job.claudeDisabledPluginIds?.length) {
     settings.enabledPlugins = Object.fromEntries(
@@ -182,7 +182,8 @@ export function claudeInteractiveSettings(
   permissionMode: "ask-for-approval" | "approve-for-me",
   userHome = homedir(),
   disabledPluginIds: readonly string[] = [],
-  deniedReadRoots: readonly string[] = []
+  deniedReadRoots: readonly string[] = [],
+  enabledPluginIds: readonly string[] = []
 ) {
   const readOnly = access.mode === "read-only";
   const offline = access.network === "off";
@@ -209,10 +210,10 @@ export function claudeInteractiveSettings(
   );
   /* `disableSideloadFlags` only works in managed settings, which the product
      cannot author. Per-plugin flag-layer false is the narrow controllable gate. */
-  if (disabledPluginIds.length) {
-    settings.enabledPlugins = Object.fromEntries(
-      disabledPluginIds.map((id) => [id, false])
-    );
+  if (disabledPluginIds.length || enabledPluginIds.length) {
+    settings.enabledPlugins = Object.fromEntries([
+      ...enabledPluginIds.map(id => [id, true]), ...disabledPluginIds.map(id => [id, false]),
+    ]);
   }
   const writeProtected = [access.controlRoot, ...access.readOnlyRoots];
   /* Read-only must survive this override: the sandbox layer is what binds sandboxed Bash, the permission rules only bind

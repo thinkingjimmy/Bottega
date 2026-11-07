@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Original classification candidates, decoded Chat heads and admitted App/record crypto.
- * [OUTPUT]: Exact frozen classification transports and authenticated original-hash receipts.
+ * [OUTPUT]: Exact frozen classification transports and authenticated original-hash receipts. Preserves immutable member facts during classification resealing.
  * [POS]: Client classification codec; canonical domain facts remain owned by the existing Store.
  */
 import { assertCrypto, assertExpectedScope } from "../../../encryption";
@@ -10,7 +10,7 @@ import { prepareAppPromotion } from "../../../apps/encrypted/promotion-client";
 import { matchesBasePromotionProof } from "../../../apps/promotion";
 import { chatClassificationOperationSchema, chatClassificationReceiptSchema, hashChatClassificationOperation, type ChatClassificationOperation } from "../../classification";
 import { portableForkLineage, type CloudChatHead } from "../../model";
-import { openChatHeadForRequest, sealChatPacket, sortKeyFacts, workflowRoleFacts, type ChatCipherPort } from "../client";
+import { openChatHeadForRequest, sealChatPacket, sortKeyFacts, workflowRoleFacts, memberSessionFacts, type ChatCipherPort } from "../client";
 import { encryptedClassificationReceiptSchema, frozenClassificationSchema, type EncryptedClassificationReceipt, type FrozenClassification } from "./model";
 import { classificationContext, classificationFactsMetadata, verifyClassificationOperation } from "./wire";
 function allowed(original: ChatClassificationOperation) {
@@ -36,7 +36,7 @@ export async function prepareClassificationOperation(input: ChatClassificationOp
     agentRevision: current.chat.agentRevision, createdAt: current.chat.createdAt, archivedAt: current.archivedAt };
   const facts = await sealChatPacket(crypto, original.chatId, { operationId: original.lifecycleOperationId, role: "facts",
     metadata: classificationFactsMetadata({ intent }) }, { title: current.chat.title, classification: original.next,
-    archivedAt: current.archivedAt, createdAt: current.chat.createdAt, ...sortKeyFacts(current.chat.sortKey), ...workflowRoleFacts(current.chat.workflowRole),
+    archivedAt: current.archivedAt, createdAt: current.chat.createdAt, ...sortKeyFacts(current.chat.sortKey), ...workflowRoleFacts(current.chat.workflowRole), ...memberSessionFacts(current.chat.memberSession),
     ...portableForkLineage(current.chat) }, signal);
   const promotion = original.basePromotion, destination = promotion?.destination;
   const app = destination?.kind === "app" ? await prepareAppPromotion({ appId: destination.appId, projectId: destination.projectId,

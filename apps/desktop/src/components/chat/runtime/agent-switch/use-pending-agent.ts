@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React subscriptions, canonical Chat reads, backend defaults, the Agent draft store, and live submission watching
- * [OUTPUT]: Provides per-Chat selection (a package Provider's fixed options come from the shared defaults, never a read main would refuse), local cancellation by reselecting the canonical Agent, one-time defaults (a failed initialization is exposed as initFailure with a retry) and navigation-safe submission reconciliation
+ * [OUTPUT]: Provides per-Chat selection (a package Provider's fixed options come from the shared defaults, never a read main would refuse), local cancellation by reselecting the canonical Agent, one-time defaults preserving selected modes (a failed initialization is exposed as initFailure with a retry) and navigation-safe submission reconciliation
  * [POS]: Agent draft lifecycle hook used by Chat settings; selection never persists Chat or global options
  */
 
@@ -45,7 +45,7 @@ export function usePendingAgent(chatId: string, draftBackend?: AgentBackendId, s
       if (record || disposed || readAgentDraft(chatId).initialized) return;
       const options = draftBackend ? await getBackendDefaults(draftBackend) : await startingOptions(startOnRef.current);
       if (!disposed) updateAgentDraft(chatId, current => !current.initialized && !current.canonical
-        ? { ...current, options, initialized: true } : current);
+        ? { ...current, options: { ...options, ...(current.options.mode ? { mode: current.options.mode } : {}) }, initialized: true } : current);
     }).catch(cause => { if (!disposed) { setError(cause); setInitFailure({ chatId, attempt: initAttempt, cause }); } });
     const unwatch = window.chats!.onEvent(event => {
       if (event.type === "upserted" && event.summary.id === chatId) void refresh().catch(setError);
@@ -79,7 +79,7 @@ export function usePendingAgent(chatId: string, draftBackend?: AgentBackendId, s
       const builtin = builtinAgent(backend);
       const options = builtin ? await getBackendDefaults(builtin) : backendDefaults({}, backend);
       updateAgentDraft(chatId, current => current.generation === generation
-        ? { ...current, options, loading: false } : current);
+        ? { ...current, options: { ...options, ...(current.options.mode ? { mode: current.options.mode } : {}) }, loading: false } : current);
     } catch (cause) {
       updateAgentDraft(chatId, current => current.generation === generation ? { ...current, loading: false } : current);
       throw cause;

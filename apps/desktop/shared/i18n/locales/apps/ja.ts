@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Japanese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
+ * [OUTPUT]: Provides the Apps Japanese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Japanese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -396,16 +396,15 @@ export const appsJa: typeof appsEn = {
       "reviewFailed": "変換状態を確認できません。再試行してください。",
       "retry": "変換状態を確認"
     },
-    generatedDescription: "{{name}} の共有 Base App",
+    generatedDescription: "{{name}} の共有 Base プラグイン",
     uncertain: "前回の送信結果が不明です。元と同じパラメータで再試行して確認してください。",
-    enterName: "App 名を入力してください",
-    failed: "Save as App に失敗しました",
-    title: "Save as App",
-    description: "現在の Base を App の共有データに昇格し、この chat を編集セッションにして App を作成します。",
+    enterName: "プラグイン名を入力",
+    failed: "プラグインとして保存できませんでした",
+    title: "プラグインとして保存",
     name: "名前",
     icon: "アイコン",
     chooseIcon: "アイコン {{icon}} を選択",
-    submit: "App を作成",
+    submit: "プラグインを保存",
   },
   detail: {
     startFailed: "App の起動に失敗しました",

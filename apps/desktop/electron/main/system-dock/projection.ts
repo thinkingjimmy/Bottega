@@ -94,7 +94,7 @@ export function metricItems(items: readonly DockBarItem[]): MetricItem[] {
 }
 /** Privacy mask hides values and file names in every projection, including accessible names (INV-06). */
 export function maskFace(face: WidgetFace): WidgetFace {
-  if(face.type==='custom')return{...face,summary:null,description:null,readings:{}};
+  if(face.type==='custom')return{...face,summary:null,description:null,readings:{},...(face.plugin?{plugin:{...face.plugin,customCard:false,configuration:{}}}:{})};
   if (face.type === "builtin.tasks") return { ...face, running: null, waiting: null, result: null };
   if (face.type === "builtin.ai-limits") return { ...face, sources: face.sources.map((source) => ({ ...source, remaining: null, resetsAt: null })) };
   return { ...face, tokens: null, costUsd: null, unpricedTokens: 0 };

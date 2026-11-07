@@ -5,7 +5,7 @@
  */
 
 import { setTimeout as delay } from "node:timers/promises";
-import type { BrowserAction } from "../../../shared/builtin-tools/catalog/browser";
+import type { BrowserAction } from "../../../shared/plugin-tools/catalog/browser";
 import { asError, statusError } from "../ipc/errors";
 import {
   boxCenter,

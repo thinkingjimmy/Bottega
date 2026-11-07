@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ACP session load/resume, identity-bound absence classification, actual sent-prompt replay proofs and final session configuration publication.
- * [OUTPUT]: Provides establishAcpSession with one bind-and-final-config callback order for fresh and resumed sessions
+ * [OUTPUT]: Provides establishAcpSession with one bind-and-final-config callback order for fresh and resumed sessions Opens independent Claude member forks with definite-unsupported-only canonical fallback.
  * [POS]: ACP turn/session establishment unit; the parent retains transport and terminal ownership
  */
 
@@ -27,6 +27,8 @@ type EstablishInput = Readonly<{
   onSessionId(sessionId: string): void;
   replay?: SessionReplayProof;
   onRecoveryOutcome?(outcome: "resumed" | "replayed"): void;
+  supportsFork?: boolean;
+  onForked?(): void;
 }>;
 
 const sessionMcpServers = (options: EstablishInput["options"], config: EstablishInput["config"]) =>
@@ -40,7 +42,29 @@ export async function establishAcpSession(
   if (resume && options.payload.turnOptions.backend !== resume.backend) {
     throw new Error("ACP session 与后端不匹配");
   }
-  const recovery = !resume ? options.sessionRecovery : undefined;
+  const fork = !resume ? options.memberFork : undefined;
+  if (fork && (fork.backend !== "claude" || options.payload.turnOptions.backend !== "claude"))
+    throw new Error("ACP member fork belongs to a different Provider");
+  if (fork && input.supportsFork) {
+    let created: unknown;
+    try {
+      created = await context.request(AGENT_METHODS.session_fork, {
+        sessionId: fork.sourceSessionId, cwd: options.workspace, mcpServers: await sessionMcpServers(options, config),
+        ...(config.sessionMeta ? { _meta: config.sessionMeta(options) } : {}),
+      });
+    } catch (cause) {
+      if ((cause as { code?: number })?.code !== -32601 && !isResumeMissing(cause, config, fork.sourceSessionId)) throw cause;
+    }
+    if (created) {
+      const id = assertAcpSessionId(created, config.validateSessionId);
+      if (id === fork.sourceSessionId) throw new Error("ACP member fork returned its parent identity");
+      const state = await applyTurnConfiguration(context, id, sessionConfigState(created), options.payload, config);
+      await fork.complete("forked");
+      onSessionId(id); serverFacts?.observeSession(id, state);
+      await publishBoundState(options, id, state); input.onForked?.(); return id;
+    }
+  }
+  const recovery = !resume && !fork ? options.sessionRecovery : undefined;
   if (recovery?.candidate && input.replay && config.validateSessionId(recovery.candidate.sessionId)) {
     const candidate = recovery.candidate;
     input.replay.begin(candidate.sessionId);
@@ -67,7 +91,10 @@ export async function establishAcpSession(
       cwd: options.workspace, mcpServers: await sessionMcpServers(options, config),
       ...(config.sessionMeta ? { _meta: config.sessionMeta(options) } : {}),
     });
-    const id = assertAcpSessionId(created, config.validateSessionId); onSessionId(id);
+    const id = assertAcpSessionId(created, config.validateSessionId);
+    if (fork && id === fork.sourceSessionId) throw new Error("ACP fresh session reused its parent identity");
+    if (fork) await fork.complete("replayed");
+    onSessionId(id);
     const state = await applyTurnConfiguration(context, id, created, options.payload, config);
     serverFacts?.observeSession(id, state);
     if (recovery) { await recovery.complete("replayed"); input.onRecoveryOutcome?.("replayed"); }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on App store/runtime/delete services, Base GUI projection, gateway request barriers, generation-fenced side effects, and extension integration
- * [OUTPUT]: Provides the live origin lookup, no-pre-revoke GUI cutover with request/effect drain, symmetric Studio authorize/decline, extension grant revocation, and destructive App lifecycle operations. Refuses disabled origins and generation rebuilds.
+ * [OUTPUT]: Live origins, drained GUI cutover/Studio/Extension operations, public deletion and main-only retained uninstall preserving maintenance and original pending-intent authority.
  * [POS]: apps/service operation layer; removes transactional mechanics from the AppsService composition root
  */
 
@@ -197,6 +197,7 @@ export async function removeApp(input: {
   appId: string;
   mode?: RemoveAppMode;
   requestId: string;
+  uninstall?: true;
   store: AppStore;
   maintenanceGate: MaintenanceGate;
   deleteService: AppDeleteService | null;
@@ -205,13 +206,15 @@ export async function removeApp(input: {
   if (input.maintenanceGate.isLocked(input.appId)) {
     throw new Error("App 修复中，暂时不能删除");
   }
-  requireRecord(input.store, input.appId);
   if (!input.deleteService) throw new Error("App delete 尚未初始化");
-  if (!input.mode || !input.requestId) throw new Error("App 删除参数不完整");
+  if (!input.uninstall || input.store.get(input.appId)) requireRecord(input.store, input.appId);
+  else if ((await input.deleteService.residual(input.appId))?.input.mode !== "uninstall") throw new Error("App 不存在");
+  if ((!input.mode && !input.uninstall) || !input.requestId) throw new Error("App 删除参数不完整");
   try {
-    await input.deleteService.remove({
+    if (input.uninstall) await input.deleteService.uninstall({ appId: input.appId, requestId: input.requestId });
+    else await input.deleteService.remove({
       appId: input.appId,
-      mode: input.mode,
+      mode: input.mode!,
       requestId: input.requestId,
     });
   } catch (cause) {

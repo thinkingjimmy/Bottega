@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on host Base actions and the deferred App-save entry.
+ * [INPUT]: Depends on host Base actions and the deferred canonical Base-plugin promotion entry.
  * [OUTPUT]: Provides Base tab menu actions only for a mounted Base panel.
  * [POS]: On-demand side-panel catalog action boundary.
  */

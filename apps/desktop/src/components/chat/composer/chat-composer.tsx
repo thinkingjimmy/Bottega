@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on the canonical permission presentation lookup, React/router, runtime controller, Chat-scoped NativeCommandBar, Agent submission custody, cloud account predicates, idle chunk prefetch, queue capacity, Chat i18n, workspace hooks, Gallery/Sketch custody, modal keyboard ownership, the per-Chat submission gate, unavailable draft images, the Agent connection warm-up client, startup marks, PromptInputProvider and RichInput.
- * [OUTPUT]: Native rich submission, model and permission edits for later submissions during an active turn, Agent-menu availability recovery without a duplicate status/manage/recheck strip, preserved drafts and image warnings, queued Plan/authentication retry, prepare-failure recovery, Sketch and account-owned remote draft execution.
+ * [OUTPUT]: Native rich submission with commit-time draft consumption, model and permission edits for later submissions during an active turn, Agent-menu availability recovery without a duplicate status/manage/recheck strip, preserved drafts and image warnings, queued Plan/authentication retry, draft mode/work-object controls, immutable first-send mode, prepare-failure recovery, Sketch and account-owned remote draft execution.
  * [POS]: Chat command surface; candidate projection is read-only while drafts, attachments, and Gallery custody remain in the per-Chat store
  */
 import { useArtifactHost } from "@ai-chat/chat-ui/artifacts";
 import { builtinProviderPermissionModel } from "@bottega/contracts/model/provider-capabilities";
+import { PluginComposerSlot } from "@/components/plugins/composer";
 import { ChatAddMenu } from "./input/add-menu";
 
 import { useProviderTurnedOff } from "@/components/settings/plugins/turned-off";
@@ -18,29 +19,27 @@ import { projectAvailability } from "../../../../shared/agent-availability/proje
 import { builtinAgent } from "../../../../shared/chat-agent/options";
 import { PendingAgentStatus } from "../agent-switch/pending";
 import { NativeCommandBar } from "../runtime/background/native-command-bar";
-import { applyComposerAttachmentCommand, composerSubmissionGate, readComposerInput } from "@/lib/chat/state/composer/chat-composer-store";
+import { applyComposerAttachmentCommand, composerSubmissionGate, readComposerInput, useComposerState } from "@/lib/chat/state/composer/chat-composer-store";
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
 import { PromptInputBody, PromptInputProvider, PromptInputSubmit, PromptInputTools, usePromptInputAttachments, type PromptInputAdapter, type RichNode } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import { PromptInputAttachments } from "@ai-chat/ui/components/ai-elements/prompt-input-attachments";
 import { UnavailableAttachments } from "./draft/unavailable-attachments";
 import { Separator } from "@ai-chat/ui/components/ui/separator";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { RichInput, type RichInputHandle, type RichInputProps } from "@ai-chat/ui/components/ai-elements/rich-input";
-import { GitBranch, ImagesIcon, Settings, XIcon } from "lucide-react";
+import { ImagesIcon, XIcon } from "lucide-react";
 
 import { ATTACHMENT_BYTE_LIMIT, ATTACHMENT_LIMIT, SECTION_ATTACHMENT_COUNT_LIMIT, SECTION_ATTACHMENT_TOTAL_BYTE_LIMIT } from "../../../../shared/ipc/agent/agent-ipc";
 import type { ChatSessionController } from "../runtime/use-chat-session";
 import { ChatApprovalCard } from "./decisions/chat-approval-card";
 import { ChatAgentSelector } from "./agents/chat-agent-selector";
-import { ChatBranchSelector } from "./agents/chat-branch-selector";
 import { ChatModelListSelector } from "./agents/chat-model-list-selector";
 import { ChatModelSelector } from "./agents/chat-model-selector";
 import { ChatManagedWorktreeRow } from "./input/chat-managed-worktree-row";
 import { ChatPlanChip } from "./decisions/chat-plan-chip";
 import { ChatPlanDecision } from "./decisions/chat-plan-decision";
 import { ChatPermissionSelector } from "./agents/chat-permission-selector";
-import { ChatProjectSelector, composerContextButtonClass } from "./input/chat-project-selector";
+import { DraftContextControls, LockedChatMode, useSelectedModeIssue } from "./input/context/controls";
 import { ChatUserInputSelector } from "./input/chat-user-input-selector";
 import { FileAuthorizationQueue } from "./files/file-authorization-queue";
 const MessageQueuePanel = lazy(() => import("./queue/message-queue-panel").then(module => ({ default: module.MessageQueuePanel })));
@@ -65,7 +64,6 @@ import { hasModalKeyboardScope } from "@/lib/modal-keyboard/scope";
 import { isReportedFailure } from "@ai-chat/ui/lib/errors";
 import { markStartup } from "@/lib/platform/startup-marks";
 import { QUEUE_LIMIT } from "@/lib/chat/session/message-queue-model";
-import { projectSettingsRoute } from "@/lib/chat/drafts/draft-route";
 import { useComposerSuggestions } from "./workspace/use-composer-suggestions";
 import { useWorkspaceImageSelection } from "./workspace/use-workspace-image-selection";
 const InteractionResults = lazy(() => import("@ai-chat/chat-ui/interaction-results").then(module => ({ default: module.InteractionResults })));
@@ -100,6 +98,8 @@ function ChatComposerContent({
   const artifactHost = useArtifactHost();
   const [referenceFailure, setReferenceFailure] = useState("");
   const controller = execution.controller;
+  const sourceIntent = useComposerState(controller.chatId).pluginAuthoring;
+  const modeIssue = useSelectedModeIssue(controller.turnOptions.mode, execution.remote);
   const { t, i18n } = useAppTranslation();
   const inputRef = useRef<RichInputHandle>(null);
   const attachments = usePromptInputAttachments();
@@ -116,7 +116,7 @@ function ChatComposerContent({
     !controller.imageInputAvailable && controller.attachmentFiles.some((file) => file.mediaType?.startsWith("image/"));
   // A Provider turned off in Plugins keeps its Chats readable but not continuable; say so before a send can fail.
   const providerOff = useProviderTurnedOff(controller.turnOptions.backend, i18n.language);
-  const sendBlocked = (execution.canSend === undefined ? availability.policy.decision !== "allow" : !execution.canSend) || imagesBlocked || Boolean(providerOff);
+  const sendBlocked = (execution.canSend === undefined ? availability.policy.decision !== "allow" : !execution.canSend) || imagesBlocked || Boolean(providerOff) || Boolean(execution.remote && sourceIntent) || Boolean(modeIssue);
   const recoveryBlocked = Boolean(controller.resumeFailure);
   const showAuthenticationRetry = execution.canSend === undefined && availability.policy.reason === "auth-required";
   const focusedRef = useRef(false);
@@ -397,52 +397,8 @@ function ChatComposerContent({
         !controller.persisted &&
         controller.project.kind === "selectable" && (
           <ComposerContext>
-            <ChatProjectSelector
-              projects={controller.projects}
-              selectedProjectId={controller.selectedProjectId}
-              disabled={controller.projectsLoading || turnControlsDisabled}
-              onChange={controller.selectProject}
-              onNewProject={controller.createProject}
-            />
-            {controller.selectedProjectId && (
-              <>
-                {execution.remote ? (
-                  /* The branch lives on the owner, so the control keeps its place, names that computer
-                     and stays inert. Showing this machine's HEAD instead would be a confident wrong answer. */
-                  <Button
-                    className={`${composerContextButtonClass} max-w-56 gap-2`}
-                    disabled
-                    size="lg"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <GitBranch className="size-4" />
-                    <span className="truncate">{execution.ownerLabel}</span>
-                  </Button>
-                ) : (
-                <ChatBranchSelector
-                  key={controller.selectedProjectId}
-                  projectId={controller.selectedProjectId}
-                  disabled={turnControlsDisabled}
-                  listBranches={controller.listBranches}
-                  checkoutBranch={controller.checkoutBranch}
-                  createBranch={controller.createBranch}
-                  onBusyChange={setBranchBusy}
-                />
-                )}
-                <Button
-                  aria-label={t("projectSettings.open")}
-                  asChild
-                  className="relative ml-auto rounded-full touch-target-44 hover:bg-muted-foreground/10"
-                  size="icon-lg"
-                  variant="ghost"
-                >
-                  <Link to={projectSettingsRoute(controller.selectedProjectId)}>
-                    <Settings />
-                  </Link>
-                </Button>
-              </>
-            )}
+            <DraftContextControls controller={controller} remote={execution.remote} ownerLabel={execution.ownerLabel}
+              onBranchBusy={setBranchBusy} disabled={controller.projectsLoading || turnControlsDisabled} />
           </ComposerContext>
         )}
       {!controller.loading && managedWorktree && (
@@ -498,7 +454,7 @@ function ChatComposerContent({
         submissionGate={composerSubmissionGate(controller.chatId)}
         prepareSubmission={sketch.prepare}
         onSubmissionSettled={sketch.settled}
-        onSubmit={(message, _event, { signal }) => {
+        onSubmit={(message, _event, { signal, consume }) => {
           if (recoveryBlocked) throw new Error(t("chat.resumeFailure.pendingDetail"));
           if (branchBusy) {
             throw new Error(t("chat.composer.surface.branchBusy"));
@@ -508,7 +464,7 @@ function ChatComposerContent({
           }
           const authenticationRetry = (_event.nativeEvent as SubmitEvent).submitter?.getAttribute("name") === "authentication-retry";
           if (sendBlocked && !(authenticationRetry && availability.policy.reason === "auth-required")) throw new Error(t("agentAvailability.blocked", { backend: controller.selectedBackend?.displayName ?? "Agent" }));
-          return controller.handleSubmit(message, { signal, ...(authenticationRetry ? { authenticationRetry: { kind: "retry-authentication" as const } } : {}) });
+          return controller.handleSubmit(message, { signal, onPersisted: consume, ...(authenticationRetry ? { authenticationRetry: { kind: "retry-authentication" as const } } : {}) });
         }}
       >
         <button
@@ -537,7 +493,9 @@ function ChatComposerContent({
           </TooltipTrigger><TooltipContent className="max-w-72">{t("agentAvailability.retryExplanation")}</TooltipContent></Tooltip>}
           {showAuthenticationRetry && controller.queueHolds && <span data-finish-queued-first="">{t("chat.queue.finishQueuedFirst")}</span>}
         </div>}
+        {modeIssue && <p role="status" className="px-3 pt-2 text-xs text-muted-foreground">{modeIssue}</p>}
         {referenceFailure && <p role="alert" className="px-3 pt-2 text-xs text-destructive">{referenceFailure}</p>}
+        {!execution.remote && <PluginComposerSlot />}
         <PromptInputBody {...providerWarmup}>
           <PromptInputAttachments attachmentAction={sketch.attachmentAction} />
           <RichInput
@@ -603,6 +561,7 @@ function ChatComposerContent({
             栏变窄，媒体查询会全程失效。 */}
         <PromptInputFooter className="@container/composer">
           <PromptInputTools>
+            <LockedChatMode controller={controller} />
             {/* 菜单里只有 Files 与 Plan：两者都不可得时不给入口。点开一个只剩
                 灰字的加号，说的是「你可以」，而事实是不能——空菜单比没有菜单更贵。 */}
             {(controller.imageInputAvailable || controller.planSupported || artifactHost?.importProject) && (

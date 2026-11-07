@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the Chat submission contract (TrustedManualTurnSubmission), the Agent-switch and Chat-options contracts, the frozen Agent configuration, the workflow Chat registry and ports for the coordinator, Chat facts and options, the Project's workspace precondition and validated turn options.
- * [OUTPUT]: Provides createAgentDispatch: the executor's AgentDispatch over the existing Chat machinery — one persistent Chat per record × role in the run's Project with a fixed title (created by the first turn, appended to afterwards), a system-origin turn with the step's prompt (the configuration's instructions first) and its workflow source (run, step, attempt, role) on the main-only submission field, the Project as workspace, and a stop that goes through the coordinator's cancel.
+ * [OUTPUT]: Provides createAgentDispatch: the executor's AgentDispatch over the existing Chat machinery — one persistent Chat per record × role in the run's Project with a fixed title (created by the first turn, appended to afterwards), a system-origin turn with the step's prompt (the configuration's instructions first) and its workflow source (run, step, attempt, role) on the main-only submission field, the Project as workspace, and a stop that goes through the coordinator's cancel. Installs the validated isolated run root and scopes role Chats when explicitly selected.
  *           A reused Chat takes this run's frozen options before its turn (A-03): the same Provider has its options patched, another Provider switches the Chat's Agent in place — still one Chat.
  * [POS]: W1 (06 §4): workflow turns enter the Chat FIFO and custody like any other turn; nothing here starts ACP. The turn's read-only policy and report were set by the executor under the same request id before this runs.
  */
@@ -14,6 +14,8 @@ import type { WorkspacePrecondition } from "../../../../../shared/content/submis
 import type { AgentDispatch } from "../../executor";
 import type { WorkflowChatRegistry } from "../chats";
 import type { WorkflowRoleName } from "@ai-chat/cloud-protocol/contracts/workflow/recipe";
+
+import { setWorkflowExecutionWorkspace, type WorkflowExecutionWorkspace } from "../../turn-policy";
 
 type Frozen = { resolved?: { provider?: string; fields?: Record<string, { value?: unknown }> } };
 export type DispatchPorts = {
@@ -29,6 +31,8 @@ export type DispatchPorts = {
   /** The Chat store's own options patch (revision-checked), the same one a person's picker commits. */
   patchOptions(input: ChatOptionsPatch): Promise<unknown>;
   workspaceFor(runId: string): WorkspacePrecondition | null;
+  executionWorkspaceFor?(runId: string): WorkflowExecutionWorkspace | null;
+  chatScopeFor?(runId: string): string | undefined;
   /** The backend's defaults with the frozen configuration's model, effort and permission mode, validated by the backend. */
   turnOptionsFor(backend: AgentBackendId, fields: Record<string, { value?: unknown }>): AgentTurnOptions;
   isBackend(id: string): id is AgentBackendId;
@@ -46,12 +50,15 @@ export function createAgentDispatch(ports: DispatchPorts): AgentDispatch {
       if (!ports.isBackend(provider)) throw new Error(`workflow-provider-unavailable:${provider}`);
       const workspace = ports.workspaceFor(input.runId);
       if (!workspace) throw new Error("workflow-project-unavailable");
+      const executionWorkspace = ports.executionWorkspaceFor?.(input.runId);
+      if (executionWorkspace) { await executionWorkspace.validate(); setWorkflowExecutionWorkspace(input.requestId, executionWorkspace); }
+      const chatScope = ports.chatScopeFor?.(input.runId);
       const fields = frozen.resolved?.fields ?? {};
       const turnOptions = ports.turnOptionsFor(provider, fields);
       /* The Chat is claimed before its first turn exists: a crash in between finds the same Chat, never a second one. */
-      const chat = ports.registry.get(input.record, input.role)
+      const chat = ports.registry.get(input.record, input.role, chatScope)
         ?? await ports.registry.claim(input.record, input.role, { chatId: randomUUID(), incarnationId: randomUUID().replaceAll("-", ""),
-          title: await ports.chatTitle(input.role, input.task) }, ports.now());
+          title: await ports.chatTitle(input.role, input.task) }, ports.now(), chatScope);
       const existing = ports.incarnationOf(chat.chatId);
       const stored = existing ? ports.chatFacts(chat.chatId) : null;
       if (existing && !stored) throw new Error("workflow-chat-unavailable");

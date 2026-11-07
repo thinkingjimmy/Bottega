@@ -305,7 +305,7 @@ export type AppExtensionConsentDecision = Readonly<
 >;
 
 export type ExtensionTurnIdentity = Readonly<{
-  turnClass: "manual" | "relay" | "workflow" | "headless";
+  turnClass: "manual" | "relay" | "workflow" | "member" | "headless";
   planMode: boolean;
   backendId: ProviderId;
   backendRuntimeIdentity: string;

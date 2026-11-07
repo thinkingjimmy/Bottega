@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Spanish catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
+ * [OUTPUT]: Provides the Apps Spanish catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Spanish copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -396,16 +396,15 @@ export const appsEs: typeof appsEn = {
       "reviewFailed": "No se pudo comprobar esta conversión. Inténtalo de nuevo.",
       "retry": "Comprobar conversión"
     },
-    generatedDescription: "Base App compartida de {{name}}",
+    generatedDescription: "Plugin Base compartido {{name}}",
     uncertain: "Se desconoce el resultado del envío anterior. Reintenta con exactamente los mismos parámetros para confirmarlo.",
-    enterName: "Introduce un nombre de App",
-    failed: "Save as App falló",
-    title: "Save as App",
-    description: "Crea una App: convierte la Base actual en datos compartidos y este chat en su sesión de edición.",
+    enterName: "Introduce un nombre de plugin",
+    failed: "No se pudo guardar el plugin",
+    title: "Guardar como plugin",
     name: "Nombre",
     icon: "Icono",
     chooseIcon: "Elegir icono {{icon}}",
-    submit: "Crear App",
+    submit: "Guardar plugin",
   },
   detail: {
     startFailed: "La App no pudo iniciarse",

@@ -242,6 +242,14 @@
         "main"
       ]
     },
+    "pnpm": {
+      "version": "11.9.0",
+      "roles": ["main"]
+    },
+    "yaml": {
+      "version": "2.9.0",
+      "roles": ["main"]
+    },
     "postcss": {
       "version": "8.5.19",
       "roles": [

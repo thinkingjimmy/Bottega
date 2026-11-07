@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on clone-safe primitive values
- * [OUTPUT]: Provides canonical App Use/Edit conversation, workflow-owned Chat role, start-state, title, destination routing, residence, editor, source, and capability facts
+ * [OUTPUT]: Provides canonical App Use/Edit conversation, workflow-owned Chat role, start-state, title, destination routing, residence, editor, source, and capability facts Exports isManagedChat for Workflow roles and persistent member ownership.
  * [POS]: Shared Base semantic kernel; Shared information-architecture vocabulary; product-surface visibility remains in six focused sibling projections
  */
 
@@ -66,6 +66,7 @@ export type ChatPlacementInput = Readonly<{
   effectiveArchived?: boolean;
   readOnlyReason?: "legacy-app-not-editable" | "external-readonly";
   workflowRole?: WorkflowChatRole;
+  memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts;
   updatedAt: number;
   createdAt: number;
 }>;
@@ -80,8 +81,8 @@ export const hasCanonicalChatPlacement = <T extends ChatPlacementInput>(
 export const isEffectivelyArchived = (chat: ChatPlacementInput) =>
   chat.effectiveArchived ?? Boolean(chat.archivedAt);
 
-export const isWorkflowChat = (chat: ChatPlacementInput) =>
-  chat.workflowRole !== undefined;
+export const isWorkflowChat = (chat: ChatPlacementInput) => chat.workflowRole !== undefined;
+export const isManagedChat = (chat: ChatPlacementInput) => isWorkflowChat(chat) || chat.memberSession !== undefined;
 
 export type AppUseChatDestination = Readonly<{
   kind: "app-use-chat";

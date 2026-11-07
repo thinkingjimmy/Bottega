@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on lifecycle admission/intents, App/Project/Chat/Base authorities, generation/build/data/grant settlement ports, App shell cleanup, the main/errors statusError factory, and idempotent finalization
- * [OUTPUT]: Exports deletion participants and replayable local-only cascade/retain-data deletion; cloud-managed identities require their dedicated disposition controls.
- * [POS]: Durable App deletion saga; same-mode concurrent clicks, retries, and crash recovery converge on one monotonic intent, a differing mode is refused instead of silently adopting the flight's disposition, and a recordless replay only finalizes because startup reconciliation owns orphan placements
+ * [OUTPUT]: Original deletion participants/disposition types and one admission/flight owner for public deletion and main-only retained uninstall.
+ * [POS]: App deletion saga admission; same-mode/recovery retains its original intent and Project lock, with ordered execution loaded only for an actual operation.
  */
 
 import type {
@@ -14,7 +14,7 @@ import type {
   SagaResult,
 } from "../../lifecycle/admission-gate";
 import type { LifecycleIntentStore } from "../../lifecycle/intent-store";
-import { reached, type LifecycleIntent } from "../../lifecycle/intent-types";
+import type { LifecycleIntent } from "../../lifecycle/intent-types";
 import type { ProjectsService } from "../../projects/projects-service";
 import type { ConversationCoordinator } from "../../sections/coordinator/conversation-coordinator";
 import type { AppStore } from "../store/app-store";
@@ -31,7 +31,9 @@ export type AppDeleteDependencies = {
   removeAppChat(chatId: string, appId: string): Promise<void>;
   promoteRetainedBase(projectId: string): Promise<void>;
   convertToBaseCustody(projectId: string, appId: string): Promise<void>;
-  removeShell(record: AppRecord): Promise<void>;
+  removeShell(record: AppRecord, options?: AppDeleteShellOptions): Promise<void>;
+  configurationPresent?(appId: string): boolean;
+  hasRetainedRemoval?(appId: string, requestId: string): Promise<boolean>;
   closeAdmission(appId: string): Promise<AppRecord>;
   settleBuilds(appId: string): Promise<void>;
   retireGeneration(appId: string, generationId: string): Promise<void>;
@@ -44,6 +46,9 @@ export type AppDeleteDependencies = {
 
 /** 与在飞的另一种数据处置互斥;本次删除根本没有开始。 */
 export const APP_DELETE_MODE_CONFLICT = "APP_DELETE_MODE_CONFLICT";
+export type AppDeleteShellOptions = Readonly<{ retainedRequestId: string }>;
+export type AppDeletionMode = RemoveAppInput["mode"] | "uninstall";
+type DeleteInput = Omit<RemoveAppInput, "mode"> & { mode: AppDeletionMode };
 
 /**
  * 删除失败只在「本 App 仍有未终结删除事务」时落到 record。remove() 已先接管
@@ -68,7 +73,7 @@ export function shouldMarkDeleteFailed(input: {
 
 type Flight = Readonly<{
   /** retry 不带 mode：它领的是残留事务，谁的 mode 由 resume 说了算。 */
-  mode: "cascade" | "retain-data" | null;
+  mode: DeleteInput["mode"] | null;
   promise: Promise<void>;
 }>;
 
@@ -110,6 +115,14 @@ export class AppDeleteService {
      承诺,调用方会拿到一张说「已保留数据」的回执,而数据早已被级联删掉。
      两种处置互斥,后到的那一次只能被如实拒绝。 */
   remove(input: RemoveAppInput) {
+    return this.removeWithDisposition(input);
+  }
+
+  uninstall(input: { appId: string; requestId: string }) {
+    return this.removeWithDisposition({ ...input, mode: "uninstall" });
+  }
+
+  private removeWithDisposition(input: DeleteInput) {
     if (this.dependencies.store.portable.isCloudManaged(input.appId)) {
       return Promise.reject(statusError(409, "Use the cloud App controls to remove this installation or delete it across devices.", { code: "CLOUD_APP_DISPOSITION_REQUIRED" }));
     }
@@ -125,7 +138,11 @@ export class AppDeleteService {
     }
     return this.join(input.appId, input.mode, async () => {
       const pending = await this.residual(input.appId);
-      if (pending) return this.resume(pending);
+      if (pending) {
+        if ((input.mode === "uninstall" || pending.input.mode === "uninstall") && pending.input.mode !== input.mode)
+          throw statusError(409, "The existing App removal has another disposition", { code: APP_DELETE_MODE_CONFLICT });
+        return this.resume(pending);
+      }
       return this.run(input);
     });
   }
@@ -149,31 +166,31 @@ export class AppDeleteService {
     const mode = intent.input.mode;
     if (
       typeof appId !== "string" ||
-      (mode !== "cascade" && mode !== "retain-data")
+      (mode !== "cascade" && mode !== "retain-data" && mode !== "uninstall")
     ) {
       throw new Error("App 删除残留事务参数无效");
     }
     return this.run({ appId, mode, requestId: intent.requestId });
   }
 
-  private async run(input: RemoveAppInput) {
+  private async run(input: DeleteInput) {
     return this.dependencies.runExclusive
       ? this.dependencies.runExclusive(input.appId, () => this.runExclusive(input))
       : this.runExclusive(input);
   }
 
-  private async runExclusive(input: RemoveAppInput) {
+  private async runExclusive(input: DeleteInput) {
+    const retained = input.mode === "uninstall" ? await import("./removal/uninstall") : null;
     const outcome = await this.dependencies.gate.admitAndRun(
       {
         kind: "app-delete",
         requestId: input.requestId,
         input: { appId: input.appId, mode: input.mode },
         /* project 维在创建时冻结进 claims（R8 闭包）；壳已无 Project 则空串=不占。 */
-        allocate: () => ({
-          projectId:
-            this.dependencies.projects.store.findByAppId(input.appId)?.id ??
-            "",
-        }),
+        allocate: () => {
+          return { projectId: this.dependencies.projects.store.findByAppId(input.appId)?.id ?? "",
+            ...(retained ? retained.freezeUninstall(this.dependencies, input.appId) : {}) };
+        },
       },
       (intent) => this.runLocked(intent)
     );
@@ -199,159 +216,9 @@ export class AppDeleteService {
   }
 
   private runLocked(intent: LifecycleIntent): Promise<SagaResult> {
-    return this.dependencies.projects.runExclusive(() => this.execute(intent));
+    return this.dependencies.projects.runExclusive(async () => {
+      const { executeAppDeletion } = await import("./removal/operation");
+      return executeAppDeletion(this.dependencies, intent);
+    });
   }
-
-  private async execute(initial: LifecycleIntent): Promise<SagaResult> {
-    const input = initial.input as {
-      appId: string;
-      mode: "cascade" | "retain-data";
-    };
-    this.dependencies.reportProgress(input.appId);
-    let intent = initial;
-    let record = this.dependencies.store.get(input.appId);
-    if (!record) {
-      /* 壳已提交,只剩收尾。残留的 Project placement 归启动期的
-         reconcileOrphanAppPlacementsHeld 认领,这里不必再猜它有几条。 */
-      await this.dependencies.finalizeRemoval(input.appId);
-      this.dependencies.publishRemoval(input.appId);
-      return { status: "done", receipt: { appId: input.appId } };
-    }
-    const baseApp = record.manifest?.kind === "base";
-    if (!baseApp && input.mode === "retain-data") {
-      return {
-        status: "business-rejected",
-        error: {
-          code: "RETAIN_DATA_REQUIRES_BASE_APP",
-          message: "只有 Base App 支持保留 Project 数据",
-        },
-      };
-    }
-    /* 普通 App 同样会懒建 Project。删除若只结算 Base App，普通 App 的
-       binding 会永久指向已不存在的 App，留下既不能使用也不能退出的孤儿。 */
-    const project = this.dependencies.projects.store.findByAppId(input.appId);
-
-    record = await this.dependencies.closeAdmission(input.appId);
-    if (!reached("app-delete", intent, "admission-closed")) {
-      intent = await this.dependencies.intents.advance(
-        intent.intentId,
-        "admission-closed"
-      );
-    }
-
-    if (!reached("app-delete", intent, "turns-drained")) {
-      await this.dependencies.drainAppTurns(input.appId);
-      intent = await this.dependencies.intents.advance(
-        intent.intentId,
-        "turns-drained",
-        project ? { projectId: project.id } : undefined
-      );
-    }
-
-    if (!reached("app-delete", intent, "chats-settled")) {
-      for (const chatId of this.dependencies.listAppChats(input.appId)) {
-        await this.dependencies.coordinator.runConversationExclusive(
-          chatId,
-          () => this.dependencies.removeAppChat(chatId, input.appId)
-        );
-      }
-      await this.dependencies.store.update(input.appId, (current) => ({
-        ...current,
-        editChatSlot: null,
-        activeUseChatSlot: null,
-        activeUseSwitch: null,
-      }));
-      intent = await this.dependencies.intents.advance(
-        intent.intentId,
-        "chats-settled"
-      );
-    }
-
-    /* cascade 不动 Base,写一次 base-settled 纯属空转;只有 retain-data 的
-       promote 是真副作用,才值得一个 durable checkpoint。 */
-    if (input.mode === "retain-data" && !reached("app-delete", intent, "base-settled")) {
-      const projectId = project?.id ?? recoveryProjectId(intent);
-      if (!projectId) throw new Error("Retained Base custody Project is missing");
-      await this.dependencies.promoteRetainedBase(projectId);
-      intent = await this.dependencies.intents.advance(
-        intent.intentId,
-        "base-settled"
-      );
-    }
-
-    if (!reached("app-delete", intent, "project-settled")) {
-      if (project) {
-        if (input.mode === "cascade") {
-          await this.dependencies.projects.removeAppProjectHeld(
-            project.id,
-            input.appId
-          );
-        } else {
-          await this.dependencies.convertToBaseCustody(project.id, input.appId);
-        }
-      } else if (input.mode === "retain-data") {
-        const projectId = recoveryProjectId(intent);
-        if (!projectId) throw new Error("Retained Base custody Project is missing");
-        await this.dependencies.convertToBaseCustody(projectId, input.appId);
-      }
-      intent = await this.dependencies.intents.advance(
-        intent.intentId,
-        "project-settled"
-      );
-    }
-
-    if (!reached("app-delete", intent, "builds-settled")) {
-      await this.dependencies.settleBuilds(input.appId);
-      intent = await this.dependencies.intents.advance(
-        intent.intentId,
-        "builds-settled"
-      );
-    }
-
-    if (!reached("app-delete", intent, "generations-retired")) {
-      for (const generation of record.generations) {
-        await this.dependencies.retireGeneration(
-          input.appId,
-          generation.generationId
-        );
-      }
-      intent = await this.dependencies.intents.advance(
-        intent.intentId,
-        "generations-retired"
-      );
-    }
-
-    if (!reached("app-delete", intent, "grants-settled")) {
-      await this.dependencies.revokeCapabilities(input.appId);
-      intent = await this.dependencies.intents.advance(
-        intent.intentId,
-        "grants-settled"
-      );
-    }
-
-    if (!reached("app-delete", intent, "data-settled")) {
-      await this.dependencies.settleData(record, input.mode);
-      intent = await this.dependencies.intents.advance(
-        intent.intentId,
-        "data-settled"
-      );
-    }
-
-    /* 清理本身幂等且自报受影响 Project,无需再冻结一份 id 快照:重放时
-       第二次清理返回空集,事件不会重复发。 */
-    const { affectedProjectIds } =
-      await this.dependencies.projects.clearAppPlacementsHeld(input.appId);
-    this.dependencies.projects.publishProjectUpserts(affectedProjectIds);
-
-    const current = this.dependencies.store.get(input.appId);
-    if (current) await this.dependencies.removeShell(current);
-    await this.dependencies.finalizeRemoval(input.appId);
-    this.dependencies.publishRemoval(input.appId);
-    return { status: "done", receipt: { appId: input.appId } };
-  }
-}
-
-function recoveryProjectId(intent: LifecycleIntent) {
-  const value = intent.recoveryState.projectId;
-  return typeof value === "string" ? value : null;
 }

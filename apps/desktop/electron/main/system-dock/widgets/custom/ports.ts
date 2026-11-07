@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on portable Widget items, bounded runtime projections and Dock surface identities.
- * [OUTPUT]: Provides the custom Widget projection/demand port for Dock composition.
+ * [OUTPUT]: Provides the custom Widget projection/demand and unified add-candidate port for Dock composition.
  * [POS]: Main-only seam that keeps application and data ownership outside DockService.
  */
 import type {DockItem,DockWidget} from '../../../../../shared/system-dock/layout';
@@ -11,6 +11,7 @@ import type {DockReading} from '@bottega/contracts/plugins/dock/data';
 import type {WidgetDetailSource} from '../detail/ports';
 export type WidgetItem=Extract<DockItem,{kind:'widget'}>;
 export interface DockCustomWidgetsPort{
+ candidates?():readonly {id:string;name:string;available:boolean}[];
  face(item:WidgetItem,edge:DockEdge):CustomWidgetFace;
  detail(item:WidgetItem,edge:DockEdge):CustomWidgetDetail|null;
  setVisible(surface:DockSurface,widgets:readonly{itemId:string;widget:DockWidget}[]):void;

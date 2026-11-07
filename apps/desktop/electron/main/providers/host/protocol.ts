@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on shared turn/IPC types (type-only imports)
- * [OUTPUT]: Provides the Provider bridge message vocabulary: providerHostId, PROVIDER_TURN_OPERATIONS, BridgeTurnStart (what main hands the bridge to start a turn, including the session `_meta` main computed), BridgeTurnEvent (ordered turn → main notifications, one per Provider turn callback) BridgeTurnRequest (the awaited turn → main calls, including live names-only MCP consent checks, including exact-owner retained results and `mcp-servers`: an acp-transport session's servers with their tokens, answered at its creation), the headless start/outcome and BridgeQuotaAnswer (a quota operation's result or finite reason)
+ * [OUTPUT]: Provides the Provider bridge message vocabulary: providerHostId, PROVIDER_TURN_OPERATIONS, BridgeTurnStart (what main hands the bridge to start a turn, including the session `_meta` main computed), BridgeTurnEvent (ordered turn → main notifications, one per Provider turn callback) BridgeTurnRequest (the awaited turn → main calls, including live names-only MCP consent checks, including exact-owner retained results and `mcp-servers`: an acp-transport session's servers with their tokens, answered at its creation), the headless start/outcome and BridgeQuotaAnswer (a quota operation's result or finite reason) Carries main-sealed independent member fork facts and awaited completion.
  * [POS]: Imported by both halves — main's BridgedTurn/ProviderBridgeRuntime and the bridge entry — so the boundary is one typed list; everything here is plain JSON by construction
  */
 import type { AgentSendPayload, SessionRef } from "../../../../shared/ipc/agent/agent-ipc";
@@ -36,6 +36,7 @@ export type BridgeTurnStart = Readonly<{
   sensitive?: { kind: string; text: string; count: number; bytes: number };
   serverFactBinding?: unknown;
   recovery?: { candidate: NativeSessionHint | null };
+  memberFork?: import("../../library/sessions/member-fork").NativeMemberForkSource;
   hooks: { sessionPrompt: boolean; authority: boolean };
   builtinMcp?: { server: { name: string; command: string; args: string[]; env: Record<string, string> } };
   thirdPartyMcpPlan?: unknown;
@@ -67,6 +68,7 @@ export type BridgeTurnRequest =
   | { k: "authority" }
   | { k: "builtin-ready" }
   | { k: "recovery-complete"; outcome: unknown }
+  | { k: "member-fork-complete"; outcome: "forked" | "replayed" }
   /* The bridge's prompt asks main to consume the turn's contribution lease and waits for its validation (G9). */
   | { k: "contribution-consume" }
   /* acp MCP transport (Kimi, Claude): the session's servers, tokens included, answered by main at each session creation (D2). */

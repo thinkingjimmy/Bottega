@@ -261,7 +261,7 @@ currentModelUnavailable: "{{model}}（当前不可用）"
       moreBaseActions: "更多 Base 操作",
       more: "更多",
       openApp: "打开 App",
-      saveAsApp: "保存为 App",
+      saveAsApp: "保存为插件",
       downloadCsv: "下载 CSV",
       openNamedPanel: "打开 {{name}}",
       unavailableNamedPanel: "{{name}}不可用：{{reason}}",

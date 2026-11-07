@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides bounded cancellable WidgetCloudClient reviews, original-byte downloads and terminal definition retirement without code acceptance or data permission.
  * [POS]: Main-only receiver transport; installation and local version selection remain separate durable owners.
  */
+import { verifyCloudPluginReview, verifyCloudPluginArchive } from "./plugins/codec";
 import {assertWidgetCatalogPage} from "@ai-chat/cloud-protocol/widgets/catalog";
 import { createHash } from "node:crypto";
 import { canonicalJson } from "@bottega/contracts/core/canonical-json";
@@ -57,6 +58,23 @@ export class WidgetCloudClient {
       const checked = verifyWidgetPackageReview(bytes, delivery, source);
       context.current();
       return { delivery, ...checked };
+    });
+  }
+  reviewPlugin(input: Request, signal?: AbortSignal) {
+    return this.run(signal, async context => {
+      const delivery = await this.delivery(input, context.call);
+      const checked = verifyCloudPluginReview(await this.read(delivery.review, BUDGET.runtimeFileBytes, context), delivery);
+      context.current(); return checked;
+    });
+  }
+  downloadPlugin(raw: WidgetPackageDelivery, signal?: AbortSignal, progress?: (value: FileProgress) => void) {
+    return this.run(signal, async context => {
+      const delivery = await this.delivery({ subject: raw.subject, reference: raw.reference }, context.call);
+      if (delivery.format !== "bottega-plugin/v1" || canonicalJson(delivery) !== canonicalJson(raw)) throw new Error("Plugin delivery changed after review");
+      const bytes = await this.read(delivery.archive, BUDGET.packageBytes, context, progress);
+      const packet = verifyCloudPluginArchive(bytes, delivery.reference);
+      if (packet.distribution.pluginId !== delivery.subject.definitionId || packet.distribution.revisionId !== delivery.generationId) throw new Error("Plugin archive source changed");
+      context.current(); return bytes;
     });
   }
   download(

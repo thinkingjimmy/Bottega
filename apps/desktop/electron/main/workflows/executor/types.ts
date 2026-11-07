@@ -41,7 +41,7 @@ export type ExecutorPorts = {
   admit(role: WorkflowRoleName, config: unknown, workspace?: string | null): Promise<{ admitted: true } | { admitted: false; reason: BlockedReason["kind"]; guarantee?: BlockedReason["guarantee"] }>;
   newRequestId(): string;
   /** The Chat of a role for a record, when it exists (review reads the development one, TASK-18). */
-  chatOf(record: WorkflowRun["record"], role: WorkflowRoleName): string | null;
+  chatOf(record: WorkflowRun["record"], role: WorkflowRoleName, runId?: string): string | null;
   /**
    * W9's format extractor: Claude alone, with no tools, no workspace and no write access, given only the turn's own result and
    * the report schema, on `provider`. `readiness` says why it cannot run (never a fallback to a session with tools); `extract` is one call.

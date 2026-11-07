@@ -7,11 +7,11 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {PLUGIN_COMPOSER_OPERATIONS} from '@bottega/contracts/plugins/surface/contract';
 import catalog from '../../../../resources/app-gui-components/catalog.json';
-import {pluginSourceRoot} from '../authoring/source-root';
+import {nativeSketchSourceRoot} from './source-root';
 const entry = `/**
  * [INPUT]: Audited Sketch renderer and editable palette/shape configuration.
  * [OUTPUT]: Official Sketch plugin UI.
- * [POS]: User-owned plugin entry compiled into an isolated Surface.
+ * [POS]: Main-owned native Sketch entry compiled into an isolated Surface.
  */
 import {SketchPlugin} from '@bottega/sketch-react';
 export default function Sketch() {
@@ -20,7 +20,7 @@ export default function Sketch() {
 }
 `;
 export async function ensureOfficialSketchSource(userData:string):Promise<string>{
- const root=await pluginSourceRoot(userData,'sketch');
+ const root=await nativeSketchSourceRoot(userData);
  if(await readFile(join(root,'plugin.json'),'utf8').then(()=>true,()=>false))return root;
  const files:Record<string,string>={
   'gui/src/main.tsx':entry,'gui/src/styles.css':'@import "tailwindcss";\n',

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React context, shared scrolling/feedback primitives and class-name utilities.
- * [OUTPUT]: SettingsPage and SettingsCanvas with inherited width, wrapping canvas or persistent page headings, trailing page actions, section headers and alerts.
+ * [OUTPUT]: SettingsPage and SettingsCanvas with inherited width, wrapping canvas or persistent page headings, optional grouped title descriptions, trailing page actions, section headers and alerts.
  * [POS]: Platform-independent settings presentation.
  */
 
@@ -11,6 +11,7 @@ import { cn } from "@ai-chat/ui/lib/utils";
 
 type SettingsPageLayout = {
   title?: ReactNode;
+  description?: ReactNode;
   titleAdornment?: ReactNode;
   leading?: ReactNode;
   actions?: ReactNode;
@@ -20,12 +21,12 @@ type SettingsPageLayout = {
 };
 const SettingsPageContext = createContext<SettingsPageLayout | null>(null);
 
-export function SettingsPage({ title, titleAdornment, leading, actions, rail, width = "content", headingPlacement = "canvas", children, chrome = "browser", collapsedInset }: SettingsPageLayout & {
+export function SettingsPage({ title, description, titleAdornment, leading, actions, rail, width = "content", headingPlacement = "canvas", children, chrome = "browser", collapsedInset }: SettingsPageLayout & {
   children: ReactNode;
   chrome?: "browser" | "native";
   collapsedInset?: "compact" | "mac";
 }) {
-  return <SettingsPageContext value={{ title, titleAdornment, leading, actions, rail, width, headingPlacement }}>
+  return <SettingsPageContext value={{ title, description, titleAdornment, leading, actions, rail, width, headingPlacement }}>
     <div data-settings-page="" className="relative flex h-full min-h-0 flex-col [--page-shell-header-height:0px]">
       {chrome === "native" && <div aria-hidden className={cn("absolute inset-x-0 top-0 h-6 [-webkit-app-region:drag]", collapsedInset && "h-10")}>
         {collapsedInset && <span className={cn("absolute inset-y-0 left-0 [-webkit-app-region:no-drag]", collapsedInset === "mac" ? "w-32" : "w-12")} />}
@@ -40,7 +41,7 @@ export function SettingsPage({ title, titleAdornment, leading, actions, rail, wi
 function SettingsHeading({ className }: { className?: string }) {
   const page = useContext(SettingsPageContext);
   if (!page?.title) return null;
-  return <header ref={toastClearanceRef} data-toast-clearance="" data-settings-heading="" className={cn("mb-8 shrink-0 [-webkit-app-region:no-drag]", className)}>
+  return <header ref={toastClearanceRef} data-toast-clearance="" data-settings-heading="" className={cn("shrink-0 [-webkit-app-region:no-drag]", page.description ? "mb-6" : "mb-8", className)}>
     <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
       <div className="flex min-w-0 flex-1 basis-48 items-center gap-3">
         {page.leading}
@@ -51,6 +52,7 @@ function SettingsHeading({ className }: { className?: string }) {
       </div>
       <div data-settings-actions="" className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2.5">{page.actions}</div>
     </div>
+    {page.description && <p className="mt-2 text-sm text-muted-foreground">{page.description}</p>}
     {page.rail && <div className="-mx-3 mt-4">{page.rail}</div>}
   </header>;
 }

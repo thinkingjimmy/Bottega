@@ -24,13 +24,10 @@ export interface PluginSurfacesBridge {
   history(pluginId:string):Promise<GuiHistory>;
   retryInitialization(pluginId:string):Promise<void>;
   activate(pluginId:string,generationId:string,expectedActiveGenerationId:string):Promise<void>;
-  newPlugin(draftChatId:string):Promise<{chatId:string;projectId:string}>;
-  edit(pluginId:string,draftChatId:string|null):Promise<{chatId:string;projectId?:string}|null>;
-  installLocal(draftChatId:string):Promise<{chatId:string}|null>;
   recovery:{read(scope:PluginRecoveryScope):Promise<PluginSource|null>;write(scope:PluginRecoveryScope,source:PluginSource):Promise<void>;remove(scope:PluginRecoveryScope):Promise<void>};
 }
 export const PLUGIN_SURFACES_CHANNEL = Object.freeze({list:'plugin-surfaces:list',openRemote:'plugin-surfaces:open-remote',open:'plugin-surfaces:open',validate:'plugin-surfaces:validate',release:'plugin-surfaces:release',
- changed:'plugin-surfaces:changed',history:'plugin-surfaces:history',retryInitialization:'plugin-surfaces:retry-initialization',activate:'plugin-surfaces:activate',newPlugin:'plugin-surfaces:new',edit:'plugin-surfaces:edit',installLocal:'plugin-surfaces:install-local',
+ changed:'plugin-surfaces:changed',history:'plugin-surfaces:history',retryInitialization:'plugin-surfaces:retry-initialization',activate:'plugin-surfaces:activate',
  recoveryRead:'plugin-surfaces:recovery-read',recoveryWrite:'plugin-surfaces:recovery-write',recoveryRemove:'plugin-surfaces:recovery-remove'} as const);
 export type GuiOwner=Readonly<{kind:'app'|'plugin';id:string}>;
 export interface GuiGenerationsBridge { history(owner:GuiOwner):Promise<GuiHistory>;activate(owner:GuiOwner,generationId:string,expected:string):Promise<void> }

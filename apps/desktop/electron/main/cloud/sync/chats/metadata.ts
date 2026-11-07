@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ChatStore's captured metadata intents, immutable checkpoints and scoped cloud RPCs.
- * [OUTPUT]: Serializes title/archive operations, resolves causal baselines from original receipts, reconciles cloud heads, and repairs a workflow Chat's missing role once per launch (R-35).
+ * [OUTPUT]: Serializes title/archive operations, resolves causal baselines from original receipts, reconciles cloud heads, and repairs a workflow Chat's missing role once per launch (R-35). Repairs missing portable member facts once per launch from the durable owner index.
  * [POS]: Main metadata transport; local optimistic edits and conflict candidates remain in the existing Chat outbox.
  */
 import { type CloudBuildConfig } from "@ai-chat/cloud-protocol";
@@ -93,6 +93,18 @@ export class DesktopChatMetadataSync {
       /* The repair advanced the cloud revision: the local baseline takes the new head, so the next local edit is not a conflict. */
       await this.ports.store.mutate(this.ports.scope, hashChatContent(["chat-metadata-head", receipt.head]), { type: "accept-chat-head", head: receipt.head });
       this.roleConfirmed.add(chatId); this.ports.changed(chatId);
+    }
+  }
+  async repairMemberSessions(entries: Iterable<readonly [string, import("@bottega/contracts/plugins/team").PluginMemberSessionFacts]>) {
+    for (const [chatId, facts] of entries) {
+      if (this.closed || this.roleConfirmed.has("member:" + chatId)) continue;
+      const head = await this.encrypted.head(chatId);
+      if (!head || this.closed) continue;
+      if (head.ownerDeviceId !== this.ports.deviceId || head.chat.memberSession) { this.roleConfirmed.add("member:" + chatId); continue; }
+      const receipt = await this.encrypted.setMemberSession(head, facts);
+      if (!receipt.head?.chat.memberSession) continue;
+      await this.ports.store.mutate(this.ports.scope, hashChatContent(["chat-metadata-head", receipt.head]), { type: "accept-chat-head", head: receipt.head });
+      this.roleConfirmed.add("member:" + chatId); this.ports.changed(chatId);
     }
   }
   async close() { this.closed = true; this.dirty.clear(); await Promise.all(this.flights.values()); }

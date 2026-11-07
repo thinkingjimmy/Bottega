@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Chat records, the typed SQLite client, and mutation outcome errors
- * [OUTPUT]: Persists aggregate and narrow writes with frozen owner evidence and first-message title-job transitions in the same receipt transaction.
+ * [OUTPUT]: Persists aggregate and narrow writes with frozen owner evidence and first-message title-job transitions in the same receipt transaction. Original publication retains transient immutable member ownership.
  * [POS]: Durable write adapter beneath ChatStore; queueing, metadata publication, and domain transitions remain in the coordinator
  */
 
@@ -42,6 +42,7 @@ export async function persistRecordToStorage(input: {
   expectedAggregateRevision: number | null;
   /** R-35: a new workflow Chat's role, for its first cloud upload only. */
   workflowRole?: import("@ai-chat/cloud-protocol/chats/model").ChatWorkflowRole;
+  memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts;
   onCommit(): void;
 }) {
   const { database, deviceId } = requireSqlite(input);
@@ -50,11 +51,13 @@ export async function persistRecordToStorage(input: {
     kind: "upsert-record",
     ...(input.ownerCommit ? { ownerCommit: input.ownerCommit } : {}),
     ...(input.workflowRole ? { workflowRole: input.workflowRole } : {}),
+    ...(input.memberSession ? { memberSession: input.memberSession } : {}),
     operationId,
     requestHash: hash({
       operationId,
       ...(input.ownerCommit ? { ownerCommit: input.ownerCommit } : {}),
       ...(input.workflowRole ? { workflowRole: input.workflowRole } : {}),
+    ...(input.memberSession ? { memberSession: input.memberSession } : {}),
       record: input.record,
       deviceId,
       expectedAggregateRevision: input.expectedAggregateRevision,

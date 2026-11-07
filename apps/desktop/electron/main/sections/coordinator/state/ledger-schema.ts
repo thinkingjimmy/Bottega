@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on zod, canonical hashes, bounded remote provenance/control receipts, the workflow role vocabulary and original Agent/relay vocabulary.
- * [OUTPUT]: Defines ledger v7 unsequenced manual/steer custody (manual, remote or workflow origin), legacy injected sequence recovery, preparation pins and frozen handoff proofs. Durable queue claims, takeover identities and per-incarnation source pause scopes are additive ledger fields.
+ * [INPUT]: Lightweight portable member ownership validator; Depends on zod, canonical hashes, bounded remote provenance/control receipts, the workflow role vocabulary and original Agent/relay vocabulary.
+ * [OUTPUT]: Defines ledger v7 unsequenced manual/steer custody (manual, remote or workflow origin), legacy injected sequence recovery, preparation pins and frozen handoff proofs. Durable queue claims, takeover identities and per-incarnation source pause scopes are additive ledger fields. Accepts strict persistent member origins beside manual, remote and Workflow sources.
  * [POS]: Source of truth for the coordinator/state durable wire format; RelayLedger is responsible only for sequencing atomic mutations and file IO
  */
 
@@ -10,6 +10,7 @@ import { turnSequencesSchema } from "../../../../../shared/chat-agent/sequences"
 import { handoffSchema } from "../../../../../shared/chat-agent/history-schema";
 import { agentBackendIdSchema } from "../../../../../shared/platform/agent-schema";
 import { canonicalHash } from "../coordinator-values";
+import { pluginMemberSessionFactsSchema } from "@bottega/contracts/plugins/team/member";
 import { WORKFLOW_ROLES } from "@ai-chat/cloud-protocol/contracts/workflow/recipe";
 import { remoteOriginSchema, remoteContextSchema, remoteSubmissionSchema, controlReceiptSchema, remoteCiphertextSchema } from "../remote/model";
 import { relayActionSchema } from "./pause-saga";
@@ -209,7 +210,7 @@ export const manualIntentSchema = z
   .object({
     id: z.string().min(1).max(128),
     conversationId: z.string().min(1).max(128),
-    origin: z.union([z.object({ kind: z.literal("manual") }).strict(), remoteOriginSchema, workflowOriginSchema]).default({ kind: "manual" }),
+    origin: z.union([z.object({ kind: z.literal("manual") }).strict(), remoteOriginSchema, workflowOriginSchema, pluginMemberSessionFactsSchema.extend({ kind: z.literal("member") })]).default({ kind: "manual" }),
     remoteSubmission: remoteSubmissionSchema.optional(),
     queueSource: remoteContextSchema.optional(),
     payload: z.unknown().optional(),

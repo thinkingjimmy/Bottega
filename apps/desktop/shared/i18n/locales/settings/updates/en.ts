@@ -1,19 +1,21 @@
 /**
  * [INPUT]: No runtime dependencies
- * [OUTPUT]: Provides settingsUpdatesEn — Settings › Updates page, provider CLI row, platform-support, and updater-state copy — and the structural shape its translated leaves derive from; failure recovery uses shared retry and manual-download copy
+ * [OUTPUT]: Provides settingsUpdatesEn — Settings › Updates page, provider CLI row, platform-support, and updater-state copy — and the structural shape its translated leaves derive from; unified row actions and collapsed failure details use shared update, retry and manual-download copy
  * [POS]: English leaf of shared/i18n/locales/settings/updates; the Updates feature catalog
  */
 
 
 export const settingsUpdatesEn = {
   title: "Updates",
-  description: "Manage Bottega and provider CLI updates.",
+  description: "Manage updates for Bottega and your Agents.",
+  updatingShort: "Updating…",
+  showDetails: "Show details",
+  hideDetails: "Hide details",
   updateAll: "Update all",
   updateOne: "Update {{name}}",
   upToDate: "{{name}} is up to date",
   updating: "Updating {{name}}…",
   latestUnknown: "Latest version unknown",
-  cliFailed: "Update failed",
   cliUnchanged: "The updater finished, but the version didn't change. Try updating in Terminal.",
   cliTimeout: "The update took too long and was stopped.",
   cliUnavailable: "This CLI can't be updated from here.",
@@ -33,7 +35,6 @@ export const settingsUpdatesEn = {
   failedShort: "Update failed",
   checkFailedShort: "Update check failed",
   manualShort: "Download new version",
-  downloadContinue: "You can continue using Bottega while the update downloads.",
   downloading: "Downloading version {{version}}",
   installing: "Update downloaded · restarting to install",
   failed: "Update failed: {{message}}",
@@ -44,7 +45,7 @@ export const settingsUpdatesEn = {
   backgroundFailed: "The last automatic check failed",
   backgroundFailedOpen: "Automatic update checks are failing; open Updates for details",
   check: "Check for updates",
-  upgrade: "Update now",
+  upgrade: "Update",
   manualUpgrade: "Open download page",
   unavailable: "Update service is available in packaged builds",
   platformSupport: "Platform support",

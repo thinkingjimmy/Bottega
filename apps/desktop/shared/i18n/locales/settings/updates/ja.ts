@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsUpdatesEn structural type
- * [OUTPUT]: Provides settingsUpdatesJa, the Japanese Settings › Updates catalog; failure recovery uses shared retry and manual-download copy
+ * [OUTPUT]: Provides settingsUpdatesJa, the Japanese Settings › Updates catalog; unified row actions and collapsed failure details use shared update, retry and manual-download copy
  * [POS]: Japanese leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
@@ -8,13 +8,15 @@ import type { settingsUpdatesEn } from "./en";
 
 export const settingsUpdatesJa: typeof settingsUpdatesEn = {
   title: "アップデート",
-  description: "Bottega と各プロバイダー CLI のアップデートを管理します。",
+  description: "Bottega と Agent のアップデートを管理します。",
+  updatingShort: "更新中…",
+  showDetails: "詳細を表示",
+  hideDetails: "詳細を閉じる",
   updateAll: "すべてアップデート",
   updateOne: "{{name}} をアップデート",
   upToDate: "{{name}} は最新です",
   updating: "{{name}} をアップデート中…",
   latestUnknown: "最新バージョン不明",
-  cliFailed: "アップデートに失敗しました",
   cliUnchanged: "アップデーターは終了しましたが、バージョンが変わっていません。ターミナルでのアップデートをお試しください。",
   cliTimeout: "アップデートに時間がかかりすぎたため停止しました。",
   cliUnavailable: "この CLI はここからアップデートできません。",
@@ -34,7 +36,6 @@ export const settingsUpdatesJa: typeof settingsUpdatesEn = {
   failedShort: "更新に失敗しました",
   checkFailedShort: "更新の確認に失敗しました",
   manualShort: "新しいバージョンをダウンロード",
-  downloadContinue: "ダウンロード中も Bottega を使用できます。",
   downloading: "{{version}} をダウンロード中",
   installing: "更新をダウンロードしました · 再起動してインストールします",
   failed: "更新に失敗しました: {{message}}",
@@ -45,7 +46,7 @@ export const settingsUpdatesJa: typeof settingsUpdatesEn = {
   backgroundFailed: "前回の自動確認に失敗しました",
   backgroundFailedOpen: "自動アップデート確認が失敗しています。詳細はアップデートを開いてください",
   check: "更新を確認",
-  upgrade: "今すぐ更新",
+  upgrade: "更新",
   manualUpgrade: "ダウンロードページを開く",
   unavailable: "更新サービスはパッケージ版で利用できます",
   platformSupport: "プラットフォームサポート",

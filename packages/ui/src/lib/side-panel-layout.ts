@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on browser localStorage and the available ChatView container width; tolerates untrusted/malformed versioned JSON
- * [OUTPUT]: Provides the shared 180px Chat minimum, default panel widths, container-bounded manual geometry, versioned parse/serialize functions, and read/commit persistence
+ * [OUTPUT]: Provides the shared 360px Chat minimum, default panel widths, container-bounded manual geometry, versioned parse/serialize functions, and read/commit persistence
  * [POS]: Renderer's persistence boundary for Chat panel layout; manual preferences can exceed the automatic 1024px cap while rendered geometry reserves the Chat minimum
  */
 
-export const CHAT_MAIN_COLUMN_MIN_WIDTH = 180;
+export const CHAT_MAIN_COLUMN_MIN_WIDTH = 360;
 const SIDE_PANEL_DEFAULT_VIEWPORT_RATIO = 0.42;
 export const SIDE_PANEL_MIN_WIDTH = 320;
 /** Maximum automatic width; manual resizing uses the current container's available space. */

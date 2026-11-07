@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on relay/state ledgers, Chat and Settings services, exact-submission recovery, SQLite unknown-outcome classification, Agent main bridge, memory/bootstrap ports, manual-turn helpers, and the canonical residence index, and the startup recovery gate
- * [OUTPUT]: Provides sole FIFO admission, trusted remote entry, terminal Home capture that never blocks settling the turn, Memory authorization at settlement for a person's turn only (never a workflow step's), exact recovery, holding every start while startup recovery is closed, and quiescent shutdown. Runtime eligibility wakes retained inputs without resubmission and releases its subscription at shutdown. Projects queued counts and active request identities for exact App disable confirmation. Remote source pause and queue claims share the admission and dispatch critical section.
+ * [OUTPUT]: Provides sole FIFO admission, trusted remote entry, terminal Home capture that never blocks settling the turn, Memory authorization at settlement for a person's turn only (never a workflow step's), exact recovery, holding every start while startup recovery is closed, and quiescent shutdown. Runtime eligibility wakes retained inputs without resubmission and releases its subscription at shutdown. Projects queued counts and active request identities for exact App disable confirmation. Remote source pause and queue claims share the admission and dispatch critical section. Cancels queued persistent member intents and excludes them from manual Memory capture.
  * [POS]: Sections coordinator arbiter; renderer and MCP callers submit intents while this module alone advances Chat commits and Agent claims
  */
 
@@ -13,7 +13,7 @@ import { taskStartFence, StartDeferredError, requestOperation, type StopOperatio
 import { recoveryBlocked } from "../../persistence/recovery-policy";
 import { DispatchTracker } from "./scheduler/dispatch-tracker";
 import { blockedReceiptFor, isRunnableDeliverable, ledgerHasLiveTurn, nextDeliverable } from "./scheduler/deliverable";
-import type { BuiltinToolContext } from "../../tools/registry";
+import type { PluginToolContext } from "../../tools/registry";
 import { coordinatorResidenceIndex, relayExpectation } from "./coordinator-values";
 import { preparedSkillSelections, runManualTurn } from "./turns/manual-turns";
 import { submitManualAdmission } from "./turns/manual-admission";
@@ -278,6 +278,10 @@ export class ConversationCoordinator {
       submission.precondition.kind === "existing" ? submission.precondition.incarnationId : submission.precondition.proposedIncarnationId));
   }
 
+  async cancelMemberTurns(conversationId: string): Promise<void> {
+    const pending = this.dependencies.ledger.read(state => Object.values(state.manualIntents).filter(intent => intent.conversationId === conversationId && intent.origin.kind === "member" && !["settled", "failed"].includes(intent.phase)).flatMap(intent => intent.requestId ? [intent.requestId] : []));
+    for (const requestId of pending) await this.cancelManualTurn(requestId);
+  }
   async cancelManualTurn(requestId: string) {
     const intent = this.dependencies.ledger.read((state) =>
       Object.values(state.manualIntents).find(
@@ -390,7 +394,7 @@ export class ConversationCoordinator {
 
   async sendToSection(
     input: { sectionId: string; message: string; expectReply: boolean },
-    context: BuiltinToolContext
+    context: PluginToolContext
   ): Promise<RelayToolStatus> {
     return this.conversations.run(input.sectionId, () =>
       this.sectionTools.send(input, context)
@@ -405,7 +409,7 @@ export class ConversationCoordinator {
       inheritProject?: boolean;
       contextSectionIds: string[];
     },
-    context: BuiltinToolContext
+    context: PluginToolContext
   ): Promise<{
     section_id: string;
     first_turn: "started" | "paused" | "rejected" | "idle";
@@ -416,7 +420,7 @@ export class ConversationCoordinator {
 
   async promoteResult(
     input: Parameters<SectionToolAdmission["promote"]>[0],
-    context: BuiltinToolContext
+    context: PluginToolContext
   ) {
     return this.sectionTools.promote(input, context);
   }
@@ -457,7 +461,7 @@ export class ConversationCoordinator {
             persisted
           );
           /* A workflow step's turn is a role's, not the person's: never Memory-authorized until TASK-28's consent-gated admission. */
-          return persisted && event.outcome === "stored" && manual.origin.kind !== "workflow";
+          return persisted && event.outcome === "stored" && manual.origin.kind !== "workflow" && manual.origin.kind !== "member";
         }
         const relay = this.dependencies.ledger.read((state) => {
           const found = Object.values(state.relays).find(

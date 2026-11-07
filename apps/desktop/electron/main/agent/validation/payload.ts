@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Agent submission contracts and explicit validation dependencies.
- * [OUTPUT]: validateAgentPayload, parseAgentPayloadForStart, parseAgentPayload.
+ * [OUTPUT]: validateAgentPayload, parseAgentPayloadForStart, parseAgentPayload. Retains main-admitted receipts for trusted member turns.
  * [POS]: Agent validation payload boundary; admission and authority checks stay mandatory.
  */
 import { z } from "zod";
@@ -47,7 +47,7 @@ export function parseAgentPayload(
     throw new Error("请求格式无效");
   }
   const acceptsPreparedSelection =
-    (authority?.origin?.kind === "manual" || authority?.origin?.kind === "workflow") && authority.projectContext !== undefined;
+    (authority?.origin?.kind === "manual" || authority?.origin?.kind === "workflow" || authority?.origin?.kind === "member") && authority.projectContext !== undefined;
   assertExactKeys(
     value,
     [

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Has no runtime dependencies
- * [OUTPUT]: Provides basesEn, the structural and fallback catalog for every Base, synchronization review, Project conversion and embedded-chart surface
+ * [OUTPUT]: Provides basesEn, the structural and fallback catalog for every Base, synchronization review, Project/Base-plugin promotion and embedded-chart surfaces
  * [POS]: Shared Base language catalog in i18n.
  */
 
@@ -55,7 +55,7 @@ export const basesEn = {
   },
   header: {
     openApp: "Open App",
-    saveAsApp: "Save as App",
+    saveAsApp: "Save as plugin",
     importExport: "Import and export",
     importExportAria: "Base import and export",
     exportCsv: "Export CSV",

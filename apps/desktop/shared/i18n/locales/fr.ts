@@ -261,7 +261,7 @@ currentModelUnavailable: "{{model}} (indisponible)"
       moreBaseActions: "Plus d’actions Base",
       more: "Plus",
       openApp: "Ouvrir l’App",
-      saveAsApp: "Enregistrer comme App",
+      saveAsApp: "Enregistrer comme plugin",
       downloadCsv: "Télécharger le CSV",
       openNamedPanel: "Ouvrir {{name}}",
       unavailableNamedPanel: "{{name}} indisponible : {{reason}}",

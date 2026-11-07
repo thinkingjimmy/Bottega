@@ -261,7 +261,7 @@ currentModelUnavailable: "{{model}}（現在利用不可）"
       moreBaseActions: "その他の Base 操作",
       more: "その他",
       openApp: "App を開く",
-      saveAsApp: "App として保存",
+      saveAsApp: "プラグインとして保存",
       downloadCsv: "CSV をダウンロード",
       openNamedPanel: "{{name}} を開く",
       unavailableNamedPanel: "{{name}} は利用できません: {{reason}}",

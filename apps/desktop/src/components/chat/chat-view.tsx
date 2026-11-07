@@ -1,7 +1,7 @@
 /**
  * Native command titles feed the shared composer service controls without remounting the Chat.
  * [INPUT]: Depends on React layout measurement, ChatSessionController, window role, canonical transcript and its hydration skeleton, lib/idle-prefetch, selective draft image-key subscriptions, composer, optional side panel, Gallery, and main-window Memory state
- * [OUTPUT]: Native/imported Chat layout, scoped local message-file links, non-visual command execution context, shared third-column sizing and paged transcript states.
+ * [OUTPUT]: Native/imported Chat layout, canonical team member/task panels, shared source-Project automatic build/error status, scoped local message-file links, non-visual command execution context, shared third-column sizing and paged transcript states.
  * [POS]: The single horizontal chat layout for draft and canonical native/imported sessions
  */
 
@@ -63,7 +63,8 @@ import type {
    loader identity, and the warm chunk must be the very one `lazy` asks for. */
 const loadSidePanelChunk = () => import("./side-panel/side-panel");
 const loadTranscriptChunk = () => import("./transcript/chat-transcript");
-const WidgetAuthoring=lazy(()=>import('./widgets/authoring').then(module=>({default:module.WidgetAuthoring})));
+const TeamChatPanel=lazy(()=>import('@/components/plugins/team/panel').then(module=>({default:module.TeamChatPanel})));
+const PluginSourceStatus=lazy(()=>import('@/components/plugins/source-status').then(module=>({default:module.PluginSourceStatus})));
 
 const SidePanel = lazy(() =>
   loadSidePanelChunk().then((module) => ({
@@ -260,9 +261,8 @@ export function ChatViewFrame({
   );
   const nativeCommandTitles = useMemo(() => new Map(conversationMessages.flatMap(message =>
     (message.parts ?? []).flatMap(part => part.type === "tool" && part.tool === "command" ? [[part.itemId, part.title] as const] : []))), [conversationMessages]);
-  const widgetNotice=conversationMessages.find(message=>message.notice?.kind==='plugin-chat-ready')?.notice;
   return (
-    <NativeCommandRuntimeProvider chatId={conversationId} incarnationId={controller.transcript.incarnationId ?? null} titles={nativeCommandTitles}><ArtifactHostProvider value={artifactHost}><ChatPageSessionView renderPage={renderPage} header={header} notices={<>{widgetNotice?.kind==='plugin-chat-ready'&&<Suspense fallback={null}><WidgetAuthoring key={widgetNotice.pluginId} definitionId={widgetNotice.pluginId} chatId={conversationId}/></Suspense>}{notices}</>} className={header ? "[--page-shell-header-height:2.5rem]" : undefined} containOverflow={Boolean(header)} containerRef={layoutRootRef} panel={enableSidePanel && visibleSidePanelState && (
+    <NativeCommandRuntimeProvider chatId={conversationId} incarnationId={controller.transcript.incarnationId ?? null} titles={nativeCommandTitles}><ArtifactHostProvider value={artifactHost}><ChatPageSessionView renderPage={renderPage} header={header} notices={<><Suspense fallback={null}><TeamChatPanel chatId={conversationId}/></Suspense><Suspense fallback={null}><PluginSourceStatus chatId={conversationId}/></Suspense>{notices}</>} className={header ? "[--page-shell-header-height:2.5rem]" : undefined} containOverflow={Boolean(header)} containerRef={layoutRootRef} panel={enableSidePanel && visibleSidePanelState && (
         <Suspense fallback={null}>
           <SidePanel crossHeader={!header} open={Boolean(sidePanelState)} state={visibleSidePanelState} width={panelGeometry.width} minWidth={panelGeometry.minWidth} maxWidth={panelGeometry.maxWidth}
             onWidthChange={commitPanelWidth} onClose={controller.sidePanel.close} subagents={controller.sidePanel.subagents} galleryProjection={galleryProjection} />

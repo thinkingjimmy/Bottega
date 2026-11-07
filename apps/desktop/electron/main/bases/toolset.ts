@@ -7,7 +7,7 @@
 import { renumberViews } from "../../../shared/bases/model/base-views";
 import { BASE_VIEW_LIMIT, type BaseColumn, type BaseRow, type BaseSnapshot, type BaseView } from "../../../shared/bases/model/bases-ipc";
 import { ownerKeyOf } from "@ai-chat/base-core/model/owner-key";
-import type { BuiltinToolContext, BuiltinToolset } from "../tools/registry";
+import type { PluginToolContext, PluginToolset } from "../tools/registry";
 import {
   BASE_QUERY_RESULT_BYTE_LIMIT,
   readBase,
@@ -21,14 +21,14 @@ import { boundedToolBatch } from "./service/tool/result";
 export function createBaseToolset(
   service: BasesService,
   isEffectiveArchived: (chatId: string) => boolean = () => false
-): BuiltinToolset {
+): PluginToolset {
   const appIdOf = (args: Record<string, unknown>) => {
     const target = args.target;
     return typeof target === "string" ? target.slice("app:".length) : undefined;
   };
   const snapshot = (
     args: Record<string, unknown>,
-    context: BuiltinToolContext,
+    context: PluginToolContext,
     ensure = true
   ) => {
     const appId = appIdOf(args);
@@ -42,7 +42,7 @@ export function createBaseToolset(
   };
   const authority = async (
     args: Record<string, unknown>,
-    context: BuiltinToolContext,
+    context: PluginToolContext,
     base: BaseSnapshot,
     operation: import("./service/base-commit-authority").BaseMutationOperation
   ) => service.issueToolMutationAuthority({

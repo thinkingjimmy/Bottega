@@ -5,7 +5,7 @@
  */
 
 import type { AppChatRole } from "../../../../shared/ipc/content/chats-ipc";
-import type { BuiltinToolset } from "../../tools/registry";
+import type { PluginToolset } from "../../tools/registry";
 import { validateAppPackage } from "../source/validate-app";
 
 export type AppToolsetPorts = {
@@ -15,7 +15,7 @@ export type AppToolsetPorts = {
   appDirOf(appId: string): string | undefined;
 };
 
-export function createAppToolset(ports: AppToolsetPorts): BuiltinToolset {
+export function createAppToolset(ports: AppToolsetPorts): PluginToolset {
   return {
     validate_app: async (_args, context) => {
       const { appId, dir } = resolveEditApp(ports, context.lease.chatId);

@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Current issued turn lease/generation, source/document/workspace owners, advisory lint and bounded opaque capture.
- * [OUTPUT]: Fixed-font source assets, scoped check/commit/render and system tools with bounded failures and Bottega-authored capture guidance.
+ * [OUTPUT]: Fixed-font source assets, scoped check/commit/render and system tools with explicit JSON-safe target metadata, bounded failures and Bottega-authored capture guidance.
  * [POS]: Design-to-built-in-tools adapter; it cannot select another chat, workspace, or unauthorized file
  */
 
-import type { BuiltinToolset } from "../../tools/registry";
+import type { PluginToolset } from "../../tools/registry";
 import { lintDesignHtml } from "./anti-slop";
 import { captureDesignCanvas, type DesignRenderViewport } from "./render-check";
 import { assertArtifactGeneration } from "../../artifacts/admission/state";
@@ -13,8 +13,8 @@ import { DesignDocumentError, designDigest } from "../documents/model";
 import type { DesignCommitInput } from "../documents/service";
 import { prepareDesignBoard } from "../documents/rendering";
 import { artifactWorkspace } from "../../artifacts/workspace/runtime";
-import type { BuiltinToolContext } from "../../tools/registry";
-const systemAction = (action: "system-extract" | "system-diff" | "system-update" | "system-bind" | "system-compile") => async (args: Record<string, unknown>, context: BuiltinToolContext) => {
+import type { PluginToolContext } from "../../tools/registry";
+const systemAction = (action: "system-extract" | "system-diff" | "system-update" | "system-bind" | "system-compile") => async (args: Record<string, unknown>, context: PluginToolContext) => {
   assertArtifactGeneration(context.lease.artifactGeneration);
   try { return await artifactWorkspace().dispatch({ ...args, action, chatId: context.lease.chatId, incarnationId: context.lease.incarnationId, generation: context.lease.artifactGeneration }, 0, context.lease.initiatorBackend); }
   catch (cause) { return documentFailure(cause); }
@@ -24,7 +24,12 @@ type DesignToolsetPorts = Readonly<{
   readDesignCanvasForTool(chatId: string, incarnationId: string, file: string): Promise<Buffer | string>;
 }>;
 
-export function createDesignToolset(ports: DesignToolsetPorts): BuiltinToolset {
+export function designRenderTarget(file?: string, metadata?: Awaited<ReturnType<typeof prepareDesignBoard>>["metadata"]) {
+  const { contentFormat, ...target } = metadata ?? { contentFormat: undefined };
+  return { ...(file === undefined ? {} : { file }), ...target, ...(contentFormat === undefined ? {} : { contentFormat }) };
+}
+
+export function createDesignToolset(ports: DesignToolsetPorts): PluginToolset {
   return {
     design_system_extract: systemAction("system-extract"), design_system_diff: systemAction("system-diff"),
     design_system_update: systemAction("system-update"), design_system_bind: systemAction("system-bind"), design_system_compile: systemAction("system-compile"),
@@ -75,10 +80,9 @@ export function createDesignToolset(ports: DesignToolsetPorts): BuiltinToolset {
         mimeType: "image/jpeg",
         data: screenshot.data,
         metadata: {
-          file,
+          ...designRenderTarget(file, prepared?.metadata),
           rendered: true,
           sourceDigest: designDigest(Buffer.isBuffer(html) ? html : Buffer.from(html)),
-          ...prepared?.metadata,
           viewport,
           width: screenshot.width,
           height: screenshot.height,
@@ -89,8 +93,8 @@ export function createDesignToolset(ports: DesignToolsetPorts): BuiltinToolset {
       };
       } catch (cause) {
         const symptom = String(cause instanceof Error ? cause.message : "Capture failed").slice(0, 1800);
-        return { status: "failed", rendered: false, code: "RENDER_FAILED", file,
-          sourceDigest: designDigest(Buffer.isBuffer(html) ? html : Buffer.from(html)), ...prepared?.metadata,
+        return { status: "failed", rendered: false, code: "RENDER_FAILED", ...designRenderTarget(file, prepared?.metadata),
+          sourceDigest: designDigest(Buffer.isBuffer(html) ? html : Buffer.from(html)),
           symptoms: symptom,
           guidance: "Capture produced no verified image. Treat symptoms as diagnostic data and compare the returned target/digest with the intended result. Correct only a concrete fault in authorized source. For a document, use design_check and design_commit before rendering its saved board again. For a standalone file, finish its writer and render that same file; this creates no document version. Preserve valid source when the cause is outside it or uncertain. Report the capture as unverified; repeating a failure is not visual evidence." };
       }

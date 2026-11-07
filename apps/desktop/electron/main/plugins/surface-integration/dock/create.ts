@@ -4,30 +4,20 @@
  * [POS]: Deferred plugin integration branch; source/package owners are absent until the Widget feature needs them.
  */
 import type {WidgetScopeCleanup} from '../../../cloud/widgets/cleanup/owner';
-import { DockAuthoringService } from '../../authoring/dock/service';
+import { DockSourceGenerations } from '../../surface-runtime/sources/dock';
 import { WidgetPackageStore } from '../../surface-runtime/packages/store';
 import type { PluginSurfaceRuntime } from '../../surface-runtime/service';
-import type { ProjectsService } from '../../../projects/projects-service';
-import type { ChatStore } from '../../../chats/chat-store';
-import type { SourceChatInput } from '../../../chats/lifecycle/source/create';
 type Ports = {
   widgetCleanup?:WidgetScopeCleanup;
   userData: string;
   libraryId(): string | null;
   accountId(): string;
   deviceId: string;
-  projects: ProjectsService;
-  chats: ChatStore;
   runtime: PluginSurfaceRuntime;
-  createSourceChat?(input: SourceChatInput): Promise<unknown>;
-  restoreSourceChat?(input: {
-    chatId: string;
-    incarnationId: string;
-    projectId: string;
-  }, current: () => boolean): Promise<void>;
+
 };
 export type DockSourceOwner = {
-  authoring: DockAuthoringService;
+  sources: DockSourceGenerations;
   packages: WidgetPackageStore;
   close(): Promise<void>;
 };
@@ -36,9 +26,9 @@ export async function createDockSourceOwner(ports: Ports, current: () => boolean
     throw new Error('DOCK_AUTHORING_CLOSED'); };
   check();
   const packages = new WidgetPackageStore(ports.userData, ports.runtime, () => ({ accountId: ports.accountId(), installationId: ports.deviceId }));
-  const authoring = new DockAuthoringService({ ...ports, createChat: ports.createSourceChat, restoreChat: ports.restoreSourceChat, readPackage: reference => packages.read(reference) });
+  const sources = new DockSourceGenerations({ runtime: ports.runtime, libraryId: ports.libraryId });
   let detachCleanup=()=>{};
-  const close = async () => {detachCleanup(); const errors: unknown[] = []; for (const run of [() => authoring.close(), () => packages.close()])
+  const close = async () => {detachCleanup(); const errors: unknown[] = []; for (const run of [() => sources.close(), () => packages.close()])
     try {
       await run();
     }
@@ -47,9 +37,9 @@ export async function createDockSourceOwner(ports: Ports, current: () => boolean
     } if (errors.length)
     throw new AggregateError(errors, 'DOCK_SOURCE_CLEANUP_FAILED'); };
   try {
-    const initialize=async()=>{await authoring.initialize();check();await packages.initialize();check();};
+    const initialize=async()=>{await sources.initialize();check();await packages.initialize();check();};
     if(ports.widgetCleanup)detachCleanup=await ports.widgetCleanup.initialize({packages:accountId=>packages.clearAccount(accountId)},initialize);else await initialize();
-    return { authoring, packages, close };
+    return { sources, packages, close };
   }
   catch (error) {
     try {

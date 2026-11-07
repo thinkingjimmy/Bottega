@@ -21,7 +21,7 @@ export const LAZY_LANES = Object.freeze([
   { name: "Base compute", pattern: /base-core\/src\/compute\//, sample: "packages/base-core/src/compute/formula.ts" },
   { name: "Base schema", pattern: /base-core\/src\/model\/bases-schema\.ts$/, sample: "packages/base-core/src/model/bases-schema.ts" },
   { name: "App compatibility dialog", pattern: /components\/apps\/compatibility\/update-content\.tsx$/, sample: "src/components/apps/compatibility/update-content.tsx" },
-  { name: "Save as App dialog", pattern: /components\/apps\/dialogs\/save-as-app-dialog\.tsx$/, sample: "src/components/apps/dialogs/save-as-app-dialog.tsx" },
+  { name: "Save as plugin dialog", pattern: /components\/apps\/dialogs\/save\/dialog\.tsx$/, sample: "src/components/apps/dialogs/save/dialog.tsx" },
   { name: "Base panel actions", pattern: /side-panel\/catalog\/base-actions\.tsx$/, sample: "src/components/chat/side-panel/catalog/base-actions.tsx" },
   { name: "Non-English shared workspace copy", pattern: /ui\/src\/components\/workspace\/copy\/(?:zh-cn|ja|fr|es)\.ts$/, sample: "packages/ui/src/components/workspace/copy/ja.ts" },
   { name: "Non-English composer catalogs", pattern: /packages\/chat-ui\/src\/ui\/composer\/controls\/copy\/(?:zh-cn|ja|fr|es)\.ts$/, sample: "packages/chat-ui/src/ui/composer/controls/copy/ja.ts" },

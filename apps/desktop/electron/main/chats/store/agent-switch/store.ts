@@ -1,13 +1,13 @@
 /**
  * [INPUT]: Depends on the ChatStore state cell, SQLite switch commands, and caller option CAS
- * [OUTPUT]: Provides receipt-gated switch publication and pure Chat options patch validation
+ * [OUTPUT]: Provides receipt-gated switch publication and pure Chat options patch validation with immutable mode identity
  * [POS]: Focused Chat store collaborator; no coordinator or Settings operations run inside the store queue
  */
 
 import type { ChatStoreState } from "../state";
 import type { ChatFacts } from "../../projection/chat-summary";
 import type { ChatOptionsPatch } from "../../../../../shared/chat-agent/contracts";
-import { turnOptionsSchema } from "../../../../../shared/chat-agent/options";
+import { turnOptionsSchema, assertChatModeLocked } from "../../../../../shared/chat-agent/options";
 import type { SwitchAgentCommand } from "../../sqlite/agent-switch/command";
 import { switchRequestHash } from "../../sqlite/agent-switch/command";
 import { ChatMutationOutcomeUnknownError } from "../mutation-outcome";
@@ -17,6 +17,7 @@ export function patchChatOptions(current: ChatFacts, input: ChatOptionsPatch): C
       current.chatRecordRevision !== input.expectedChatRecordRevision) throw new Error("AGENT_REVISION_STALE");
   if (current.readOnlyReason || current.archivedAt) throw new Error("CHAT_NOT_WRITABLE");
   const options = turnOptionsSchema.parse({ ...current.options, ...input.patch });
+  assertChatModeLocked(current.options?.mode, options.mode);
   if (options.backend !== current.agent ||
       (current.executionKind === "managed-worktree" && options.permissionMode === "full-access")) {
     throw new Error("CHAT_OPTIONS_CONFLICT");

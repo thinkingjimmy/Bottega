@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Chat schemas/commit normalization, App Project membership facts, monotonic Chat/title/start revisions, and main/errors
- * [OUTPUT]: Provides Chat record creation, App Project placement mutation, superseded-branch pruning, fact/commit revisions and the shared pending title-job policy for first messages and recovery.
+ * [OUTPUT]: Provides Chat record creation, App Project placement mutation, superseded-branch pruning, fact/commit revisions and the shared pending title-job policy for first messages and recovery. Preserves main-owned member facts and Home-derived execution identity during first creation.
  * [POS]: apps/desktop/electron/main/chats/lifecycle; Pure Chat record lifecycle policy; ChatStore retains queue and I/O ownership while delegating record construction and transitions
  */
 
@@ -38,6 +38,7 @@ export type ChatCreateIdentity = Readonly<{
   title?: string | null;
   minimumNextSeq?: number;
   homeDir?: string;
+  execution?: Readonly<{ kind: "managed-worktree"; directory: string }>;
   appRole?: AppChatRole | null;
   appId?: string;
   dormantNotice?: boolean;
@@ -46,6 +47,7 @@ export type ChatCreateIdentity = Readonly<{
   snapshotDigest?: string;
   /** R-35: carried to the Chat's first cloud upload only; never stored on the local record (the workflow registry owns it). */
   workflowRole?: import("@ai-chat/cloud-protocol/chats/model").ChatWorkflowRole;
+  memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts;
 }>;
 
 type ProjectFacts = Readonly<{
@@ -144,6 +146,7 @@ export function createChatRecord(input: Readonly<{
       grants: [],
       grantRevision: 0,
       homeDir: input.identity.homeDir,
+      ...(input.identity.execution ? { executionKind: input.identity.execution.kind, executionDir: input.identity.execution.directory } : {}),
       createdAt: message.createdAt,
       updatedAt: message.createdAt,
       nextSeq: Math.max(seq + 1, input.identity.minimumNextSeq ?? 1),

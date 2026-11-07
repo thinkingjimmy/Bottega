@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the database protocol's command, request, response, and failure types
- * [OUTPUT]: Validates closed worker envelopes, atomic message/title-job writes, prepared replay sealing, nullable-session continuation notices, ownership commits, optional App retention identity, and a new workflow Chat's transient role on upsert-record (R-35).
+ * [OUTPUT]: Validates closed worker envelopes, atomic message/title-job writes, prepared replay sealing, nullable-session continuation notices, ownership commits, optional App retention identity, and a new workflow Chat's transient role on upsert-record (R-35). Validates bounded immutable member ownership on original publication.
  * [POS]: Runtime codec for the main/worker trust boundary; protocol types remain declarative in database-protocol.ts
  */
 
@@ -103,7 +103,7 @@ const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
     ownerCommit: object,
     lifecycleKind: literal("native", "external-managed"),
     expectedAggregateRevision: nullable(number),
-    workflowRole: literal("plan", "develop", "review"),
+    workflowRole: literal("plan", "develop", "review"), memberSession: object,
   }),
   "update-chat-facts": command({
     ...op,

@@ -22,7 +22,7 @@
  *        offline), nothing is offered while it is offline, and fixes that live on the computer are left out (`fixesHere`),
  *        a Workflow-off pause naming the computer instead. Busy and the failure are kept with the run (useKeptState), so a
  *        refresh or reopening keeps them; a report the projection shortened reads "Shortened".
- *        There is no separate runs list (Q4). A confirmation these details showed that someone else decided says where
+ *        The details include an optional host-owned result Slot. There is no separate runs list (Q4). A confirmation these details showed that someone else decided says where
  *        ("Already handled on {device}", or plainly when the host cannot name the device), never just disappears (T21-b).
  */
 import { BUILTIN_PROVIDER_IDS } from "@bottega/contracts/model/provider-capabilities";
@@ -83,10 +83,12 @@ function useNow(active: boolean) {
   return now;
 }
 
-export function RunDetailsSheet({ run, facts, port, agentWaiting = null, recordVersion = "", onOpenChange }: {
+export function RunDetailsSheet({ run, facts, port, agentWaiting = null, recordVersion = "", onOpenChange, children }: {
   run: WorkflowRunView; facts: RunHostFacts; port: WorkflowRunPort;
   /** Changes whenever the record's cells change, so a rework draft is read again from the record as it is (Q1). */
   recordVersion?: string;
+  /** Host-owned result contributions, such as desktop-only isolated workspace review. */
+  children?: ReactNode;
   /** The role whose Agent waits on a permission or a question in its Chat; the host reads it from what needs the person. */
   agentWaiting?: WorkflowRoleName | null; onOpenChange(open: boolean): void;
 }) {
@@ -205,6 +207,7 @@ export function RunDetailsSheet({ run, facts, port, agentWaiting = null, recordV
               );
             })}
           </ol>
+          {children}
         </div>
         <RunActions run={run} facts={facts} port={port} className="border-t bg-muted/40 px-4 py-3" />
       </SheetContent>

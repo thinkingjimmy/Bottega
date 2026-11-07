@@ -13,7 +13,7 @@ import {addItem} from '../../../../../shared/system-dock/placement';
 import {applyDockWidgetSchema,widgetPreviewSchema,type WidgetPreview,type WidgetApplyInput,type WidgetApplyReceipt,type WidgetVersionView} from '../../../../../shared/system-dock/widgets/authoring';
 import {customDockWidgetSchema,type CustomDockWidget} from '../../../../../shared/system-dock/widgets/instance';
 import type {PluginSurfaceRuntime} from '../../../plugins/surface-runtime/service';
-import type {DockAuthoringService} from '../../../plugins/authoring/dock/service';
+import type {DockSourceGenerations} from '../../../plugins/surface-runtime/sources/dock';
 import type {WidgetPackageStore} from '../../../plugins/surface-runtime/packages/store';
 import {DurableJson} from '../../../persistence/durable-json';
 import type {DockConfigStore} from '../config-store';
@@ -26,7 +26,7 @@ import {widgetPreviewConfigurationSchema} from '../../../../../shared/system-doc
 type ReviewDraft={target:CustomWidgetItem;permission:BasePermission;apiConsent:readonly string[];expectedRevision:number|null};
 export type WidgetMappingMutation={put(mapping:AcceptedWidget):Promise<void>;remove(target:Pick<AcceptedWidget,'scope'|'itemId'>&{keepApiCredentials?:boolean}):Promise<void>};
 type PreviewEntry={scope:LocalWidgetScope;expiresAt:number;value:WidgetPreview;reviewId:string;drafts:Map<string,ReviewDraft>;requests:Map<string,string>};
-type Ports={userData:string;config:DockConfigStore;runtime:PluginSurfaceRuntime;authoring:DockAuthoringService;packages:WidgetPackageStore;scope():LocalWidgetScope;locale():string;changed():void;
+type Ports={userData:string;config:DockConfigStore;runtime:PluginSurfaceRuntime;sources:DockSourceGenerations;packages:WidgetPackageStore;scope():LocalWidgetScope;locale():string;changed():void;
  api?:WidgetApiHooks;canApply?(definitionId:string):boolean;validateData?(dock:DockContribution,widget:CustomDockWidget):Promise<void>};
 const candidateBindings=(dock:DockContribution,bindings:CustomDockWidget['bindings'])=>{
  const slots=new Set(dock.data.filter(source=>source.kind==='base').map(source=>source.binding));return bindings.filter(binding=>slots.has(binding.slot));
@@ -40,14 +40,13 @@ export class DockWidgetApplications{
  private closed=true;
  constructor(private readonly ports:Ports){this.file=new DurableJson(join(ports.userData,'dock-widget-runtime.json'),localWidgetRuntimeSchema,()=>({version:1,mappings:[],operations:[]}));}
  async initialize(){await this.file.initialize();this.closed=false;this.publish();}
- async build(id:string){await this.ports.authoring.build(id);return this.preview(id);}
  async preview(id:string):Promise<WidgetPreview>{
-  this.assertDefinition(id);const scope=this.liveScope(),raw=await this.ports.authoring.preview(id),frozen=await this.ports.packages.prepare(id,raw.generationId);this.assertScope(scope);
-  const checked=await this.ports.authoring.preview(id);if(checked.generationId!==raw.generationId||checked.sourceFingerprint!==raw.sourceFingerprint)throw new Error('DOCK_PREVIEW_CONFLICT');
+  this.assertDefinition(id);const scope=this.liveScope(),raw=await this.ports.sources.preview(id),frozen=await this.ports.packages.prepare(id,raw.generationId);this.assertScope(scope);
+  const checked=await this.ports.sources.preview(id);if(checked.generationId!==raw.generationId||checked.sourceFingerprint!==raw.sourceFingerprint)throw new Error('DOCK_PREVIEW_CONFLICT');
   return this.remember(raw,scope,frozen,'candidate');
  }
  versions(id:string):WidgetVersionView[]{
-  this.liveScope();if(!this.ports.authoring.definitions().some(definition=>definition.id===id))throw new Error('DOCK_WIDGET_NOT_FOUND');
+  this.liveScope();if(!this.ports.sources.definitions().some(definition=>definition.id===id))throw new Error('DOCK_WIDGET_NOT_FOUND');
   const active=this.ports.runtime.descriptor(id)?.activeGenerationId;
   return this.ports.runtime.history(id).filter(generation=>'dock'in generation.manifest).map(generation=>({generationId:generation.generationId,version:generation.manifest.version,createdAt:generation.createdAt,active:generation.generationId===active,available:generation.available}));
  }
@@ -60,7 +59,7 @@ export class DockWidgetApplications{
  private remember(raw:Awaited<ReturnType<PluginSurfaceRuntime['dockPreview']>>,scope:LocalWidgetScope,frozen:Awaited<ReturnType<WidgetPackageStore['prepare']>>,kind:'candidate'|'version'){
   const id=raw.id,record=this.ports.runtime.descriptor(id);if(!record)throw new Error('DOCK_WIDGET_NOT_FOUND');
   const instances=this.instances(id),active=record.activeGenerationId;
-  const replacement=kind==='candidate'&&active===null?this.ports.authoring.replacement(id):null;
+  const replacement=kind==='candidate'&&active===null?this.ports.sources.replacement(id):null;
   if(replacement&&canonicalJson(this.ports.config.layout().items.find(item=>item.id===replacement.item.id)??null)!==canonicalJson(replacement.item))throw new Error('DOCK_PREVIEW_CONFLICT');
   const applied=active===raw.generationId&&instances.every(item=>this.accepted(item)?.widget.definition.packageRef===frozen.reference&&item.widget.type==='custom'&&item.widget.definition.packageRef===frozen.reference);
   const value=widgetPreviewSchema.parse({...raw,kind,previewId:randomUUID().replaceAll('-',''),packageRef:frozen.reference,contractDigest:frozen.descriptor.contractDigest,executionInstallationId:scope.installationId,
@@ -71,7 +70,7 @@ export class DockWidgetApplications{
  }
  previewContext(previewId:string){
   this.liveScope();const entry=this.previews.get(previewId);if(!entry||entry.expiresAt<=Date.now())throw new Error('DOCK_PREVIEW_EXPIRED');this.assertScope(entry.scope);
-  const definition=this.ports.authoring.definitions().find(value=>value.id===entry.value.id),record=this.ports.runtime.descriptor(entry.value.id);
+  const definition=this.ports.sources.definitions().find(value=>value.id===entry.value.id),record=this.ports.runtime.descriptor(entry.value.id);
   if(!definition||!record||record.activeGenerationId!==entry.value.expectedActiveGenerationId||this.ports.config.snapshot().localRevision!==entry.value.layoutRevision||entry.value.kind==='candidate'&&(record.error||record.candidateGenerationId!==entry.value.generationId))throw new Error('DOCK_PREVIEW_CONFLICT');
   return{preview:structuredClone(entry.value),scope:structuredClone(entry.scope),chatId:definition.chatId,expiresAt:entry.expiresAt};
  }
@@ -134,8 +133,8 @@ export class DockWidgetApplications{
   const preview=entry.value;if(preview.mode==='applied')throw new Error('DOCK_WIDGET_ALREADY_APPLIED');
   if((input.reviewId!==undefined||entry.drafts.size>0)&&input.reviewId!==entry.reviewId)throw new Error('DOCK_PREVIEW_CONFLICT');
   if(this.pendingDefinition(preview.id))throw new Error('DOCK_WIDGET_APPLICATION_PENDING');
-  if(!this.ports.authoring.definitions().some(definition=>definition.id===preview.id))throw new Error('DOCK_WIDGET_NOT_FOUND');
-  const checked=preview.kind==='candidate'?await this.ports.authoring.preview(preview.id):await this.ports.runtime.dockVersion(preview.id,preview.generationId);this.assertScope(scope);
+  if(!this.ports.sources.definitions().some(definition=>definition.id===preview.id))throw new Error('DOCK_WIDGET_NOT_FOUND');
+  const checked=preview.kind==='candidate'?await this.ports.sources.preview(preview.id):await this.ports.runtime.dockVersion(preview.id,preview.generationId);this.assertScope(scope);
   if(checked.generationId!==preview.generationId||checked.sourceFingerprint!==preview.sourceFingerprint||this.ports.runtime.descriptor(preview.id)?.activeGenerationId!==preview.expectedActiveGenerationId||this.ports.config.snapshot().localRevision!==preview.layoutRevision)throw new Error('DOCK_PREVIEW_CONFLICT');
   const beforeItems=preview.replacement?[dockWidgetItemSchema.parse(this.ports.config.layout().items.find(item=>item.id===preview.replacement!.item.id))]:this.instances(preview.id).map(item=>dockWidgetItemSchema.parse(item));
   if(preview.replacement&&canonicalJson(beforeItems[0])!==canonicalJson(preview.replacement.item))throw new Error('DOCK_PREVIEW_CONFLICT');

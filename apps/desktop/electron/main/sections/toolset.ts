@@ -7,7 +7,7 @@
 import { SECTION_EXPORT_BYTE_LIMIT } from "../../../shared/ipc/agent/agent-ipc";
 import type { ChatRecord } from "../../../shared/ipc/content/chats-ipc";
 import type { ChatStore } from "../chats/chat-store";
-import type { BuiltinToolContext, BuiltinToolset } from "../tools/registry";
+import type { PluginToolContext, PluginToolset } from "../tools/registry";
 import type { ConversationCoordinator } from "./coordinator/conversation-coordinator";
 import { readSectionTranscriptPage } from "./export-transcript";
 import type { PromotableResultSource } from "../agent/subagents/subagent-spawn";
@@ -31,7 +31,7 @@ type SectionToolProviders = {
 };
 
 // 发起方 CLI 的 MCP result 可见上限生效时：JSON 转义最坏 2×，取预算一半再留封套余量
-function transcriptByteLimit(context: BuiltinToolContext) {
+function transcriptByteLimit(context: PluginToolContext) {
   return Math.max(
     1,
     Math.min(
@@ -107,7 +107,7 @@ export function createSectionToolset(
   chats: ChatStore,
   coordinator: ConversationCoordinator,
   providers: SectionToolProviders
-): BuiltinToolset {
+): PluginToolset {
   return {
     list_sections: async (args) => {
       const visible = chats

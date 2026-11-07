@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React, i18n, the Setup provider, the scoped MCP controller, shared tool-support projection, an explicit global/Project MCP scope port, Settings primitives, AppDialog, the shared BackendSupportNote from builtin-tools-section, and shared masked MCP DTOs
+ * [INPUT]: Depends on React, i18n, the Setup provider, the scoped MCP controller, shared tool-support projection, an explicit global/Project MCP scope port, Settings primitives, AppDialog, the shared BackendSupportNote from plugin-tools-section, and shared masked MCP DTOs
  * [OUTPUT]: Provides one MCP renderer for global defaults and exact Projects, including owner grouping, inherited overrides, masked-secret editing, and conflict-safe drafts, plus useMcpServersPort — the scope-agnostic half of the port both Tools views assemble
  * [POS]: apps/desktop/src/components/settings/tools; Scope-agnostic manual MCP controls for Settings › Tools; controllers own IPC/CAS/fencing, the hook wires one controller into the base port, and the component only renders snapshots and mutations
  */
@@ -41,7 +41,7 @@ import {
   SettingsSection,
   SettingsSwitch,
 } from "@/components/settings/settings-layout";
-import { BackendSupportNote } from "@/components/settings/tools/builtin-tools-section";
+import { BackendSupportNote } from "@/components/settings/tools/plugin-tools-section";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { createMcpServersController } from "@/lib/clients/mcp-servers-client";
 import { isBuiltinBackendInfo } from "@/lib/agent/agent-backends";

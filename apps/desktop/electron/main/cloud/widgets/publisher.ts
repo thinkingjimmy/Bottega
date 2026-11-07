@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides one bounded WidgetPackagePublisher with original-file replay, independent remote-receipt checks, cancellation and exact owned cleanup.
  * [POS]: Asynchronous package delivery; the existing package owner retains intent/pin truth and decides when local delivery is complete.
  */
+import { cloudPluginReview, cloudPluginContract, verifyCloudPluginArchive, type FrozenCloudPluginPacket } from "./plugins/codec";
 import { rm, lstat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { canonicalJson } from "@bottega/contracts/core/canonical-json";
@@ -38,12 +39,12 @@ import {
 } from "./requests";
 import { widgetPackageOwnerId } from "@ai-chat/cloud-protocol/widgets/model";
 
-type Frozen = {
+type LegacyFrozen = {
   reference: string;
   descriptor: WidgetPackageDescriptor;
   bytes: Buffer;
-  sourceChat?:{chatId:string};
 };
+type Frozen = LegacyFrozen | FrozenCloudPluginPacket;
 type Ports = {
   userData: string;
   scope: SyncScope;
@@ -75,11 +76,8 @@ export class WidgetPackagePublisher {
       if (this.active.key !== key) throw new Error("WIDGET_PUBLISHER_CAPACITY");
       return this.active.promise;
     }
-    const frozen = {
-      ...input,
-      descriptor: structuredClone(input.descriptor),
-      bytes,
-    };
+    const frozen: Frozen = "descriptor" in input ? { ...input, descriptor: structuredClone(input.descriptor), bytes }
+      : { ...input, distribution: structuredClone(input.distribution), bytes };
     const flight: Flight = { key, promise: Promise.resolve(null as never) };
     const task = this.run(frozen, external).finally(() => {
       bytes.fill(0);
@@ -140,24 +138,21 @@ export class WidgetPackagePublisher {
     };
     try {
       current();
-      const source = {
-          accountId: crypto.session.userId,
-          installationId: crypto.session.deviceId,
-          definitionId: frozen.descriptor.source.definitionId,
-          generationId: frozen.descriptor.source.generationId,
-        },
-        started = performance.now();
-      const packet = verifyPackage(frozen.bytes, frozen.reference, source);
-      if (
-        canonicalJson(packet.descriptor) !== canonicalJson(frozen.descriptor) ||
-        performance.now() - started >= BUDGET.verifyMs
-      )
-        throw new Error("WIDGET_PACKAGE_SOURCE_CHANGED");
-      const review = buildWidgetPackageReview(packet, frozen.reference,frozen.sourceChat),
-        subject = {
-          definitionId: source.definitionId,
-          sourceInstallationId: source.installationId,
-        },
+      let source: { accountId: string; installationId: string; definitionId: string; generationId: string };
+      let review: Buffer, contractDigest: string;
+      if ("format" in frozen && frozen.format === "bottega-plugin/v1") {
+        const packet = verifyCloudPluginArchive(frozen.bytes, frozen.reference);
+        if (canonicalJson(packet.distribution) !== canonicalJson(frozen.distribution)) throw new Error("Plugin distribution changed before upload");
+        source = { accountId: crypto.session.userId, installationId: crypto.session.deviceId, definitionId: packet.distribution.pluginId, generationId: packet.distribution.revisionId };
+        review = cloudPluginReview(packet.distribution); contractDigest = cloudPluginContract(packet.distribution);
+      } else {
+        const legacy = frozen as LegacyFrozen;
+        source = { accountId: crypto.session.userId, installationId: crypto.session.deviceId, definitionId: legacy.descriptor.source.definitionId, generationId: legacy.descriptor.source.generationId };
+        const started = performance.now(), packet = verifyPackage(legacy.bytes, legacy.reference, source);
+        if (canonicalJson(packet.descriptor) !== canonicalJson(legacy.descriptor) || performance.now() - started >= BUDGET.verifyMs) throw new Error("WIDGET_PACKAGE_SOURCE_CHANGED");
+        review = buildWidgetPackageReview(packet, legacy.reference); contractDigest = packet.descriptor.contractDigest;
+      }
+      const subject = { definitionId: source.definitionId, sourceInstallationId: source.installationId },
         owner = { kind: "widget" as const, id: widgetPackageOwnerId(subject) },
         sourceHash = frozen.reference.slice(7);
       const admit = (raw: unknown) => {
@@ -167,8 +162,9 @@ export class WidgetPackagePublisher {
           reference: frozen.reference,
         });
         if (
+          value.format !== ("format" in frozen ? "bottega-plugin/v1" : undefined) ||
           value.generationId !== source.generationId ||
-          value.contractDigest !== packet.descriptor.contractDigest ||
+          value.contractDigest !== contractDigest ||
           value.archiveBytes !== frozen.bytes.length ||
           value.archiveSha256 !== hash(frozen.bytes) ||
           value.reviewBytes !== review.length ||
@@ -260,10 +256,11 @@ export class WidgetPackagePublisher {
       const archiveFile = await prepare("archive", frozen.bytes),
         reviewFile = await prepare("review", review);
       const plan = {
+        ...("format" in frozen ? { format: "bottega-plugin/v1" as const } : {}),
         subject,
         reference: frozen.reference,
         generationId: source.generationId,
-        contractDigest: packet.descriptor.contractDigest,
+        contractDigest: contractDigest,
         archiveBytes: frozen.bytes.length,
         archiveSha256: hash(frozen.bytes),
         reviewBytes: review.length,

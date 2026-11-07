@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on localized surface migration failure projection; Depends on shared appDisplayName, react-router, Apps i18n/provider, the main-owned AppRecordProjection, Base detail, README/settings surfaces, the shared useAppEditor command, Apps client, and Web App frame/edit/repair components and independent update Settings consent routing
- * [OUTPUT]: Provides AppDetailView with residence-gated Base Studio, App-window handoff, Editor navigation and lifecycle controls; closed routes retain Base editing without mounting GUI or Use/Edit surfaces.
+ * [OUTPUT]: Provides AppDetailView for the native App route or a delegated unified plugin page, with residence-gated Base Studio that retains its delegated plugin route, App-window handoff, Editor navigation and lifecycle controls; closed routes retain Base editing without mounting GUI or Use/Edit surfaces.
  * [POS]: apps/desktop/src/views/apps; App detail route; web runtime start is gated by the positive servesWebRuntime predicate, and a nonresident main route renders a transfer card before any Base Studio hook or mutation surface mounts
  */
 
@@ -76,7 +76,7 @@ type FrameState =
   | { type: "error"; message: string };
 type RightSurface = "none" | "settings" | "log";
 
-function ResidentBaseAppDetail({ record }: { record: AppRecordProjection }) {
+function ResidentBaseAppDetail({ record, hosted }: { record: AppRecordProjection; hosted: boolean }) {
   const { t } = useAppTranslation();
   const surface = appStudioSurface(record.id);
   const residence = useSurfaceResidence(surface);
@@ -91,11 +91,12 @@ function ResidentBaseAppDetail({ record }: { record: AppRecordProjection }) {
   if (residence && !isCurrentResidence(residence)) {
     return <SurfaceAwayCard residence={residence} route={route} />;
   }
-  return <BaseAppDetail key={record.id} record={record} />;
+  return <BaseAppDetail key={record.id} record={record} hosted={hosted} />;
 }
 
-export function AppDetailView() {
-  const { id } = useParams();
+export function AppDetailView({ hostedAppId }: { hostedAppId?: string } = {}) {
+  const { id: routeAppId } = useParams();
+  const id = hostedAppId ?? routeAppId;
   const navigate = useNavigate();
   const { t } = useAppTranslation();
   const { apps, retryApp, repairApp, cancelInstall, liveLogs } = useApps();
@@ -196,7 +197,7 @@ export function AppDetailView() {
     return <Navigate to="/apps" replace />;
   }
   if (record.manifest?.kind === "base") {
-    return <ResidentBaseAppDetail record={record} />;
+    return <ResidentBaseAppDetail record={record} hosted={Boolean(hostedAppId)} />;
   }
 
   const effectiveFrame =

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses CLI-generated ThreadItem, scoped item ownership, shared UTF-8/tool budgets and product callbacks.
- * [OUTPUT]: Exports NativeEvents for bounded public summary details and metadata-preserving native item projections.
+ * [OUTPUT]: Exports NativeEvents for bounded public summaries, metadata-preserving items and main-owned sources for viewed/generated images.
  * [POS]: Native event mapping only; session binding and terminal ownership belong to the turn.
  */
 import { truncateUtf8 } from "@ai-chat/cloud-protocol/turns/text/truncate-utf8";
@@ -123,7 +123,7 @@ export class NativeEvents {
           spawnedAt: current?.spawnedAt ?? Date.now(), lastActivityAt: Date.now() }).meta;
         this.options.callbacks.onSubagentUpdate?.(meta); break;
       }
-      case "imageView": this.item({ itemId, kind: "image", title: item.path, status }, child, { locations: [item.path] }); break;
+      case "imageView": this.item({ itemId, kind: "image", title: item.path, detail: item.path, status }, child, { locations: [item.path] }); break;
       case "collabAgentToolCall": {
         for (const threadId of item.receiverThreadIds) {
           this.children.add(threadId);

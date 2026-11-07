@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { lstat, readdir, readFile, rm, rmdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { pluginModeSelectionSchema, pluginPrepareAuthoringInputSchema } from "@bottega/contracts/plugins/platform";
 import type { AgentWorkspaceScope } from "../../../../shared/ipc/agent/agent-ipc";
 import type { ComposerDraftKey, DurableComposerDraft, DurableQueueItem, LoadedComposerDraft, SaveComposerDraftInput } from "../../../../shared/composer/drafts-ipc";
 import { durableReplaceFile, ensureDurableDirectory, isErrnoCode } from "../../persistence/durable-json";
@@ -58,6 +59,8 @@ const storedSchema = z.object({
     })) }),
     pendingAcks: z.array(z.object({ kind: z.enum(["manual", "steer"]), id: z.string() })),
     workspaceIdentityKey: z.string(),
+    mode: pluginModeSelectionSchema.optional(),
+    pluginAuthoring: pluginPrepareAuthoringInputSchema.extend({ displayName: z.string().max(160).optional() }).optional(),
     projectId: z.string().nullable(),
   }),
   files: z.record(z.string(), storedFileSchema),

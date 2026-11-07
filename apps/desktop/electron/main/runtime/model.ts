@@ -26,11 +26,13 @@ export const FETCH_SCRIPT = "apps/desktop/scripts/node-runtime/fetch-node.mjs";
  */
 export const NODE_ENTRY_FILES = Object.freeze({
   "package-host": "package-host-entry.js",
+  "plugin-files": "plugin-files-entry.js",
   "package-provider": "package-provider-entry.js",
   "custody-guardian": "custody-guardian-entry.js",
   "builtin-tools-server": "builtin-tools-server.js",
   "codec-host": "codec-host-entry.js",
   "app-gui-compiler": "app-gui-compiler-entry.js",
+  "plugin-compiler": "plugin-compiler-entry.js",
   /* TASK-35 slice 2c: programs that used to be `-e` strings (C10, C11). */
   "process-watchdog": "process-watchdog-entry.js",
   /* Slice 5: the App repair supervisor (C8). */
@@ -41,7 +43,7 @@ export type NodeEntry = keyof typeof NODE_ENTRY_FILES;
 
 export const NODE_ENTRIES = Object.keys(NODE_ENTRY_FILES) as NodeEntry[];
 /** Third-party adapters run from unpacked node_modules. */
-export const NODE_PACKAGES = ["claude-agent-acp"] as const;
+export const NODE_PACKAGES = ["claude-agent-acp", "pnpm"] as const;
 export type NodePackage = (typeof NODE_PACKAGES)[number];
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);

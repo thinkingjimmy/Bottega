@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/promises and path, and the RuntimeIdentity (realpath, dev, ino, mtime, size) the registry reads around every version probe.
- * [OUTPUT]: Provides configureRuntimeVersionCache(file) and cachedRuntimeVersion(backend, executable, identity, probe): a version answered before for the very same file spares the first `--version` of a launch; later checks in the same process probe again.
+ * [OUTPUT]: Provides configureRuntimeVersionCache(file) and cachedRuntimeVersion(backend, executable, identity, probe): a version answered before for the very same file spares the first `--version` of a launch; later checks in the same process probe again, and rejected probes evict stale persisted answers.
  * [POS]: Side module of runtime-registry.ts (kept out of it for its 800-line bound); C-10 — each `--version` is a CLI process of up to ~200 MB at the most contended moment of a launch.
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -37,7 +37,13 @@ export async function cachedRuntimeVersion(backend: string, executable: string, 
   const known = entries.get(key);
   if (known && !served.has(key)) { served.add(key); return known; }
   served.add(key);
-  const version = await probe();
+  let version: string | undefined;
+  try { version = await probe(); }
+  catch (cause) {
+    entries.delete(key);
+    if (known) persist(entries);
+    throw cause;
+  }
   /* Only an answer is remembered, and a failed or unparseable probe forgets the old one: the next launch must ask again. */
   entries.delete(key);
   if (version) {

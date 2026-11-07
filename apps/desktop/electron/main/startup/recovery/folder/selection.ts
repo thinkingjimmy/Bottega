@@ -20,10 +20,10 @@ async function checkControl(root: string) {
   if (control && (!control.isDirectory() || control.isSymbolicLink() || !await readLibraryIdentity(root))) throw new LibraryError("control-invalid");
 }
 
-export async function classifyFolder(picked: string): Promise<FolderSelection> {
+export async function classifyFolder(picked: string, userData?: string): Promise<FolderSelection> {
   const canonical = await realpath(picked);
   await checkControl(canonical);
-  const choice = await resolveLibraryChoice(canonical);
+  const choice = await resolveLibraryChoice(canonical, userData);
   await checkControl(choice.root);
   return { kind:await readLibraryIdentity(choice.root) ? "existing" : "new", path:choice.root, picked:canonical };
 }
@@ -32,7 +32,7 @@ export async function adoptFolder(input: { selection:FolderSelection; library:St
   const { selection, library, signal } = input;
   signal.throwIfAborted();
   if (selection.kind === "new") {
-    const fresh = await classifyFolder(selection.picked);
+    const fresh = await classifyFolder(selection.picked, input.userData);
     if (fresh.kind !== "new" || fresh.path !== selection.path) throw new LibraryError("identity-changed");
   }
   const previous = library.settings.get();

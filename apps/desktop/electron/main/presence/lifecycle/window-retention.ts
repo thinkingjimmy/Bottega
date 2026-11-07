@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Product WindowRegistry lifecycle facts, retryable main readiness failures, and quit/recovery callbacks.
- * [OUTPUT]: Provides main hide/restore, deferred opens, last-product quit interception, an authorized quit that a page's beforeunload can't block (F-08), and bounded crashed-renderer replacement.
+ * [OUTPUT]: Provides main hide/restore, deferred opens, product-only last-window quit, authorized unload, and bounded crashed-renderer replacement.
  * [POS]: Product window presentation owner; auxiliary windows never participate in product counting.
  */
 
@@ -12,15 +12,18 @@ export class WindowRetention {
   private opening: Promise<ProductWindowRecord> | null = null;
   private openIntent = false;
   private recovered = false;
+  private hasProductWindow = false;
   private readonly unsubscribe: () => void;
   constructor(private readonly ports: {
     windows: WindowRegistry; enabled(): boolean; quitting(): boolean;
     requestQuit(): void; finished?(): boolean; recovered?(): void; retained?(): void;
   }) {
+    this.hasProductWindow = ports.windows.list().length > 0;
     this.unsubscribe = ports.windows.subscribe((event) => {
       /* F-08: once quit is authorized a page's own leave guard (the remote draft store's beforeunload) must not turn the window
          into a zombie; drafts are saved before quit, so the unload proceeds. While running, the guard stands. */
       if (event.type === "registered") {
+        this.hasProductWindow = true;
         event.record.window.webContents.on?.("will-prevent-unload", (unload) => {
           if (ports.quitting()) unload.preventDefault();
         });
@@ -43,6 +46,15 @@ export class WindowRetention {
     });
   }
   get recovering() { return this.opening !== null || this.openIntent; }
+  onAllWindowsClosed() {
+    // Candidate probes can close before the first product window exists.
+    if (!this.hasProductWindow) return;
+    queueMicrotask(() => {
+      if (!this.ports.quitting() && !this.ports.enabled() && !this.recovering && !this.ports.windows.list().length) {
+        this.ports.requestQuit();
+      }
+    });
+  }
   configure(launch: () => Promise<ProductWindowRecord>) { this.launch = launch; }
   async initialize(silent: boolean) { await this.ensureMain(); if (!silent || this.openIntent) this.open(); }
   ensureMain(): Promise<ProductWindowRecord> {

@@ -1,9 +1,11 @@
 /**
- * [INPUT]: Depends on Prepared Skill receipts, effective catalog snapshots, custody, builtin policy and workflow turn authority.
- * [OUTPUT]: Provides finalizeSkillsTurnProjection; selected workflow Skills must remain capable and complete before exact use_skill issuance.
+ * [INPUT]: Depends on the main member identity index, Prepared Skill receipts, effective catalog snapshots, custody, builtin policy and workflow turn authority.
+ * [OUTPUT]: Provides finalizeSkillsTurnProjection; selected workflow Skills remain capable and complete; trusted persistent member origin supplies its actual Lead/member role.
  * [POS]: apps/desktop/electron/main/window/agent; Final turn projection shared by builtin Providers; workflows never fall back to ambient Skills.
  */
 
+import { memberChatFacts } from "../../chats/projection/chat-summary";
+import { modeToolSelection, resolveChatMode } from "../../sections/coordinator/turns/mode-admission";
 import type {
   AgentContext,
   BuiltinTurnToolPolicy,
@@ -40,7 +42,10 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
     autoApproved: input.policy.builtinTools !== "none",
     runtimeRootReadable: runtimeRoot !== null,
   } as const;
+  const mode=resolveChatMode({backend:projectionInput.backendId,mode:projectionInput.mode});
+  const selectedTools=modeToolSelection({backend:projectionInput.backendId,mode:projectionInput.mode});
   const frozenAllowedTools = projectBuiltinTools({
+    ...selectedTools,
     builtinTools: input.policy.builtinTools,
     backend: projectionInput.backendId,
     planMode: projectionInput.planMode,
@@ -102,6 +107,7 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
     runtimeRoot,
   });
   const projectedTools = projectBuiltinTools({
+    ...selectedTools,
     builtinTools: input.policy.builtinTools,
     backend: projectionInput.backendId,
     planMode: projectionInput.planMode,
@@ -115,6 +121,11 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
   const allowedTools = projectedTools.filter(name => name !== "read_chat_history" || Boolean(projectionInput.handoff));
   const readOnlyRoots = input.context.filesystemAccess?.readOnlyRoots;
 
+  const member = projectionInput.origin?.kind === "member" ? projectionInput.origin : memberChatFacts(projectionInput.conversationId);
+  const role = member ? projectionInput.conversationId === member.leadChatId
+    ? "You are the team Lead. Coordinate members and their task results."
+    : `You are the persistent team member ${JSON.stringify(member.memberId)}. Complete your assigned task; collaborate with Lead Chat ${JSON.stringify(member.leadChatId)}. Do not act as Lead or create a nested team.`
+    : undefined;
   return {
     ...input.context,
     skillsCustodyId: custodyId,
@@ -134,7 +145,7 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
       turnKind: turnKindForOrigin(projectionInput.origin),
       handoff: projectionInput.handoff, freshSession: projectionInput.freshSession,
       allowedTools,
-      appInstructions: input.context.attachedAppInstructions ?? "",
+      appInstructions: [mode.prompt,role,input.context.attachedAppInstructions].filter(Boolean).join("\n\n"),
       skillsCapable: snapshot.capable,
       skills: snapshot.entries
         .filter((entry) => entry.available)

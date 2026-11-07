@@ -2,7 +2,7 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, i18n, Sidebar UI, product providers, shared WorkspaceNavigation/SettingsNavigation and ComputerSwitcher, active App targets, footer affordances, cloud projections and the Sidebar notice dialog.
  * [OUTPUT]: Adapts native data and actions to the shared complete sidebar, mounts the account's computer strip with this computer first, creates a new Chat on the computer being viewed and stands its controls down in place while that computer sleeps, and preserves generation-fenced targets, feedback and Settings navigation (including the build-flagged Agent configs entry and the Plugins group: All plugins plus each turned-on plugin that has settings, with Dock named Dock and using PanelBottom; the macOS-only standalone Dock entry remains only when Plugins is unavailable).
- * [POS]: Sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
+ * [POS]: Unified Plugins entry and declared ready page navigation; sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  * Memory status follows its plugin item when the workbench UI is enabled; the footer uses the same destination.
  */
 import {
@@ -89,6 +89,8 @@ import {
   type SettingsDestination,
   type SettingsOverlaySection,
 } from "@/lib/settings/navigation/settings-navigation";
+import { PluginNavigationRows } from "@/components/plugins/navigation";
+import { pluginContextCopy } from "@/lib/plugin-platform/context-copy";
 import { PinnedApps } from "./apps/pinned-apps";
 import { SidebarUpdateButton } from "./sidebar-update-button";
 import { appearsInRootChats } from "../../../shared/placement/sidebar";
@@ -543,14 +545,15 @@ function AppSidebarContent({
               ),
           }}
           apps={{
-            label: t("common.apps"),
+            label: pluginContextCopy(i18n.language).plugins,
             active: activePath === "/apps" || appTarget.kind === "apps",
-            render: (children) => <Link to="/apps">{children}</Link>,
+            render: (children) => <button type="button" onClick={() => onSelectSettings("plugins")}>{children}</button>,
           }}
           appsExtras={
             <>
               <AppsStatusIndicator status={sidebarStatus} />
               <PinnedApps />
+              <PluginNavigationRows />
             </>
           }
           settings={{

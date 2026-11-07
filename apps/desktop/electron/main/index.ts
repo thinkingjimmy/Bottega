@@ -1,8 +1,8 @@
 /**
  * [INPUT]: Depends on Electron lifecycle, Node filesystem, installation-scoped device identity, on-demand English-plus-active-locale translation (shared and main-only native catalogs), and every main-owned service, including signed-update compatibility, scoped Extensions, Project cleanup/Tools, Agent policy, Chat continuation recovery, coordinator/custody, Apps, Artifact document commit/recovery, browser, local usage history, account quota service seeded from its durable last-known snapshot, presence lifecycle/composition and crash-aware main readiness, and the build-gated cloud account lifecycle with consent restoration, cross-Store cleanup and original-coordinator remote intake.
- * Artifact workspace/checkpoint ownership composes with the existing document journal and plugin lifecycle. App surface leases share the canonical effective-workspace resolver used by files and tools.
+ * Artifact workspace/checkpoint ownership composes with the existing document journal and plugin lifecycle. App surface leases and Gallery source recovery share the canonical effective-workspace resolver used by files and tools.
  * [OUTPUT]: Provides the desktop composition root with parallel pre-window store initialization, the two-phase Chat store open/adopt that spawns the SQLite worker ahead of custody recovery and adopts it alongside, early CLI-discovery warm-up feeding the persisted Agent runtime snapshot that seeds the window's startup snapshot, a post-window maintenance queue that also finishes a window-first folder mount and remounts the Bases its new Chat identities unblock, pre-Project App authority repair, the trust-gated signed candidate preflight, App Query snapshot wiring, scoped inventory and Project Tools wiring, Chat Home/SQLite continuation reconciliation, post-reconciliation external-history sync, the periodic chat-store maintenance gate, cleanup participants, recovery order, windows, and two-phase shutdown, background retention independent of menu bar visibility, shared quit authorization, and task status startup. Agent configuration inventory resolves live library Skills and scoped MCP servers; workflow defaults read Provider preferences.
- * Plugin Surface composition owns source authoring, guarded original Chat restoration, sealed generations and delivery; Memory exposes its existing owners and remote pause port, and Dock retains its original owner and recovery lifecycle. Managed previews follow committed App conversation availability and drain before App disable returns.
+ * Unified plugin composition permits folderless onboarding and awaits official sources on actual Library admission. It owns first-send source Projects, authoring leases, managed immutable builds, trusted tool/service processes and consent-scoped package delivery. Team sessions, native feature and App/HostPackage adapters delegate their actual execution and removal owners. Memory and Dock retain their recovery lifecycle; managed previews drain before App disable returns.
  * Folder ownership shares cloud identity; terminal quit disconnects Cloud before preview drainage and reports live process/task facts and named unconfirmed drafts, cancellation restores editing, and failure dialogs load only when requested by startup/shutdown/runtime.
  * [POS]: The root lifecycle owner of the desktop main process; entry files own identity and the V8 compile cache before this module is imported
  */
@@ -97,7 +97,12 @@ import { PreparedSkillReferenceLedger } from "./skills-management/custody/prepar
 import { configurePreparedSkillReferenceCustody } from "./sections/coordinator/admission/prepared-skill-reference-custody";
 import type { ExtensionRegistryStore } from "./extensions/registry/registry-store";
 import { createMainWindowLauncher } from "./startup/windows/main-window-runtime";
-import { composeBuiltinTools } from "./startup/domains/builtin-tools-composition";
+import { composePluginTools } from "./startup/domains/plugin-tools-composition";
+import {initializeUnifiedPlugins,type UnifiedPluginIntegration} from './plugins/integration/composition';
+import type {composeHostPackagePluginAdapters} from './plugins/integration/adapters/host-packages';
+import {cloudPluginCredentials} from './plugins/integration/adapters/cloud-credentials';
+import type {PluginTeamsRuntime} from './plugins/team/composition';
+import type {composeAppPluginAdapters} from './plugins/integration/adapters/apps';
 import { composeApplicationQuit } from "./startup/shutdown/runtime";
 import { createDesktopUpdateService } from "./update/composition";
 import type { UpdateService } from "./update/service";
@@ -159,6 +164,9 @@ let workspaceResolver: WorkspaceResolver | null = null;
 let workspaceFiles: WorkspaceFileCatalog | null = null;
 let builtinLeases: BuiltinMcpLeaseStore | null = null;
 let builtinBridge: BuiltinMcpBridge | null = null; let foundation: FoundationRuntime | null = null;
+let unifiedPlugins:UnifiedPluginIntegration|null=null;
+let pluginTeams:PluginTeamsRuntime|null=null,appPluginAdapters:Awaited<ReturnType<typeof composeAppPluginAdapters>>|null=null;
+let hostPackagePluginAdapters:Awaited<ReturnType<typeof composeHostPackagePluginAdapters>>|null=null;
 let turnCustodyJournal: AgentTurnCustodyJournal | null = null;
 let turnCustody: AgentTurnCustodyRuntime | null = null;
 let relayLedger: RelayLedger | null = null, maintenance: ReturnType<typeof startDeferredMaintenance> | null = null;
@@ -390,8 +398,9 @@ if (!hasSingleInstanceLock) {
       const baseIdentities = cloudPrepared ? cloudPrepared.baseIdentities(chatStore) : Promise.resolve(
         new Map(chatStore.listBaseIdentities().map((identity) => [identity.chatId, identity] as const))
       );
+      const resolveEffectiveWorkspace = createEffectiveWorkspaceResolver(appsService, projectsService, chatStore, titleWorkspace);
       const [galleryRuntime, , , memoryRuntime] = await Promise.all([
-        initializeGalleryRuntime(userData, chatStore, hasActiveImageOccurrence),
+        initializeGalleryRuntime(userData, chatStore, hasActiveImageOccurrence, resolveEffectiveWorkspace),
         initializeArtifacts(join(userData, "chat-artifacts"), chatStore, () => library?.root ?? null),
         chatHomeService.initialize(),
         initializeMemoryRuntime({ userData, platformSupport, chats: chatStore, settings: settingsStore, projects: projectsService }),
@@ -401,7 +410,12 @@ if (!hasSingleInstanceLock) {
       chatMirrors = new ChatMirrorService({ library, chats: chatStore, homes: chatHomeService, progress: value => chatHomeService!.reportProgress(value),
         notify: notice => chatStore!.pushWarning(translate(currentLocale(), MIRROR_NOTICE_KEYS[notice.kind], { count: notice.count })) });
       const libraryRuntime = await import("./startup/library/library-runtime");
-      await libraryRuntime.mountLibraryContent({ library, mirrors: chatMirrors, chats: chatStore, projects: projectStore, bases: baseStore, apps: appsService.store, baseIdentities, locale: currentLocale, remountSkills: () => unifiedSkillsService?.remountFolder() });
+      await libraryRuntime.mountLibraryContent({ library, mirrors: chatMirrors, chats: chatStore, projects: projectStore, bases: baseStore, apps: appsService.store, baseIdentities, locale: currentLocale, remountSkills: () => unifiedSkillsService?.remountFolder(),
+        remountPlugins: async () => {
+          await unifiedPlugins?.mountLibrary();
+          await appPluginAdapters?.refresh();
+          await hostPackagePluginAdapters?.refresh();
+        } });
       memoryService = memoryRuntime.service;
       memorySettingsOwner = memoryRuntime.settingsOwner;
       memoryLifecycle = memoryRuntime.lifecycle;
@@ -433,7 +447,6 @@ if (!hasSingleInstanceLock) {
       const builtinSocket = join(userData, "builtin-tools", "bridge.sock");
       builtinLeases = new BuiltinMcpLeaseStore(builtinSocket);
       const activeBuiltinLeases = builtinLeases;
-      const resolveEffectiveWorkspace = createEffectiveWorkspaceResolver(appsService, projectsService, chatStore, titleWorkspace);
       workspaceResolver = createWorkspaceResolver(resolveEffectiveWorkspace);
       workspaceFiles = new WorkspaceFileCatalog(resolveEffectiveWorkspace, {
         getChatIncarnation: (chatId) => chatStore!.getIncarnationId(chatId),
@@ -598,29 +611,27 @@ if (!hasSingleInstanceLock) {
       }, { name: "project-placement", required: true });
       await openStartupAdmission(sectionCoordinator!, memoryService!);
       const activeCoordinator = sectionCoordinator;
-      const toolRegistry = await composeBuiltinTools({
-        userData, resolveEffectiveWorkspace,
-        incarnationOf: (chatId) => chatStore?.getIncarnationId(chatId),
-        services: {
-          chatStore, chatsService, coordinator: activeCoordinator, basesService, baseStore, projectsService,
-          appsService, archiveService, browserService: browserRuntime.service, browserHarness: browserRuntime.harness,
-          skillsCustody: skillsTurnCustody,
-        },
-      });
-      builtinBridge = new BuiltinMcpBridge(builtinSocket, builtinLeases, toolRegistry); await builtinBridge.start();
       foundation = await composeFoundationRuntime({ userData, mainDirectory: __dirname, lifecycle: lifecycleIntents, chats: chatStore, ledger: relayLedger!,
         bases: baseStore, turns, cloud: () => cloudRuntime, leases: activeBuiltinLeases, basesService: basesService!, custodyDependencies: custodyDependencyPorts(appsService!), turnCustody: turnCustody!, extensions: appMode.extensions, agentConfigs: { liveProjectIds: () => new Set(projectStore!.list().filter((project) => !project.archivedAt).map((project) => project.id)), chatDefaults: (providerId) => settingsStore!.getBackendDefaults(providerId as never), inventory: projectId => workflowInventory(unifiedSkillsService!.library, projectToolsRuntime!.manualMcpServers, projectId) },
-        workflows: { coordinator: activeCoordinator, projects: projectStore!, turnDefaults: (backend) => settingsStore!.getBackendDefaults(backend), providerPreferences: () => settingsStore!.get(),
+        workflows: { libraryRoot: () => library!.root, coordinator: activeCoordinator, projects: projectStore!, turnDefaults: (backend) => settingsStore!.getBackendDefaults(backend), providerPreferences: () => settingsStore!.get(),
           operator: () => ({ userId: cloudRuntime?.accountIdentity().profile?.userId ?? "local", deviceId: localDeviceId! }), locale: currentLocale } });
+      const pluginTools = await composePluginTools({userData,libraryRoot:()=>library!.root,hosts:foundation.hosts,resolveEffectiveWorkspace,
+        incarnationOf:chatId=>chatStore?.getIncarnationId(chatId),services:{chatStore,chatsService,coordinator:activeCoordinator,basesService,baseStore,projectsService,
+          appsService,archiveService,browserService:browserRuntime.service,browserHarness:browserRuntime.harness,skillsCustody:skillsTurnCustody}});
+      builtinBridge = new BuiltinMcpBridge(builtinSocket, builtinLeases, pluginTools.registry); await builtinBridge.start();
       previews = await (await import("./preview/session/composition")).createPreviewFeature({ userData, catalog: foundation.plugins, locale: currentLocale, current: (chatId, incarnationId, workspace) => { if (!appsService!.conversationEnabled(chatId, { committedOnly: true })) return false; const resolved = resolveEffectiveWorkspace({ kind: "conversation", conversationId: chatId }); return chatStore!.getIncarnationId(chatId) === incarnationId && resolved.kind === "ready" && resolved.workspace === workspace ? resolved.authorityIdentity + ":" + settingsStore!.get().allowCrossChatRead : false; } });
       releaseMemoryPlugin = installMemoryPlugin(foundation.plugins, { settings: settingsStore, settingsOwner: memorySettingsOwner!, service: memoryService!, runtimes: memoryRuntimes!, platformSupport });
-      await initializePluginSurfaceIntegration({widgetCleanup:cloudPrepared?.widgetCleanup,userData,apps:appsService,chats:chatStore,projects:projectsService,catalog:foundation.plugins,deviceId:localDeviceId!,accountId:()=>{const identity=cloudRuntime?.accountIdentity();return identity?.profile&&!['signed-out','signing-out','revoked','deleted','deleting'].includes(identity.status)?identity.profile.userId:`local:${localDeviceId}`;},libraryId:()=>settingsStore!.get().libraryId,
-        createSourceChat:input=>chatsService!.createPluginChat(input),
-        restoreSourceChat:async(input,current)=>{
-          if(!current()||chatStore!.getIncarnationId(input.chatId)!==input.incarnationId||chatStore!.getProjectId(input.chatId)!==input.projectId)throw new Error('DOCK_SOURCE_CHAT_CHANGED');
-          await archiveService!.restore([{kind:'chat',id:input.chatId}],{[input.chatId]:input.incarnationId},current);
-        },
+      await initializePluginSurfaceIntegration({widgetCleanup:cloudPrepared?.widgetCleanup,userData,apps:appsService,chats:chatStore,catalog:foundation.plugins,deviceId:localDeviceId!,accountId:()=>{const identity=cloudRuntime?.accountIdentity();return identity?.profile&&!['signed-out','signing-out','revoked','deleted','deleting'].includes(identity.status)?identity.profile.userId:`local:${localDeviceId}`;},libraryId:()=>settingsStore!.get().libraryId,
         records:{registry:appMode.extensions.registry,installer:appMode.extensions.installer,packages:foundation.hostPackages,bases:foundation.bases,catalog:foundation.plugins}});
+      unifiedPlugins=await initializeUnifiedPlugins({userData,libraryRoot:()=>library!.root,projects:projectsService,chats:chatStore,
+        tools:pluginTools,transport:pluginSurfaceIntegration()!.gateway,catalog:foundation.plugins,archive:archiveService!});
+      const {initializePluginTeams}=await import('./plugins/team/composition');
+      pluginTeams=await initializePluginTeams({userData,coordinator:activeCoordinator,chats:chatStore,chatsService,projects:projectsService,
+        rpc:pluginTools.rpc,platform:unifiedPlugins.platform,authoringLeases:unifiedPlugins.leases,rebuild:id=>unifiedPlugins!.rebuild(id),turnOptionsFor:backend=>settingsStore!.getBackendDefaults(backend)});
+      const [{composeAppPluginAdapters},{composeHostPackagePluginAdapters}]=await Promise.all([import('./plugins/integration/adapters/apps'),import('./plugins/integration/adapters/host-packages')]);
+      appPluginAdapters=await composeAppPluginAdapters({apps:appsService,platform:unifiedPlugins.platform,libraryRoot:()=>library!.root,reportError:error=>console.warn('[plugins] App adapter',error)});
+      hostPackagePluginAdapters=await composeHostPackagePluginAdapters({platform:unifiedPlugins.platform,packages:foundation.hostPackages,
+        registry:appMode.extensions.registry,catalog:foundation.plugins,libraryRoot:()=>library!.root,reportError:error=>console.warn('[plugins] external package adapter',error)});
       /* Settings read the stored default through the live catalog from now on: a package default reads back while it is available. */
       settingsStore!.useProviderCatalog(providerCatalog());
       for (const binding of chatStore.listBindings()) seedThreadScope(binding.session, binding.chatId);
@@ -629,6 +640,15 @@ if (!hasSingleInstanceLock) {
         { recordPlugins:()=>pluginSurfaceIntegration()?.records??null, pluginSurfaces:()=>pluginSurfaceIntegration()?.cloudSource??null, activity, skills: unifiedSkillsService, events: { chats: chatsService, projects: projectsService, bases: basesService }, gallery: galleryRuntime.media, turns: { ledger: relayLedger!, turns }, remote: { workspaceReferences: { files: workspaceFiles, resolve: resolveEffectiveWorkspace, library: unifiedSkillsService.library, skills: skillsCatalog }, coordinator: activeCoordinator, settings: settingsStore, quota: () => usageLimits!.snapshot(), usage: usageLimits ?? undefined, memory: memoryRemoteControl(memoryService, memorySettingsOwner, settingsStore), workspace: () => workspaceResolver!({ kind: "default" }).workspace, publishRecord: record => chatsService?.publishRecord(record) }, projectGate: projectsService, apps: () => appsService?.remoteApps() ?? null, buildStatus: () => appsService?.buildStatus() ?? null, saveAsApp: appMode!.saveAsApp, promotion: appMode!.promotion, rescue: appMode!.rescue });
       startupTrace.mark("services:composed");
       if(cloudRuntime)pluginSurfaceIntegration()?.configureRemote(cloudRuntime);
+      if(cloudRuntime)unifiedPlugins?.configureCloud(cloudRuntime);
+      if(cloudPrepared&&cloudRuntime){
+        const prepared=cloudPrepared;
+        pluginTools.credentials.attach('cloud',cloudPluginCredentials({read:()=>prepared.vault.read(),identity:()=>{
+          const identity=cloudRuntime?.accountIdentity();
+          return{userId:identity?.profile&&!['signed-out','signing-out','revoked','deleted','deleting'].includes(identity.status)?identity.profile.userId:null,
+            epoch:prepared.vault.access.generation};
+        }}));
+      }
       /* Built at window creation, not here: the envelope handed over must be the
          one main holds at that instant, and the renderer trusts it for the
          onboarding gate only. */
@@ -654,7 +674,7 @@ if (!hasSingleInstanceLock) {
             if (!service?.replacement) return true;
             await service.stop("disable");
             return service.replacement.status().registration !== "enabled";
-          } }), foundation!.registrar, pluginSurfaceIntegration()!.registrar],
+          } }), foundation!.registrar, pluginSurfaceIntegration()!.registrar,unifiedPlugins!.registrar,pluginTeams!.registrar],
       });
       startupTrace.registerRenderer(ipcMain, (event) => {
         // The same proof every renderer IPC gets: the main window's own top frame on its renderer entry.
@@ -723,6 +743,8 @@ if (!hasSingleInstanceLock) {
     });
 }
 async function closeTerminalOwners() {
+  await hostPackagePluginAdapters?.close();hostPackagePluginAdapters=null;await appPluginAdapters?.close();appPluginAdapters=null;await pluginTeams?.close();pluginTeams=null;
+  await unifiedPlugins?.close();unifiedPlugins=null;
   // Restore the system Dock before anything else stops; the recovery agent is the fallback, not the plan.
   await systemDockRuntime?.restoreForQuit().catch((cause) => console.warn("[system-dock] restore failed", cause));
   presenceRuntime?.close(); presenceLifecycle.close();

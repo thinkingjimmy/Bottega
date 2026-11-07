@@ -7,7 +7,9 @@
   "sideEffects": false,
   "exports": {
     "./plugins/dock/api": "./src/plugins/dock/api/index.ts",
-    "./*": "./src/*.ts"
+    "./*": "./src/*.ts",
+    "./plugins/platform": "./src/plugins/platform/index.ts",
+    "./plugins/team": "./src/plugins/team/index.ts"
   },
   "publishConfig": {
     "exports": {
@@ -18,6 +20,14 @@
       "./*": {
         "types": "./dist/*.d.ts",
         "import": "./dist/*.js"
+      },
+      "./plugins/platform": {
+        "types": "./dist/plugins/platform/index.d.ts",
+        "import": "./dist/plugins/platform/index.js"
+      },
+      "./plugins/team": {
+        "types": "./dist/plugins/team/index.d.ts",
+        "import": "./dist/plugins/team/index.js"
       }
     }
   },

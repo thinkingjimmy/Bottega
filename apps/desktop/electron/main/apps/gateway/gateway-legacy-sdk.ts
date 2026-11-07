@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron packaging, the shared development root, Node fs, pinned React Grab assets/public initialization API, and the frozen legacy SDK digest verifier.
- * [OUTPUT]: Provides digest-verified legacy SDK serving and shared offline React Grab injection; trusted vendor bytes use system font fallback and explicit telemetry-free initialization while remaining resident as Buffers
+ * [OUTPUT]: Provides digest-verified legacy SDK serving and document-ready offline React Grab injection; trusted vendor bytes keep system fonts, disabled state and telemetry-free initialization as Buffers
  * [POS]: AppGateway frozen-asset leaf; the route authority owns admission and CSP while this module owns trusted byte custody
  */
 
@@ -94,10 +94,14 @@ export class GatewayFrozenAssets {
     return this.injection;
   }
 
-  /** Electron `executeJavaScript` 消费的是原始字节，不走 HTML 转义那条路。 */
+  /** Navigation commit can precede parsing; initialize only the original live HTML document. */
   serverInjectionJavascript() {
     if (!this.script || !this.style) return "";
     return `(() => {
+      const target = document;
+      const inject = () => {
+        if (document !== target || !target.defaultView || target.defaultView.closed ||
+            !(target instanceof HTMLDocument) || !target.head || !target.body) return;
       if (!document.getElementById("ai-chat-react-grab-style")) {
         const style = document.createElement("style");
         style.id = "ai-chat-react-grab-style";
@@ -107,6 +111,9 @@ export class GatewayFrozenAssets {
       if (!window.__REACT_GRAB__) {
         ${this.script.toString("utf8")}
       }
+      };
+      if (target.readyState === "loading") target.addEventListener("DOMContentLoaded", inject, { once: true });
+      else inject();
     })();`;
   }
 

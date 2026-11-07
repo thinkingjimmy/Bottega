@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on strict identity schemas and public Widget name validation.
- * [OUTPUT]: Provides trusted source-Chat requests, authoring targets and management snapshots without filesystem paths.
+ * [OUTPUT]: Provides trusted source-Chat requests, authoring targets and management snapshots with source-action availability, bounded pending-copy state and no filesystem paths.
  * [POS]: Main-window Dock authoring contract; auxiliary Dock surfaces only send fixed intents.
  */
 import {z} from 'zod';
@@ -15,8 +15,9 @@ export const forkDockWidgetSchema=z.object({operationId:z.string().regex(/^[A-Za
 export const applyDockWidgetSchema=z.object({operationId:z.string().regex(/^[A-Za-z0-9_-]{8,128}$/),previewId:z.string().regex(/^[a-f0-9]{32}$/),settings:dockInstanceSettingsSchema,bindings:z.array(dockBaseBindingSchema).max(2),size:dockSizeSchema,name:widgetNameSchema.optional(),baseConsent:z.boolean().default(false),apiConsent:z.array(z.string().regex(/^[a-z][a-zA-Z0-9_-]{0,63}$/)).max(8).default([]),reviewId:z.string().regex(/^[a-f0-9]{32}$/).optional()}).strict();
 export const widgetOperationQuerySchema=z.object({operationId:z.string().regex(/^[A-Za-z0-9_-]{8,128}$/)}).strict();
 export type WidgetAuthoringTarget=Readonly<{id:string;chatId:string;projectId:string}>;
-export type WidgetDefinitionView=Readonly<{id:string;sourceInstallationId?:string;name:string;description:string;chatId:string;activeGenerationId:string|null;candidateGenerationId:string|null;instanceCount:number;error:string|null}>;
-export type WidgetManagementSnapshot=Readonly<{layoutRevision:number;accountDefinitions?:readonly import('./install/types').WidgetAccountDefinition[];retirements?:readonly (import('./install/lifecycle').WidgetRetirementResult&{name:string})[];installedDefinitions?:readonly import('./install/types').WidgetInstalledDefinition[];deliveries?:readonly import('./install/types').WidgetDeliveryView[];installationProgress?:import('./install/types').WidgetInstallProgress|null;definitions:readonly WidgetDefinitionView[];instances:readonly Readonly<{id:string;definitionId:string;name:string;paused?:boolean;mappingRevision?:number;sourceInstallationId?:string;installation?:'install'|'update'|'needs-setup'|'ready'|'source-review'|'preparing'|'repair'}>[]}>;
+export type WidgetDefinitionView=Readonly<{id:string;pluginId?:string;contributionId?:string;settingsSchema?:Record<string,unknown>;customCard?:boolean;customizable?:boolean;sourceInstallationId?:string;name:string;description:string;chatId:string;activeGenerationId:string|null;candidateGenerationId:string|null;instanceCount:number;error:string|null}>;
+export type PluginWidgetCopyState=Readonly<{pluginId:string;status:"pending"|"error";error?:string}>;
+export type WidgetManagementSnapshot=Readonly<{layoutRevision:number;accountDefinitions?:readonly import('./install/types').WidgetAccountDefinition[];retirements?:readonly (import('./install/lifecycle').WidgetRetirementResult&{name:string})[];installedDefinitions?:readonly import('./install/types').WidgetInstalledDefinition[];deliveries?:readonly import('./install/types').WidgetDeliveryView[];installationProgress?:import('./install/types').WidgetInstallProgress|null;definitions:readonly WidgetDefinitionView[];instances:readonly Readonly<{id:string;definitionId:string;pluginId?:string;contributionId?:string;copyTarget?:PluginWidgetCopyState;customizable?:boolean;name:string;paused?:boolean;mappingRevision?:number;sourceInstallationId?:string;installation?:'install'|'update'|'needs-setup'|'ready'|'source-review'|'preparing'|'repair'}>[]}>;
 const generation=z.string().regex(/^plugin-[a-f0-9-]{36}$/),digest=z.string().regex(/^sha256:[a-f0-9]{64}$/);
 export const previewWidgetVersionSchema=editDockWidgetSchema.extend({generationId:generation});
 export type WidgetVersionView=Readonly<{generationId:string;version:string;createdAt:number;active:boolean;available:boolean}>;

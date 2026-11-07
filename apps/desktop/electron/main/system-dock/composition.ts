@@ -1,8 +1,12 @@
 /**
  * [INPUT]: Depends on Electron app, the macOS product-version Dock gate, stores, DockService/DockSetup, PluginCatalog, native menus, main-role renderer IPC, the window registry/surface residence, Bottega App records, and caller-provided task activity, Usage owners, presence destinations and background residence.
- * [OUTPUT]: Provides Dock runtime, cold Widget/Setup owners, trusted-window first-use commands, immediate local privacy reconciliation, recovery-first initialization and ordered shutdown.
+ * [OUTPUT]: Provides Dock runtime, initialization-loaded unified Widgets and cold Setup/Weather implementations, trusted-window first-use commands, immediate local privacy reconciliation, recovery-first initialization, pending-copy replay and drained ordered shutdown.
  * [POS]: system-dock composition beneath the desktop root; the bar/panel never receive product capabilities and the main window never receives Dock paths or permissions.
  */
+import type { PluginDockWidgets } from './widgets/plugins/owner';
+import { installPluginDockWidgets } from './widgets/plugins/runtime';
+import { unifiedPluginIntegration } from '../plugins/integration/composition';
+import { pluginProcessRuntime } from '../plugins/process/runtime';
 import { localizeDockTasks, type DockTasksPort } from './widgets/tasks';
 import type { PluginCatalog } from '../plugins/catalog';
 import { attachDockPlugin } from './plugin/owner';
@@ -11,6 +15,8 @@ import { devRendererUrl } from '../window/security/frame-guard';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
+import { installWeatherOwner, weatherOwner } from '../plugins/official/weather/runtime';
+import { WEATHER_PLUGIN_ID } from '../../../shared/system-dock/widgets/weather';
 import type { AppLocale } from '@ai-chat/ui/lib/locale';
 import type { AgentBackendId } from '../../../shared/ipc/agent/agent-ipc';
 import { conflictChoiceSchema, dockPreferencePatchSchema, importConfirmSchema, setupConfirmSchema, SYSTEM_DOCK_SETTINGS_CHANNEL, setAppPinnedSchema } from '../../../shared/system-dock/ipc';
@@ -92,17 +98,22 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
     }
   };
   const fallback = (item: WidgetItem): CustomWidgetFace => ({ type: 'custom', size: item.widget.type === 'custom' ? item.widget.size : 'small', state: failed ? 'failed' : 'loading', summary: null, description: null, readings: {} });
+  let pluginWidgets: PluginDockWidgets;
+  const createPluginWidgets = (WidgetOwner: typeof PluginDockWidgets) => new WidgetOwner({ locale: ports.locale, userData: ports.userData, config, changed: () => { service.schedule(); if (service.initialized) windowRegistry.publish(SYSTEM_DOCK_SETTINGS_CHANNEL.widgetsChanged, undefined, record => record.role === 'main'); }, masked: () => local.get().privacyMask,
+    integration: () => { const unified = unifiedPluginIntegration(); return unified ? { platform: unified.platform, gateway: unified.gateway,
+      invoke: input => { const runtime = pluginProcessRuntime(); if (!runtime) throw new Error('Plugin process runtime is unavailable'); return runtime.invoke(input); } } : null; } });
   const custom: DockCustomWidgetsPort = {
-    face: (item, edge) => feature.peek()?.data.face(item, edge) ?? fallback(item),
-    detail: (item, edge) => feature.peek()?.data.detail(item, edge) ?? { itemId: item.id, name: item.label ?? '', face: fallback(item), data: [], updatedAt: null, surface: null, actions: [] },
-    setVisible(surface, widgets) { surfaces.set(surface, widgets); const owner = feature.peek(); if (owner)
+    candidates: () => pluginWidgets?.snapshot().definitions.map(value => ({ id: value.id, name: value.name, available: value.activeGenerationId !== null })) ?? [],
+    face: (item, edge) => item.widget.type === "plugin" ? pluginWidgets.face(item, edge) : feature.peek()?.data.face(item, edge) ?? fallback(item),
+    detail: (item, edge) => item.widget.type === "plugin" ? pluginWidgets.detail(item, edge) : feature.peek()?.data.detail(item, edge) ?? { itemId: item.id, name: item.label ?? '', face: fallback(item), data: [], updatedAt: null, surface: null, actions: [] },
+    setVisible(surface, widgets) { pluginWidgets?.setVisible(surface, widgets); surfaces.set(surface, widgets); const owner = feature.peek(); if (owner)
       owner.data.setVisible(surface, widgets);
     else if (widgets.some(value => value.widget.type === 'custom') && !failed && !closing)
       void getWidgets().catch(() => service.schedule()); },
     source: id => feature.peek()?.data.source(id) ?? null,
     read: (id, sources) => { const owner = feature.peek(); if (!owner)
       throw new Error('DOCK_DATA_UNAVAILABLE'); return owner.data.read(id, sources); },
-    refresh: async (id) => (await getWidgets()).data.refresh(id),
+    refresh: async (id) => config.layout().items.some(item => item.id === id && item.kind === "widget" && item.widget.type === "plugin") ? pluginWidgets.refresh(id) : (await getWidgets()).data.refresh(id),
     invokeAction: async (id, ref) => { const owner = await getWidgets(); if (!owner.data.invokeAction)
       throw new Error('DOCK_ACTION_UNAVAILABLE'); return owner.data.invokeAction(id, ref); },
   };
@@ -117,7 +128,7 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
   });
   projection.service = service;
   function widgetsChanged() { if (!service.initialized || closing)
-    return; feature.peek()?.reconcile(); if (hasWidgets() && !feature.peek() && !feature.loading() && !failed)
+    return; feature.peek()?.reconcile(); pluginWidgets.reconcile(); if (hasWidgets() && !feature.peek() && !feature.loading() && !failed)
     void getWidgets().then(() => widgetsChanged(), () => service.schedule()); service.schedule(); windowRegistry.publish(SYSTEM_DOCK_SETTINGS_CHANNEL.widgetsChanged, undefined, record => record.role === 'main'); }
   const stopApps = appAdapter.subscribe(() => service.schedule()), releasePlugin = attachDockPlugin(ports.plugins, service, {disable:()=>withSetup(owner=>owner.disable()),setPreference:patch=>withSetup(owner=>owner.setPreference(patch))});
   const mode = (value: unknown): DockMode => { if (!DOCK_MODES.includes(value as DockMode))
@@ -130,12 +141,23 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
   ipc.handle(SYSTEM_DOCK_SETTINGS_CHANNEL.widgetHealth, () => loaded(() => ({ ...feature.peek()?.health() ?? { detail: { views: 0, sessions: 0, timers: 0, requests: 0 }, base: { consumers: 0, flights: 0, timers: 0 } }, feature: { loaded: feature.peek() !== null, loading: feature.loading(), sourceLoaded: integration?.dockLoaded() ?? false } })));
   for (const command of WIDGET_COMMANDS)
     ipc.handleWithContext(SYSTEM_DOCK_SETTINGS_CHANNEL[command], (context,value) => loaded(async () => {
-      if (command === 'widgetSnapshot' && !hasWidgets() && !feature.peek()) {
+      if (command === 'widgetSnapshot') {
+        const unified = pluginWidgets.snapshot();
         const labels = new Map(service.allItems().map(item => [item.id, item.label]));
-        return { layoutRevision: config.snapshot().localRevision, instances: config.layout().items.flatMap(item => item.kind === 'widget' ? [{ id: item.id, definitionId: item.widget.type === 'custom' ? item.widget.definition.definitionId : item.widget.type, name: labels.get(item.id) ?? item.label ?? '' }] : []), definitions: [] };
+        const existing = hasWidgets() || feature.peek() ? await (await getWidgets()).invoke(command, value, context.webContentsId) as import('../../../shared/system-dock/widgets/authoring').WidgetManagementSnapshot
+          : { layoutRevision: config.snapshot().localRevision, instances: config.layout().items.flatMap(item => item.kind === 'widget' && item.widget.type !== 'plugin' ? [{ id: item.id, definitionId: item.widget.type === 'custom' ? item.widget.definition.definitionId : item.widget.type, name: labels.get(item.id) ?? item.label ?? '' }] : []), definitions: [] };
+        const pluginIds = new Set(unified.instances.map(item => item.id));
+        return { ...existing, definitions: [...existing.definitions, ...unified.definitions], instances: [...existing.instances.filter(item => !pluginIds.has(item.id)), ...unified.instances] };
       }
       return (await getWidgets()).invoke(command, value,context.webContentsId);
     }));
+  ipc.handle(SYSTEM_DOCK_SETTINGS_CHANNEL.weatherControl, input => loaded(() => {
+    if (!unifiedPluginIntegration()?.platform.isActive(WEATHER_PLUGIN_ID)) throw new Error('WEATHER_UNAVAILABLE');
+    return weatherOwner().control(input);
+  }));
+  ipc.handle(SYSTEM_DOCK_SETTINGS_CHANNEL.pluginWidgetForm, input => loaded(() => pluginWidgets.form(input)))
+    .handle(SYSTEM_DOCK_SETTINGS_CHANNEL.savePluginWidget, input => loaded(() => pluginWidgets.save(input)))
+    .handle(SYSTEM_DOCK_SETTINGS_CHANNEL.removePluginWidget, input => loaded(() => pluginWidgets.remove(input)));
   ipc.handle(SYSTEM_DOCK_SETTINGS_CHANNEL.snapshot, () => service.refreshSettings())
     .handle(SYSTEM_DOCK_SETTINGS_CHANNEL.beginSetup, (value) => loaded(() => withSetup(owner=>owner.beginSetup(mode(value)))))
     .handle(SYSTEM_DOCK_SETTINGS_CHANNEL.confirmSetup, (value) => loaded(() => withSetup(owner=>owner.confirmSetup(setupConfirmSchema.parse(value)))))
@@ -151,14 +173,14 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
     .handle(SYSTEM_DOCK_SETTINGS_CHANNEL.resetLayout, () => loaded(() => withSetup(owner=>owner.resetLayout())))
     .handle(SYSTEM_DOCK_SETTINGS_CHANNEL.resolveConflict, (value) => loaded(() => withSetup(owner=>owner.resolveConflict(conflictChoiceSchema.parse(value)))))
     .handle(SYSTEM_DOCK_SETTINGS_CHANNEL.openRecoverySettings, () => loaded(() => withSetup(owner=>owner.openRecoverySettings())));
-  const stopSettings = service.onSettings(snapshot => windowRegistry.publish(SYSTEM_DOCK_SETTINGS_CHANNEL.changed, snapshot, record => record.role === 'main')), stopWidgets = integration?.onChanged(widgetsChanged), stopWidgetLayout = config.onChanged(widgetsChanged), stopWidgetLocal = local.onChanged(() => feature.peek()?.reconcile());
+  const stopSettings = service.onSettings(snapshot => windowRegistry.publish(SYSTEM_DOCK_SETTINGS_CHANNEL.changed, snapshot, record => record.role === 'main')), stopWidgets = integration?.onChanged(widgetsChanged), stopWidgetLayout = config.onChanged(widgetsChanged), stopWidgetLocal = local.onChanged(() => { feature.peek()?.reconcile(); pluginWidgets?.reconcile(); });
   let stopSync: (() => void) | null = null, stopTasks: (() => void) | undefined;
   return { service, config: () => config,
-    initialize: async () => { stopTasks = taskAdapter.port?.subscribe?.(() => { service.schedule(); feature.peek()?.reconcile(); }); await service.initialize(); widgetsChanged(); },
+    initialize: async () => { const [{WeatherOwner},{PluginDockWidgets:WidgetOwner}]=await Promise.all([import('../plugins/official/weather/owner'),import('./widgets/plugins/owner')]); if(closing)throw new Error('SYSTEM_DOCK_CLOSED'); pluginWidgets=createPluginWidgets(WidgetOwner); installPluginDockWidgets(pluginWidgets); installWeatherOwner(new WeatherOwner(ports.mainDirectory,ports.locale)); stopTasks = taskAdapter.port?.subscribe?.(() => { service.schedule(); feature.peek()?.reconcile(); }); await service.initialize(); await pluginWidgets.initialize(); widgetsChanged(); },
     menu: () => presenceSubmenu(service),
     attachSync(handle: SyncHandle | null) { stopSync?.(); service.sync = handle; stopSync = handle?.onChanged(() => service.schedule()) ?? null; service.schedule(); },
     restoreForQuit: () => service.restoreForQuit(),
-    async close() { closing = true; stopWidgetLocal(); stopWidgetLayout(); stopWidgets?.(); stopApps(); taskAdapter.close(); stopTasks?.(); releasePlugin(); stopSettings(); stopSync?.(); service.sync = null; surfaces.clear(); const errors: unknown[] = []; for (const run of [() => feature.close(), () => setup.close(), () => service.close()])
+    async close() { closing = true; installWeatherOwner(null); stopWidgetLocal(); stopWidgetLayout(); stopWidgets?.(); stopApps(); taskAdapter.close(); stopTasks?.(); releasePlugin(); stopSettings(); stopSync?.(); service.sync = null; surfaces.clear(); installPluginDockWidgets(null); const errors: unknown[] = []; for (const run of [() => pluginWidgets?.close(), () => feature.close(), () => setup.close(), () => service.close()])
       try {
         await run();
       }

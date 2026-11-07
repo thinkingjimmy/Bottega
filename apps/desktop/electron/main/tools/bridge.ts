@@ -1,20 +1,16 @@
 /**
- * [INPUT]: Depends on Node Unix socket, shared tool name, BuiltinMcpLeaseStore and BuiltinToolRegistry, and statusError from main/errors
+ * [INPUT]: Depends on Node Unix socket, shared tool name, BuiltinMcpLeaseStore and PluginToolRegistry, and statusError from main/errors
  * [OUTPUT]: Provides restartable 0600 native bridge where the MCP server claims its lease once on a persistent connection and every call and cancel travels on that connection (a replayed token on any other connection is refused), execute token/allowedTools, same-identity-different-content refusal, domain frequency control, socket-close/lease-revoke, claimed connections destroyed on stop-admission and close (so close never waits on them), cancel, ready, reverse, strict distribution and audit
- * [POS]: The tools process boundary; the stdio subprocess never touches app storage and can only invoke statically registered builtin tools through this bridge
+ * [POS]: The tools process boundary; the stdio subprocess never touches app storage and can only invoke versioned plugin tools registered by main through this bridge
  */
 
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname } from "node:path";
 import { z } from "zod";
-import {
-  BUILTIN_TOOL_NAMES,
-  type BuiltinToolName,
-} from "../../../shared/builtin-tools";
 import { statusError } from "../ipc/errors";
 import type { BuiltinMcpLeaseStore } from "./lease";
-import type { BuiltinToolRegistry } from "./registry";
+import type { PluginToolRegistry } from "./registry";
 
 const REQUEST_LIMIT = 1024 * 1024;
 
@@ -36,7 +32,7 @@ const callRequestSchema = z
     id: z.string().min(1).max(128),
     token: z.string().length(64),
     kind: z.literal("call"),
-    tool: z.enum(BUILTIN_TOOL_NAMES as [BuiltinToolName, ...BuiltinToolName[]]),
+    tool: z.string().regex(/^[a-z0-9_]{1,51}$/),
     args: z.unknown(),
     invocationId: z.string().regex(/^[a-f0-9]{64}$/),
     requestDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
@@ -57,7 +53,7 @@ export class BuiltinMcpBridge {
   constructor(
     readonly socketPath: string,
     private readonly leases: BuiltinMcpLeaseStore,
-    private readonly registry: BuiltinToolRegistry
+    private readonly registry: PluginToolRegistry
   ) {}
 
   async start() {
@@ -157,7 +153,7 @@ export class BuiltinMcpBridge {
         if (!this.leases.claim(request.token, connection)) {
           throw statusError(401, "内置 MCP lease 无效或已撤销");
         }
-        response = { id: request.id, ok: true, result: { ready: true } };
+        response = { id: request.id, ok: true, result: { ready: true, tools: this.leases.describe(request.token, connection) } };
       } else {
         if (calls.has(request.id)) throw statusError(409, "内置 MCP 调用 id 重复");
         calls.set(request.id, controller);

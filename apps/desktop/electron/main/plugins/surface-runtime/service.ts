@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared immutable compiler/seal, Surface file-tree digest, durable file publication, source inventory, catalog admission, source provenance and host authorization.
- * [OUTPUT]: Provides capacity-admitted authored sources, manual Dock candidates, automatic composer activation, account-scoped durable delivery retention and cleanup, rollback/forward and strict-current composer delivery with bounded session pins.
+ * [OUTPUT]: Provides capacity-admitted authored sources, manual Dock candidates, automatic composer activation, account-scoped durable delivery retention and cleanup, rollback/forward and strict-current composer delivery with bounded session pins. Retained source registration and authorization have no author-Chat identity.
  * [POS]: Plugin surface lifecycle owner; reuses App compiler artifacts without App records, Base grants or host-package execution.
  */
 import {assertPluginIdentity} from "./identity";
@@ -59,7 +59,6 @@ export class PluginSurfaceRuntime {
   }
   list() {return structuredClone([...this.records.values()]);}
   descriptor(pluginId:string) {const value=this.records.get(pluginId);return value?structuredClone(value):null;}
-  findByChat(chatId:string) {return this.list().find(record=>record.ownerChatId===chatId)??null;}
   history(pluginId:string) {return structuredClone(this.require(pluginId).generations).sort((a,b)=>b.createdAt-a.createdAt);}
   onChanged(listener:(pluginId:string)=>void) {this.listeners.add(listener);return ()=>{this.listeners.delete(listener);};}
   watch(listener:(pluginId:string)=>void) {return this.onChanged(listener);}
@@ -67,20 +66,18 @@ export class PluginSurfaceRuntime {
     if(!/^[a-z][a-z0-9.-]{0,119}$/.test(pluginId)||!/^plugin-[a-f0-9-]{36}$/.test(generationId))throw new Error("Invalid plugin artifact identity");
     return join(this.root,pluginId,generationId);
   }
-  installLocal(sourceRoot:string,input:{ownerChatId:string;expectedActiveGenerationId?:string|null;signal?:AbortSignal}) {
+  installLocal(sourceRoot:string,input:{expectedActiveGenerationId?:string|null;signal?:AbortSignal}={}) {
     return this.install(sourceRoot,input,"local");
   }
-  registerDockSource(sourceRoot:string,ownerChatId:string){
+  registerDockSource(sourceRoot:string){
     return this.enqueue(async()=>{
       const canonical=await realpath(sourceRoot);await inspectPluginSource(canonical);const manifest=await this.manifest(canonical);
       if(!('dock' in manifest))throw new Error('Dock source declaration required');
       await assertPluginIdentity({pluginId:manifest.id,sourceRoot:canonical,origin:'local'},this.options);
       const existing=this.records.get(manifest.id);
-      if(existing){if(existing.sourceRoot!==canonical||existing.ownerChatId!==ownerChatId)throw new Error('Plugin source ownership changed');return this.descriptor(manifest.id)!;}
+      if(existing){if(existing.sourceRoot!==canonical)throw new Error('Plugin source ownership changed');return this.descriptor(manifest.id)!;}
       if(this.records.size>=REMOTE_PLUGIN_CATALOG_LIMITS.entries)throw new Error('Plugin catalog capacity exceeded');
-      if([...this.records.values()].some(record=>record.ownerChatId===ownerChatId))throw new Error('Chat already owns another plugin source');
-      if(!ownerChatId.trim()||ownerChatId.length>160)throw new Error('Invalid source Chat');
-      const record:PluginRuntimeRecord={pluginId:manifest.id,origin:'local',ownerChatId,sourceRoot:canonical,enabled:true,authoringManifest:manifest,
+      const record:PluginRuntimeRecord={pluginId:manifest.id,origin:'local',sourceRoot:canonical,enabled:true,authoringManifest:manifest,
         activeGenerationId:null,candidateGenerationId:null,previousGenerationId:null,generations:[],retentionPins:[],lastActivation:null,error:null,revision:0};
       this.observed.set(record.pluginId,await this.fingerprint(canonical));await this.commit(record);return this.descriptor(record.pluginId)!;
     });
@@ -99,23 +96,20 @@ export class PluginSurfaceRuntime {
     await assertPluginIdentity(record,this.options);await this.verify(pluginId,generation);
     return{id:pluginId,generationId,sourceFingerprint:await this.fingerprint(join(this.artifactRoot(pluginId,generationId),'source')),name:generation.manifest.name,dock:structuredClone(generation.manifest.dock)};
   }
-  /** Main-only seed entry. Agent/IPC authoring only receives installLocal. */
-  installOfficial(sourceRoot:string,input:{ownerChatId:string;signal?:AbortSignal}) {
+  /** Main-only retained native composer seed entry. Unified source authoring uses bottega.plugin.json. */
+  installOfficial(sourceRoot:string,input:{signal?:AbortSignal}={}) {
     return this.install(sourceRoot,input,"official");
   }
-  private install(sourceRoot:string,input:{ownerChatId:string;expectedActiveGenerationId?:string|null;signal?:AbortSignal},origin:PluginRuntimeRecord["origin"]) {
+  private install(sourceRoot:string,input:{expectedActiveGenerationId?:string|null;signal?:AbortSignal},origin:PluginRuntimeRecord["origin"]) {
     return this.enqueue(async()=>{
       const canonical=await realpath(sourceRoot);
       await inspectPluginSource(canonical);
       const manifest=await this.manifest(canonical);
       await assertPluginIdentity({pluginId:manifest.id,sourceRoot:canonical,origin},this.options);
       const existing=this.records.get(manifest.id);
-      if([...this.records.values()].some(item=>item.ownerChatId===input.ownerChatId&&item.pluginId!==manifest.id))throw new Error("Chat already owns another plugin source");
-      if(existing && existing.ownerChatId!==input.ownerChatId) throw new Error("Plugin belongs to another Chat");
       if(existing && existing.sourceRoot!==canonical) throw new Error("Plugin already has a different source directory");
-      if(!input.ownerChatId.trim()||input.ownerChatId.length>160)throw new Error("Invalid plugin source Chat");
       if(input.expectedActiveGenerationId!==undefined && (existing?.activeGenerationId??null)!==input.expectedActiveGenerationId)throw new Error("Active plugin generation changed");
-      const record:PluginRuntimeRecord=existing??{pluginId:manifest.id,origin,ownerChatId:input.ownerChatId,sourceRoot:canonical,enabled:true,authoringManifest:null,activeGenerationId:null,candidateGenerationId:null,previousGenerationId:null,generations:[],retentionPins:[],lastActivation:null,error:null,revision:0};
+      const record:PluginRuntimeRecord=existing??{pluginId:manifest.id,origin,sourceRoot:canonical,enabled:true,authoringManifest:null,activeGenerationId:null,candidateGenerationId:null,previousGenerationId:null,generations:[],retentionPins:[],lastActivation:null,error:null,revision:0};
       return this.build(record,"install",input.signal);
     });
   }
@@ -146,15 +140,6 @@ export class PluginSurfaceRuntime {
         lastActivation:input.operationId?{operationId:input.operationId,generationId,expectedPrevious:input.expectedActiveGenerationId}:null,error:null,revision:record.revision+1};
       await this.commit(next);
       return this.descriptor(pluginId)!;
-    });
-  }
-  bindAuthoringChat(pluginId:string,chatId:string,expectedOwnerChatId:string) {
-    return this.enqueue(async()=>{const record=this.require(pluginId);
-      await assertPluginIdentity(record,this.options);
-      if(record.ownerChatId!==expectedOwnerChatId)throw new Error("Plugin source Chat changed");
-      if([...this.records.values()].some(item=>item.ownerChatId===chatId&&item.pluginId!==pluginId))throw new Error("Chat already owns another plugin source");
-      if(!chatId.trim()||chatId.length>160)throw new Error("Invalid plugin source Chat");
-      await this.commit({...record,ownerChatId:chatId,revision:record.revision+1});return this.descriptor(pluginId)!;
     });
   }
   setEnabled(pluginId:string,enabled:boolean) {
@@ -342,7 +327,7 @@ export class PluginSurfaceRuntime {
   private require(pluginId:string) {const record=this.records.get(pluginId);if(!record)throw new Error("Plugin is not installed");return record;}
   private verify(pluginId:string,generation:PluginGeneration) {return (this.options.verify??verifyCompiledV3Artifact)(this.artifactRoot(pluginId,generation.generationId),generation.digests);}
   private authorize(record:PluginRuntimeRecord,target:PluginGeneration,reason:"install"|"rebuild"|"activate"|"serve") {
-    return assertPluginIdentity(record,this.options).then(()=>this.options.authorize({pluginId:record.pluginId,generationId:target.generationId,manifest:target.manifest,previousManifest:this.active(record)?.manifest??null,ownerChatId:record.ownerChatId,reason}));
+    return assertPluginIdentity(record,this.options).then(()=>this.options.authorize({pluginId:record.pluginId,generationId:target.generationId,manifest:target.manifest,previousManifest:this.active(record)?.manifest??null,reason}));
   }
   private async commit(record:PluginRuntimeRecord) {
     const next=new Map(this.records);next.set(record.pluginId,record);await this.persist(next);this.records=next;

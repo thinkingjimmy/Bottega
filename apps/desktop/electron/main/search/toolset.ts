@@ -19,7 +19,7 @@ import type {
   SearchDocumentHit,
 } from "../chats/sqlite/database-protocol";
 import { statusError } from "../ipc/errors";
-import type { BuiltinToolContext, BuiltinToolset } from "../tools/registry";
+import type { PluginToolContext, PluginToolset } from "../tools/registry";
 import { builtinCallToolResultBytes } from "../tools/result";
 import {
   makeSnippet,
@@ -43,7 +43,7 @@ export function createSearchToolset(
   bases: BaseStore,
   isEffectiveArchived: (chatId: string) => boolean = () => false,
   isProjectArchived: (projectId: string) => boolean = () => false
-): BuiltinToolset {
+): PluginToolset {
   return {
     search_chat_history: (args, context) =>
       search(
@@ -73,7 +73,7 @@ async function search(
   bases: BaseStore,
   kind: SearchKind,
   args: SearchArgs,
-  context: BuiltinToolContext,
+  context: PluginToolContext,
   isEffectiveArchived: (chatId: string) => boolean,
   isProjectArchived: (projectId: string) => boolean
 ) {
@@ -238,7 +238,7 @@ function sameSearchFence(
     summary.chatMessageRevision === hit.nativeMessageRevision;
 }
 
-async function checkpoint(context: BuiltinToolContext, _event: Checkpoint) {
+async function checkpoint(context: PluginToolContext, _event: Checkpoint) {
   await yieldToEventLoop();
   context.signal.throwIfAborted();
 }

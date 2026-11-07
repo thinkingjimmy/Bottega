@@ -3,6 +3,8 @@
  * [OUTPUT]: Provides DockApiData, isolated visible consumers, host connection controls and journal-bound credential association.
  * [POS]: Main-owned generic API broker; source/package arrival and portable settings never grant network access.
  */
+import {attachBottegaCredentialSource} from '../../../plugins/process/credentials';
+import {apiOwnerSchema} from './state/model';
 import {randomBytes} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
 import {DOCK_API_BUDGET as B,dockApiRequirementSchema,type DockApiRequirement,type DockApiFailure} from '@bottega/contracts/plugins/dock/api';
@@ -27,6 +29,7 @@ const safeFailure=(error:unknown,sent:boolean):DockApiFailure=>{
 };
 export class DockApiData implements DockApiConsumer{
  private readonly state:ApiStateStore;
+ private releaseCredentials:(()=>void)|null=null;
  private readonly scheduler=new ApiScheduler();
  private readonly consumers=new Set<ApiConsumer>();
  private readonly entries=new Map<string,Entry>();
@@ -43,7 +46,11 @@ export class DockApiData implements DockApiConsumer{
  constructor(private readonly ports:ApiConsumerPorts&{userData:string;transport?:ApiTransport;active?():boolean;scope?():{accountId:string;installationId:string;libraryId?:string|null}}){
   this.state=new ApiStateStore(ports.userData,()=>this.changed());this.primary=this.createConsumer(ports)as ApiConsumer;
  }
- initialize(){if(!this.ready)this.ready=this.state.initialize().then(()=>{});return this.ready;}
+ initialize(){if(!this.ready)this.ready=this.state.initialize().then(()=>{this.releaseCredentials=attachBottegaCredentialSource(this.ports.userData,'widgets',{
+  list:async()=>this.state.owners().flatMap(owner=>this.state.slots(owner).filter(slot=>slot.set).map(slot=>Buffer.from(JSON.stringify({owner,slotId:slot.slotId})).toString('base64url'))),
+  read:async key=>{const value=JSON.parse(Buffer.from(key,'base64url').toString('utf8'));return this.state.material(apiOwnerSchema.parse(value.owner),String(value.slotId));},
+  write:async(key,value)=>{const target=JSON.parse(Buffer.from(key,'base64url').toString('utf8'));await this.state.setCredential(apiOwnerSchema.parse(target.owner),String(target.slotId),value);},
+ });});return this.ready;}
  createConsumer(ports:ApiConsumerPorts):DockApiConsumer{
   if(this.closed)throw new Error('DOCK_API_CLOSED');const consumer=new ApiConsumer(this,ports);this.consumers.add(consumer);return consumer;
  }
@@ -254,7 +261,7 @@ export class DockApiData implements DockApiConsumer{
  release(consumer:ApiConsumer){this.consumers.delete(consumer);this.reconcile();}
  health():ApiHealth{return{consumers:[...this.consumers].reduce((count,consumer)=>count+consumer.demandCount(),0),flights:[...this.entries.values()].filter(entry=>entry.flight).length,queued:this.scheduler.health().queued,timers:Number(this.timer!==null),entries:this.entries.size};}
  private assertOpen(){if(this.closed)throw new Error('DOCK_API_CLOSED');}
- async close(){if(this.closed)return;this.closed=true;if(this.timer)clearTimeout(this.timer);this.timer=null;for(const consumer of [...this.consumers])await consumer.close();for(const entry of this.entries.values())entry.controller?.abort();this.scheduler.close();await Promise.allSettled([...this.entries.values()].flatMap(entry=>entry.flight?[entry.flight]:[]));this.entries.clear();this.copyChoices.clear();this.labels.clear();await this.state.close();}
+ async close(){if(this.closed)return;this.closed=true;this.releaseCredentials?.();this.releaseCredentials=null;if(this.timer)clearTimeout(this.timer);this.timer=null;for(const consumer of [...this.consumers])await consumer.close();for(const entry of this.entries.values())entry.controller?.abort();this.scheduler.close();await Promise.allSettled([...this.entries.values()].flatMap(entry=>entry.flight?[entry.flight]:[]));this.entries.clear();this.copyChoices.clear();this.labels.clear();await this.state.close();}
 }
 
 class ApiConsumer implements DockApiConsumer{

@@ -4,7 +4,7 @@
  * [POS]: apps/desktop/electron/main/skills-management/metadata; Pure eligibility gate shared by EffectiveSkillSnapshot and catalog send-time revalidation
  */
 
-import { builtinToolSpec } from "../../../../shared/builtin-tools";
+import { toolSpec } from "../../../../shared/plugin-tools";
 
 export function skillRequirementSatisfied(
   requirement: string | undefined,
@@ -13,7 +13,7 @@ export function skillRequirementSatisfied(
   if (!requirement) return true;
   const allowed = new Set(allowedTools);
   const specs = allowedTools.flatMap((name) => {
-    const spec = builtinToolSpec(name);
+    const spec = toolSpec(name);
     return spec ? [spec] : [];
   });
   if (requirement === "builtin-tools: read") return specs.length > 0;
@@ -35,7 +35,7 @@ export function skillRequirementSatisfied(
   if (exact) {
     const names = exact[1]!.split(",").map((name) => name.trim());
     return names.every(
-      (name) => builtinToolSpec(name) !== undefined && allowed.has(name)
+      (name) => toolSpec(name) !== undefined && allowed.has(name)
     );
   }
   return false;

@@ -20,7 +20,7 @@ import {
   type SkillsScope,
 } from "../../../../shared/ipc/agent/skills-ipc";
 import { productFailed, productOk } from "../../../../shared/product/product-failure";
-import { allowedToolsFor, builtinToolSpec } from "../../../../shared/builtin-tools";
+import { allowedToolsFor, toolSpec } from "../../../../shared/plugin-tools";
 import { rendererIpc } from "../../registration/ipc-registrar";
 import {
   backendRuntimeRegistry,
@@ -686,7 +686,7 @@ export class SkillsCatalog {
     const disabled = new Set(this.dependencies.disabledTools?.() ?? []);
     return allowedToolsFor(access, "manual", planMode).filter((name) => {
       if (disabled.has(name)) return false;
-      const allowlist = builtinToolSpec(name)?.backendAllowlist;
+      const allowlist = toolSpec(name)?.backendAllowlist;
       return !allowlist || allowlist.some(id => id === backend);
     });
   }
@@ -700,7 +700,7 @@ export class SkillsCatalog {
       snapshot.capabilities.builtinTools !== "none";
     return {
       backend,
-      useSkillRegistered: Boolean(builtinToolSpec("use_skill")),
+      useSkillRegistered: Boolean(toolSpec("use_skill")),
       exactIssued: builtin,
       autoApproved: builtin,
       runtimeRootReadable: builtin,

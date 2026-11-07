@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on the structural type of the English basesEn catalog
- * [OUTPUT]: Provides basesJa, the Japanese catalog for every Base, synchronization review, Project conversion and embedded-chart surface
+ * [OUTPUT]: Provides basesJa, the Japanese catalog for every Base, synchronization review, Project/Base-plugin promotion and embedded-chart surfaces
  * [POS]: Shared Base language catalog in i18n.
  */
 
@@ -47,7 +47,7 @@ export const basesJa: BasesCatalog = {
   group: { unassigned: "未割り当て" },
   header: {
     openApp: "App を開く",
-    saveAsApp: "App として保存",
+    saveAsApp: "プラグインとして保存",
     importExport: "インポートとエクスポート",
     importExportAria: "Base のインポートとエクスポート",
     exportCsv: "CSV をエクスポート",

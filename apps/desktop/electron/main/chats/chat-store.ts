@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node crypto, ProductFailure, chat lifecycle/projection collaborators, device identity, the typed SQLite worker client, and the shared ChatStoreState cell with read, history, fork, transition, and persistence collaborators; the provider catalog's default provider
- * [OUTPUT]: Provides receipt-gated Chat APIs, frozen execution admission, optional incarnation-CAS archive updates, durable title jobs, scoped results and readonly-safe retention through two-phase open/adopt startup.
+ * [OUTPUT]: Provides receipt-gated Chat APIs, frozen execution admission, optional incarnation-CAS archive updates, durable title jobs, scoped results and readonly-safe retention through two-phase open/adopt startup. Passes main-owned member facts into original Cloud publication without a new local column.
  * [POS]: Main-process Chat domain queue and metadata owner; durable writes, fork construction, pure transitions, read projections, and import/continuation sagas live in focused composed siblings
  */
 import { type ChatStoreDependencies, type ChatSqliteRuntimeFacts, sessionKey, requestHash } from "./store-contracts";
@@ -195,7 +195,7 @@ export class ChatStore {
         identity: identity ?? {},
         projects: this.dependencies,
       });
-      await this.persistRecord(record, undefined, identity?.workflowRole);
+      await this.persistRecord(record, undefined, identity?.workflowRole, identity?.memberSession);
       this.state.metadata.set(chatId, metadataOf(record));
       this.state.touch();
       this.state.messageRevisions.set(chatId, record.chatMessageRevision);
@@ -729,9 +729,9 @@ export class ChatStore {
   }
 
   private async persistRecord(record: ChatRecord, ownerCommit?: import("./sqlite/cloud/execution/commit").OwnerCommit,
-    workflowRole?: import("@ai-chat/cloud-protocol/chats/model").ChatWorkflowRole) {
+    workflowRole?: import("@ai-chat/cloud-protocol/chats/model").ChatWorkflowRole, memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts) {
     return persistRecordToStorage({
-      ownerCommit, workflowRole,
+      ownerCommit, workflowRole, memberSession,
       record,
       database: this.state.database,
       deviceId: this.state.deviceId,

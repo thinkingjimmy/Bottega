@@ -16,7 +16,7 @@ import {
 } from "../../../../shared/ipc/settings/mcp-servers-ipc";
 import type { ProductResourceScope } from "../../../../shared/product/resource-scope";
 import { rendererIpc } from "../../registration/ipc-registrar";
-import { storeError } from "../json-cas-store";
+import { storeError } from "../persistence/json-cas-store";
 import type { ProjectStore } from "../../projects/store/project-store";
 import type { ProjectToolPolicyStore } from "../project/store";
 import type { ManualMcpServersStore } from "./store";

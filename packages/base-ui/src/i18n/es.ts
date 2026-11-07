@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on the structural type of the English basesEn catalog
- * [OUTPUT]: Provides basesEs, the Spanish catalog for every Base, synchronization review, Project conversion and embedded-chart surface
+ * [OUTPUT]: Provides basesEs, the Spanish catalog for every Base, synchronization review, Project/Base-plugin promotion and embedded-chart surfaces
  * [POS]: Shared Base language catalog in i18n.
  */
 
@@ -47,7 +47,7 @@ export const basesEs: BasesCatalog = {
   group: { unassigned: "Sin asignar" },
   header: {
     openApp: "Abrir App",
-    saveAsApp: "Guardar como App",
+    saveAsApp: "Guardar como plugin",
     importExport: "Importar y exportar",
     importExportAria: "Importar y exportar la Base",
     exportCsv: "Exportar CSV",

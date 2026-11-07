@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Prompt input types, workspace scope, remote file references, and empty queue/Sketch resource factories.
- * [OUTPUT]: ComposerFile, FileNode, FileResource, ComposerState, emptyComposer.
- * [POS]: apps/desktop/src/lib/chat/state/composer; Immutable composer shape and empty-state factory; mutable custody remains in the composer store.
+ * [OUTPUT]: ComposerFile, FileNode, FileResource, PluginAuthoringIntent, ComposerState and emptyComposer.
+ * [POS]: apps/desktop/src/lib/chat/state/composer; Immutable composer shape, lazy plugin source intent and empty-state factory; mutable custody remains in the composer store.
  */
 import type { PromptInputFilePart, RichNode, RichValue } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import type { AgentWorkspaceScope } from "../../../../../shared/ipc/agent/agent-ipc";
@@ -25,7 +25,10 @@ export type FileNode = Extract<RichNode, { type: "file" }>;
 
 export type FileResource = { file?: File; node: FileNode; scope?: AgentWorkspaceScope };
 
+export type PluginAuthoringIntent = import("@bottega/contracts/plugins/platform").PluginPrepareAuthoringInput & { displayName?: string };
+
 export type ComposerState = {
+  pluginAuthoring?: PluginAuthoringIntent;
   /** "" = 尚未认领任何一世。它不是「某一世」，因此不能拿去和真实世代比大小。 */
   incarnationId: string;
   /** 草稿的目标 Project；落盘后归属由 record 接管，这个值就此定格、不再变化。 */

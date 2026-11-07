@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node fsync journal/realpath/stat, BrowserWindow, canonical image source resolver and durable cache source resolver
+ * [INPUT]: Depends on Node fsync journal/realpath/stat/homedir, BrowserWindow, canonical image source resolver and durable cache source resolver
  * [OUTPUT]: Provides durable completed-image journal/lease custody within the 64 MiB decoder cap, immutable completion identities, CAS ACKs and path-free renderer events.
  * [POS]: Gallery's completed-event arbiter; always persists to the durable journal before projecting to renderer windows, and the raw lease/savedPath never leave the main process
  */
@@ -16,6 +16,7 @@ import {
   stat,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { homedir } from "node:os";
 import type { BrowserWindow } from "electron";
 import { z } from "zod";
 import {
@@ -352,7 +353,10 @@ async function issueLease(
   workspaceRoot: string
 ): Promise<WorkspaceReadLease> {
   const root = await realpath(workspaceRoot);
-  const source = await realpath(resolve(workspaceRoot, savedPath));
+  const expandedPath = savedPath.startsWith("~/")
+    ? join(homedir(), savedPath.slice(2))
+    : savedPath;
+  const source = await realpath(resolve(workspaceRoot, expandedPath));
   const relation = relative(root, source);
   // win32 跨盘符时 relative 返回绝对路径而非 ../ 前缀，必须一并拒绝
   if (

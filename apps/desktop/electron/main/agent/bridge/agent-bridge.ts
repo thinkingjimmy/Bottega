@@ -8,6 +8,8 @@
  */
 
 import { nativeBackgrounds } from "../../providers/codex/native/background/registry";
+import { nativeMemberForkFor } from "../../library/sessions/member-fork";
+import {acquirePluginSourceTurn} from '../../plugins/integration/turns';
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
 import { artifactRuntime } from "../../artifacts/core/runtime";
 import { type BrowserWindow } from "electron";
@@ -149,6 +151,8 @@ async function spawnAgent(
   let resolvedInput = reuseInput;
   let credentialUse: ReturnType<typeof reserveAgentCredentialUse> | undefined;
   try {
+    await acquirePluginSourceTurn(entry,{workspace:context.workspace,requestId:payload.requestId,chatId:entry.conversationId,
+      incarnationId:entry.incarnationId,mode:payload.turnOptions.mode,signal:entry.childController.signal});
     if (payload.artifactEdit) {
       await (await import("../../design/chat-edit/spawn")).spawnArtifactChatEdit({ entry, payload, context, options, resolved: reuseInput, authority: trustedAuthority, turns, publishState,
         callbacks: (backend, runtimeGeneration) => createTurnCallbacks({ turns, threadScopes, publish, observe, finalizeEntry }, { entry, generation, backend, runtimeGeneration, options, context, trustedAuthority }) });
@@ -281,6 +285,7 @@ async function spawnAgent(
       },
       disableProviderMemory: context.builtinToolPolicy?.workflowStep === true,
       sessionRecovery: context.sessionRecovery,
+      memberFork: !payload.session && entry.origin?.kind === "member" ? nativeMemberForkFor({ chatId: entry.conversationId, incarnationId: entry.incarnationId, backend: backend.id }) : undefined,
       onSessionPrompt: context.onSessionPrompt,
       ...(artifactDirectory ? { artifactDirectory } : {}),
       ...(trustedAuthority ? { trustedAuthority } : {}),

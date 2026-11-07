@@ -1,9 +1,9 @@
 /**
- * [INPUT]: Trusted renderer IPC, resident Chat authority, plugin integration, App lifecycle and a native folder picker.
- * [OUTPUT]: Current-draft leases/recovery, trusted-window lease validation, main-only official initialization retry, source Chat selection and common App/plugin generation commands.
+ * [INPUT]: Trusted renderer IPC, resident Chat authority, plugin integration, App lifecycle.
+ * [OUTPUT]: Current-draft leases/recovery, trusted-window lease validation, main-only official initialization retry, common App/plugin generation commands.
  * [POS]: UI authority adapter; sandbox frames cannot invoke these channels or choose filesystem paths.
  */
-import { dialog, type BrowserWindow } from 'electron';
+import type { BrowserWindow } from 'electron';
 import { z } from 'zod';
 import { PLUGIN_SURFACES_CHANNEL as C, GUI_GENERATIONS_CHANNEL as G } from '@bottega/contracts/plugins/surface/native';
 import { pluginSourceSchema } from '@bottega/contracts/plugins/surface/source';
@@ -50,15 +50,6 @@ export function registerPluginSurfaces(service:PluginSurfaceIntegration,apps:App
     .handle(C.history,plugin=>service.history(id.parse(plugin)))
     .handle(C.retryInitialization,plugin=>service.retryInitialization(id.parse(plugin)))
     .handle(C.activate,async(plugin,generation,expected)=>{await service.activateComposer(id.parse(plugin),id.parse(generation),id.parse(expected));})
-    .handle(C.edit,(plugin,chat)=>service.edit(id.parse(plugin),id.nullable().parse(chat)))
-    .handle(C.newPlugin,chat=>service.newPlugin(id.parse(chat)))
-    .handle(C.installLocal,async chat=>{
-      const chatId=id.parse(chat);service.assertOwner({chatId,incarnationId:''});
-      const selected=await dialog.showOpenDialog(window,{properties:['openDirectory']});
-      if(selected.canceled||selected.filePaths.length!==1)return null;
-      service.assertOwner({chatId,incarnationId:''});
-      await service.runtime.installLocal(selected.filePaths[0]!,{ownerChatId:chatId});return {chatId};
-    })
     .roles('main','app-window')
     .handleWithContext(G.history,async(context,raw)=>{
       const value=assertHistory(context,raw);if(value.kind==='plugin')return service.history(value.id);

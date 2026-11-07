@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AgentSendPayload from agent-ipc, ProductFailure, chat create/append/adopt input DTOs from chats-ipc, and the durable submission precondition/ACK/outcome contracts
- * [OUTPUT]: Defines canonical submissions and custody/recovery receipts, including unsequenced queued admission, one-operation authentication retries and the main-only WorkflowTurnSource of a workflow step's turn.
+ * [OUTPUT]: Defines canonical submissions and custody/recovery receipts, including unsequenced queued admission, one-operation authentication retries and the main-only WorkflowTurnSource of a workflow step's turn. Trusted main submissions also carry persistent member ownership; public renderer submissions cannot issue it.
  * [POS]: apps/desktop/shared/ipc/content; Shared conversation-coordinator boundary; the renderer-facing type can never express adopting a SessionRef, appending a chat message, or claiming an Agent turn directly
  */
 
@@ -79,6 +79,8 @@ export type TrustedManualTurnSubmission = Omit<ManualTurnSubmission, "persistenc
   remoteInput?: Array<{ attachment: import("@ai-chat/cloud-protocol/remote/input/model").RemoteAttachment; path: string }>;
   /** Set only by the workflow runtime for a step's turn; renderer and remote submissions cannot express this field. */
   workflow?: WorkflowTurnSource;
+  /** Main-owned persistent member source; renderer and remote submissions cannot claim it. */
+  memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts;
 };
 
 /** The workflow step attempt a turn runs for: the turn is a role's, never a person's. */

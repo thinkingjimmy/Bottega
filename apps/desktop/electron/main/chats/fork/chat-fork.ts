@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Chat schemas, message normalization, cryptographic ids, main/errors, and transcript Gallery source references
- * [OUTPUT]: Provides native/imported fork eligibility, title and operation identity, exact anchored forks and independent recovered Chat records
+ * [OUTPUT]: Provides native/imported fork eligibility, title and operation identity, exact anchored forks and independent recovered Chat records Main-authorized member child creation may seal an independent initial mode without changing its parent.
  * [POS]: apps/desktop/electron/main/chats/fork; Pure fork policy between the renderer/service admission boundary and ChatStore persistence
  */
 
@@ -171,6 +171,7 @@ export function materializeForkPrefix(
 }
 
 type ForkRecordInput = Readonly<{
+  initialMode?: import("@bottega/contracts/plugins/platform").PluginModeSelection;
   source: ChatRecord;
   childChatId: string;
   childIncarnationId?: string;
@@ -217,7 +218,7 @@ function buildForkRecord(input: ForkRecordInput, messages: ChatMessage[]) {
     titleJob: { state: "none" },
     agent: input.source.agent,
     agentRevision: 0,
-    options: structuredClone(input.source.options),
+    options: input.initialMode ? { ...structuredClone(input.source.options), mode: structuredClone(input.initialMode) } : structuredClone(input.source.options),
     forkAgent: input.source.agent,
     session: null,
     importOrigin: null,

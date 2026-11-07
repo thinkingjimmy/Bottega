@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on bounded Zod and Convex diagnostics, approved binding, the four Store outboxes, original recovery Forks for deferred same-owner receipts, artifact publication and formal entity/file publishers.
- * [OUTPUT]: Exposes current-run remote readiness only after the Library ownership receipt and local marker are confirmed, wakes content retry without suspending the account, claims this folder for this computer before offering a byte and stops the run for good when the server says it belongs to another, delivers deletions before uploads, runs the first Chat upload cheapest-first behind the Base-owning identities the Bases phase requires, sums the plaintext this pass delivers and every file transfer it starts into one uploaded figure, publishes a named Chat's metadata on its own fast lane, sends a Base's queued work as soon as a local commit queues it, completes recovered native body/import/Home publication through convergence and isolates entity failures within bounded lanes. U06-d: each App's build status is published as it changes and again after its surface in every pass.
+ * [OUTPUT]: Exposes current-run remote readiness only after the Library ownership receipt and local marker are confirmed, wakes content retry without suspending the account, claims this folder for this computer before offering a byte and stops the run for good when the server says it belongs to another, delivers deletions before uploads, runs the first Chat upload cheapest-first behind the Base-owning identities the Bases phase requires, sums the plaintext this pass delivers and every file transfer it starts into one uploaded figure, publishes a named Chat's metadata on its own fast lane, sends a Base's queued work as soon as a local commit queues it, completes recovered native body/import/Home publication through convergence and isolates entity failures within bounded lanes. U06-d: each App's build status is published as it changes and again after its surface in every pass. Runs owner-only member identity repair in the existing account pass.
  * [POS]: Main synchronization composition; an entity remains pending until every required content component is confirmed, and the byte figures belong to the initial upload alone. Stale selected heads defer initial convergence without acknowledgement and wake catalog refresh. A pass holds at most one outbox window (2,000 rows, A-14), invalidates it after turn publication even on partial failure, and counts the rest as pending.
  */
 import { recoveryDiagnostics } from "../../runtime/diagnostics/timeline";
@@ -54,7 +54,7 @@ import { DesktopClassificationPublisher } from "../chats/classification/publishe
 import { forEachIsolated, smallestFirst, transferMeter, RetrySchedule } from "./schedule";
 import { libraryRefusal, protocolHeader } from "@ai-chat/cloud-protocol";
 import { writePublisher } from "../../../library/publisher";
-import { workflowChatRoles } from "../../../chats/projection/chat-summary";
+import { workflowChatRoles, memberChatEntries } from "../../../chats/projection/chat-summary";
 /* A whole chat is one unit of upload work; four lanes keep the latency-bound path busy without exceeding the crypto
    queue's waiting budget. Staged bytes arrive per message, so they are coalesced instead of sent one frame each. */
 const CHAT_LANES = 4, FLUSH_INTERVAL = 30_000, FLUSH_CEILING = 60_000, TURN_INTERVAL = 30_000, WAKE_DELAY = 250, UPLOAD_INTERVAL = 200;
@@ -493,6 +493,7 @@ export class DesktopSyncRun {
     if (metadataChats.size) this.stale();
     /* R-35: a workflow Chat that reached the cloud without its role gets it once; a failure is retried next pass. */
     await this.metadata.repairWorkflowRoles(workflowChatRoles()).catch(error => { this.fail(error); });
+    await this.metadata.repairMemberSessions(memberChatEntries()).catch(error => { this.fail(error); });
     const classified = await this.outbox();
     await forEachIsolated(classified.filter(item => item.kind === "classification"), 1, item => this.classifications.publish([item]), isolate); this.assertCurrent();
     if (classified.some(item => item.kind === "classification")) this.stale();

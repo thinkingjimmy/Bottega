@@ -38,6 +38,6 @@ export type WidgetDeliveryView = {
     "preparing" | "transferring" | "pending" | "ready" | "failed" | "abandoned";
 };
 
-export type WidgetInstalledDefinition={key:string;definitionId:string;sourceInstallationId:string;name:string;reference:string;instanceCount:number;sourceChatId?:string};
+export type WidgetInstalledDefinition={key:string;definitionId:string;sourceInstallationId:string;name:string;reference:string;instanceCount:number};
 
-export type WidgetAccountDefinition={key:string;definitionId:string;sourceInstallationId:string;reference:string;name:string;description:string;sourceChatId?:string};
+export type WidgetAccountDefinition={key:string;definitionId:string;sourceInstallationId:string;reference:string;name:string;description:string};

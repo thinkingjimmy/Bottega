@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on Chat/Project/Setup ports, the native CommandSink, coordinator outcome clients, frozen submission payloads and view/abort fences.
- * [OUTPUT]: Workspace-fenced submission and revision, current options after initial model preparation, captured accepted-use preferences, ambiguous draft retention and existing admission/custody gates.
+ * [OUTPUT]: Workspace-fenced submission and revision, commit-time draft consumption, current options after initial model preparation, captured accepted-use preferences, ambiguous draft retention and existing admission/custody gates.
  * Explicit review sends retain original request ID/time and reconcile that outcome before another admission.
  * [POS]: apps/desktop/src/components/chat/runtime/session/submission; The limit of the submission of chat/runtime/session transactions; The main custody is not cancelled due to view switching, and the delayed return can only be written back to the still matched renderer generation
  */
+import { pluginPlatformBridge } from "@/lib/plugin-platform/client";
 import { lastCanonicalSeq } from "@/lib/native-transcript/window";
 import { builtinAgent } from "../../../../../../shared/chat-agent/options";
 import { submissionDecision } from "../../../../../../shared/agent-availability/projection";
@@ -75,7 +76,7 @@ import {
   type ChatProjectMode,
 } from "../../chat-session-model";
 import type { useChatSettings } from "../../settings/use-chat-settings";
-import type { SessionSubmitLifecycle } from "./create-session-submit-lifecycle";
+import { observePersistedSubmission, type SessionSubmitLifecycle } from "./create-session-submit-lifecycle";
 import type { SessionSubmit } from "../use-session-interactions";
 import { gallerySnapshot, submissionContent } from "./session-submission-payload";
 export { assembleFirstTurnPayload } from "./session-submission-payload";
@@ -337,14 +338,26 @@ export function createSessionSubmissionPorts(
     const chatEstablished = Boolean(
       refs.recordExists.current || refs.incarnationId?.current
     );
-    const projectId =
+    const authoring = !chatEstablished ? readComposer(chatId).pluginAuthoring : undefined;
+    if (authoring && message.input.kind === "rich" && message.input.value.some(node => node.type !== "text" && node.type !== "section")) {
+      throw new Error(submissionCopy("chat.runtime.submission.workspaceChangedChoose"));
+    }
+    const source = authoring ? await awaitSubmissionStep(signal, () => {
+      const bridge = pluginPlatformBridge();
+      if (!bridge) throw new Error("Plugin source editing requires this computer");
+      const { displayName: _displayName, ...operation } = authoring;
+      return bridge.prepareAuthoring(operation);
+    }) : undefined;
+    throwIfSubmissionAborted(signal);
+    const resolvedWorkspace = source ? source.workspacePrecondition : workspacePrecondition;
+    const projectId = source?.projectId ?? (
       !chatEstablished && project.kind === "fixed-app"
         ? (
             await awaitSubmissionStep(signal, () =>
               projects.ensureForApp(project.appId)
             )
           ).id
-        : selectedProjectId;
+        : selectedProjectId);
     assertWorkspaceFence();
     /* An App's Chat runs on a built-in only (its maintenance and GUI contracts are built-in): never substitute one for a package Provider. */
     const appAgent = builtinAgent(settings.turnOptions.backend);
@@ -418,7 +431,7 @@ export function createSessionSubmissionPorts(
       persistence: durablePersistence,
       content,
       precondition,
-      workspacePrecondition,
+      workspacePrecondition: resolvedWorkspace,
       turn: {
         requestId,
         ...(agentSession && !switchIntent ? { session: agentSession } : {}),
@@ -696,9 +709,10 @@ export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
       }
     };
     const rememberUse = input.services.settings.capturePreferenceUse?.(envelope.turn.turnOptions);
+    const stopObserving = observePersistedSubmission(envelope, signal, options.onPersisted);
     const result = await awaitSubmissionStep(signal, () =>
       ports.admitSubmission(envelope)
-    );
+    ).finally(stopObserving);
     if (result.kind === "ambiguous") {
       if (envelope.agentSwitch) {
         retainComposerResources(input.snapshot.chatId);

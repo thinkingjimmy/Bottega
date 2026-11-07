@@ -1,0 +1,3 @@
+/* Location purpose shown by macOS for the preinstalled Weather Widget. */
+NSLocationUsageDescription = "当你选择天气 Widget 时，Bottega 会使用你的位置显示当前天气。";
+NSLocationWhenInUseUsageDescription = "当你选择天气 Widget 时，Bottega 会使用你的位置显示当前天气。";

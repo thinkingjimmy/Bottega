@@ -134,6 +134,9 @@ importers:
       pdf-lib:
         specifier: 1.17.1
         version: 1.17.1
+      pnpm:
+        specifier: 11.9.0
+        version: 11.9.0
       postcss:
         specifier: 8.5.19
         version: 8.5.19
@@ -164,6 +167,9 @@ importers:
       ws:
         specifier: 8.21.1
         version: 8.21.1
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
       zod:
         specifier: 4.6.4
         version: 4.6.4
@@ -5946,6 +5952,11 @@ packages:
   pngjs@5.0.0:
     resolution: {integrity: sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==}
     engines: {node: '>=10.13.0'}
+
+  pnpm@11.9.0:
+    resolution: {integrity: sha512-vWgtXQP+Ul73yf1ngMaITR51asTJyf4AxTh4KCQxDc+Q493E9Tg18G3669UIXkGFXgvLs7YN4qxburieUDbwOw==}
+    engines: {node: '>=22.13'}
+    hasBin: true
 
   points-on-curve@0.2.0:
     resolution: {integrity: sha512-0mYKnYYe9ZcqMCWhUjItv/oHjvgEsfKvnUTg8sAtnHr3GVy7rGkXCb6d5cSyqrWqL4k81b9CPg3urd+T7aop3A==}
@@ -12558,6 +12569,8 @@ snapshots:
       xmlbuilder: 15.1.1
 
   pngjs@5.0.0: {}
+
+  pnpm@11.9.0: {}
 
   points-on-curve@0.2.0: {}
 

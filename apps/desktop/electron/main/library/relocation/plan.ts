@@ -22,13 +22,13 @@ export class LibraryMoveError extends Error {
  * never silently renames it and a destination that already holds something is refused
  * rather than merged into.
  */
-export async function planLibraryMove(input: { root: string; parent: string; projectDirs: Iterable<string> }) {
+export async function planLibraryMove(input: { root: string; parent: string; projectDirs: Iterable<string>; userData?: string }) {
   const parent = await realpath(input.parent);
   const to = join(parent, basename(input.root));
   if (to === input.root) throw new LibraryMoveError("same-place");
   if (isUnder(to, input.root)) throw new LibraryMoveError("inside");
   /* The same admission as a first selection: never a volume or system root, never inside a Trash. */
-  if (!await assertAdmissibleLibraryRoot(to).then(() => true, () => false)) throw new LibraryMoveError("unsafe");
+  if (!await assertAdmissibleLibraryRoot(to, input.userData).then(() => true, () => false)) throw new LibraryMoveError("unsafe");
   const taken = await lstat(to).then(() => true, error => { if (isErrnoCode(error, "ENOENT")) return false; throw error; });
   if (taken) throw new LibraryMoveError("exists");
   /* A Project folder on disk must stay disjoint from the Bottega folder; those inside the folder move with it. */

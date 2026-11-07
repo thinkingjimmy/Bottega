@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared agent/MCP DTOs, model-catalog probe admission, the apps/runtime/agent-tools AgentToolInventory type, AbortSignal, and the Node subprocess environment type
- * [OUTPUT]: Defines backend contracts, optional model-probe admission, the credential-safe authentication-check claim and main-only turn authority with optional exact-conversation Full Access validation, ProviderReadinessPlan (a descriptor's Provider bridge readiness launch) and ProviderBackend (a backend for any Provider id, what the runtime registry and the Provider resolver work with). TurnProcessOwner with optional durable descendant recording (B2-01: the other layer that owns a turn's process, e.g. host custody for a bridged turn).
+ * [OUTPUT]: Defines backend contracts, optional model-probe admission, the credential-safe authentication-check claim and main-only turn authority with optional exact-conversation Full Access validation, ProviderReadinessPlan (a descriptor's Provider bridge readiness launch) and ProviderBackend (a backend for any Provider id, what the runtime registry and the Provider resolver work with). TurnProcessOwner with optional durable descendant recording (B2-01: the other layer that owns a turn's process, e.g. host custody for a bridged turn). Defines the main-only independent native member fork authority.
  * BackendTurnOptions carries main-only isolated title/candidate purposes, background result persistence and skillIsolation for workflow launch translation; descriptors expose optional separate title/candidate factories, never an ordinary-Chat fallback.
  * ResolvedRuntime binds a registry version answer to its executable with versionIdentity for host measurements.
  * Carries fixed qualified setup commands and the main-owned disableProviderMemory policy into native Provider launch configuration.
@@ -252,6 +252,8 @@ export type TrustedTurnAuthority = {
 };
 
 export type BackendTurnOptions = {
+  /** Main-sealed member source; a canonical child Chat already exists and never inherits the parent session ID. */
+  memberFork?: import("../../library/sessions/member-fork").NativeMemberFork;
   /** Main-only title purpose; never accepted from renderer or ordinary Chat options. */
   titleOnly?: true;
   /** Main-only independent candidate purpose; never accepted from renderer or ordinary Chat options. */
@@ -279,6 +281,7 @@ export type BackendTurnOptions = {
     claudePluginPaths?: readonly string[];
     /** Product-owned flag-layer overlay; user ~/.claude/settings.json stays untouched. */
     claudeDisabledPluginIds?: readonly string[];
+    claudeEnabledPluginIds?: readonly string[];
     /** Main-only turn lease; released only after process custody is safely closed. */
     releaseClaudePluginProjection?: () => Promise<void>;
     /** The Provider plugin's settings a person changed (T-P5); a default is absent, so nothing is sent for it. */

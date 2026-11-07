@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron, shared chat contracts, typed service options, outcome-aware ChatStore/AttachmentStore, the focused fork service, ChatTitleJobs, renderer IPC/event adapters, pure guards, main/errors, and deletion/removal controllers, lifecycle/attachment-commit.
- * [OUTPUT]: Provides Chat admission, canonical trusted remote user provenance, events, durable session binding/replacement publication and existing execution/removal APIs. U06 Q7-c: createAppChat takes a remote first message's origin and, under the App Project's lock, refuses a second Edit Chat (APP_EDIT_FILLED).
+ * [OUTPUT]: Provides Chat admission, canonical trusted remote user provenance, events, durable session binding/replacement publication and existing execution/removal APIs. U06 Q7-c: createAppChat takes a remote first message's origin and, under the App Project's lock, refuses a second Edit Chat (APP_EDIT_FILLED). First member creation retains main-owned portable ownership and Home-derived managed execution through canonical persistence.
  * [POS]: apps/desktop/electron/main/chats/service; Main-process Chat service boundary; every new or adopted executable Chat is owned by a Chat Home creation saga
  */
 
@@ -61,7 +61,6 @@ import type { ChatsServiceOptions } from "./chats-service-options";
 import { createDormantAppChat, type DormantAppChatInput } from "../lifecycle/dormant-app-chat";
 import {createSourceChat,type SourceChatInput} from '../lifecycle/source/create';
 import {
-  beginAdoptedContinuation,
   createAdoptedChat,
 } from "../lifecycle/adopted-chat";
 
@@ -165,10 +164,12 @@ export class ChatsService {
     const value = createInputSchema.parse(input);
     const home = this.requireCreationHome(value.id, value.incarnationId);
     const projectId = value.projectId ?? null;
+    const execution = (await import("./creation")).chatHomeExecution(home, projectId);
     /* A workflow Chat is created with its fixed title, so it never goes to title generation (it is in no list). */
     const title = workflowChatTitle(value.id) ?? undefined;
     /* R-35: its role goes with its first upload, so phone and Web never list it even for a moment. */
     const workflowRole = workflowChatRole(value.id) ?? undefined;
+    const memberSession = (await import("../projection/chat-summary")).memberChatFacts(value.id) ?? undefined;
     if (projectId && this.options.isAppProject?.(projectId)) {
       throw statusError(
         403,
@@ -187,14 +188,14 @@ export class ChatsService {
                 minimumNextSeq: sequence.assistantSeq + 1,
                 options: value.options,
                 incarnationId: home.incarnationId,
-                homeDir: home.homeDir,
-                title, workflowRole,
+                homeDir: home.homeDir, ...execution,
+                title, workflowRole, memberSession,
               }
             : {
                 options: value.options,
                 incarnationId: home.incarnationId,
-                homeDir: home.homeDir,
-                title, workflowRole,
+                homeDir: home.homeDir, ...execution,
+                title, workflowRole, memberSession,
               }
         ), value.id
       );
@@ -454,35 +455,8 @@ export class ChatsService {
   }
   publishEffectiveArchive(record: ChatRecord | ChatMetadata, effectiveArchived: boolean) { this.events.publishEffectiveArchive(record, effectiveArchived); }
   async beginCreation(submission: ManualTurnSubmission) {
-    if (submission.persistence.kind === "append") return;
-    await beginAdoptedContinuation(this.store, submission);
-    const workspaceScope: import("../../../../shared/ipc/agent/agent-ipc").AgentWorkspaceScope =
-      submission.persistence.kind === "create-app"
-        ? { kind: "app", appId: submission.persistence.input.appId }
-        : submission.persistence.input.projectId
-          ? {
-              kind: "project",
-              projectId: submission.persistence.input.projectId,
-            }
-          : {
-              kind: "conversation",
-              conversationId: submission.persistence.input.id,
-            };
-    const record = await this.options.chatHomes?.beginCreation({
-      intentId: submission.intentId,
-      chatId: submission.persistence.input.id,
-      /* 提交里带来的 incarnation 就是这次创建的身份：不透传它，Chat Home 会
-       * 另铸一个，随后 requireCreationHome 必然判定「与创建请求不一致」——
-       * 同一个 incarnation 必须一路走到底，不能中途换人。 */
-      ...(submission.persistence.input.incarnationId
-        ? { incarnationId: submission.persistence.input.incarnationId }
-        : {}),
-      submission,
-      workspaceScope,
-      stagingOwner: submission.intentId,
-    });
-    if (!record) throw new Error("Chat Home 服务不可用");
-    return record;
+    return (await import("./creation")).beginChatCreation({ store: this.store, chatHomes: this.options.chatHomes,
+      resolveProjectWorkspace: this.options.resolveProjectWorkspace, assertAdmission: () => this.assertAdmission() }, submission);
   }
   markCreationPrepared(submission: ManualTurnSubmission) {
     return submission.persistence.kind === "append"
