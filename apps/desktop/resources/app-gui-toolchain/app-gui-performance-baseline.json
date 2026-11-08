@@ -1,6 +1,6 @@
 {
   "schema": "bottega.app-gui-performance-baseline/v1",
-  "status": "pending-external-platform-evidence",
+  "status": "verified-selected-platform-evidence",
   "sourceInputDigest": "sha256:59a21c87ad6c4f365fe9357eca7032fb69b668b6cdef4ca02c0df84ec7b96275",
   "fixture": {
     "rows": 10000,
@@ -29,8 +29,52 @@
   "requiredPlatforms": [
     {
       "platform": "darwin-arm64",
-      "status": "pending",
-      "receipt": null,
+      "status": "passed",
+      "receipt": {
+        "hardwareSku": "Mac16,10",
+        "cpu": "Apple M4",
+        "ramBytes": 34359738368,
+        "osBuild": "26A428",
+        "powerMode": "{\"source\":\"Now drawing from 'AC Power'\",\"settings\":\"AC Power:\\n Sleep On Power Button 1\\n autorestartatconnect 0\\n lowpowermode         0\\n standby              0\\n powernap             1\\n ttyskeepawake        1\\n womp                 1\\n displaysleep         10\\n networkoversleep     0\\n sleep                1\\n autorestart          0\\n tcpkeepalive         1\\n disksleep            10\"}",
+        "electronBuild": "43.1.1; Chromium 150.0.7871.114; Node 24.18.0",
+        "platform": "darwin-arm64",
+        "fixtureDigest": "sha256:7687e611319f05e09fe266a8084873ce8ec55f9e83459572880195340f750bad",
+        "sourceInputDigest": "sha256:59a21c87ad6c4f365fe9357eca7032fb69b668b6cdef4ca02c0df84ec7b96275",
+        "rawSampleDigest": "sha256:e2a708607f62b79796a266ee2561f43dcf1293a50791b9261bd256eb0cf02238",
+        "fixtureBytesDigest": "sha256:9bc11b126f3e2eaf56c1b9183a51bba1bfbbbffc984d62478961d28a18758447",
+        "buildDigest": "sha256:e5cde457bafa524e88f40adc856eaa5c86f81902c8f25b88f55d6d6dac9b71d0",
+        "producerDigest": "sha256:0e590075a9abe71e58db37ca5c060d96a18a4bd4e23845664f610b999f781851",
+        "thresholds": {
+          "coldSurfaceTtiP95Ms": 1500,
+          "warmSurfaceTtiP95Ms": 750,
+          "query10kP95Ms": 250,
+          "queryHardTimeoutMs": 500,
+          "interactionP95Ms": 100,
+          "readyLongTaskMaxMs": 100,
+          "startupLongTaskMaxMs": 200,
+          "mountedDomNodes": 2000,
+          "mountedVirtualRows": 200,
+          "rendererHeapDeltaBytes": 134217728,
+          "initialQueries": 3,
+          "interactionQueries": 2
+        },
+        "measurements": {
+          "coldSurfaceTtiP95Ms": 169.523681640625,
+          "warmSurfaceTtiP95Ms": 98.177001953125,
+          "query10kP95Ms": 61.01899999380112,
+          "queryHardTimeoutMs": 500,
+          "interactionP95Ms": 61.19999998807907,
+          "readyLongTaskMaxMs": 0,
+          "startupLongTaskMaxMs": 0,
+          "mountedDomNodes": 131,
+          "mountedVirtualRows": 19,
+          "rendererHeapDeltaBytes": 6567492,
+          "initialQueries": 2,
+          "interactionQueries": 2
+        },
+        "deadlineProofDigest": "sha256:e2d404ddfed7afb5d70c1a1a232f834e55a9b1219bdebfe3a4dab91daa74f3f6",
+        "deadlineObservedElapsedMs": 501.8421249999992
+      },
       "requiredIdentity": [
         "hardwareSku",
         "cpu",
@@ -70,5 +114,8 @@
       ]
     }
   ],
-  "releasePolicy": "Only platforms with matching measured receipts are verified. The original official profile requires all three platforms; an explicitly scoped profile must verify every platform it selects."
+  "releasePolicy": "Only platforms with matching measured receipts are verified. The original official profile requires all three platforms; an explicitly scoped profile must verify every platform it selects.",
+  "selectedPlatforms": [
+    "darwin-arm64"
+  ]
 }

@@ -19,7 +19,7 @@ This file records product milestones, not internal implementation iterations. Da
 
 **Compatibility and trust.** This release uses protocol **26**. Update connected desktops and reload Bottega Web after the coordinated service update. Existing content, sync passwords and account keys remain. Backend plugins run trusted local code and can use host credentials. Plugin switches control Bottega contributions; they do not disable a Provider's own native tools. Arbitrary native modules and remote scripts are outside the supported compatibility scope.
 
-**Validation limits.** Dock remains Alpha and requires macOS 27.x with Apple silicon. Successful native location approval, complete Teams across all four Providers, physical two-computer delivery and physical-input or assistive-technology checks retain separate acceptance scope. Existing Artifact acceptance limits remain unchanged.
+**Validation limits.** App GUI performance was measured on one macOS Apple silicon computer with the fixed 10,000-row, 20-column workload. Dock remains Alpha and requires macOS 27.x with Apple silicon. Successful native location approval, complete Teams across all four Providers, physical two-computer delivery and physical-input or assistive-technology checks retain separate acceptance scope. Existing Artifact acceptance limits remain unchanged.
 
 **Licenses.** Bottega first-party code remains MIT. Modified Canvas, Slides and Design System editor forks retain the BaoCut Community License and original notices. Other bundled materials retain their own terms. The root MIT license does not replace component licenses or grant separate commercial distribution or hosting rights.
 
