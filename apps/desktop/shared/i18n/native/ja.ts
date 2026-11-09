@@ -49,6 +49,8 @@ export const nativeJa: NativeCatalog = {
     "quitProcesses": "一部のバックグラウンドプロセスを終了できませんでした。",
     "quitOther": "終了の準備を完了できませんでした。もう一度お試しください。",
     "report": "問題を報告",
+    "downloadLatest": "最新版をダウンロード",
+    "downloadFailed": "開けませんでした。再試行",
     "copied": "コピーしました",
     "copyFailed": "コピーできませんでした"
   },

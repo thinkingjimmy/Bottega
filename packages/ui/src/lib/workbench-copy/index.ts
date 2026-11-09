@@ -1,7 +1,6 @@
 /**
  * [INPUT]: Depends on ../locale for five-language negotiation and on the five workbench catalogs.
  * [OUTPUT]: Provides getWorkbenchCopy, loadWorkbenchCopy, useWorkbenchCopy, useOptionalWorkbenchCopy (null without the workbench flag), formatWorkbench and formatCopy (re-exported from the catalog-free ./format), pluralWorkbench and the WorkbenchCopy type.
- * Exports workflowRecipeName for stable-id localization without changing persisted data (plugin names travel as copy keys, see plugins.builtin).
  * [POS]: Public workbench-copy subpath shared by desktop, Cloud Web and the phone shell; only English is eager.
  */
 import { useEffect, useState } from "react";
@@ -45,13 +44,5 @@ export function useWorkbenchCopy(locale: string): WorkbenchCopy {
   return loaded.locale === locale ? loaded.copy : getWorkbenchCopy(locale);
 }
 
-/**
- * The catalog for workbench-only surfaces: a constant null with the flag off, so those surfaces read nothing. The catalog itself
- * still ships in a flag-off build (English up front, the other locales lazy), because the read-only workflow columns use it
- * in both builds (E-01, kept on purpose).
- */
-export const useOptionalWorkbenchCopy: (locale: string) => WorkbenchCopy | null = workbenchUiEnabled ? useWorkbenchCopy : () => null;
 
-/** Built-in display names follow stable ids; persisted names remain data. */
-export const workflowRecipeName = (recipe: { recipeId: string; name: string }, copy: WorkbenchCopy["setup"]) =>
-  recipe.recipeId === "bottega.plan-develop-review" ? copy.planDevelopReview : recipe.name;
+export const useOptionalWorkbenchCopy: (locale: string) => WorkbenchCopy | null = workbenchUiEnabled ? useWorkbenchCopy : () => null;

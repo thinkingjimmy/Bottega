@@ -8,7 +8,7 @@ import { z } from "zod";
 export const OPERATION_RECEIPT_SCHEMA = "bottega.operation-receipt/v1" as const;
 export const OPERATION_STATES = ["pending", "accepted", "running", "succeeded", "cancelled", "failed", "outcome-unknown", "expired", "rejected"] as const;
 export type OperationState = (typeof OPERATION_STATES)[number];
-export const OPERATION_FAMILIES = ["lifecycle-intent", "chat-operation", "turn-submission", "base-tool-batch", "remote-command", "cloud-receipt", "workflow"] as const;
+export const OPERATION_FAMILIES = ["lifecycle-intent", "chat-operation", "turn-submission", "base-tool-batch", "remote-command", "cloud-receipt"] as const;
 export type OperationFamily = (typeof OPERATION_FAMILIES)[number];
 /** Terminal states: nothing later may change them. `outcome-unknown` is deliberately absent — late reports resolve it. */
 export const TERMINAL_OPERATION_STATES: ReadonlySet<OperationState> = new Set(["succeeded", "cancelled", "failed", "expired", "rejected"]);

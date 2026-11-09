@@ -1,10 +1,9 @@
 /**
- * [INPUT]: Depends on the main member identity index, Prepared Skill receipts, effective catalog snapshots, custody, builtin policy and workflow turn authority.
- * [OUTPUT]: Provides finalizeSkillsTurnProjection; selected workflow Skills remain capable and complete; trusted persistent member origin supplies its actual Lead/member role.
- * [POS]: apps/desktop/electron/main/window/agent; Final turn projection shared by builtin Providers; workflows never fall back to ambient Skills.
+ * [INPUT]: Uses `../../sections/coordinator/turns/mode-admission`, `../../agent/bridge/bridge-types`, `../../agent/admission/product-context`, `../../skills/catalog/skills-catalog`, `../../skills-management/custody/turn-custody`, `../../tools/issuance`, `../../skills-management/metadata/skill-requirements`, `../../sections/coordinator/admission/prepared-manual-text` for its declared types and implementation.
+ * [OUTPUT]: Provides finalizeSkillsTurnProjection.
+ * [POS]: apps/desktop/electron/main/window/agent module boundary; adjacent modules consume its explicit exports.
  */
 
-import { memberChatFacts } from "../../chats/projection/chat-summary";
 import { modeToolSelection, resolveChatMode } from "../../sections/coordinator/turns/mode-admission";
 import type {
   AgentContext,
@@ -14,9 +13,9 @@ import { createFinalTurnProjection } from "../../agent/admission/product-context
 import type { SkillsCatalog } from "../../skills/catalog/skills-catalog";
 import type { SkillsTurnCustodyStore } from "../../skills-management/custody/turn-custody";
 import { projectBuiltinTools, turnKindForOrigin } from "../../tools/issuance";
-import { workflowTurnPolicyFor } from "../../workflows/turn-policy";
+
 import { skillRequirementSatisfied } from "../../skills-management/metadata/skill-requirements";
-import { emptyPreparedSkillSelection } from "../../sections/coordinator/admission/prepared-manual-text";
+
 
 export async function finalizeSkillsTurnProjection(input: Readonly<{
   context: AgentContext;
@@ -53,8 +52,6 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
     disabledTools: input.policy.disabledTools,
     useSkill: false,
     managedWorktreeCommit: input.context.managedWorktree,
-    workflowStepResult: input.policy.workflowStep === true,
-    workflowStepHistory: Boolean(workflowTurnPolicyFor(projectionInput.requestId)?.historyChatId),
   });
   const policyDigest =
     input.context.preparedProjectTools?.receipt.digest ??
@@ -71,11 +68,7 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
     }
   }
   const toolPolicy = { allowedTools: frozenAllowedTools, policyDigest };
-  /* A role consumes its main-owned frozen selection; without one, ambient Skills stay excluded. */
-  const preparedSkillSelection = input.context.preparedSkillSelection ?? (projectionInput.origin?.kind === "workflow"
-    ? emptyPreparedSkillSelection(projectionInput.requestId, projectionInput.backendId, projectionInput.planMode,
-      input.context.projectContext ?? { projectId: null, projectLifecycleRevision: null })
-    : undefined);
+  const preparedSkillSelection = input.context.preparedSkillSelection;
   const snapshot = preparedSkillSelection
     ? await input.catalog.effectiveSnapshotFromPrepared(
         preparedSkillSelection,
@@ -94,11 +87,6 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
         },
         toolPolicy
       );
-  if (projectionInput.origin?.kind === "workflow" && (snapshot.entries.some(entry => !entry.available)
-    || snapshot.entries.length !== preparedSkillSelection?.candidates.length
-    || (snapshot.entries.length > 0 && !snapshot.capable))) {
-    throw new Error("agent-config-skill-unavailable");
-  }
   const custodyId = await input.custody.begin({
     requestId: projectionInput.requestId,
     conversationId: projectionInput.conversationId,
@@ -115,17 +103,12 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
     disabledTools: input.policy.disabledTools,
     useSkill: snapshot.capable,
     managedWorktreeCommit: input.context.managedWorktree,
-    workflowStepResult: input.policy.workflowStep === true,
-    workflowStepHistory: Boolean(workflowTurnPolicyFor(projectionInput.requestId)?.historyChatId),
   });
   const allowedTools = projectedTools.filter(name => name !== "read_chat_history" || Boolean(projectionInput.handoff));
   const readOnlyRoots = input.context.filesystemAccess?.readOnlyRoots;
 
-  const member = projectionInput.origin?.kind === "member" ? projectionInput.origin : memberChatFacts(projectionInput.conversationId);
-  const role = member ? projectionInput.conversationId === member.leadChatId
-    ? "You are the team Lead. Coordinate members and their task results."
-    : `You are the persistent team member ${JSON.stringify(member.memberId)}. Complete your assigned task; collaborate with Lead Chat ${JSON.stringify(member.leadChatId)}. Do not act as Lead or create a nested team.`
-    : undefined;
+
+
   return {
     ...input.context,
     skillsCustodyId: custodyId,
@@ -145,7 +128,7 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
       turnKind: turnKindForOrigin(projectionInput.origin),
       handoff: projectionInput.handoff, freshSession: projectionInput.freshSession,
       allowedTools,
-      appInstructions: [mode.prompt,role,input.context.attachedAppInstructions].filter(Boolean).join("\n\n"),
+      appInstructions: [mode.prompt,input.context.attachedAppInstructions].filter(Boolean).join("\n\n"),
       skillsCapable: snapshot.capable,
       skills: snapshot.entries
         .filter((entry) => entry.available)

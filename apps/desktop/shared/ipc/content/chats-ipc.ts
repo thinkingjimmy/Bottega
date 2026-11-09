@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on public content budgets/terminal evidence/notices and desktop Agent, authority and submission contracts
- * [OUTPUT]: Defines canonical Chat content, native-resume or saved-generation adoption, paired remote provenance, and bounded runtime/timeline/IPC projections. Canonical projections include optional portable persistent member ownership.
+ * [OUTPUT]: Provides REVISION_STALE, REVISION_NOT_IDLE, AppChatRole, ChatToolPart, ChatTextPart, ChatSubagentPart, ChatPart, PersistedSubagentStatus, PersistedSubagentMeta, PersistedSubagent, ChatAttachmentMeta, ChatAttachmentPayload, ChatNotice, isActionableNotice, UserChatMessage, AssistantChatMessage, NoticeChatMessage, ChatMessage, UnsequencedUserMessage, UnsequencedChatMessage, ChatSummary, ChatImportOrigin, SupersededChatBranch, ChatRecord, ChatRuntimeContext, ChatsSnapshot, ChatsEvent, ChatForkMode, ForkChatPreflightInput, ForkChatRequest, ForkChatPreflight, CommitManagedWorktreeInput, ChatMessagesSnapshot, ChatTimelineCursor, ChatTimelinePage, ChatTimelinePageInput, ChatTimelineAroundInput, ChatOutlineItem, ChatOutlineCursor, ChatOutlinePage, ChatOutlineInput, ChatFindCursor, ChatFindInput, ChatFindPage, CreateChatInput, AdoptChatInput, CreateAppChatInput, AppendChatMessageInput, TurnCommitInput, TurnCommitResult, RenameChatInput, SetChatSortKeyInput, ChatsBridgeApi.
  * [POS]: apps/desktop/shared/ipc/content; Backend-independent durable Chat wire authority shared by main, preload, and renderer
  */
 
@@ -22,7 +22,6 @@ import type {
   ChatTitleJob,
   ChatTitleSource,
   ConversationContext,
-  WorkflowChatRole,
 } from "../../placement/facts";
 import type { TranscriptGallerySourceRef } from "./gallery-media-ipc";
 
@@ -263,9 +262,7 @@ export type ChatSummary = {
   archivedAt?: number;
   /** main 计算的父子合并投影。 */
   effectiveArchived?: boolean;
-  /** Set by main for a Chat a workflow owns (one per record × role); never persisted on the record, every Chat list leaves it out. */
-  workflowRole?: WorkflowChatRole;
-  memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts;
+
 };
 
 export type ChatImportOrigin = Readonly<{

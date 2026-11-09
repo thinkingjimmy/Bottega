@@ -1,14 +1,12 @@
 /**
  * [INPUT]: Depends on the backend registry, TurnRegistry, synchronous Steer policy, payload validation, Project Tools receipts and the MCP plan binding guard, Chat commit, Gallery, Memory, MCP leases, artifact capture sessions, frozen sessions, retry guards and credential reservations
  * [OUTPUT]: Provides canonical execution, main-only session prompt evidence, scoped availability, frozen Provider-bound post-turn result persistence, Project policy narrowing, MCP/session guards, typed finalization (only availability gates may say "install or update"; a Stop during the process-slot wait cancels), StartNotDispatchedError for every start that failed before an Agent process existed, generation-scoped Stop, interaction/retry IPC with authorized saved-history session replacement carrying the original user identity, and shutdown (which returns only after every settling turn has finished its ledger writes); a turn starts on turnBackend (a built-in's host code or an available package Provider's DescriptorBackend; nothing runs it: runtime-unavailable), and a package turn gets no plan check, third-party MCP plan or App session config.
- * Workflow turns isolate native Skills and omit ambient backend plugin projections while preserving Provider settings.
- * Workflow turns disable native Provider memory; quit judges remaining safety locks after runtime and turn owners settle. Explicit application exit may report background cleanup separately once all turn persistence succeeds.
+ * quit judges remaining safety locks after runtime and turn owners settle. Explicit application exit may report background cleanup separately once all turn persistence succeeds.
  * Explicit Speed changes reset session fallback for the next turn while preserving an unsettled turn's observed tier and reason.
  * [POS]: apps/desktop/electron/main/agent/bridge; Main-process multi-backend turn executor; the conversation coordinator supplies already-admitted manual intent
  */
 
 import { nativeBackgrounds } from "../../providers/codex/native/background/registry";
-import { nativeMemberForkFor } from "../../library/sessions/member-fork";
 import {acquirePluginSourceTurn} from '../../plugins/integration/turns';
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
 import { artifactRuntime } from "../../artifacts/core/runtime";
@@ -19,8 +17,8 @@ import {
   type SessionRef,
 } from "../../../../shared/ipc/agent/agent-ipc";
 import { stagedInputReadRoots } from "./agent-input";
-import { workflowTurnPolicyFor } from "../../workflows/turn-policy";
-import { workflowNativeSkillRoots } from "../../agent-configs/selection";
+
+
 import { parseAgentPayloadForStart } from "../validation";
 import {
   AgentProcessAdmissionError,
@@ -210,8 +208,7 @@ async function spawnAgent(
         if (!entry.recallAttempted) {
           entry.recallAttempted = true;
           try {
-            const workflow = entry.origin?.kind === "workflow" ? workflowTurnPolicyFor(entry.requestId) : null;
-            const queryText = entry.origin?.kind === "manual" ? entry.origin.queryText : workflow?.workflowMemoryRead ? workflow.recallQuery : undefined;
+            const queryText = entry.origin?.kind === "manual" ? entry.origin.queryText : undefined;
             if (context.memory && queryText !== undefined) {
               entry.memoryRecall = await options.recallMemory?.({
                 admission: context.memory,
@@ -269,9 +266,7 @@ async function spawnAgent(
       ? { release: () => memoryContribution.release() }
       : undefined;
     /* A package Provider's turn has no App-configured session config (d4b follow-up slice 2). */
-    entry.backendSessionConfig ??= builtin ? await options.freezeBackendSessionConfig?.(builtin, {
-      isolateSkills: entry.origin?.kind === "workflow",
-    }) : undefined;
+    entry.backendSessionConfig ??= builtin ? await options.freezeBackendSessionConfig?.(builtin) : undefined;
     const artifactContext = artifactDirectory
       ? `When the user asks to see a chart, page or other visualization, write it as a standalone HTML or SVG file under ${artifactDirectory} and reply with one standalone line visualize{"path":"absolute file path","title":"Short title"}; documents delivered by design_commit already have their Artifact reference and must not also use visualize; ordinary HTML may use relative local resources and must not be inlined in the reply. Deliverable documents (pdf, docx, xlsx, pptx) that are not part of the project source also belong in that directory. Project files stay in the project.`
       : "";
@@ -283,9 +278,7 @@ async function spawnAgent(
         if (entry.persist !== "stored" || !entry.incarnationId || !options.persistNativeBackgroundResults) throw new Error("Background result persistence is unavailable");
         await options.persistNativeBackgroundResults({ providerId: backgroundProviderId, chatId: entry.conversationId, incarnationId: entry.incarnationId, requestId: entry.requestId, messageId: entry.messageId, results });
       },
-      disableProviderMemory: context.builtinToolPolicy?.workflowStep === true,
       sessionRecovery: context.sessionRecovery,
-      memberFork: !payload.session && entry.origin?.kind === "member" ? nativeMemberForkFor({ chatId: entry.conversationId, incarnationId: entry.incarnationId, backend: backend.id }) : undefined,
       onSessionPrompt: context.onSessionPrompt,
       ...(artifactDirectory ? { artifactDirectory } : {}),
       ...(trustedAuthority ? { trustedAuthority } : {}),
@@ -315,9 +308,6 @@ async function spawnAgent(
         executableIdentity: executableIdentity(runtime.executable),
       },
       workspace: context.workspace,
-      ...(entry.origin?.kind === "workflow" ? { skillIsolation: {
-        deniedRoots: workflowNativeSkillRoots(backend.id, context.workspace, backend.skills),
-      } } : {}),
       processEnv: context.appId
         ? await options.resolveAppEnvironment?.(context.appId)
         : undefined,

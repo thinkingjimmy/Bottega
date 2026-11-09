@@ -2,7 +2,6 @@
  * [INPUT]: Provider identities/refusals, validated Chat preferences, backend/workspace/model types and fixed-purpose Settings capabilities.
  * [OUTPUT]: Provides settings v11 with the recorded Agent Install later mark, local archive-confetti and Lab Agent-connections preferences, the single-backend title Agent, main-owned presence writes, revision envelopes, Memory/Chat Home APIs including the onboarding folder suggestion (LibrarySuggestion), the dialog-free folder retry, folder move and whole-profile erase, and model/session options
  * [POS]: apps/desktop/shared/ipc/settings; defaultBackend may be a package Provider while it is available (TASK-11 S3-d); providerOrder is the full stored Provider order and the patch takes any well-formed Provider id for the two choices; id-taking bridge calls may answer a ProviderIpcRefusal (TASK-11 S3-c). Single source of truth for shared multi-process settings; main, preload, and renderer exchange only what this contract defines
- * Memory plugin availability and workflow reads default off; service authorization remains independent and owner-controlled.
  */
 
 import type { ChatTurnOptions } from "../../chat-agent/options";
@@ -79,7 +78,6 @@ export type AppSettings = {
   allowCrossChatRead: boolean;
   /** Publish this computer's Memory state (only its state, never content) to the account's phone and Web (TASK-28, R-33); off by default. */
   memoryPhoneFacade: boolean;
-  memoryWorkflowRoles: boolean;
   /** 宽松持久化、消费时与当前 ambient 工具集求交；下一轮 turn 生效。 */
   disabledBuiltinTools: readonly string[];
   /** 只能经 acknowledgeFullAccess 写入。 */
@@ -171,7 +169,6 @@ export type RendererSettingsPatch = Partial<
     | "chatHomeState"
     | "fullAccessAcknowledgedAt"
     | "memory"
-    | "memoryWorkflowRoles"
     | "launchAtLogin"
     | "keepRunningInBackground"
     | "showInMenuBar"

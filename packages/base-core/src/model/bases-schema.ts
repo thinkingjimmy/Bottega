@@ -109,21 +109,9 @@ export const baseColumnSchema: z.ZodType<BaseColumn> = z
       .object({ labelColumnId: entityIdSchema.nullable() })
       .strict()
       .optional(),
-    workflow: z.object({ role: z.enum(["stage", "acceptance-criteria"]) }).strict().optional(),
-    writableBy: z.enum(["everyone", "workflows"]).optional(),
   })
   .strict()
   .superRefine((column, context) => {
-    /* Q12/Q37: only the two workflow columns carry an edit rule; Stage is a select (the board lanes), criteria are text. */
-    if (column.writableBy !== undefined && column.workflow === undefined) {
-      context.addIssue({ code: "custom", path: ["writableBy"], message: "writableBy is only for workflow columns" });
-    }
-    if (column.workflow?.role === "stage" && column.type !== "select") {
-      context.addIssue({ code: "custom", path: ["workflow"], message: "the Stage column is a select" });
-    }
-    if (column.workflow?.role === "acceptance-criteria" && column.type !== "text") {
-      context.addIssue({ code: "custom", path: ["workflow"], message: "the Acceptance criteria column is text" });
-    }
     if (column.type !== "select" && column.options !== undefined) {
       context.addIssue({
         code: "custom",

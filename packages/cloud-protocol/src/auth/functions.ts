@@ -21,8 +21,8 @@ import { continuityFunctions } from "../continuity/functions";
 import { spacesFunctions } from "../spaces/functions";
 import { skillFunctions } from "../skills/functions";
 import { accountConfigFunctions } from "../account-config/functions";
-import { agentConfigFunctions } from "../agent-config/functions";
-import { workflowFunctions } from "../workflows/functions";
+
+
 import { resourceFunctions } from "../resources/functions";
 import { previewFunctions } from "../resources/preview";
 import { pushFunctions } from "../push/functions";
@@ -35,8 +35,6 @@ export const cloudFunctions = {
   ...memoryControlFunctions,
   ...skillFunctions,
   ...accountConfigFunctions,
-  ...agentConfigFunctions,
-  ...workflowFunctions,
   ...resourceFunctions,
   ...pushFunctions,
   ...spacesFunctions,

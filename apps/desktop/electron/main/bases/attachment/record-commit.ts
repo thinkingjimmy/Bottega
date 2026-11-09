@@ -11,7 +11,7 @@ import { baseRowSchema } from "../../../../shared/bases/model/bases-schema";
 import { validateBaseCell } from "../validation/base-mutation-validation";
 import type { BaseStore } from "../base-store";
 import { validateStoredRows } from "../base-store-model";
-import { isWorkflowOnly } from "@ai-chat/base-core/compute/workflow-columns";
+
 import { imageError, type ReadyImage } from "./image-staging";
 
 export async function commitBaseRecord(store: BaseStore, input: BaseRecordCommit, images: ReadonlyMap<string, ReadyImage>,
@@ -31,8 +31,6 @@ export async function commitBaseRecord(store: BaseStore, input: BaseRecordCommit
       const column = columns.get(columnId), original = originalColumns.get(columnId);
       if (!column || !original || column.type !== original.type || !isDeepStrictEqual(column.formula, original.formula)) throw imageError("schema_conflict");
       if (column.type === "formula") throw imageError("invalid_record");
-      // Stage belongs to the workflow (Q12): the record dialog may show it but never change it.
-      if (isWorkflowOnly(column) && !isDeepStrictEqual(previous?.values[columnId] ?? null, value ?? null)) throw imageError("column_workflow_only");
       const currentValue = previous?.values[columnId] ?? null;
       if (!creating && !isDeepStrictEqual(currentValue, input.baselineValues![columnId] ?? null) && !isDeepStrictEqual(currentValue, value)) throw imageError("record_conflict");
       const transferId = input.stagedImages[columnId];

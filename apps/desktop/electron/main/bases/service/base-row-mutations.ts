@@ -35,7 +35,6 @@ import {
   validateBaseCell,
   validateBaseModel,
 } from "../validation/base-mutation-validation";
-import { isWorkflowOnly, workflowSchemaViolation, WORKFLOW_ONLY_ISSUE } from "@ai-chat/base-core/compute/workflow-columns";
 import { statusError } from "../../ipc/errors";
 import { mutateToolRows, type ToolRowsInput } from "./tool/rows";
 import type { BaseToolIdentity } from "../store/tool/model";
@@ -191,10 +190,6 @@ export class BaseRowMutations {
         }
         const rawMeta = { ...current.meta, ...structuredClone(typeof input.patch === "function" ? input.patch(current) : input.patch) };
         assertStableColumnTypes(current.meta.columns, rawMeta.columns);
-        const actor = input.authority.actor;
-        const refused = workflowSchemaViolation(current.meta.columns, rawMeta.columns,
-          actor === "workflow" || actor === "system" ? "workflow" : actor === "renderer" ? "person" : "program");
-        if (refused) throw statusError(403, `列 ${refused.id} 是流程自带的列`, { code: WORKFLOW_ONLY_ISSUE });
         const removed = new Set(
           current.meta.columns
             .filter(
@@ -337,7 +332,7 @@ export class BaseRowMutations {
         const issues = baseRowIssues(input.rows, current.meta.columns, [
           ...current.rows,
           ...input.rows,
-        ], input.actor === "workflow" ? "workflow" : "other");
+        ]);
         if (issues.length) {
           throw mutationError(
             400,
@@ -409,7 +404,6 @@ export class BaseRowMutations {
         expectedRevision: undefined,
         rejectAttachmentColumns: false,
         actor: authority.actor,
-        ...(authority.runId ? { runId: authority.runId } : {}),
       })
     ).snapshot;
   }
@@ -487,16 +481,6 @@ export class BaseRowMutations {
                 `patch 引用了未知列 ${columnId}`,
                 undefined,
                 [{ rowIndex, columnId, reason: "unknown_column" }]
-              );
-            }
-            /* Stage belongs to the workflow: a cell edit, a board move or an App write that would change it is refused (Q12/Q37). */
-            if (input.actor !== "workflow" && isWorkflowOnly(column) && !sameJson(row.values[columnId] ?? null, value ?? null)) {
-              throw mutationError(
-                400,
-                "invalid_rows",
-                `列 ${columnId} 只由流程填写`,
-                undefined,
-                [{ rowIndex, columnId, reason: WORKFLOW_ONLY_ISSUE }]
               );
             }
             if (input.rejectAttachmentColumns && column.type === "attachment") {

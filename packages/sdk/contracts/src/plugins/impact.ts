@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod and localized text (text.ts).
- * [OUTPUT]: Provides pluginDisableImpactSchema, PLUGIN_EFFECT_KINDS and PluginImpactBridge: what turning a plugin off would do — Agent configurations that can no longer be chosen, workflows that can start no new run, running runs that pause after their current step, Chats that become read-only, plugins that become unusable (dependents) and the plugin's own declared effects — each as a bounded sample plus a total.
+ * [OUTPUT]: Provides PLUGIN_IMPACT_SAMPLE, PLUGIN_EFFECT_KINDS, PluginEffectKind, pluginDisableImpactSchema, PluginDisableImpact, PluginImpactBridge.
  * [POS]: The "impact before disabling" contract (what turning a plugin off would do, shown before it is turned off); the Plugins & Apps page and its fake implement the same bridge, and the desktop implements it in extensions/host/impact.ts (channel in channel.ts).
  */
 import { z } from "zod";
@@ -20,12 +20,6 @@ export const pluginDisableImpactSchema = z.object({
   installIdentity: id,
   /** The Providers this plugin supplies; everything below follows from them. */
   providerIds: z.array(z.string().regex(/^[a-z][a-z0-9-]{1,31}$/)).max(16),
-  /** Configurations using one of those Providers: they stay, but cannot be chosen while the plugin is off. */
-  agentConfigs: sample(z.object({ configId: id, name }).strict()),
-  /** Workflows with a step bound to such a configuration: no new run starts. */
-  workflows: sample(z.object({ bindingId: id, name, projectId: id }).strict()),
-  /** Runs in progress on such a step: each finishes its current step, then pauses. */
-  runs: sample(z.object({ runId: id, bindingId: id, stepLabel: name.nullable() }).strict()),
   /** Chats whose Agent is one of those Providers: they stay readable, but cannot continue. */
   readOnlyChats: sample(z.object({ chatId: id, title: name.nullable() }).strict()),
   /** Plugins that would become unusable: they require a contract only this plugin satisfies now (appendix C.4). */

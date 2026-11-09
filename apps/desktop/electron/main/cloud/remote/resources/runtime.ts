@@ -1,34 +1,23 @@
 /**
- * [INPUT]: Account/connection admission, encrypted resource codecs, Project/workflow/App/record/Artifact owners, plugin inbox and Memory barriers.
+ * [INPUT]: Uses `@ai-chat/cloud-protocol/apps/build-status/enablement`, `@ai-chat/cloud-protocol/resources/encrypted`, `@ai-chat/cloud-protocol/resources/model`, `../../runtime/transport/transport`, `../../runtime/service`, `../../sync/account-config/admission`, `../memory/runtime`, `../../../preview/session/runtime` for its declared types and implementation.
  * [OUTPUT]: Operator-fenced resource dispatch, exact action classes, durable receipts and original unknown-effect recovery.
  * [POS]: Owner-computer executor; installation commands enqueue a source or read requester-bound status; record commands use owner-bound ports and account-fenced encrypted replies.
  */
 import { setAppEnabledInputSchema, type AppDisableImpact, type SetAppEnabledInput } from "@ai-chat/cloud-protocol/apps/build-status/enablement";
 import { openResourceCommand, prepareResourceResult } from "@ai-chat/cloud-protocol/resources/encrypted";
 import { RESOURCE_REFUSALS, type EncryptedResourceCommand, type ResourceCommandBody, type ResourceRefusal, type ResourceResultBody } from "@ai-chat/cloud-protocol/resources/model";
-import type { ConfirmInput, VerifiedOperator } from "@ai-chat/cloud-protocol/contracts/workflow/run";
+
 import type { AccountTransport } from "../../runtime/transport/transport";
 import type { CloudAccountService } from "../../runtime/service";
 import { accountScopeAdmission, type AdmissionPorts, type Admitted } from "../../sync/account-config/admission";
 
 import type { MemoryControlBarrier } from "../memory/runtime";
-import type { WorkflowEvidencePage } from "@bottega/contracts/workflow/bridge";
+
 import { previewFeature } from "../../../preview/session/runtime";
 import { pluginInstallRequests, setPluginInstallAccount, type PluginInstallRequests } from "../../../extensions/install/renderer/requests";
 import { pluginInstallSourceSchema } from "@ai-chat/cloud-protocol/resources/plugin-install";
 import type { ProjectResourcePort } from "./projects";
 import type { RecordResourcePort } from "./records";
-type RunFacts = { runId: string; revision: number; confirmations: readonly { stepId: string; proposalDigest: string; decision: unknown; expiredAt: number | null }[] };
-export type WorkflowRunAction = "cancel" | "force-stop" | "pause" | "resume" | "check-result" | "retry-step" | "start-rework";
-/** The workflow runtime as a remote sender may use it; every answer is the run after the action (its ledger revision). */
-export type WorkflowResourcePort = {
-  run(runId: string): RunFacts | null;
-  confirm(runId: string, stepId: string, input: ConfirmInput, operator: VerifiedOperator): Promise<{ revision: number }>;
-  act(action: WorkflowRunAction, runId: string, input: Record<string, unknown>): Promise<{ runId: string; revision: number }>;
-  start(bindingId: string, rowId: string): Promise<{ runId: string; revision: number }>;
-  evidence?(runId: string, stepId: string, kind: "diff" | "report", offset: number): Promise<WorkflowEvidencePage>;
-  enableBlockingPlugin?(runId: string, stepId: string, expectedRevision: number): Promise<{ revision: number }>;
-};
 /** An App's Chats as a remote sender opens them (U06): on the owner, under the command's id, without taking its window's focus. */
 export type AppResourcePort = {
   disableImpact(appId: string): Promise<AppDisableImpact>;
@@ -45,8 +34,6 @@ export type ResourceCommandPorts = AdmissionPorts & {
   account: AdmissionPorts["account"] & Pick<CloudAccountService, "subscribeIdentity" | "subscribeConnection">;
   transport: Pick<AccountTransport, "query" | "mutate" | "watchResourceInbox">;
   memoryBarrier?: Pick<MemoryControlBarrier, "beforeRemote">;
-  /** Null until the workflow runtime is loaded (it loads after startup); workflow commands are then refused. */
-  workflows(): WorkflowResourcePort | null;
   /** Null until the App service is loaded; App commands are then refused. */
   apps?(): AppResourcePort | null;
   /** The owner request inbox; this port has no install-confirmation operation. */
@@ -166,7 +153,7 @@ export class ResourceCommandRuntime {
   }
 
   /** The operator is the account and the device the server verified as sender, never a payload field (F10). */
-  private async execute(command: EncryptedResourceCommand, body: ResourceCommandBody, operator: VerifiedOperator, current: () => void): Promise<ResourceResultBody> {
+  private async execute(command: EncryptedResourceCommand, body: ResourceCommandBody, operator: { userId: string; deviceId: string }, current: () => void): Promise<ResourceResultBody> {
     const input = body.input as Record<string, unknown>;
     if (command.resourceKind === "artifact" && body.action === "artifact-native") {
       if (!this.ports.files || command.resourceId !== (body.input as { chatId: string }).chatId) throw new Refused("artifact-unavailable");
@@ -205,33 +192,7 @@ export class ResourceCommandRuntime {
       return { ok: true };
     }
     if (command.resourceKind === "app") return this.app(command, body);
-    const workflows = this.ports.workflows();
-    if (!workflows) throw new Refused("workflow-plugin-disabled");
-    if (body.action === "start") {
-      const started = await workflows.start(command.resourceId, input.rowId as string);
-      return { ok: true, runId: started.runId, revision: started.revision + 1 };
-    }
-    const run = workflows.run(command.resourceId);
-    if (!run) throw new Refused("workflow-run-not-found");
-    if (body.action === "read-evidence") {
-      if (!workflows.evidence) throw new Refused("unsupported-action");
-      return { ok: true, evidence: await workflows.evidence(run.runId, input.stepId as string, input.kind as "diff" | "report", input.offset as number) };
-    }
-    if (body.action === "enable-blocking-plugin") {
-      if (!workflows.enableBlockingPlugin) throw new Refused("unsupported-action");
-      const after = await workflows.enableBlockingPlugin(run.runId, input.stepId as string, input.expectedRevision as number);
-      return { ok: true, revision: after.revision + 1 };
-    }
-    if (body.action === "confirm") {
-      // The owner finds the waiting confirmation by the proposal the phone saw; none matching means it changed.
-      const confirm = input as ConfirmInput;
-      const waiting = run.confirmations.find(item => !item.decision && item.expiredAt === null && item.proposalDigest === confirm.proposalDigest);
-      if (!waiting) throw new Refused("stale-proposal");
-      const after = await workflows.confirm(run.runId, waiting.stepId, confirm, operator);
-      return { ok: true, revision: after.revision + 1 };
-    }
-    const after = await workflows.act(body.action as WorkflowRunAction, run.runId, input);
-    return body.action === "start-rework" ? { ok: true, runId: after.runId, revision: after.revision + 1 } : { ok: true, revision: after.revision + 1 };
+    throw new Refused("unsupported-action");
   }
   /** The command id is the idempotency id: the owner never runs a command twice, and its App slots are keyed by it (U-3). */
   private async app(command: EncryptedResourceCommand, body: ResourceCommandBody): Promise<ResourceResultBody> {

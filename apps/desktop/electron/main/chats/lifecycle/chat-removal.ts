@@ -1,10 +1,9 @@
 /**
- * [INPUT]: Depends on the lean installed-team lifecycle registry, ChatStore, ChatDeletionDriver advisory/resource phases, conversation lifecycle/cancellation ports, optional App chat deactivation, and main/errors
- * [OUTPUT]: Provides receipt-before-cleanup cloud handoff for native/bulk deletion and separate App-held retained-transcript disposition. Stops and archives persistent members before Lead removal or archive.
+ * [INPUT]: Depends on ChatStore, ChatDeletionDriver advisory/resource phases, conversation lifecycle/cancellation ports, optional App chat deactivation, and main/errors
+ * [OUTPUT]: Provides ChatRemovalController.
  * [POS]: apps/desktop/electron/main/chats/lifecycle; The chats deletion orchestration boundary; ChatsService delegates removal while durable deletion details remain in ChatDeletionDriver
  */
 
-import { installedPluginTeams } from "../../plugins/team/runtime/installed";
 import { nativeBackgrounds } from "../../providers/codex/native/background/registry";
 import type { ChatRecord } from "../../../../shared/ipc/content/chats-ipc";
 import type { ConversationDeletionMode } from "../../deletion/conversation-deletion-coordinator";
@@ -48,19 +47,11 @@ export class ChatRemovalController {
   }
 
   async prepareForArchive(chat: ChatLifecycleFacts) {
-    await this.archiveTeamMembers(chat.id);
     await nativeBackgrounds.stopChat(chat.id);
     await this.appDeactivation?.(chat, "archive");
   }
 
-  private async archiveTeamMembers(leadChatId: string) {
-    const service = installedPluginTeams(); if (!service) return;
-    for (const team of service.list({ leadChatId })) {
-      await service.stop(team.id);
-      for (const member of team.members) if (this.ports.store.getIncarnationId(member.chatId) === member.incarnation)
-        await this.ports.store.setArchivedAt(member.chatId, Date.now(), member.incarnation);
-    }
-  }
+
 
   private async cancelConversations(chatIds: string[]) {
     for (const id of chatIds) await nativeBackgrounds.stopChat(id);
@@ -82,7 +73,6 @@ export class ChatRemovalController {
      置灰，这里就是那道栅栏。删除 Project 与清空归档走的是另外两条路，
      它们必须能连只读会话一起带走——仓储层因此不再自己设限。 */
   async remove(chatId: string) {
-    await this.archiveTeamMembers(chatId);
     const candidate = await this.requireRecord(chatId);
     if (candidate.readOnlyReason === "external-readonly") {
       throw statusError(409, "导入的只读会话不能永久删除");

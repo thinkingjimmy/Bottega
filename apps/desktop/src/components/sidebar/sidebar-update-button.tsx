@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React store hooks, i18n, Sidebar update verdicts, update-client commands, external-link IPC, shared UpdateProgress and lucide glyphs.
- * [OUTPUT]: Provides SidebarUpdateButton with labeled update actions and noninteractive download/install status.
+ * [OUTPUT]: Provides SidebarUpdateButton with labeled confirmed-update/restart actions and noninteractive download/install status; failures remain in Settings.
  * [POS]: Sidebar footer presentation; downloading starts in place and restart requires an explicit action.
  */
 
@@ -28,7 +28,6 @@ const GLYPHS: Record<SidebarUpdateGlyph, typeof CircleAlert> = {
 const TONES: Record<SidebarUpdateTone, string> = {
   loud: "text-sidebar-foreground",
   quiet: "text-muted-foreground",
-  danger: "text-destructive",
 };
 
 const SHELL = "relative ml-auto flex h-8 min-w-0 max-w-40 flex-[0_1_10rem] items-center justify-center gap-1.5 rounded-lg px-2 text-xs outline-none transition-colors motion-reduce:transition-none";

@@ -17,9 +17,6 @@ export const memoryPluginCopy = {
     "phoneFacade": {
       "label": "Memory status and controls on phone and Web"
     },
-    "workflowRoles": {
-      "label": "Allow workflow roles to read Memory"
-    }
   },
   "sharing": {
     "chat": "This chat",
@@ -27,7 +24,7 @@ export const memoryPluginCopy = {
     "personal": "All chats"
   },
   "capability": {
-    "recall": "Recall within your sharing scope",
+    "recall": "Pause recall for new Chat turns.",
     "capture": "Save eligible context with your consent",
     "backfill": "Process only authorized history"
   },
@@ -39,7 +36,7 @@ export const memoryPluginCopy = {
     "personal": "Share future Memory across all chats. Extraction uses {{model}} at {{hostname}} and may incur model charges. Existing history is excluded."
   },
   "effects": {
-    "recall": "Pause recall for new chat and workflow turns.",
+    "recall": "Pause recall for new Chat turns.",
     "capture": "Pause new capture; keep saved memories.",
     "backfill": "Pause regular history processing.",
     "phone": "Pause Memory for phone and Web chats.",

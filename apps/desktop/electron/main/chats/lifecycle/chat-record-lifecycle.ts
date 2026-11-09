@@ -45,9 +45,6 @@ export type ChatCreateIdentity = Readonly<{
   session?: SessionRef;
   importOrigin?: ChatImportOrigin;
   snapshotDigest?: string;
-  /** R-35: carried to the Chat's first cloud upload only; never stored on the local record (the workflow registry owns it). */
-  workflowRole?: import("@ai-chat/cloud-protocol/chats/model").ChatWorkflowRole;
-  memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts;
 }>;
 
 type ProjectFacts = Readonly<{

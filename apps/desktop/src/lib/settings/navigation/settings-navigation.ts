@@ -44,7 +44,6 @@ export type SettingsOverlaySection =
   | "general"
   | "shortcuts"
   | "providers"
-  | "agent-configs"
   | "plugins"
   | "personalization"
   | "browser"

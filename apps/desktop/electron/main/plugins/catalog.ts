@@ -1,11 +1,10 @@
 /**
  * [INPUT]: Depends on the plugin contract (BUILTIN_PLUGINS, views, details, settings, contract kinds), the one resolver (resolve.ts), the
  *           projections (describe.ts), the reserved identity policy, provenance-bearing owners, plugin state and settings stores, and read/disable ports over the Extension Registry, host-package
- *           manifests, each Agent's native plugins, Agent configurations and health; uses SerialQueue for settings persistence.
  * Switch transitions are serialized; Provider disable closes admission before awaiting retained process cleanup.
  * [OUTPUT]: Provides PluginCatalog — list, detail, setEnabled (C.3's rules: always-on, setup-required, unsupported, not-switchable),
  *           settings / setSettings (serialized persistence and revision-bound restart acknowledgement, or the owner's adapter with confirm), stopAdmission / close (flush accepted settings), resolve (the shared Resolution over every plugin),
- *           refresh (re-read and announce) / resolveNow, providerEnabled, workflowEnabled, workflowBlockedBy (named reasons for admission), dependentsOf, effectsOf and providersOf (impact),
+ *           refresh (re-read and announce) / resolveNow, providerEnabled, dependentsOf, effectsOf and providersOf (impact),
  *           providerOverrides (what the Provider adapters may send), applyStoredStates, onChanged — plus PluginError, BuiltinOwner, CatalogPorts and
  *           installProviderPluginSettings / providerPluginSettings (the turn freeze's read of it).
  * Artifact disable waits for trusted recovery input before persistence; re-enable rotates generation and publishes current state.
@@ -21,7 +20,7 @@ import { pluginDetailSchema, pluginViewSchema } from "@bottega/contracts/plugins
 import type { PluginSettingsView, SettingsAdapter, SettingsPatch, SettingsSubmitResult, SettingValue } from "@bottega/contracts/plugins/settings";
 import type { LocalizedText } from "@bottega/contracts/plugins/text";
 import type { HostPackageManifest } from "@bottega/contracts/host/manifest";
-import type { AgentConfigView } from "@ai-chat/cloud-protocol/agent-config/bridge";
+
 import type { ProductResourceScope } from "@ai-chat/cloud-protocol/contracts/resources";
 import type { AgentPluginInventoryEntry } from "../../../shared/ipc/settings/extensions-ipc";
 import { hostPackageSwitchable } from "../extensions/product-policy";
@@ -70,9 +69,6 @@ export type CatalogPorts = {
   nativePluginSwitchable?(backendId: string): boolean;
   setNativePluginEnabled?(backendId: string, pluginId: string, enabled: boolean): Promise<void>;
   nativePlugins(): Promise<readonly { backendId: string; plugins: readonly AgentPluginInventoryEntry[] }[]>;
-  agentConfigs(): readonly AgentConfigView[];
-  /** Names of the Projects with an enabled workflow binding. */
-  workflowProjects(): readonly string[];
   /** Q29 effects of a built-in Provider switching: the process gate that stops new turns, probes and readers. */
   applyProvider(providerId: string, enabled: boolean): void;
   stopProvider?(providerId: string): Promise<void>;
@@ -83,7 +79,7 @@ export type CatalogPorts = {
 };
 
 const UNKNOWN_HEALTH: PluginHealth = { level: "unknown", summary: { key: "plugins.health.unknown" }, facts: [], checkedAt: null };
-const RELATED: Record<string, PluginDetail["related"]> = { provider: ["providers", "agent-configs", "usage"], workflow: ["providers", "agent-configs"],
+const RELATED: Record<string, PluginDetail["related"]> = { provider: ["providers", "usage"],
   package: ["skills"], "agent-native": ["skills"] };
 
 export class PluginCatalog {
@@ -146,27 +142,18 @@ export class PluginCatalog {
   /** Apps stay in the dependency graph even though their presentation belongs to the Apps page (§4.5). */
   private isListed(entry: PluginEntry) { return entry.descriptor.source !== "package" || this.manifests.get(entry.descriptor.id)?.presentation !== "app"; }
   private resolution(entries: readonly PluginEntry[]): Resolution { return resolvePlugins(entries.map(nodeOf), contractKindOf); }
-  /** The shared resolution over what the catalog last read (sync: host negotiation and workflow admission use it). */
+
   resolve(overrides: Readonly<Record<string, boolean>> = {}): Resolution {
     return resolvePlugins(this.entriesSync().map(entry => ({ ...nodeOf(entry), ...(entry.descriptor.id in overrides ? { enabled: overrides[entry.descriptor.id] } : {}) })), contractKindOf);
   }
-  /** Reads package manifests again and tells the page (Workflow's Projects, a package installed or removed). */
+
   async refresh() { await this.entries(); this.emit(); }
   /** The resolution over the Registry as it is now, announcing nothing (host-package negotiation asks on every start). */
   async resolveNow() { await this.entries(); return this.resolve(); }
 
-  private extras(entry: PluginEntry): Pick<PluginView, "usedBy" | "workflowIn"> {
-    if (entry.providerId) {
-      const users = this.ports.agentConfigs().filter(config => !config.deleted && config.payload?.provider === entry.providerId).map(config => config.payload!.name);
-      return { usedBy: users.slice(0, 64) };
-    }
-    if (entry.descriptor.id === "workflow") return { workflowIn: [...this.ports.workflowProjects()].slice(0, 64) };
-    return {};
-  }
-
   async list(): Promise<PluginView[]> {
     const entries = await this.entries(), resolution = this.resolution(entries);
-    return entries.filter(entry => this.isListed(entry)).map(entry => pluginViewSchema.parse(viewOf(entry, resolution, this.extras(entry))));
+    return entries.filter(entry => this.isListed(entry)).map(entry => pluginViewSchema.parse(viewOf(entry, resolution)));
   }
 
   async detail(pluginId: string): Promise<PluginDetail> {
@@ -177,7 +164,7 @@ export class PluginCatalog {
     const provided = new Set(descriptor.provides.filter(contract => contractKindOf(contract) !== "host"));
     const health = await (this.owner(pluginId)?.health?.() ?? this.ports.health?.(pluginId, entry) ?? Promise.resolve(null)).catch(() => null);
     return pluginDetailSchema.parse({
-      ...viewOf(entry, resolution, this.extras(entry)),
+      ...viewOf(entry, resolution),
       description: descriptor.description ?? null,
       provides: descriptor.provides,
       requires: descriptor.requires.filter(contract => contractKindOf(contract) !== "host")
@@ -347,15 +334,8 @@ export class PluginCatalog {
   }
   /** Read-only owner effects; dynamic feature owners retain their lifecycle authority. */
   effectsOf(pluginId: string) { return this.owner(pluginId)?.effects?.() ?? Promise.resolve([]); }
-  /** Whether the Workflow switch is on (running runs pause when it goes off). */
-  workflowEnabled() { return this.ports.states.turnedOffAt("workflow") === null; }
   /** Artifact's one local admission state; retained files do not depend on it. */
   artifactEnabled() { return this.ports.states.turnedOffAt("artifact") === null; }
   artifactGeneration() { return this.ports.states.generation(); }
-  /** Workflow admission's named reason (T-D10): what Workflow waits for, or null when it can start runs. */
-  workflowBlockedBy() {
-    const state = this.resolve().plugins.workflow;
-    return state && !state.usable ? state.blockedBy : null;
-  }
   private emit() { for (const listener of this.listeners) listener(); }
 }

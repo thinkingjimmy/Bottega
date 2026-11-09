@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Escaped presentation models, a window-specific action token and nonce, and bundled styles.
- * [OUTPUT]: Offline dialog HTML and model markup with explicit keyboard/pointer focus modality; candidate paths remain plain text.
+ * [OUTPUT]: Offline dialog HTML with keyboard/pointer focus modality and polite copy/download feedback; candidate paths remain plain text.
  * [POS]: Sandboxed presentation leaf; the minimal preload carries only allowlisted intents to its owning main window.
  */
 import type { DesktopDialogButton, DesktopDialogModel } from "./types";
@@ -12,7 +12,7 @@ const refreshIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 export function dialogMarkup(model: DesktopDialogModel, revision: number) {
   const button = (item: DesktopDialogButton) => `<button type="button" data-action="${escape(item.id)}" ${item.requiresSelection ? 'data-requires-selection="true"' : ""}
     class="${item.primary ? "primary" : ""} ${item.quiet ? "quiet" : ""} ${item.id === "copy" ? "copy" : ""}"
-    ${model.busy || item.disabled || (item.requiresSelection && !model.selection) ? "disabled" : ""} ${item.id === "copy" ? 'aria-live="polite"' : ""}>${escape(item.label)}</button>`;
+    ${model.busy || item.disabled || (item.requiresSelection && !model.selection) ? "disabled" : ""} ${item.id === "copy" || item.id === "download" ? 'aria-live="polite"' : ""}>${escape(item.label)}</button>`;
   return `<main data-screen="${escape(model.screen)}" data-revision="${revision}" aria-busy="${Boolean(model.busy)}">
     <div class="heading"><h1 tabindex="-1">${escape(model.title)}</h1>${model.retry ? `<span class="retry"><button type="button" class="icon" data-action="search" aria-label="${escape(model.retry)}" aria-describedby="retry-tip" ${model.busy ? "disabled" : ""}>${refreshIcon}</button><span class="tooltip" id="retry-tip" role="tooltip">${escape(model.retry)}</span></span>` : ""}</div>
     <p class="message">${escape(model.message)}</p>

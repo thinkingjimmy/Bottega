@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on SettingsPage, Settings layout primitives, the external-link IPC, repository/issue/release URLs and Community i18n
- * [OUTPUT]: Provides CommunitySettingsView — the Settings › Community page of outbound project links
+ * [OUTPUT]: Provides CommunitySettingsView with one page title, its description and outbound project links.
  * [POS]: apps/desktop/src/views/settings/community; Replaces the former About page; the product version and app updates live in Settings › Updates
  */
 
@@ -13,7 +13,6 @@ import {
   SettingsCanvas,
   SettingsList,
   SettingsRow,
-  SettingsSection,
 } from "@/components/settings/settings-layout";
 import { openExternal } from "@/lib/agent/agent-client";
 import { ISSUES_URL, REPOSITORY_URL } from "@/lib/platform/report-issue";
@@ -39,16 +38,14 @@ export function CommunitySettingsView() {
       action: t("settings.community.viewReleases"), icon: <ScrollText />, url: RELEASE_URL },
   ];
   return (
-    <SettingsPage title={t("settings.community.title")}>
+    <SettingsPage title={t("settings.community.title")} description={t("settings.community.description")}>
       <SettingsCanvas>
-        <SettingsSection title={t("settings.community.title")} description={t("settings.community.description")}>
-          <SettingsList>
-            {links.map((link) => <SettingsRow key={link.key} label={link.label} description={link.description}
-              control={<SettingsButton variant="outline" onClick={() => void openExternal(link.url)}>
-                {link.icon}{link.action}<ExternalLink className="text-muted-foreground" />
-              </SettingsButton>} />)}
-          </SettingsList>
-        </SettingsSection>
+        <SettingsList>
+          {links.map((link) => <SettingsRow key={link.key} label={link.label} description={link.description}
+            control={<SettingsButton variant="outline" onClick={() => void openExternal(link.url)}>
+              {link.icon}{link.action}<ExternalLink className="text-muted-foreground" />
+            </SettingsButton>} />)}
+        </SettingsList>
       </SettingsCanvas>
     </SettingsPage>
   );

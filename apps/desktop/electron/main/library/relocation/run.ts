@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the relocation journal, the unfinished-work check, folder transfer, strict Workflow execution/link repair, the Chat Home and database rewrites, folder identity and an injected settings/Trash/Git port set.
+ * [INPUT]: Uses `node:fs/promises`, `../identity`, `./journal`, `./work`, `./transfer`, `./homes`, `./database`, `./plugins/rebase` for its declared types and implementation.
  * [OUTPUT]: Provides completeRelocation: performs a pending move or adopt before the folder is opened and reports one outcome, including a cancelled copy (finished rather than resumed after a crash).
  * [POS]: Startup step that runs before LibraryService.initialize, so a folder mid-move is never mistaken for a deleted one.
  */
@@ -11,7 +11,7 @@ import { abandonCopy, MOVE_CANCELLED, transferFolder } from "./transfer";
 import { managedWorktrees, rebaseChatHomes } from "./homes";
 import { rebaseDatabasePaths } from "./database";
 import {rebasePluginSources} from './plugins/rebase';
-import { rebaseWorkflowExecution, repairWorkflowExecution } from './workflows/rebase';
+
 
 export type RelocationPorts = {
   userData: string;
@@ -85,8 +85,6 @@ async function follow(journal: Relocation, ports: RelocationPorts, sourceLeft: s
     await rebaseChatHomes(ports.userData, journal.from, journal.to);
     await rebaseDatabasePaths(ports.userData, journal.from, journal.to);
     await rebasePluginSources(ports.userData,journal.from,journal.to);
-    await rebaseWorkflowExecution(ports.userData, journal.from, journal.to);
-    await repairWorkflowExecution(ports.userData, journal.from, journal.to);
   } catch (error) { return { status: "failed", error: describe(error), root: journal.to }; }
   for (const worktree of await managedWorktrees(ports.userData, journal.to)) {
     await ports.repairWorktree(worktree).catch(error => console.warn(`[library] worktree repair failed: ${worktree}: ${describe(error)}`));

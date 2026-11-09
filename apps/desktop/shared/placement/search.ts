@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Chat placement, BaseNavigation, and typed product destinations
- * [OUTPUT]: Provides Search-only Chat destinations (none for Workflow/member-owned Chats) and Base eligibility
+ * [OUTPUT]: Provides appearsInSearchBase, searchDestination.
  * [POS]: Search projection truth table; never indexes dormant/internal facts or emits a raw App route
  */
 
@@ -8,7 +8,6 @@ import {
   hasCanonicalChatPlacement,
   isEffectivelyArchived,
   isHistoryVisible,
-  isManagedChat,
   type BaseNavigation,
   type ChatPlacementInput,
   type ProductDestination,
@@ -22,7 +21,7 @@ export const appearsInSearchBase = (
   (navigation.kind !== "conversation-contained" || conversationVisible);
 
 export function searchDestination(chat: ChatPlacementInput): ProductDestination | null {
-  if (!hasCanonicalChatPlacement(chat) || isManagedChat(chat)) return null;
+  if (!hasCanonicalChatPlacement(chat)) return null;
   if (!isHistoryVisible(chat.startState)) return null;
   if (
     isEffectivelyArchived(chat) ||

@@ -63,8 +63,7 @@ export type BuiltinTurnToolPolicy = Readonly<{
   /** 当前 context 所依据的 runtime capability；spawn CAS 后最终确认。 */
   builtinTools: "none" | "read" | "mutate";
   backendRuntimeIdentity: string;
-  /** A workflow step's turn: exact-issue its submit_step_result (set only by main from the workflow turn policy). */
-  workflowStep?: true;
+
 }>;
 
 export type TurnProjectionInput = Readonly<{
@@ -192,8 +191,7 @@ export type AgentBridgeOptions = {
   resolveAppEnvironment?: (appId: string) => Promise<NodeJS.ProcessEnv>;
   /** Freeze main-only session config; isolated Skills exclude ambient plugin projections, not Provider settings. */
   freezeBackendSessionConfig?: (
-    backend: AgentBackendId,
-    options?: { isolateSkills: boolean }
+    backend: AgentBackendId
   ) =>
     | BackendTurnOptions["backendSessionConfig"]
     | Promise<BackendTurnOptions["backendSessionConfig"]>;
@@ -317,7 +315,7 @@ export type AgentBridgeOptions = {
     terminal: "done" | "cancelled" | "error";
     outcome: TurnPersistOutcome;
     assistantMessage?: ChatMessage;
-    /** Whether the turn's process and leases were released; settled before this fires (a workflow step's latch reads it). */
+
     cleanup: "pending" | "complete" | "failed";
   }) => Promise<void> | void;
   onTurnPrepared?: (event: {

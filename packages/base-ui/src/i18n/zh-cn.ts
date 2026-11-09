@@ -201,7 +201,7 @@ export const basesZhCN: BasesCatalog = {
     uploadQueueFull: "请等待其他图片上传完成，或减少本次一起保存的图片。",
     imageVerificationFailed: "图片校验失败，请重新选择文件。",
     recordChanged: "此记录或字段已在别处更改。你的输入仍然保留，请核对最新记录后再保存。",
-    workflowOnly: "这一栏由流程填写，不能在这里修改。",
+
     editTitle: "编辑记录",
     checkSave: "请先核对保存结果，再继续操作。",
     fileLimit: "请选择非空且不超过 50 MB 的图片。",
@@ -499,7 +499,7 @@ export const basesZhCN: BasesCatalog = {
     empty: "暂无已记录的变更",
     operation: "操作：{{operation}}",
     fields: "字段：{{fields}}",
-    actor: { renderer: "你", agent: "Agent", system: "系统", "app-gui": "App GUI", workflow: "流程" },
+    actor: { renderer: "你", agent: "Agent", system: "系统", "app-gui": "App GUI",  },
   },
   relation: {
     empty: "选择记录",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides zh-cn settings, tray, quit, and Dock task translations, including independent menu bar/background switches and Dock task states, without transient settings loading copy.
+ * [OUTPUT]: Provides zh-cn settings, tray, quit, and Dock task translations, including a startup label with sign-in timing guidance, independent menu bar/background switches and Dock task states, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -16,8 +16,8 @@ export const presenceZhCN = {
   "menuBar": "在菜单栏显示",
   "menuBarDescription": "在菜单栏显示 Bottega 图标。关闭后，后台任务和 Dock 仍可继续运行。",
   "title": "后台运行",
-  "login": "登录系统时启动 Bottega",
-  "loginDescription": "登录系统后自动启动。开启后台运行时不显示窗口。",
+  "login": "开机启动",
+  "loginDescription": "登录电脑后自动启动。开启后台运行时不显示窗口。",
   "retention": "关闭主窗口后保持运行",
   "retentionDescription": "关闭主窗口后继续运行 Bottega，可从 Dock 或应用程序重新打开。",
   "notice": "退出 Bottega 会停止本机任务。电脑休眠时任务和远程控制可能暂停。",

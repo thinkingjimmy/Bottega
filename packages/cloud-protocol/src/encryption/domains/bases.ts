@@ -12,8 +12,6 @@ export const columnFieldPathSchema = z.union([
   z.tuple([z.literal("name")]), z.tuple([z.literal("relation"), z.literal("labelColumnId")]),
   z.tuple([z.literal("options"), memberId]), z.tuple([z.literal("options"), memberId, z.enum(["label", "color"])]),
   z.tuple([z.literal("optionsOrder")]),
-  /* Who may edit a workflow column (R-28); the `workflow` marker itself is set only when the column is created. */
-  z.tuple([z.literal("writableBy")]),
 ]);
 export const viewFieldPathSchema = z.union([
   z.tuple([z.enum(["name", "order"])]),
@@ -45,7 +43,7 @@ const basePatchMetadataSchema = z.object({ index: version.max(63), kind: z.enum(
     (value.kind.startsWith("delete-") ? value.deletesTarget : !value.deletesTarget ||
       value.target.kind === "column-field" && value.target.path[0] === "options" && value.target.path.length === 2 ||
       value.target.kind === "view-field" && value.target.path[0] === "config" && value.target.path[1] === "charts" && value.target.path.length === 3));
-export const baseOperationMetadataSchema = z.object({ sourceDeviceId: id, actor: z.enum(["user", "agent", "system", "workflow"]),
+export const baseOperationMetadataSchema = z.object({ sourceDeviceId: id, actor: z.enum(["user", "agent", "system"]),
   schemaRevision: version, structuralGeneration: version, dependsOnOperationIds: z.array(id).max(1024), atomicGroup: nullableId, batchId: nullableId,
   preconditions: z.array(baseConditionSchema).max(192), patches: z.array(basePatchMetadataSchema).min(1).max(64) }).strict()
   .refine(value => value.patches.every((patch, index) => patch.index === index) && (!value.atomicGroup || value.patches.length <= 32) &&

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Active interface locale and canonical lifecycle/member states.
- * [OUTPUT]: Localized pluginStatusLabel and teamStateLabel without management UI copy.
- * [POS]: Small status-only boundary shared by Sidebar members and lazy plugin details.
+ * [INPUT]: Active interface locale and canonical plugin lifecycle and execution states.
+ * [OUTPUT]: Localized pluginStatusLabel and executionStateLabel without management UI copy.
+ * [POS]: Small status-only boundary shared by execution summaries and lazy plugin details.
  */
 const statusKeys=['installed','building','preparing','ready','disabled','failed','draining','cleanup-failed','missing-source','unavailable'];
 const statusValues:Record<string,string[]>={
@@ -13,12 +13,12 @@ const statusValues:Record<string,string[]>={
 };
 const localeKey=(locale:string)=>locale.startsWith('zh')?'zh':locale.split('-')[0]??'en';
 export const pluginStatusLabel=(status:string,locale:string)=>(statusValues[localeKey(locale)]??statusValues.en)?.[statusKeys.indexOf(status)]??status;
-const teamKeys=['active','idle','running','stopping','stopped','failed','todo','in-progress','blocked','done','cancelled','queued','inserted','delivered','unknown','processed'];
-const teamValues:Record<string,string[]>={
+const executionKeys=['active','idle','running','stopping','stopped','failed','todo','in-progress','blocked','done','cancelled','queued','inserted','delivered','unknown','processed'];
+const executionValues:Record<string,string[]>={
   en:['Active','Idle','Running','Stopping','Stopped','Failed','To do','In progress','Blocked','Done','Cancelled','Queued','Inserted into current turn','Delivered','Outcome unknown','Processed'],
   zh:['活跃','空闲','运行中','停止中','已停止','失败','待处理','进行中','受阻','已完成','已取消','已排队','已插入当前回合','已送达','结果未知','已处理'],
   ja:['有効','待機','実行中','停止中','停止済み','失敗','未着手','進行中','ブロック中','完了','キャンセル済み','待機中','現在のターンに挿入済み','配信済み','結果不明','処理済み'],
   fr:['Actif','Inactif','En cours','Arrêt en cours','Arrêté','Échec','À faire','En cours','Bloqué','Terminé','Annulé','En attente','Inséré dans le tour courant','Livré','Résultat inconnu','Traité'],
   es:['Activo','Inactivo','En ejecución','Deteniendo','Detenido','Error','Pendiente','En curso','Bloqueado','Completado','Cancelado','En cola','Insertado en el turno actual','Entregado','Resultado desconocido','Procesado'],
 };
-export const teamStateLabel=(state:string,locale:string)=>(teamValues[localeKey(locale)]??teamValues.en)?.[teamKeys.indexOf(state)]??state;
+export const executionStateLabel=(state:string,locale:string)=>(executionValues[localeKey(locale)]??executionValues.en)?.[executionKeys.indexOf(state)]??state;

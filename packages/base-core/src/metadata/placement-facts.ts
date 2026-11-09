@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on clone-safe primitive values
- * [OUTPUT]: Provides canonical App Use/Edit conversation, workflow-owned Chat role, start-state, title, destination routing, residence, editor, source, and capability facts Exports isManagedChat for Workflow roles and persistent member ownership.
+ * [OUTPUT]: Provides ConversationContext, ChatStartState, isHistoryVisible, ChatTitleSource, ChatTitleJob, ChatPlacementFacts, ChatPlacementInput, hasCanonicalChatPlacement, isEffectivelyArchived, AppUseChatDestination, AppEditorDestination, ArchiveDestination, ProductDestination, productDestinationRoute, AppEditorProjection, isEditorVisible, AppChatSlot, AppUseSwitchPhase, AppUseSwitchIntent, AppUseSurfaceFence, AppUseSwitchReceipt, AppSourceState, CHAT_PANEL_CAPABILITIES, BaseNavigation.
  * [POS]: Shared Base semantic kernel; Shared information-architecture vocabulary; product-surface visibility remains in six focused sibling projections
  */
 
@@ -53,9 +53,6 @@ export type ChatPlacementFacts = Readonly<{
   createdAt: number;
 }>;
 
-/** The role of a Chat a workflow owns (one per record × role); such Chats open from their run, never from a Chat list. */
-export type WorkflowChatRole = "plan" | "develop" | "review";
-
 export type ChatPlacementInput = Readonly<{
   id: string;
   incarnationId?: string;
@@ -65,8 +62,6 @@ export type ChatPlacementInput = Readonly<{
   archivedAt?: number;
   effectiveArchived?: boolean;
   readOnlyReason?: "legacy-app-not-editable" | "external-readonly";
-  workflowRole?: WorkflowChatRole;
-  memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts;
   updatedAt: number;
   createdAt: number;
 }>;
@@ -80,9 +75,6 @@ export const hasCanonicalChatPlacement = <T extends ChatPlacementInput>(
 
 export const isEffectivelyArchived = (chat: ChatPlacementInput) =>
   chat.effectiveArchived ?? Boolean(chat.archivedAt);
-
-export const isWorkflowChat = (chat: ChatPlacementInput) => chat.workflowRole !== undefined;
-export const isManagedChat = (chat: ChatPlacementInput) => isWorkflowChat(chat) || chat.memberSession !== undefined;
 
 export type AppUseChatDestination = Readonly<{
   kind: "app-use-chat";

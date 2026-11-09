@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on original lifecycle gates, canonical Chat fences, reservations, prepared staging trusted remote connection checks, and the main-only workflow source (refused next to a remote submission).
- * [OUTPUT]: Promotes exact input custody, deferring ordinary append sequences/context to dispatch while retaining imported-replay and authorization fences. Admits main-owned persistent member source without renderer authority.
+ * [INPUT]: Uses `./mode-admission`, `../agent-switch/eligibility`, `../agent-switch/context`, `../agent-switch/prepare`, `../../../chats/store/mutation-outcome`, `../../../../../shared/ipc/content/chats-ipc`, `../../../../../shared/ipc/content/sections-ipc`, `../admission/prepared-manual-text` for its declared types and implementation.
+ * [OUTPUT]: Provides submitManualAdmission.
  * [POS]: apps/desktop/electron/main/sections/coordinator/turns; Manual-turn admission entry point for sections/coordinator; ConversationCoordinator supplies only the conversation/project gate and scheduling callbacks
  */
 
@@ -82,9 +82,6 @@ export async function submitManualAdmission(
     throw new Error("人工 turn intent 格式无效");
   }
   const remote = runtime.remote ?? dependencies.ledger.read(state => state.submissionReservations[submission.intentId]?.remoteSubmission?.context);
-  const { workflow, memberSession } = submission;
-  if (workflow && remote) throw new Error("WORKFLOW_SUBMISSION_CANNOT_BE_REMOTE");
-  if (memberSession && (remote || workflow)) throw new Error("MEMBER_SUBMISSION_CANNOT_CLAIM_ANOTHER_SOURCE");
   const userMessage = remoteUserMessage(manualUserMessage(submission.persistence), remote);
   const conversationId = submission.turn.scope.conversationId;
   const submissionHash = canonicalHash(submission);
@@ -218,7 +215,7 @@ export async function submitManualAdmission(
         const candidate = {
           id: submission.intentId,
           conversationId,
-          origin: remote?.origin ?? (workflow ? { kind: "workflow" as const, ...workflow } : memberSession ? { kind: "member" as const, ...memberSession } : undefined),
+          origin: remote?.origin,
           remoteSubmission: dependencies.ledger.read(state => state.submissionReservations[submission.intentId]?.remoteSubmission),
           payload: sequence
             ? freezeSwitch(tagRemotePrepared(await freezeManualContext(lease.prepared, dependencies, sequence), remote), dependencies, submissionHash, sequence)

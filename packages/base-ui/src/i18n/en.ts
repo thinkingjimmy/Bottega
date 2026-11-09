@@ -197,7 +197,7 @@ export const basesEn = {
     uploadQueueFull: "Wait for other uploads to finish, or save fewer images together.",
     imageVerificationFailed: "The image could not be verified. Choose the file again.",
     recordChanged: "This record or its fields changed elsewhere. Your input is preserved; review the latest record before saving.",
-    workflowOnly: "This field is filled in by the workflow and can't be edited here.",
+
     editTitle: "Edit record",
     checkSave: "Check the save result before continuing.",
     fileLimit: "Choose a non-empty image no larger than 50 MB.",
@@ -500,7 +500,7 @@ export const basesEn = {
     empty: "No recorded changes",
     operation: "Operation: {{operation}}",
     fields: "Fields: {{fields}}",
-    actor: { renderer: "You", agent: "Agent", system: "System", "app-gui": "App GUI", workflow: "Workflow" },
+    actor: { renderer: "You", agent: "Agent", system: "System", "app-gui": "App GUI",  },
   },
   relation: {
     empty: "Choose a record",

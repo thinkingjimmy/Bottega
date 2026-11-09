@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on serializable update/application metadata and explicit manual-only update policy and the shared platform capability matrix
- * [OUTPUT]: Provides uPDATE_CHANNEL, UpdateSnapshot, platform-aware AppInfo, and UpdateBridgeApi
- * [POS]: apps/desktop/shared/ipc/settings; The shared update contract between main, preload, and renderer; updater implementation details never cross IPC, and product identity never enters it — that truth is renderer-side and lives once in src/lib/brand.ts
+ * [INPUT]: Depends on serializable update/application metadata, stage-specific failure facts, explicit manual-only update policy and the shared platform capability matrix
+ * [OUTPUT]: Provides UPDATE_CHANNEL, UpdateSnapshot, UpdateFailureReason, UpdateCheckSource, platform-aware AppInfo and UpdateBridgeApi
+ * [POS]: apps/desktop/shared/ipc/settings; The shared update contract between main, preload, and renderer; native updater objects stay in main; serializable state and redacted diagnostics cross IPC, and product identity never enters it — that truth is renderer-side and lives once in src/lib/brand.ts
  */
 
 import type { AppCompatibilityFailure } from "../../app-host/contract";
@@ -23,6 +23,9 @@ export type UpdateProgress = Readonly<{
   total: number;
 }>;
 
+export type UpdateFailureReason = "offline" | "network" | "timeout" | "service" | "rate-limit" | "unknown";
+export type UpdateCheckSource = "manual" | "automatic" | "online";
+
 export type AppUpdateRequirement = Readonly<{
   context: AppCompatibilityFailure;
   status: "waiting-download" | "checking" | "satisfied" | "unavailable" | "install-busy" | "error";
@@ -37,6 +40,7 @@ export type UpdateSnapshot = Readonly<{
   checkedAt: number | null;
   error: string | null;
   lastError: string | null;
+  failure?: Readonly<{ stage: "check" | "download"; reason: UpdateFailureReason }> | null;
   automaticInstall: boolean;
   manualOnly?: boolean;
   candidateId?: string | null;
@@ -65,7 +69,7 @@ export const UPDATE_CHANNEL = {
 
 export type UpdateBridgeApi = {
   snapshot(): Promise<UpdateSnapshot>;
-  check(): Promise<UpdateSnapshot>;
+  check(source?: UpdateCheckSource): Promise<UpdateSnapshot>;
   checkForApp(requestId: string): Promise<UpdateSnapshot>;
   dismissAppRequirement(): Promise<UpdateSnapshot>;
   downloadAndInstall(): Promise<UpdateSnapshot>;

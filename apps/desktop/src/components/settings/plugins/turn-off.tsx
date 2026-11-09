@@ -1,9 +1,8 @@
 /**
  * [INPUT]: Depends on React, the shared ConfirmationDialog, errorMessage, workbench-copy and the plugins bridge.
- * [OUTPUT]: Provides the pure PluginDisableImpactDescription shared by original and unified Workflow reviews, and usePluginSwitch — the card/detail switch: turning on needs no confirmation; turning off first reads the impact and
- *           confirms it (configurations, workflows, runs, Chats, plugins that stop working, the plugin's own effects); refusals are read
+ * [OUTPUT]: Provides PluginDisableImpactDescription, usePluginSwitch.
  *           by code through Electron's IPC wrapper (busy waits until the catalog changes, changed files keep it off) — and its dialog.
- * [POS]: Shared impact display for original and unified native Workflow reviews; mutation remains with each existing switch authority (T-P3: every switch confirms with its impact).
+ * [POS]: apps/desktop/src/components/settings/plugins module boundary; adjacent modules consume its explicit exports.
  */
 import { useRef, useState, type ReactNode } from "react";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
@@ -18,14 +17,8 @@ export function PluginDisableImpactDescription({ impact, pluginId, name, workben
   impact: PluginDisableImpact; pluginId: string; name: string; workbench: WorkbenchCopy; locale: string; computerName?: string;
 }) {
   const copy = workbench.plugins;
-  /* Configs and workflows are named (a bounded sample, then "and N more"); runs and Chats are counted by their totals. */
-  const more = (shown: number, total: number) => total > shown ? [pluralWorkbench(copy, "impactMore", locale, total - shown)] : [];
+
   const lines = [
-    ...impact.agentConfigs.items.map(config => formatWorkbench(copy.impactConfigs, { config: config.name })),
-    ...more(impact.agentConfigs.items.length, impact.agentConfigs.total),
-    ...impact.workflows.items.map(item => formatWorkbench(copy.impactWorkflows, { workflow: item.name, name })),
-    ...more(impact.workflows.items.length, impact.workflows.total),
-    ...(impact.runs.total ? [pluralWorkbench(copy, "impactRuns", locale, impact.runs.total, { name })] : []),
     ...(impact.readOnlyChats.total ? [pluralWorkbench(copy, "impactChats", locale, impact.readOnlyChats.total, { name })] : []),
     ...impact.effects.items.map(effect => pluginText(effect.label, workbench)),
   ];

@@ -47,6 +47,8 @@ export const nativeEn = {
     "quitProcesses": "Some background processes could not be closed.",
     "quitOther": "Bottega could not finish preparing to quit. Try again.",
     "report": "Report problem",
+    "downloadLatest": "Download latest",
+    "downloadFailed": "Could not open. Try again",
     "copied": "Copied",
     "copyFailed": "Copy failed"
   },

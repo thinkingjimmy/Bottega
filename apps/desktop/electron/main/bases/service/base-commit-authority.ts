@@ -15,9 +15,7 @@ export type BaseMutationOperation = WireMutationOperation;
 export type BaseCommitAuthority = Readonly<{
   [AUTHORITY]: true;
   authorityId: string;
-  actor: "renderer" | "agent" | "system" | "app-gui" | "workflow";
-  /** Set only for `workflow`: the run whose writes these are. */
-  runId?: string;
+  actor: "renderer" | "agent" | "system" | "app-gui";
   ownerKey: string;
   ownerInstanceId: string;
   allowedOperations: readonly BaseMutationOperation[];
@@ -49,10 +47,6 @@ export class BaseCommitAuthorityRegistry {
     return this.create({ ...input, actor: "app-gui" });
   }
 
-  /** The only authority that may change a workflow-only column (Q12); issued for a verified run (TASK-17). */
-  issueWorkflow(input: Omit<BaseCommitAuthority, typeof AUTHORITY | "authorityId" | "actor" | "runId">, runId: string) {
-    return this.create({ ...input, actor: "workflow", runId });
-  }
 
   assert(
     authority: BaseCommitAuthority,

@@ -13,7 +13,6 @@ import type { PluginImpactBridge } from "./impact";
 import { pluginSettingsViewSchema, type PluginSettingsView, type SettingsPatch, type SettingsSubmitResult } from "./settings";
 import { localizedTextSchema } from "./text";
 
-const text = z.string().min(1).max(256);
 export const blockedBySchema = z.array(z.object({ contract: pluginContractSchema, reason: z.enum(BLOCK_REASONS) }).strict()).max(32);
 export const availabilitySchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("usable") }).strict(),
@@ -42,10 +41,6 @@ export const pluginViewSchema = z.object({
   turnOff: z.discriminatedUnion("allowed", [z.object({ allowed: z.literal(true) }).strict(),
     z.object({ allowed: z.literal(false), reason: z.enum(TURN_OFF_REASONS) }).strict()]),
   hasSettings: z.boolean(),
-  /** Provider plugins: the Agent configurations that use it. */
-  usedBy: z.array(text).max(64).optional(),
-  /** Workflow: the Projects it is set up in. */
-  workflowIn: z.array(text).max(64).optional(),
   /** Agent-native manager, and canonical source location for native or editable local plugins. */
   managedBy: z.string().max(32).optional(),
   origin: z.string().max(512).optional(),
@@ -74,7 +69,7 @@ export const pluginDetailSchema = pluginViewSchema.extend({
   settings: pluginSettingsViewSchema.nullable(),
   capabilities: z.array(z.object({ label: localizedTextSchema, id: z.string().max(160).nullable() }).strict()).max(64),
   /** Built-in plugins: the page names of related settings the detail page links to. */
-  related: z.array(z.enum(["providers", "agent-configs", "usage", "skills", "memory", "dock"])).max(8),
+  related: z.array(z.enum(["providers", "usage", "skills", "memory", "dock"])).max(8),
 }).strict();
 export type PluginDetail = z.infer<typeof pluginDetailSchema>;
 

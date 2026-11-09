@@ -1,7 +1,6 @@
 /**
  * [INPUT]: Depends on the plugin health shape and the catalog's PluginEntry.
  * [OUTPUT]: Provides pluginHealth: a plugin's health for its detail page — a Provider from its runtime snapshot (CLI installed and version,
- *           sign-in), a host package from whether its host runs, Workflow from its running runs, Base as always ready.
  * [POS]: The main-side `health(pluginId)` port of appendix C.3; the renderer's Provider detail adds its own providerHealth and CLI update row
  *        on top. Memory, Tunnel and Dock provide theirs through BuiltinOwner.health.
  */
@@ -13,7 +12,6 @@ export type HealthPorts = Readonly<{
   now: number;
   provider(providerId: string): ProviderSnapshot | null | undefined;
   packageRunning(installIdentity: string): boolean;
-  workflow(): { running: number } | null;
 }>;
 
 const key = (name: string, params?: Record<string, string | number>) => (params ? { key: `plugins.health.${name}`, params } : { key: `plugins.health.${name}` });
@@ -42,11 +40,6 @@ export async function pluginHealth(entry: PluginEntry, ports: HealthPorts): Prom
       ],
       checkedAt: ports.now,
     };
-  }
-  if (descriptor.id === "workflow") {
-    const runs = ports.workflow();
-    return { level: entry.enabled ? "ok" : "unknown", summary: key(entry.enabled ? "ready" : "off"),
-      facts: runs ? [{ label: key("runningRuns"), value: { text: String(runs.running) } }] : [], checkedAt: ports.now };
   }
   if (descriptor.id === "base") return { level: "ok", summary: key("ready"), facts: [], checkedAt: ports.now };
   return null;

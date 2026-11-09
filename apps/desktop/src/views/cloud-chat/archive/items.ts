@@ -1,9 +1,8 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and the scoped confirmed catalog, local facts and native Chat identities.
- * [OUTPUT]: Provides archived mirror entries (never a workflow Chat, R-35) and their catalog loading/retry state.
+ * [OUTPUT]: Provides MirrorArchiveItem, useCloudArchiveItems.
  * [POS]: Settings archive read model; mirrors stay outside native ArchiveTarget operations.
  */
-import { isWorkflowChat } from "@ai-chat/base-core/metadata/placement-facts";
 import { useMemo } from "react";
 import { useCloudChatCatalog } from "@/lib/cloud/chat/catalog";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
@@ -14,7 +13,7 @@ export function useCloudArchiveItems() {
     const facts = new Map(catalog.facts.map(value => [value.chatId, value]));
     return catalog.heads.flatMap((head): MirrorArchiveItem[] => {
       const view = facts.get(head.chat.id), archivedAt = view ? view.archivedAt : head.archivedAt;
-      if (view?.residence !== "mirror" || view.state === "deleted" || archivedAt === null || isWorkflowChat(head.chat)) return [];
+      if (view?.residence !== "mirror" || view.state === "deleted" || archivedAt === null) return [];
       return [{ kind: "mirror", key: `chat:${head.chat.id}`, archivedAt, title: view ? view.title : head.chat.title, head }];
     });
   }, [catalog.heads, catalog.facts]);

@@ -8,7 +8,7 @@
 
 <p align="center">
   Bottega is an open-source, local-first desktop workspace for Codex, Claude Code, Kimi Code, and OpenCode.<br>
-  Turn Agent conversations into durable workspaces with Base, Apps, Memory, browser tools, and multi-agent collaboration—while credentials stay with the official local CLIs.
+  Turn Agent conversations into durable workspaces with Base, Apps, Memory, browser tools and native subagents. Credentials stay with the official local CLIs.
 </p>
 
 <p align="center">
@@ -35,7 +35,9 @@
   <img src="./images/readme.png" alt="Bottega-README">
 </p>
 
-# Key features
+Current `main` contains the **upcoming, unreleased 0.4.2 source**, using **protocol 27**. The latest published installer is [0.4.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1), using **protocol 26**. The source publication does not announce a 0.4.2 installer, hosted deployment or native acceptance.
+
+# Current source features
 
 - **Your Agents, one sidebar.** Run Codex, Claude Code, Kimi Code, and OpenCode through their official local CLIs. Switch Agents for the next turn in an idle chat while keeping the same transcript.
 - **Build the workspace you need.** Combine pages, Widgets, tools, services and Chat modes in one plugin. Manage official features, existing Apps and personal plugins together, with source Projects, managed dependencies and version recovery.
@@ -43,9 +45,8 @@
 - **Sketch your next prompt.** Draw, add text and shapes, and erase details in the composer. Keep sketches editable until they are sent as PNG images.
 - **Build AI-native Apps.** Describe the workflow you need and turn it into a durable App with its own interface, data, and permissions—not another result trapped in a transcript.
 - **Customize by chatting.** Use multiple Chats in one plugin source Project. Valid builds update local instances automatically; failed builds keep the working version. Share explicitly before enabling encrypted delivery to your account.
-- **Keep team work together.** Coordinate persistent member Chats, tasks, dependencies and messages. Choose isolated writes and reviewed merges when needed. Add bundled Weather to Dock with independent city settings.
+- **Keep useful tools close.** Add bundled Weather to Dock with independent city settings. Use native Provider subagents and ordinary Chat forks for parallel work.
 - **Every Chat, one data space.** Give a Chat or Project a structured Base, then work with the same rows as a table, list, Kanban board, map, chart, or gallery.
-- **Plan, develop, review — as a workflow.** Turn on a workflow for a Project's Base: your Agents plan, develop, and review each task while you confirm the plan and decide on the result, from the desktop, a browser, or your phone.
 - **Sync it, or keep it local.** Everyone starts on this computer. Sign in when you want your work on more than one device: content is end-to-end encrypted with a sync password that only you hold, and the server never sees your plain text.
 - **Reach the computer that holds the work.** Signing in publishes that computer's sidebar to your account. Switch computers in the sidebar from a browser, a phone, or another desktop, and drive the one you need.
 - **Open your workspace in a browser.** Sign in at [app.getbottega.app](https://app.getbottega.app) to read and edit your Chats, Bases, and Apps from another computer or a phone.
@@ -68,7 +69,7 @@ Choose a prebuilt desktop release or run Bottega directly from source. Before la
 
 **Updating:** 0.2.6 and 0.2.7 installations use the stable update channel. The shipped 0.2.5 personal build has its updater disabled and requires a manual installation of 0.4.1. Before replacing the app, quit Bottega completely and back up your Bottega folder and application data.
 
-0.4.1 uses **protocol 26**. Update connected desktops and reload Bottega Web after the coordinated service update. Existing Bottega content, cloud content, sync passwords, and account keys remain. No data reset is required. Retired Artifact files and snapshots remain unchanged, with unsupported-format cards. See the [changelog](./docs/changelog/README.md) for unified plugins, Teams, Weather and validation limits.
+The published 0.4.1 installer uses **protocol 26** and includes the retained-plugin startup fix. Existing content, sync passwords and account keys remain. Its historical release notes describe the shipped behavior. Current main uses protocol 27 and needs matching services for Cloud; coordinated delivery and retirement maintenance remain pending. See the [changelog](./docs/changelog/README.md) for the unreleased source scope and the published 0.4.1 notes.
 
 Use the official **Developer ID signed and Apple notarized** DMG or ZIP. Download `Bottega-0.4.1-release-evidence.tar.gz` from the same release and read `release-manifest.json` at its root. Run `shasum -a 256` on the installer and compare the result with its `sha256` in the manifest, then copy Bottega into `Applications`. See the [installation guide](./docs/getting-started/README.md#download-and-install) for the commands.
 

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on scoped native, imported and confirmed mirror FTS documents and bounded retained body reads.
- * [OUTPUT]: Provides account-fenced keyset search without creating device membership for mirrors; another computer's workflow Chat (its confirmed head names a role, R-35) is never a hit. A hit's agent (a built-in or a package Provider's) is parsed, never cast (TASK-11 S3-b).
+ * [OUTPUT]: Provides searchDocuments.
  * [POS]: SQLite search projection shared by renderer jobs and native history tools.
  */
 import { chatAgentIdSchema } from "../../../../../shared/chat-agent/options";
@@ -73,9 +73,7 @@ export function searchDocuments(database: SqliteDatabase, command: Extract<Datab
         WHERE chat_search_fts MATCH ?
           AND ((lm.chat_id IS NOT NULL AND la.chat_id IS NOT NULL) OR
             (c.cloud_state='mirror' AND c.cloud_environment=? AND c.cloud_user_id=?
-              AND NOT EXISTS(SELECT 1 FROM cloud_tombstones t WHERE t.chat_id=c.id AND t.environment=c.cloud_environment AND t.user_id=c.cloud_user_id)
-              AND NOT EXISTS(SELECT 1 FROM cloud_chat_metadata_state w WHERE w.chat_id=c.id
-                AND json_extract(w.confirmed_json, '$.chat.workflowRole') IS NOT NULL)))
+              AND NOT EXISTS(SELECT 1 FROM cloud_tombstones t WHERE t.chat_id=c.id AND t.environment=c.cloud_environment AND t.user_id=c.cloud_user_id)))
           AND (d.document_kind <> 'native' OR m.row_id IS NOT NULL OR (c.cloud_state='mirror' AND s.source_id IS NOT NULL))
           AND ${ACTIVE_GENERATION_DOCUMENT_FENCE}
           ${cursor ? `AND ${SEARCH_DOCUMENT_KEYSET_AFTER}` : ""}

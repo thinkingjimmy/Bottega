@@ -388,7 +388,7 @@ export class BaseStore {
   gallery(ownerKey: string, ownerInstanceId: string) {
     return structuredClone(this.requireState(ownerKey, ownerInstanceId).gallery);
   }
-  /** The change witness of one cell (cellChangeWitness); the workflow's base.read binds its inputs to it (Q1). */
+  /** The change witness of one cell (cellChangeWitness); guarded Base reads bind inputs to it. */
   cellWitness(ownerKey: string, ownerInstanceId: string, rowId: string, columnId: string) {
     return cellChangeWitness(this.requireState(ownerKey, ownerInstanceId).history, rowId, columnId);
   }
@@ -595,7 +595,6 @@ export class BaseStore {
           candidateRowIds: historyCandidates(input, current, next.rowsById),
           at: this.now(),
           actor: input.actor ?? "system",
-          ...(input.runId ? { runId: input.runId } : {}),
           operation: input.operation ?? "mutation",
           revision: input.meta.revision,
         })

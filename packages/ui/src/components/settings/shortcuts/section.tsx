@@ -1,14 +1,14 @@
 /**
  * [INPUT]: Host-owned shortcut rows, localized copy, capture policy and persistence callbacks.
- * [OUTPUT]: Shared ShortcutSettings with recording, disable/reset, conflicts and accessible keycaps.
+ * [OUTPUT]: Shared ShortcutSettings with recording, disable/reset, conflicts, accessible keycaps and an optional page-layout slot; restore defaults appears only with overrides.
  * [POS]: Native/Web keyboard settings presentation; platform storage and command authority stay in adapters.
  */
-import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { Pencil, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "../../ui/controls/button";
 import { Kbd, KbdGroup } from "../../ui/feedback/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/overlays/tooltip";
-import { SettingsSection } from "../page-frame";
+import { SettingsAlert, SettingsSection } from "../page-frame";
 import { SettingsList, SettingsRow } from "../content";
 import { SettingsButton } from "../controls";
 import { cn } from "../../../lib/utils";
@@ -36,6 +36,7 @@ type Props = {
   apple: boolean;
   hasOverrides: boolean;
   error?: string | null;
+  children?(layout: { description: string; actions: ReactNode; content: ReactNode }): ReactNode;
   capture(event: KeyboardEvent): CaptureResult;
   onChange(
     id: string,
@@ -49,41 +50,45 @@ export function ShortcutSettings({
   hasOverrides,
   error,
   onRestore,
+  children,
   ...props
 }: Props) {
   const [restoring, setRestoring] = useState(false),
     [failure, setFailure] = useState<string | null>(null);
-  return (
-    <SettingsSection
-      title={copy.title}
-      description={copy.description}
-      alert={error || failure}
-      action={
-        <SettingsButton
-          variant="outline"
-          className="shrink-0 max-md:min-h-11 pointer-coarse:min-h-11"
-          disabled={!hasOverrides || restoring}
-          onClick={async () => {
-            setRestoring(true);
-            setFailure(null);
-            try {
-              await onRestore();
-            } catch {
-              setFailure(copy.restoreFailed);
-            } finally {
-              setRestoring(false);
-            }
-          }}
-        >
-          {copy.restoreDefaults}
-        </SettingsButton>
-      }
+  const actions = hasOverrides ? (
+    <SettingsButton
+      variant="outline"
+      className="shrink-0 max-md:min-h-11 pointer-coarse:min-h-11"
+      disabled={restoring}
+      aria-busy={restoring}
+      onClick={async () => {
+        setRestoring(true);
+        setFailure(null);
+        try {
+          await onRestore();
+        } catch {
+          setFailure(copy.restoreFailed);
+        } finally {
+          setRestoring(false);
+        }
+      }}
     >
+      {copy.restoreDefaults}
+    </SettingsButton>
+  ) : null;
+  const content = (
+    <div className="space-y-3">
+      {(error || failure) && <SettingsAlert>{error || failure}</SettingsAlert>}
       <SettingsList>
         {rows.map((row) => (
           <ShortcutRow key={row.id} row={row} copy={copy} {...props} />
         ))}
       </SettingsList>
+    </div>
+  );
+  return children ? <>{children({ description: copy.description, actions, content })}</> : (
+    <SettingsSection title={copy.title} description={copy.description} action={actions}>
+      {content}
     </SettingsSection>
   );
 }

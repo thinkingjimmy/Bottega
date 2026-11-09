@@ -2,12 +2,12 @@
 
 [简体中文](./README.zh-CN.md) · [Repository home](../README.md)
 
-Current version: [0.4.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1) for macOS on Apple silicon (ARM64), using protocol 26. Ordinary Codex Chat checks its native protocol and capabilities; generated native titles and isolated editor tasks keep separate CLI qualification. Read the [native command permissions](./features/README.md#codex-command-permissions) and [installation and update notes](./getting-started/README.md#upgrading-to-040). The 0.2.5 personal build needs a manual update. [Bottega Web](https://app.getbottega.app) remains available.
+Current `main` contains the **upcoming, unreleased 0.4.2 source**, using **protocol 27**. The latest published installer is [0.4.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1), using **protocol 26**. The source publication does not announce a 0.4.2 installer, hosted deployment or native acceptance. Read the [current source scope](./getting-started/README.md#upcoming-042-source) and the [published 0.4.1 installation notes](./getting-started/README.md#upgrading-to-041). The 0.2.5 personal build needs a manual installation of the published stable version.
 
 Documentation is organized by responsibility so the repository root remains focused on source and build configuration.
 
 - [Getting started](./getting-started/README.md): product value, requirements, installation, pnpm commands, repository scope, and collaboration policy.
-- [Features](./features/README.md): Multi-agent, four-format Artifacts, Base, workflows, Agent configurations, Apps, scoped Tools and Extensions, Memory and their shared foundations.
+- [Features](./features/README.md): four Agents, native subagents, four-format Artifacts, Base, plugins, Apps, scoped Tools and Extensions, Memory and their shared foundations.
 - [Changelog](./changelog/README.md): milestone-level product changes without internal development logs.
 
 ## Component licenses

@@ -414,7 +414,7 @@ export class ProjectsService {
         reasons.push("managed-worktree");
       }
       if (reasons.length) return { status: "archive-required", reasons };
-      const chatIds = this.options.listChatsByProject(projectId).filter(chatId => !this.options.isWorkflowChat?.(chatId));
+      const chatIds = this.options.listChatsByProject(projectId);
       await this.resourceCleanup.remove(projectId, "detach-local-project");
       this.emit({ type: "removed", projectId });
       return { status: "detached", movedChatCount: chatIds.length };
@@ -718,7 +718,6 @@ export class ProjectsService {
       this.detachProjectRuntime(context.projectId)
     );
     this.resourceCleanup.registerRuntime("archive-purge", async (context) => {
-      await this.options.cleanupWorkflows?.(context.projectId);
       await this.options.removeBaseForProject?.(context.projectId);
     });
     this.resourceCleanup.registerRuntime("rollback-app-project", async () => undefined);
@@ -729,19 +728,14 @@ export class ProjectsService {
     projectId: string,
     lifecycle?: "held"
   ) {
-    /* Before any turn is killed or Chat removed: a workflow step is stopped through its run, on evidence (A-01). */
-    await this.options.cleanupWorkflows?.(projectId);
     await this.options.cancelTurnsByProject(projectId);
     await this.options.removeChatsByProject(projectId, lifecycle);
     await this.options.removeBaseForProject?.(projectId);
   }
 
   private async detachProjectRuntime(projectId: string) {
-    await this.options.cleanupWorkflows?.(projectId);
-    /* Its workflow Chats go with the runs (proven stopped just above): outside their run they are nowhere to be opened. */
     for (const chatId of this.options.listChatsByProject(projectId)) {
-      if (this.options.isWorkflowChat?.(chatId)) await this.options.removeChat!(chatId);
-      else await this.options.releaseChatProject(chatId);
+      await this.options.releaseChatProject(chatId);
     }
   }
 

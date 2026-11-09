@@ -17,9 +17,6 @@ export const memoryPluginCopy = {
     "phoneFacade": {
       "label": "スマートフォンと Web で Memory の状態を確認・操作"
     },
-    "workflowRoles": {
-      "label": "ワークフローの役割に Memory の読み取りを許可"
-    }
   },
   "sharing": {
     "chat": "このチャット",
@@ -27,7 +24,7 @@ export const memoryPluginCopy = {
     "personal": "すべてのチャット"
   },
   "capability": {
-    "recall": "共有範囲内の情報を呼び出す",
+    "recall": "新しい Chat のターンでの呼び出しを一時停止します。",
     "capture": "同意した対象情報を保存する",
     "backfill": "許可した履歴のみを処理する"
   },
@@ -39,7 +36,7 @@ export const memoryPluginCopy = {
     "personal": "今後の Memory をすべてのチャットで共有します。抽出には {{hostname}} の {{model}} を使用し、モデル料金が発生する場合があります。既存の履歴は含まれません。"
   },
   "effects": {
-    "recall": "新しいチャットとワークフローのターンでの呼び出しを一時停止します。",
+    "recall": "新しい Chat のターンでの呼び出しを一時停止します。",
     "capture": "新規保存を一時停止し、保存済みの記憶は保持します。",
     "backfill": "通常の履歴処理を一時停止します。",
     "phone": "スマートフォンと Web のチャットで Memory を一時停止します。",

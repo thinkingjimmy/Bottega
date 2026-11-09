@@ -214,8 +214,7 @@ function contentBlocksText(content: unknown) {
 }
 
 /**
- * A command's exact exit code, when the Provider's raw output carries one (Codex: `exit_code`). Main-only metadata for the
- * workflow evidence (TASK-18); Claude's adapter reports no exit code for its local Bash tool, so none is invented.
+ * A command's exact exit code, when the Provider's raw output carries one (Codex: `exit_code`). Main-only tool-result metadata; Claude's adapter reports no exit code for its local Bash tool, so none is invented.
  */
 export function exitCodeOf(rawOutput: unknown) {
   const value = rawOutput as { exit_code?: unknown; exitCode?: unknown } | null | undefined;

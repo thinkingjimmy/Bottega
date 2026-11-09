@@ -79,9 +79,9 @@ export const dock = {
     "error": "Error al sincronizar; diseño conservado"
   },
   "unsupportedReason": {
-    "platform": "Requiere macOS 27",
+    "platform": "Requiere macOS 26 o 27",
     "architecture": "Requiere un chip de Apple",
-    "osVersion": "Requiere macOS 27",
+    "osVersion": "Requiere macOS 26 o 27",
     "helperMissing": "Falta el asistente de Dock. Reinstala Bottega."
   },
   "effects": {

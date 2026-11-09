@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses the work's actual Provider identity, product turn/input contracts, main-sealed ACP or native plans, execution references and ordered bridge events.
- * [OUTPUT]: Exports BridgedTurn with frozen configuration, approval/control forwarding, live exact-owner MCP consent eligibility, pre-launch title/candidate native-purpose admission and background-transfer refusal, delivery evidence and cancellation-safe Chat background transfer with exact-item termination and exact-owner durable result commits. Rejects parent-session binding and validates independent member fork completion in main.
+ * [OUTPUT]: Provides BridgedTurn.
  * [POS]: Main-side authorization and custody owner; protocol parsing remains in the pinned bridge driver.
  */
 import { randomUUID } from "node:crypto";
@@ -125,8 +125,6 @@ export class BridgedTurn implements AgentTurn {
     switch (request.k) {
       case "thread": {
         const expected = this.native?.nativeConfig.continuation?.threadId;
-        if (this.options.memberFork && (request.previous || request.session.backend !== this.providerId || request.session.id === this.options.memberFork.sourceSessionId))
-          throw new Error("Member fork cannot bind or replace its parent session");
         if (request.previous && (!expected || request.previous.backend !== this.providerId || request.previous.id !== expected ||
           this.options.payload.session?.backend !== this.providerId || this.options.payload.session.id !== expected || request.session.backend !== this.providerId || request.session.id === expected)) throw new Error("Native fork binding does not match its frozen source");
         if (expected && !request.previous) throw new Error("Native fork requires an atomic source-session replacement");
@@ -136,10 +134,6 @@ export class BridgedTurn implements AgentTurn {
       case "session-prompt": this.options.trustedAuthority?.current(); await this.options.onSessionPrompt?.(request.sessionId, request.texts as string[]); return null;
       case "builtin-ready": await this.options.builtinMcp?.waitReady(new AbortController().signal); return null;
       case "recovery-complete": await this.options.sessionRecovery?.complete(request.outcome as "resumed" | "replayed"); return null;
-      case "member-fork-complete": {
-        if (!this.options.memberFork || !["forked", "replayed"].includes(request.outcome)) throw new Error("No member fork authority");
-        await this.options.memberFork.complete(request.outcome); return null;
-      }
       /* Only a live turn is answered: the tokens exist in the bridge for this session's creation, never for a later one. */
       case "mcp-servers": {
         if (this.native) throw new Error("Native turns do not expose ACP MCP servers");
@@ -262,7 +256,6 @@ export class BridgedTurn implements AgentTurn {
         count: options.sensitiveContribution.count, bytes: options.sensitiveContribution.bytes },
       serverFactBinding: options.serverFactBinding,
       recovery: options.sessionRecovery && { candidate: options.sessionRecovery.candidate },
-      memberFork: options.memberFork,
       hooks: { sessionPrompt: Boolean(options.onSessionPrompt), authority: Boolean(options.trustedAuthority) },
       builtinMcp: options.builtinMcp && { server: { ...options.builtinMcp.server, env: blank(options.builtinMcp.server.env) } },
       thirdPartyMcpPlan: options.thirdPartyMcpPlan && { ...options.thirdPartyMcpPlan, entries: options.thirdPartyMcpPlan.entries.map(entry =>

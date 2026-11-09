@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, I18n/Setup providers, AgentFailureNotice, PresenceSettings, ArchiveConfettiRow, FolderRow, DangerZone, shared SettingsPreferenceSelect, settings controls/store, Provider purpose catalog, SettingsPage, and UI primitives.
- * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle/TitleAgentLabel with theme/language, system typography, presence, Bottega folder, title generation settings with retained unsupported selections and inline first-message fallback explanation, and the Danger zone.
+ * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle/TitleAgentLabel with theme/language, system typography, presence, Bottega folder and Chat section info tips, Chat relay/title/read-access settings with retained unsupported selections and inline first-message fallback explanation, and the Danger zone.
  * [POS]: apps/desktop/src/views/settings/general; Settings layer's default view; holds no settings snapshot of its own — subscribes to settingsStore and pulls the per-backend model catalog on demand
  */
 
@@ -101,10 +101,7 @@ export function TitleAgentLabel({
   );
 }
 
-/* ============================================================
- * Chat 分组的两行只有在真值到达后才存在：settings 非空是它的
- * 入参前提，于是内部一个判空分支都不需要。
- * ============================================================ */
+/* Chat rows render only after settings load, so controls share one ready snapshot. */
 
 function ChatRows({
   settings,
@@ -281,6 +278,12 @@ function ChatRows({
           </div>
         }
       />
+      <SettingsRow
+        label={t("settings.general.crossChatRead")}
+        htmlFor="allow-cross-chat-read"
+        description={t("settings.general.crossChatReadDescription")}
+        control={<CrossChatReadToggle enabled={settings.allowCrossChatRead} />}
+      />
     </SettingsList>
   );
 }
@@ -288,7 +291,7 @@ function ChatRows({
 function ChatRowsSkeleton() {
   return (
     <SettingsList data-testid="settings-chat-skeleton">
-      {[0, 1].map((row) => (
+      {[0, 1, 2].map((row) => (
         <div
           key={row}
           className="flex items-center justify-between gap-6 px-4 py-3"
@@ -297,7 +300,7 @@ function ChatRowsSkeleton() {
             <Skeleton className="h-4 w-28" />
             <Skeleton className="h-3 w-56" />
           </div>
-          <Skeleton className="h-8 w-44 shrink-0" />
+          <Skeleton className={row === 2 ? "h-[18px] w-8 rounded-full" : "h-8 w-44 shrink-0"} />
         </div>
       ))}
     </SettingsList>
@@ -427,7 +430,7 @@ export function GeneralSettingsView() {
 
           <SettingsSection
             title={t("settings.general.chatHomeLocation")}
-            description={t("settings.general.chatHomeDescription")}
+            info={t("settings.general.chatHomeDescription")}
             alert={revealError || chatHomesRootError || error}
             action={
               error ? (
@@ -444,26 +447,12 @@ export function GeneralSettingsView() {
             <FolderProgress progress={folderProgress} />
             <SettingsList>
               <FolderRow folder={settings?.chatHomesRoot ?? null} loading={!settings} onError={setRevealError} />
-              <SettingsRow
-                label={t("settings.general.crossChatRead")}
-                htmlFor="allow-cross-chat-read"
-                description={t("settings.general.crossChatReadDescription")}
-                control={
-                  settings ? (
-                    <CrossChatReadToggle
-                      enabled={settings.allowCrossChatRead}
-                    />
-                  ) : (
-                    <Skeleton className="h-[18px] w-8 rounded-full" />
-                  )
-                }
-              />
             </SettingsList>
           </SettingsSection>
 
           <SettingsSection
             title={t("settings.general.chat")}
-            description={t("settings.general.chatDescription")}
+            info={`${t("settings.general.chatDescription")} ${t("settings.general.titleGenerationInfo")}`}
             action={
               modelsError && settings ? (
                 <SettingsButton

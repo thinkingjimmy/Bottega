@@ -1,13 +1,11 @@
 /**
  * [INPUT]: No runtime dependencies
- * [OUTPUT]: Includes Memory access selection, explicit workflow-read consent, plugin chrome and native-memory distinction; Provides memoryEn — Memory product copy for runtime repair, version/history recovery, background operations, data-location failures, and busy-state guidance, the phone status switch (TASK-28); no Project workspace chooser UI remains — and the structural shape its translated leaves derive from
+ * [OUTPUT]: Provides memoryEn.
  * [POS]: English leaf of shared/i18n/locales/memory; renderer and main-process surfaces consume these keys as the single copy authority
  */
 
 export const memoryEn = {
   plugin: { serviceDisabled: "Turn on the Memory plugin to use this service. Your service preference is kept while the plugin is off.", open: "Open Memory plugin", name: "Memory", official: "Official · Built in", about: "About Memory", unsupported: "Memory is not supported on this platform. It is currently available on macOS only.", nativeDistinction: "Bottega Memory is separate from the native memory managed in the Codex and Claude plugin settings." },
-  access: {"none": "None", "readOnly": "Read only", "description": "Read only recalls relevant memory for this role. Workflow roles never write to Memory.", "workflowOff": "Workflow read access is off in the Memory plugin.", "workflowOn": "Workflow read access is allowed on this computer."},
-  workflow: {"sectionTitle": "Access and controls", "label": "Allow workflow roles to read Memory", "description": "Only workflow roles whose configuration selects Read only can recall memory. Workflow roles never write to Memory.", "consentTitle": "Allow workflow roles to read Memory?", "consentBody": "Configured planning, development and review roles can recall memory using the task name and acceptance criteria, within the current Chat or Project scope. Workflow roles never write memory. Pausing Memory or turning off this permission stops recall at the next step.", "confirm": "Allow read only", "requiresActive": "Enable Memory and finish consent before allowing workflow reads. Resume Memory if it is paused.", "personal": "Workflow reads are unavailable in the personal memory pool. Choose Chat or Project scope.", "saveFailed": "Could not save workflow read access. Try again."},
   store: {
     providerListFailed: "Failed to load Memory providers",
     statusFailed: "Failed to read Memory status",

@@ -18,7 +18,7 @@ const description = z.string().max(8192);
 const jsonSchema = z.record(z.string(), z.unknown());
 const contribution = { id: pluginIdentitySchema, name: title, description: description.optional() };
 export const pluginPageContributionSchema = z.object({
-  ...contribution, kind: z.literal("page"), entry: pluginPackagePathSchema, hostAppId: pluginIdentitySchema.optional(), hostViewId: z.enum(["workflow", "dock-settings"]).optional(),
+  ...contribution, kind: z.literal("page"), entry: pluginPackagePathSchema, hostAppId: pluginIdentitySchema.optional(), hostViewId: z.literal("dock-settings").optional(),
   route: z.string().regex(/^\/[A-Za-z0-9/_-]*$/).max(256).optional(), slot: z.string().min(1).max(160),
   navigation: z.object({ label: title, icon: z.string().max(64).optional(), order: z.number().int().optional() }).strict().optional(),
 }).strict();
@@ -35,7 +35,7 @@ export const pluginToolContributionSchema = z.object({
   executor: z.object({ kind: z.enum(["host", "process"]), entry: pluginPackagePathSchema, method: z.string().min(1).max(128) }).strict(),
   timeoutMs: z.number().int().min(1).max(600_000).default(30_000),
   access: z.enum(["read", "write"]).optional(), planAllowed: z.boolean().optional(),
-  manualTurnOnly: z.boolean().optional(), exactIssued: z.boolean().optional(), workflowAllowed: z.boolean().optional(),
+  manualTurnOnly: z.boolean().optional(), exactIssued: z.boolean().optional(),
   backendAllowlist: z.array(z.string().min(1).max(128)).max(64).optional(), domain: z.string().min(1).max(128).optional(),
   resultBytes: z.number().int().positive().max(1_048_576).optional(),
   budget: z.object({ rateLimit: z.number().int().positive(), rateWindowMs: z.number().int().positive() }).strict().optional(),

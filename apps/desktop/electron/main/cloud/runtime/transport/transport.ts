@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the pinned Convex SDK/socket factory, Zod validation, public registry and main-only session token provider.
- * [OUTPUT]: Provides bounded socket-first calls, JWT-refreshing HTTP fallback and authenticated subscriptions that are re-attached to each new socket within one account/device scope (a scope change fails them), immediate cancellation of all in-flight socket/HTTP/token calls when the connection closes and terminal stop admission, a socket token retry on a 1/2/5/15/30/60 s ladder that networkOnline cuts short and invalid-session ends (T20-2), a separately authenticated bulk socket with the same token retry and bounded readiness, one call at a time, closed with the primary, a queued one settling unsent once close() moves the generation (T20-4, review 0929 R05), per-command hop traces with queue and execution time (traceCommand/commandTrace, T20-5), a server-time offset from HTTP Date headers (T20-9b), including the private Widget account directory head, the account's computer list, the account-config revision, per-computer Memory control intent and the Agent-configuration directory.
+ * [OUTPUT]: Provides AccountTransport, TraceHop, traceCommand, commandTrace, CloudTransport.
  * [POS]: apps/desktop/electron/main/cloud/runtime/transport; Main cloud transport; private generated code and credentials never cross IPC.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -32,8 +32,6 @@ export interface AccountTransport {
   watchComputers?(input: CloudFunctionArgs<"devices:computers">, changed: (value: CloudFunctionResult<"devices:computers">) => void,
     failure: (error: unknown) => void): () => void;
   watchAccountConfig?(input: CloudFunctionArgs<"accountConfig/sync:revision">, changed: (value: CloudFunctionResult<"accountConfig/sync:revision">) => void,
-    failure: (error: unknown) => void): () => void;
-  watchAgentConfigDirectory?(input: CloudFunctionArgs<"agentConfigs/sync:directory">, changed: (value: CloudFunctionResult<"agentConfigs/sync:directory">) => void,
     failure: (error: unknown) => void): () => void;
   watchResourceInbox?(input: CloudFunctionArgs<"resources/commands:inbox">, changed: (value: CloudFunctionResult<"resources/commands:inbox">) => void,
     failure: (error: unknown) => void): () => void;
@@ -267,10 +265,6 @@ export class CloudTransport implements AccountTransport {
   /* Only the revision integer is subscribed; the coordinator reads the ciphertext head when the revision moves. */
   watchAccountConfig(input: CloudFunctionArgs<"accountConfig/sync:revision">, changed: (value: CloudFunctionResult<"accountConfig/sync:revision">) => void, failure: (error: unknown) => void) {
     return this.parsed("accountConfig/sync:revision", input, changed, failure);
-  }
-  /** One small row per account: a change costs one read, and the heads page is fetched only when its revision moved. */
-  watchAgentConfigDirectory(input: CloudFunctionArgs<"agentConfigs/sync:directory">, changed: (value: CloudFunctionResult<"agentConfigs/sync:directory">) => void, failure: (error: unknown) => void) {
-    return this.parsed("agentConfigs/sync:directory", input, changed, failure);
   }
   /** This desktop's pending and accepted resource commands (P13 R-24): a phone's confirm reaches it as soon as it is sent. */
   watchResourceInbox(input: CloudFunctionArgs<"resources/commands:inbox">, changed: (value: CloudFunctionResult<"resources/commands:inbox">) => void, failure: (error: unknown) => void) {

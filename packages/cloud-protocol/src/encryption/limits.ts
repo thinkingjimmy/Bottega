@@ -29,13 +29,10 @@ export const PLAINTEXT_LIMITS: Readonly<Record<CryptoPurpose, number>> = Object.
   /* Account configuration (the Dock layout). The whole record, its ciphertext and the base64url packet must stay far below
      Convex's 1 MiB document limit: 384 KiB of plaintext becomes a ~705,000-character packet. */
   8: 393_216,
-  /* Agent configuration (D-BUDGET, 2026-09-25): the crypto layer itself refuses more than the business budget. */
-  9: 32_768,
   /* Resource commands (P13 §10.1): 10 is a command, 11 its result; both are small. */
   10: 8_192,
   11: 8_192,
-  /* Workflow projections (P13 §10.2): 12 is a run record or a computer's attention page; 13 is a workflow binding projection or an App's build status (U06-d). */
-  12: 65_536,
+  /* App build status retains its original purpose number. Removed purposes are not reused. */
   13: 8_192,
 });
 

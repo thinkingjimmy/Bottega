@@ -103,7 +103,7 @@ export function BaseWorkbench({
   onRecordChange,
   recordContributions,
   toolbar,
-  onRunWorkflow,
+
   capability = "full",
   surfaceLeaseId,
   renewSurfaceLease,
@@ -373,10 +373,7 @@ export function BaseWorkbench({
         column.id === columnId ? { ...column, name } : column
       ),
     }));
-  const setColumnWritableBy = (columnId: string, writableBy: "everyone" | "workflows") =>
-    updateLatestMeta((latest) => ({
-      columns: latest.meta.columns.map((column) => column.id === columnId && column.workflow ? { ...column, writableBy } : column),
-    }));
+
 
   const updateSelectOption = (
     columnId: string,
@@ -574,8 +571,8 @@ export function BaseWorkbench({
             }
             onPatch={canMutateRows ? intent(patch) : undefined}
             onOpenRecord={openRecord}
-            onRunWorkflow={onRunWorkflow}
-            onColumnWritableByChange={canStructure ? intent(setColumnWritableBy) : undefined}
+
+
             onRenameColumn={canStructure ? intent(renameColumn) : undefined}
             ownerKey={ownerKey}
             relationOptions={snapshot.rows}
@@ -709,7 +706,7 @@ export function BaseWorkbench({
         onAddRow={intent(addToolbarRow)}
         onDeleteColumn={intent(deleteColumn)}
         onRenameColumn={intent(renameColumn)}
-        onColumnWritableByChange={canStructure ? intent(setColumnWritableBy) : undefined}
+
         onFilter={intent((filter: BaseFilter | undefined) =>
           updateActiveViewConfig((config) => {
             return config.type === "chart"

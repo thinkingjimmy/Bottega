@@ -5,8 +5,7 @@
  */
 import { z } from "zod";
 import { checked, id, scopeSchema } from "./scalars";
-import { skillHeadBindingSchema, skillGenerationBindingSchema, appSurfaceGenerationBindingSchema, pluginSurfaceGenerationBindingSchema, appBindingSchema, chatBindingSchema, projectBindingSchema, accountConfigBindingSchema, agentConfigurationBindingSchema,
-  workflowAttentionBindingSchema, workflowBindingBindingSchema, workflowRunBindingSchema, appBuildStatusBindingSchema, resourceCommandBindingSchema, resourceResultBindingSchema, memoryControlBindingSchema, memoryControlResultBindingSchema } from "./records";
+import { skillHeadBindingSchema, skillGenerationBindingSchema, appSurfaceGenerationBindingSchema, pluginSurfaceGenerationBindingSchema, appBindingSchema, chatBindingSchema, projectBindingSchema, accountConfigBindingSchema, appBuildStatusBindingSchema, resourceCommandBindingSchema, resourceResultBindingSchema, memoryControlBindingSchema, memoryControlResultBindingSchema } from "./records";
 import { baseFieldBindingSchema, baseOperationBindingSchema } from "./bases";
 import { messageBindingSchema } from "./messages";
 import { fileBindingSchema, homeBindingSchema, remoteProjectQueryBindingSchema, remoteCommandBindingSchema, remoteIntentBindingSchema, remoteCreationBindingSchema, remoteMemoryBindingSchema, remoteResultBindingSchema, turnBindingSchema } from "./streams";
@@ -31,17 +30,12 @@ const skillHead = shape("skill-head", 1, skillHeadBindingSchema), skillGeneratio
 const appSurfaceGeneration = generation("app-surface-generation", appSurfaceGenerationBindingSchema);
 const pluginSurfaceGeneration = generation("plugin-surface-generation", pluginSurfaceGenerationBindingSchema);
 const accountConfig = shape("account-config", 8, accountConfigBindingSchema);
-const agentConfiguration = shape("agent-configuration", 9, agentConfigurationBindingSchema);
-const workflowRun = shape("workflow-run", 12, workflowRunBindingSchema).refine(value => value.entityId === value.binding.runId);
-const workflowAttention = shape("workflow-attention", 12, workflowAttentionBindingSchema).refine(value => value.entityId === value.binding.ownerDeviceId);
-const workflowBinding = shape("workflow-binding", 13, workflowBindingBindingSchema);
 const appBuildStatus = shape("app-build-status", 13, appBuildStatusBindingSchema).refine(value => value.entityId === value.binding.appId);
 const resourceCommand = shape("resource-command", 10, resourceCommandBindingSchema).refine(value => value.entityId === value.operationId);
 const resourceResult = shape("resource-result", 11, resourceResultBindingSchema).refine(value => value.entityId === value.operationId);
 const memoryControl = shape("memory-control", 10, memoryControlBindingSchema).refine(value => value.entityId === value.operationId);
 const memoryControlResult = shape("memory-control-result", 11, memoryControlResultBindingSchema).refine(value => value.entityId === value.operationId);
-export const domainContextSchema = z.discriminatedUnion("entityKind", [remoteProjectQuery, chat, project, app, baseOperation, baseField, message, file, home, turn, remoteCreation, remoteMemory, remotePlugins, remoteIntent, remoteCommand, remoteResult, search, mirror, skillHead, skillGeneration, accountConfig, agentConfiguration,
-  workflowRun, workflowAttention, workflowBinding, appBuildStatus, resourceCommand, resourceResult, memoryControl, memoryControlResult, appSurfaceGeneration, pluginSurfaceGeneration]);
+export const domainContextSchema = z.discriminatedUnion("entityKind", [remoteProjectQuery, chat, project, app, baseOperation, baseField, message, file, home, turn, remoteCreation, remoteMemory, remotePlugins, remoteIntent, remoteCommand, remoteResult, search, mirror, skillHead, skillGeneration, accountConfig, appBuildStatus, resourceCommand, resourceResult, memoryControl, memoryControlResult, appSurfaceGeneration, pluginSurfaceGeneration]);
 export type DomainContext = z.infer<typeof domainContextSchema>;
 type Scope = z.infer<typeof scopeSchema>;
 const constructor = <S extends z.ZodType<DomainContext>>(schema: S, entityKind: z.output<S>["entityKind"], purpose: z.output<S>["purpose"]) =>
@@ -70,10 +64,6 @@ export const createAppSurfaceGenerationContext = constructor(appSurfaceGeneratio
 export const createMirrorContext = constructor(mirror, "mirror", 6);
 export const createSearchContext = constructor(search, "search", 6);
 export const createAccountConfigContext = constructor(accountConfig, "account-config", 8);
-export const createAgentConfigurationContext = constructor(agentConfiguration, "agent-configuration", 9);
-export const createWorkflowRunContext = constructor(workflowRun, "workflow-run", 12);
-export const createWorkflowAttentionContext = constructor(workflowAttention, "workflow-attention", 12);
-export const createWorkflowBindingContext = constructor(workflowBinding, "workflow-binding", 13);
 export const createAppBuildStatusContext = constructor(appBuildStatus, "app-build-status", 13);
 export const createResourceCommandContext = constructor(resourceCommand, "resource-command", 10);
 export const createResourceResultContext = constructor(resourceResult, "resource-result", 11);

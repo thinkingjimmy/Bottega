@@ -1,13 +1,11 @@
 /**
- * [INPUT]: Depends on the lean installed-team lifecycle registry, Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, history/quota services, Apps, Update, MCP, and window security, and the build-gated cloud account lifecycle, and the workflow turn policy (a read-only workspace only the executor can ask for).
- * [OUTPUT]: Creates the main window with a bounded listener budget for its fixed domain registrars, derives canonical turn authority, wires durable prepared/settled member outcomes and scoped background result persistence, records actual session prompt hashes, admits saved-history fresh-session recovery before the original user boundary and registers Project/Extension/App IPC plus any injected trusted-renderer registrars; a package Provider's turn gets no built-in tool policy, projection, App tools, Skills access or restored session.
- * Main-owned manual/workflow/member Skill receipts retain canonical backend, Plan and Project checks; Provider settings survive Skill isolation.
+ * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, history/quota services, Apps, Update, MCP, and window security, and the build-gated cloud account lifecycle.
+ * [OUTPUT]: Creates the main window with a bounded listener budget for its fixed domain registrars, derives canonical turn authority, wires scoped background result persistence, records actual session prompt hashes, admits saved-history fresh-session recovery before the original user boundary and registers Project/Extension/App IPC plus any injected trusted-renderer registrars; a package Provider's turn gets no built-in tool policy, projection, App tools, Skills access or restored session.
+ * Main-owned Skill receipts retain canonical backend, Plan and Project checks; Provider settings remain frozen per turn.
  * Window closure releases only its observed Artifact workspace leases; it does not recreate a closed workspace owner.
  * [POS]: Interactive main-window authority boundary (it also freezes each turn's Provider plugin settings with the backend session config); renderer identities are routing hints and main re-derives every Project lifecycle fact
- * Workflow Memory admission reads canonical Chat identity and the main-owned workflow timestamp and read intent.
  */
 import { providerPluginSettings } from "../plugins/catalog";
-import {installedPluginTeams} from '../plugins/team/runtime/installed';
 import { builtinAgent } from "../../../shared/chat-agent/options";
 import { prepareSessionRecovery } from "../library/sessions/runtime";
 import { libraryReadOnlyRoots } from "../library/sandbox";
@@ -96,8 +94,8 @@ import {
   assertManagedWorktreePermission,
   resolveManagedWorktreeAccess,
 } from "./managed-worktree-access";
-import { workflowCappedBuiltinTools, workflowExecutionWorkspace, workflowTurnFence, workflowTurnPolicyFor } from "../workflows/turn-policy";
-import { workflowRuntime } from "../workflows/runtime/installed";
+
+
 import { registerUsage } from "./agent/usage-registration";
 type MainWindowDependencies = {
   mainDirectory: string;
@@ -320,10 +318,10 @@ export function createMainWindow({
     platformSupport,
     traceDirectory,
     /* A provider's plugin hooks freeze its private session config (Claude: projected plugin paths); others have none. */
-    /* T-P5: the Provider plugin's changed settings, frozen with the rest (a workflow role's memory is disableProviderMemory's). */
-    freezeBackendSessionConfig: async (backend, options) => {
+    /* Freeze changed Provider settings with the admitted session configuration. */
+    freezeBackendSessionConfig: async (backend) => {
       const [plugins, providerSettings] = await Promise.all([
-        options?.isolateSkills ? undefined : agentPluginInventory.sessionConfig(backend, () => extensions.registry.snapshot()),
+        agentPluginInventory.sessionConfig(backend, () => extensions.registry.snapshot()),
         providerPluginSettings(backend),
       ]);
       return { ...plugins, ...(Object.keys(providerSettings).length ? { providerSettings } : {}) };
@@ -379,7 +377,6 @@ export function createMainWindow({
         projects,
         chats.store
       );
-      if (origin?.kind === "workflow") context.workspace = await workflowExecutionWorkspace(payload?.requestId, context.workspace, origin.runId);
       const preparedSkillSelection = payload?.preparedSkillSelection;
       if (preparedSkillSelection) {
         const canonicalProjectContext = context.projectContext ?? {
@@ -387,7 +384,7 @@ export function createMainWindow({
           projectLifecycleRevision: null,
         };
         if (
-          (origin?.kind !== "manual" && origin?.kind !== "workflow" && origin?.kind !== "member") ||
+          origin?.kind !== "manual" ||
           preparedSkillSelection.backend !== payload?.turnOptions.backend ||
           preparedSkillSelection.planMode !== Boolean(payload?.planMode) ||
           preparedSkillSelection.projectContext.projectId !==
@@ -420,7 +417,6 @@ export function createMainWindow({
       const canonicalUser = candidateUser?.role === "user"
         ? candidateUser
         : undefined;
-      const workflowMemory = origin?.kind === "workflow" ? workflowTurnPolicyFor(payload?.requestId) : null;
       const memoryAdmission =
         payload && origin?.kind === "manual" && canonicalChat && canonicalUser
           ? await memory.prepareAdmission({
@@ -433,12 +429,7 @@ export function createMainWindow({
               userCreatedAt: canonicalUser.createdAt,
               workspace: context.workspace,
             })
-          : payload && canonicalChat && workflowMemory?.workflowMemoryRead && workflowMemory.admittedAt !== undefined
-            ? await memory.prepareAdmission({ requestId: payload.requestId, origin: "workflow",
-                workflowMemoryRead: true, admittedAt: workflowMemory.admittedAt, planMode: Boolean(payload.planMode),
-                chatId: canonicalChat.id, incarnationId: canonicalChat.incarnationId, projectId: canonicalChat.projectId,
-                workspace: context.workspace })
-            : null;
+          : null;
       const chatReadOnlyRoots = [
         ...libraryReadOnlyRoots(chatHomes.libraryRoot, context.workspace),
         ...(settings.get().allowCrossChatRead ? chatHomes.readOnlyRoots(context.workspace) : []),
@@ -503,11 +494,8 @@ export function createMainWindow({
             ...chatReadOnlyRoots,
             ...attached.readOnlyRoots,
             ...managedWorktree.readOnlyRoots,
-            ...(workflowTurnPolicyFor(payload?.requestId)?.readOnlyRoots ?? []),
           ],
           controlRoot: dirname(chatHomes.ledger.filePath),
-          /* Only the workflow executor can ask for a read-only workspace or no network, through a main-only policy (W2). */
-          ...workflowTurnFence(payload?.requestId),
         },
       };
     },
@@ -519,9 +507,8 @@ export function createMainWindow({
       }
       const next: BuiltinTurnToolPolicy = {
         disabledTools: current.disabledTools,
-        builtinTools: workflowCappedBuiltinTools(snapshot.capabilities.builtinTools, context.turnProjectionInput?.requestId),
+        builtinTools: snapshot.capabilities.builtinTools,
         backendRuntimeIdentity: `${context.turnProjectionInput?.backendId ?? "unknown"}@${snapshot.runtime.version}`,
-        ...(current.workflowStep ? { workflowStep: true as const } : {}),
       };
       let projected: AgentContext = { ...context, builtinToolPolicy: next };
       const capabilityChanged =
@@ -689,7 +676,6 @@ export function createMainWindow({
         planMode,
         origin,
         packageEntries: context.packageMcpEntries,
-        workflow: workflowTurnPolicyFor(context.turnProjectionInput?.requestId),
       }),
     observeThirdPartyMcpProtocol: (observation) => {
       const evidenceDigest = digestCanonical({
@@ -713,20 +699,13 @@ export function createMainWindow({
        不在这里：dependency 早于进程退出被释放，等于允许一个还活着的 backend
        读到已经被 GC 的 generation 字节。 */
     onTurnSettled: async (event) => {
-      await installedPluginTeams()?.settled(event.conversationId, {requestId:event.requestId,terminal:event.outcome==='fatal'?'error':event.terminal,cleanup:event.cleanup}).catch(error=>console.warn('[teams] settlement failed',error));
       const memoryAuthorized = await coordinator.onTurnSettled(event);
       /* Memory 是 degraded subsystem：任何 store/provider 异常都不能改写
          Chat persist/trace 终态，也不能阻断下一轮。 */
       await memory.onTurnSettled(event, memoryAuthorized).catch(() => undefined);
-      /* A workflow step's turn: its latch needs the terminal, the stored outcome, the cleanup and the commands it ran. */
-      await workflowRuntime()?.turnSettled({ requestId: event.requestId, terminal: event.terminal,
-        outcome: event.outcome === "stored" || event.outcome === "empty" || event.outcome === "missing" ? event.outcome : "fatal", cleanup: event.cleanup,
-        assistantParts: (event.assistantMessage as { parts?: readonly unknown[] } | undefined)?.parts,
-        assistantText: (event.assistantMessage as { content?: unknown } | undefined)?.content as string | undefined }).catch((cause) => console.warn("[workflows] turn settle failed", cause));
     },
     onTurnPrepared: async (event) => {
       await coordinator.onTurnPrepared(event);
-      await installedPluginTeams()?.prepared(event.conversationId, event.requestId);
     },
     onSteerFenceTimeout: (event) =>
       coordinator.finalizeSteerFenceTimeout(event.requestId, event.opEpochs),

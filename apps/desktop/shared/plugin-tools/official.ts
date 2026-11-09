@@ -16,12 +16,12 @@ import { PREVIEW_TOOL_SPECS } from "./preview";
 import { SKILL_TOOL_SPECS } from "./agent/skills";
 import { DATAVIZ_TOOL_SPECS } from "./agent/dataviz";
 import { SUBAGENT_TOOL_SPECS } from "./agent/subagents";
-import { WORKFLOW_TOOL_SPECS } from "./agent/workflows";
+
 import type { PluginToolSpec } from "./platform";
 
 export type OfficialToolPlugin = Readonly<{
   id: string; alias: string; name: string; copyable: boolean; alwaysOn?: boolean; hostInfrastructure?: boolean;
-  nativeFeature?: "workflow" | "memory" | "dock" | "sketch";
+  nativeFeature?: "memory" | "dock" | "sketch";
   dependencies: readonly string[]; tools: readonly PluginToolSpec[];
 }>;
 const feature = (id: string, name: string, tools: readonly PluginToolSpec[], dependencies: readonly string[] = [], alwaysOn = false): OfficialToolPlugin =>
@@ -36,10 +36,9 @@ export const officialToolPlugins: readonly OfficialToolPlugin[] = [
   feature("tunnel", "Preview", PREVIEW_TOOL_SPECS),
   feature("skills", "Skills", DATAVIZ_TOOL_SPECS),
   feature("apps", "Apps", APP_TOOL_SPECS),
-  feature("workflow", "Workflow", [], ["base"]),
   feature("memory", "Memory", []), feature("dock", "Dock", []), feature("sketch", "Sketch", []),
   core("sections", SECTION_TOOL_SPECS), core("subagents", SUBAGENT_TOOL_SPECS),
   core("projects", PROJECT_TOOL_SPECS), core("search", SEARCH_TOOL_SPECS),
   core("history", HISTORY_TOOL_SPECS), core("skills", SKILL_TOOL_SPECS),
-  core("plugins", PLUGIN_TOOL_SPECS), core("workflow", WORKFLOW_TOOL_SPECS),
+  core("plugins", PLUGIN_TOOL_SPECS),
 ];

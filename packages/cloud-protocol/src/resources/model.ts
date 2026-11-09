@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Zod, the encryption scalars and purpose limits, the encrypted-space schema, REMOTE_LIMITS, the workflow confirm input and bridge refusal codes.
+ * [INPUT]: Uses `../apps/build-status/enablement`, `zod`, `../artifacts/design/reference/model`, `../artifacts/design/history/model`, `./project-git`, `../encryption/domains/scalars`, `../encryption/limits`, `../spaces` for its declared types and implementation.
  * Closed Artifact status/history/difference/action/export-reference schemas share the existing encrypted resource registry.
  * [OUTPUT]: Provides RESOURCE_LIMITS, the closed resource kinds and classes, the action registry (resourceActionDescriptor: class and criticality per action), the sealed command body and result body, the refusal codes, the encrypted command (plaintext header + packet), the encrypted result and the receipt. Registers bounded Project Git operations, App impact/enablement, requester-bound plugin installation and bounded encrypted record/result pages.
  * Artifact actions, request cancellation and results remain bounded metadata and private-file references with original-operation recovery.
@@ -14,8 +14,8 @@ import { digest, id, version } from "../encryption/domains/scalars";
 import { PLAINTEXT_LIMITS } from "../encryption/limits";
 import { encryptedSpaceSchema } from "../spaces";
 import { REMOTE_LIMITS } from "../remote/model";
-import { confirmInputSchema } from "../contracts/workflow/run";
-import { WORKFLOW_BRIDGE_ERRORS } from "../contracts/workflow/bridge";
+
+
 import { previewViewSchema } from "./preview";
 import { pluginInstallSourceSchema, pluginInstallReceiptSchema } from "./plugin-install";
 import { pluginRecordReadSchema, pluginRecordReportSchema, pluginRecordResultsSchema, pluginRecordPageSchema } from "./plugin-records";
@@ -36,7 +36,7 @@ export const RESOURCE_LIMITS = Object.freeze({
   acceptedGraceMs: 3_600_000,
 });
 export const RESOURCE_CONTRACT = "bottega.resource/v1";
-export const RESOURCE_KINDS = ["project", "provider-quota", "workflow-run", "workflow-binding", "app", "preview", "plugin", "artifact"] as const;
+export const RESOURCE_KINDS = ["project", "provider-quota", "app", "preview", "plugin", "artifact"] as const;
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
 export const RESOURCE_CLASSES = ["read", "control", "work"] as const;
 export type ResourceClass = (typeof RESOURCE_CLASSES)[number];
@@ -62,18 +62,6 @@ const REGISTRY = {
   "preview-stop": { kind: "preview", class: "control", critical: true, input: z.object({ chatId: id, incarnationId: id }).strict() },
   "preview-issue-code": { kind: "preview", class: "control", critical: false, input: z.object({ chatId: id, incarnationId: id }).strict() },
   refresh: { kind: "provider-quota", class: "read", critical: false, input: empty },
-  confirm: { kind: "workflow-run", class: "control", critical: true, input: confirmInputSchema },
-  cancel: { kind: "workflow-run", class: "control", critical: true, input: empty },
-  "force-stop": { kind: "workflow-run", class: "control", critical: true, input: empty },
-  pause: { kind: "workflow-run", class: "control", critical: false, input: empty },
-  resume: { kind: "workflow-run", class: "control", critical: false, input: empty },
-  "check-result": { kind: "workflow-run", class: "control", critical: false, input: empty },
-  "retry-step": { kind: "workflow-run", class: "control", critical: false, input: z.object({ stepId: id }).strict() },
-  "enable-blocking-plugin": { kind: "workflow-run", class: "control", critical: false, input: z.object({ stepId: id, expectedRevision: version }).strict() },
-  "read-evidence": { kind: "workflow-run", class: "read", critical: false, input: z.object({ stepId: id, kind: z.enum(["diff", "report"]),
-    offset: version.max(65_536) }).strict() },
-  "start-rework": { kind: "workflow-run", class: "work", critical: false, input: z.object({ choice: z.enum(["keep-plan", "replan"]) }).strict() },
-  start: { kind: "workflow-binding", class: "work", critical: false, input: z.object({ rowId: id }).strict() },
   /* U06: the App's Use Chat (the current one, or a new one) and latest Edit Chat, opened on the owner without taking its window's
      focus; a rebuild is the owner's own after-edit build. Repair runs repository code and stays on the computer (Q-U4). */
   "open-use-chat": { kind: "app", class: "control", critical: false, input: z.object({ mode: z.enum(["current", "new"]) }).strict() },
@@ -97,13 +85,13 @@ export const resourceCommandBodySchema = z.union(RESOURCE_ACTIONS.map(action => 
   input: REGISTRY[action].input }).strict()) as unknown as [z.ZodObject, z.ZodObject, ...z.ZodObject[]]);
 export type ResourceCommandBody = { contract: typeof RESOURCE_CONTRACT; action: ResourceAction; input: unknown };
 
-/** Closed refusal codes: the workflow bridge's, plus the command's own. `failed` stands for anything unexpected, never its message. */
+
 /** `command-expired` (C2-03): accepted in time, but its deadline passed on the owner before the effect, so it never ran.
     `unsupported-action`: a registered action this owner does not run yet (rebuild before U06-d). `app-transitioning`: the App is being
     installed, updated or removed, a pause that passes; `app-not-editable` is one that does not (U06-c). `startup-recovery-pending` /
     `earlier-process-holding`: the computer's startup recovery or an earlier Agent process held the command past its bounded wait. `already-resolved` (from the bridge list): for decline-extension, the extension decision it names was
     already made (on the computer, or by an earlier decline or the time limit); nothing changed (U06-d). */
-export const RESOURCE_REFUSALS = [...WORKFLOW_BRIDGE_ERRORS, ...PROJECT_GIT_REFUSALS, "class-mismatch", "invalid-command", "provider-unknown", "not-waiting", "input-changed", "command-expired",
+export const RESOURCE_REFUSALS = ["already-resolved", "contract-missing", ...PROJECT_GIT_REFUSALS, "class-mismatch", "invalid-command", "provider-unknown", "not-waiting", "input-changed", "command-expired",
   "app-disabled", "app-enablement-stale", "app-not-found", "app-not-editable", "app-busy", "app-transitioning", "unsupported-action", "startup-recovery-pending", "earlier-process-holding",
   "plugin-setup-required", "plugin-unsupported", "plugin-not-found", "plugin-not-switchable", "tunnel-platform-unsupported", "tunnel-plugin-disabled",
   "tunnel-download-consent-required", "preview-service-unavailable", "preview-service-changed", "preview-chat-changed", "preview-session-closed",
@@ -112,7 +100,7 @@ export const RESOURCE_REFUSALS = [...WORKFLOW_BRIDGE_ERRORS, ...PROJECT_GIT_REFU
 export type ResourceRefusal = (typeof RESOURCE_REFUSALS)[number];
 /** `runId` for an action that creates a run (start, start-rework); `revision` is the run projection's revision after the action; `chatId` for the Chat an App action opened (none from open-editor while the App has no Edit Chat yet: the sender starts one). */
 export const resourceResultBodySchema = z.union([
-  z.object({ ok: z.literal(true), runId: id.optional(), revision: version.positive().optional(), chatId: id.optional(),
+  z.object({ ok: z.literal(true), revision: version.positive().optional(), chatId: id.optional(),
     projectGit: projectGitPageSchema.nullable().optional(),
     appImpact: appDisableImpactSchema.optional(),
     pluginInstall: pluginInstallReceiptSchema.optional(),
@@ -122,9 +110,7 @@ export const resourceResultBodySchema = z.union([
     artifactStatus: artifactStatusSchema.optional(), artifactOperation: artifactOperationSchema.optional(),
     artifactCancellation: artifactCancellationSchema.optional(), artifactExport: artifactExportSchema.optional(), artifactHistory: artifactHistorySchema.optional(),
     artifactDifference: artifactDifferenceSchema.optional(),
-    preview: previewViewSchema.optional(),
-    evidence: z.object({ kind: z.enum(["diff", "report"]), offset: version.max(65_536), nextOffset: version.max(65_536).nullable(),
-      totalBytes: version.max(2 * 1024 * 1024), chunk: z.string().max(5462).regex(/^[A-Za-z0-9_-]*$/), digest, truncated: z.boolean() }).strict().optional() }).strict(),
+    preview: previewViewSchema.optional() }).strict(),
   z.object({ ok: z.literal(false), code: z.enum(RESOURCE_REFUSALS) }).strict(),
 ]);
 export type ResourceResultBody = z.infer<typeof resourceResultBodySchema>;

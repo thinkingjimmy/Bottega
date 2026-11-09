@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, window context, surface migration, shared feedback toasts, ArchiveCelebrationHost, SketchHost, lazy unified plugin update/page hosts, startup marks, and the build-gated cloud account lifecycle.
- * [OUTPUT]: Composes persistent providers with system typography, window-level feedback hosts before route effects, App recovery, two-step onboarding without the Memory copy section, settings navigation (including background-surface requests, always-available unified Plugins and build-flagged Agent configs, named plugin details and legacy Memory/Dock aliases), route-independent ProductApp sketch/archive/update hosts, declared plugin page routes, and the catalog-loaded/product-loading/gate-open startup milestones.
+ * [OUTPUT]: Provides the module entry and registered side effects.
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
 import { SettingsNavigationContext } from "@/components/providers/navigation/context";
@@ -93,7 +93,7 @@ import "@ai-chat/chat-ui/model-styles.css";
 import "@/components/sidebar/sidebar-row.css";
 import { AppWindowShell } from "@/components/apps/use/app-window-shell";
 import { workbenchUiEnabled } from "@ai-chat/ui/lib/workbench-flag";
-import { useOpenConfirmationRoute } from "@/components/bases/workflow/bridge";
+
 import {
   installWindowSurfaceRuntime,
   windowContext,
@@ -155,11 +155,6 @@ const PluginsSettingsView = lazy(() =>
   }))
 );
 /* Workbench pages exist only with the flag (E-01): no chunk is kept in the flag-off build. */
-const AgentConfigsSettingsView = workbenchUiEnabled ? lazy(() =>
-  import("@/views/settings/agent-configs/settings-agent-configs").then((module) => ({
-    default: module.AgentConfigsSettingsView,
-  }))
-) : null;
 const ProvidersSettingsView = lazy(() =>
   import("@/views/settings/providers/settings-providers").then((module) => ({
     default: module.ProvidersSettingsView,
@@ -259,7 +254,6 @@ function ProductApp() {
   const setup = useSetup();
   const location = useLocation();
   const navigate = useNavigate();
-  useOpenConfirmationRoute(navigate);
   const legacyMemorySettings = workbenchUiEnabled && location.pathname === MEMORY_SETTINGS_PATH;
   const [settingsSection, setSettingsSection] =
     useState<SettingsOverlaySection | null>(legacyMemorySettings ? "plugins" : null);
@@ -552,7 +546,6 @@ function ProductApp() {
                           {settingsSection === "community" && <CommunitySettingsView />}
                           {settingsSection === "shortcuts" && <ShortcutsSettingsView />}
                           {settingsSection === "providers" && <ProvidersSettingsView />}
-                          {AgentConfigsSettingsView && settingsSection === "agent-configs" && <AgentConfigsSettingsView />}
                           {settingsSection === "plugins" && <PluginsSettingsView target={pluginTarget} onOpenPlugin={setPluginTarget} />}
                           {settingsSection === "personalization" && <PersonalizationSettingsView />}
                           {settingsSection === "browser" && <BrowserSettingsView />}

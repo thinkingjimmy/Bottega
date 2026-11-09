@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the App navigation service's remote opens (never taking the window) once App mode has configured it.
  * [OUTPUT]: Provides appResourcePort and RemoteApps, sharing owner-controlled enablement, Use/Edit navigation, rebuild and extension decline with encrypted resource commands; returns null before App mode is configured.
- * [POS]: cloud/remote/resources' seam onto Apps, beside workflows.ts; the same per-App lifecycle lane a person here uses, so a remote open
+ * [POS]: cloud/remote/resources' seam onto Apps, beside the generic resource dispatchers; the same per-App lifecycle lane a person here uses, so a remote open
  *        and a local one never interleave.
  */
 import type { AppNavigationService } from "../../../apps/turn/app-navigation";

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, locale catalogs, chat/storage-failure contracts, clients, renderer stores, ordered activity hydration, startup marks, toast, and the workflow lifecycle refusal lines (workbench copy).
+ * [INPUT]: Uses `@ai-chat/cloud-protocol/chats/order`, `react`, `../../../shared/ipc/content/chats-ipc`, `../../../shared/product/product-failure`, `@/lib/chat/state/chat-messages-store`, `@/lib/chat/state/composer/chat-composer-store`, `@/lib/chat/state/chat-activity-store`, `@/lib/agent/agent-client` for its declared types and implementation.
  * [OUTPUT]: Provides ChatsProvider/useChats with buffered chat events, structured storage failures, consumption-safe activity hydration, the chats-loaded startup mark, optimistic sidebar reordering, and mutation feedback.
  * [POS]: Single source of truth for chat summaries in providers; owns one-time subscriptions and draft-resource cleanup at the provider level.
  */
@@ -43,8 +43,7 @@ import { markStartup } from "@/lib/platform/startup-marks";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { toast } from "@ai-chat/ui/components/ui/sonner";
 import { useAppTranslation } from "./preferences/i18n-provider";
-import { useOptionalWorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
-import { workflowLifecycleFailure } from "@/lib/clients/workflows-client";
+
 
 type ChatsContextValue = {
   chats: ChatSummary[];
@@ -100,8 +99,7 @@ export function ChatsProvider({
   children: React.ReactNode;
   includeActivity?: boolean;
 }) {
-  const { t, i18n } = useAppTranslation();
-  const workbench = useOptionalWorkbenchCopy(i18n.language);
+  const { t } = useAppTranslation();
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [warning, setWarning] = useState("");
   const [storageFailures, setStorageFailures] = useState<ChatStorageFailure[]>([]);
@@ -211,10 +209,10 @@ export function ChatsProvider({
       await archiveTargets([{ kind: "chat", id: chatId }]);
     } catch (cause) {
       const message = errorMessage(cause);
-      toast.error(t("chat.provider.archiveFailed", { message: workflowLifecycleFailure(message, workbench?.projectWorkflows ?? null) ?? message }));
+      toast.error(t("chat.provider.archiveFailed", { message: message }));
       throw cause;
     }
-  }, [t, workbench]);
+  }, [t]);
 
   const deleteChat = useCallback(async (chatId: string) => {
     try {

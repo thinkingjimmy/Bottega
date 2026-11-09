@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Lightweight portable member ownership validator; Depends on zod, canonical hashes, bounded remote provenance/control receipts, the workflow role vocabulary and original Agent/relay vocabulary.
- * [OUTPUT]: Defines ledger v7 unsequenced manual/steer custody (manual, remote or workflow origin), legacy injected sequence recovery, preparation pins and frozen handoff proofs. Durable queue claims, takeover identities and per-incarnation source pause scopes are additive ledger fields. Accepts strict persistent member origins beside manual, remote and Workflow sources.
+ * [INPUT]: Uses `zod`, `../../../chats/sqlite/cloud/protocol`, `../../../../../shared/chat-agent/sequences`, `../../../../../shared/chat-agent/history-schema`, `../../../../../shared/platform/agent-schema`, `../coordinator-values`, `../remote/model`, `./pause-saga` for its declared types and implementation.
+ * [OUTPUT]: Provides TERMINAL_RETENTION_MS, TERMINAL_RETAIN_PER_GROUP, TOMBSTONE_RETENTION_MS, relaySchema, createIntentSchema, manualIntentSchema, noticeOutboxSchema, tombstoneSchema, steerIntentSchema, ledgerSchema, SectionRef, RelayRecord, CreateIntent, ManualTurnIntent, SteerIntent, ManualTurnIntentInput, NoticeOutboxRecord, ManualAttempt, LedgerState, RelayExpectation, RelayAdmissionInput, emptyLedgerState.
  * [POS]: Source of truth for the coordinator/state durable wire format; RelayLedger is responsible only for sequencing atomic mutations and file IO
  */
 
@@ -10,8 +10,7 @@ import { turnSequencesSchema } from "../../../../../shared/chat-agent/sequences"
 import { handoffSchema } from "../../../../../shared/chat-agent/history-schema";
 import { agentBackendIdSchema } from "../../../../../shared/platform/agent-schema";
 import { canonicalHash } from "../coordinator-values";
-import { pluginMemberSessionFactsSchema } from "@bottega/contracts/plugins/team/member";
-import { WORKFLOW_ROLES } from "@ai-chat/cloud-protocol/contracts/workflow/recipe";
+
 import { remoteOriginSchema, remoteContextSchema, remoteSubmissionSchema, controlReceiptSchema, remoteCiphertextSchema } from "../remote/model";
 import { relayActionSchema } from "./pause-saga";
 import { submissionContentV1Schema } from "../../../../../shared/content/submission/submission";
@@ -202,15 +201,11 @@ function manualRequestId(payload: unknown) {
   return typeof requestId === "string" ? requestId : undefined;
 }
 
-/** Written only from the workflow runtime's main-only submission field; a restart rebuilds the turn's workflow origin from it. */
-const workflowOriginSchema = z.object({ kind: z.literal("workflow"), runId: z.string().min(1).max(128), stepId: z.string().min(1).max(128),
-  attempt: z.number().int().positive(), role: z.enum(WORKFLOW_ROLES) }).strict();
-
 export const manualIntentSchema = z
   .object({
     id: z.string().min(1).max(128),
     conversationId: z.string().min(1).max(128),
-    origin: z.union([z.object({ kind: z.literal("manual") }).strict(), remoteOriginSchema, workflowOriginSchema, pluginMemberSessionFactsSchema.extend({ kind: z.literal("member") })]).default({ kind: "manual" }),
+    origin: z.union([z.object({ kind: z.literal("manual") }).strict(), remoteOriginSchema]).default({ kind: "manual" }),
     remoteSubmission: remoteSubmissionSchema.optional(),
     queueSource: remoteContextSchema.optional(),
     payload: z.unknown().optional(),

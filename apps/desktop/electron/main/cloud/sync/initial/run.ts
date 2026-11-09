@@ -54,7 +54,6 @@ import { DesktopClassificationPublisher } from "../chats/classification/publishe
 import { forEachIsolated, smallestFirst, transferMeter, RetrySchedule } from "./schedule";
 import { libraryRefusal, protocolHeader } from "@ai-chat/cloud-protocol";
 import { writePublisher } from "../../../library/publisher";
-import { workflowChatRoles, memberChatEntries } from "../../../chats/projection/chat-summary";
 /* A whole chat is one unit of upload work; four lanes keep the latency-bound path busy without exceeding the crypto
    queue's waiting budget. Staged bytes arrive per message, so they are coalesced instead of sent one frame each. */
 const CHAT_LANES = 4, FLUSH_INTERVAL = 30_000, FLUSH_CEILING = 60_000, TURN_INTERVAL = 30_000, WAKE_DELAY = 250, UPLOAD_INTERVAL = 200;
@@ -491,9 +490,6 @@ export class DesktopSyncRun {
     const metadataChats = new Set(queue.filter(item => item.metadata_status === "queued" && !initializingChats.has(chatIdOf(item))).map(chatIdOf));
     for (const chatId of metadataChats) { this.assertCurrent(); await this.metadata.flush(chatId); }
     if (metadataChats.size) this.stale();
-    /* R-35: a workflow Chat that reached the cloud without its role gets it once; a failure is retried next pass. */
-    await this.metadata.repairWorkflowRoles(workflowChatRoles()).catch(error => { this.fail(error); });
-    await this.metadata.repairMemberSessions(memberChatEntries()).catch(error => { this.fail(error); });
     const classified = await this.outbox();
     await forEachIsolated(classified.filter(item => item.kind === "classification"), 1, item => this.classifications.publish([item]), isolate); this.assertCurrent();
     if (classified.some(item => item.kind === "classification")) this.stale();

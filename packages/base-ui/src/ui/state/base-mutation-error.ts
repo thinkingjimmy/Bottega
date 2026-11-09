@@ -55,7 +55,6 @@ const CODE_KEYS: Record<string, string> = {
   revision_conflict: "bases.workbench.revisionConflict",
   view_changed: "bases.workbench.revisionConflict",
   unknown_column: "bases.workbench.revisionConflict",
-  column_workflow_only: "bases.record.workflowOnly",
   formula_cycle: "bases.formula.error.cycle",
   formula_invalid: "bases.formula.error.syntax",
   formula_unknown_reference: "bases.formula.error.ref",
@@ -119,13 +118,11 @@ const RELOADS = new Set(["revision_conflict", "unknown_column"]);
 
 const LEASE_CODES = new Set(["APP_SURFACE_LEASE_REVOKED", "APP_SURFACE_LEASE_INVALID"]);
 
-/* A refused row write arrives as invalid_rows; its reason lives in the issues. Workflow-only and unknown-column are the
-   reasons with their own sentence, so they are promoted to the codes the table knows. */
+
 function failureCode(cause: unknown) {
   if (!cause || typeof cause !== "object" || !("code" in cause) || typeof cause.code !== "string") return ipcFailureCode(cause) || null;
   const issues = "issues" in cause && Array.isArray(cause.issues) ? cause.issues as { reason?: unknown }[] : [];
   if (cause.code !== "invalid_rows") return cause.code;
-  if (issues.some(issue => issue?.reason === "column_workflow_only")) return "column_workflow_only";
   if (issues.some(issue => issue?.reason === "unknown_column")) return "unknown_column";
   return cause.code;
 }

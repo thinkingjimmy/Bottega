@@ -5,7 +5,7 @@
  */
 
 import type { DomainContext } from "./domains";
-export type CryptoPurpose = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
+export type CryptoPurpose = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 10 | 11 | 13;
 
 export interface CryptoScope {
   sourceEnvironment: string;

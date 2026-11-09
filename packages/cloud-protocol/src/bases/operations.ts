@@ -37,7 +37,7 @@ export const baseOperationSchema = z.object({
   patches: z.array(basePatchSchema).min(1).max(512), baseFieldVersions: fieldVersionMapSchema,
   baseColumnSchemaVersions: fieldVersionMapSchema, baseValues: z.record(z.string().min(1).max(384), z.json()),
   dependsOnOperationIds: z.array(id).max(1024), atomicGroup: id.nullable(), batchId: id.nullable(),
-  actor: z.enum(["user", "agent", "system", "workflow"]),
+  actor: z.enum(["user", "agent", "system"]),
 }).strict();
 export type BaseOperation = z.infer<typeof baseOperationSchema>;
 export function baseOperationFitsBudget(operation: BaseOperation) {

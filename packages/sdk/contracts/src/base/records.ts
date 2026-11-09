@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Zod and the BaseRef resource contract
  * [OUTPUT]: Provides the public Base records port (`bottega.base.records/v1`, `bottega.base.bound-record/v1`): operation names, input/output schemas for describe, query, read, insert/patch/delete, writeFields, attachment and run-result slots, the field-write outcomes and the 1 KiB summary truncation rule
- * [POS]: The only Base surface an independent package, the Workflow plugin or the SDK sees; the host keeps BaseStore, revisions, validation and sync, and never hands out a store handle
+ * [POS]: The only Base surface an independent package or the SDK sees; the host keeps BaseStore, revisions, validation and sync, and never hands out a store handle
  */
 import { z } from "zod";
 import { baseRefSchema } from "../model/resources";
@@ -55,9 +55,8 @@ export const writeFieldsInputSchema = z.object({
 
 /**
  * `applied`: current = guarded prior value. `already-applied`: current = desired. `blocked`: a field changed since the
- * guard or vanished — the whole write fails and nothing in it is committed. People and workflows never share a column
- * so there is no "keep the person's value" outcome: a guarded write is a CAS for other port writers and for
- * one user's devices.
+ * guard or vanished: the whole write fails and nothing is committed. A guarded write uses CAS for
+ * people, package writers and one user's devices.
  */
 export const FIELD_OUTCOMES = ["applied", "already-applied", "blocked"] as const;
 export type FieldOutcome = (typeof FIELD_OUTCOMES)[number];

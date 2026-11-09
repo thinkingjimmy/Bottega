@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Base projections, TanStack Table, virtualization, generic record slots, cell editors and scoped mutation ports.
  * [OUTPUT]: Provides BaseTableView with contributed result columns, stable editor identities, touch record entry and accessible row actions.
- * [POS]: Shared Table presentation; Workflow and package state arrive through generic record contributions.
+ * [POS]: Shared Table presentation; Package state arrive through generic record contributions.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -56,9 +56,9 @@ import { InlineNameInput } from "../../chrome/inline-name-input";
 import { BaseTableSummaryCells } from "./base-table-summary";
 import { ColumnResizeHandle } from "./table-column-resize";
 import { TableRowActions, TITLE_ACTIONS_RESERVE } from "./table-row-actions";
-import { isWorkflowOnly } from "@ai-chat/base-core/compute/workflow-columns";
-import { WORKFLOW_CELL_CLASS, WorkflowColumnMark, WorkflowWritableByMenu } from "../../chrome/workflow-column";
-import { workbenchUiEnabled } from "@ai-chat/ui/lib/workbench-flag";
+
+
+
 import { RecordResults, useRecordSlots } from "../../state/record-slots";
 
 type TableItem =
@@ -67,7 +67,7 @@ type TableItem =
   | { kind: "row"; row: Row<BaseRow> };
 
 const SELECT_COLUMN_WIDTH = 38;
-const WORKFLOW_COLUMN_WIDTH = 168;
+const RESULT_COLUMN_WIDTH = 168;
 
 export function BaseTableView({
   chatId,
@@ -92,8 +92,8 @@ export function BaseTableView({
   onDelete,
   onSortsChange,
   onOpenRecord,
-  onRunWorkflow,
-  onColumnWritableByChange,
+
+
 }: {
   chatId?: string;
   incarnationId?: string;
@@ -133,9 +133,9 @@ export function BaseTableView({
   /** Coarse pointers open the record editor from a cell instead of editing inline; without it cells stay live. */
   onOpenRecord?(row: BaseRow): void;
   /** ▶ at the end of the title cell; shown only in builds with the workbench flag. */
-  onRunWorkflow?(row: BaseRow): void;
-  /** "Who can edit" on the two workflow columns only; absent without structure permission. */
-  onColumnWritableByChange?(columnId: string, writableBy: "everyone" | "workflows"): Promise<BaseMutationOutcome>;
+
+
+
 }) {
   const { t } = useAppTranslation();
   const coarse = useCoarsePointer();
@@ -200,7 +200,7 @@ export function BaseTableView({
           size: resolvedWidths[column.id],
         })
       ),
-      ...slots.filter(slot => slot.results && slot.summary !== false).map(slot => columnHelper.display({ id: `slot:${slot.id}`, size: WORKFLOW_COLUMN_WIDTH,
+      ...slots.filter(slot => slot.results && slot.summary !== false).map(slot => columnHelper.display({ id: `slot:${slot.id}`, size: RESULT_COLUMN_WIDTH,
         header: () => <span className="px-2">{slot.label}</span>,
         cell: ({ row }) => <RecordResults rowId={row.original.id} contributionId={slot.id} /> })),
     ],
@@ -285,7 +285,7 @@ export function BaseTableView({
   const leadingLefts = leadingStickyLefts(leadingWidths);
   const frozen = stickyLefts(leadingWidths, columns[0]?.id, columns[0] ? resolvedWidths[columns[0].id] : undefined);
   // The title cell hosts ▶ and history in place of a dedicated actions column (Q34 D1).
-  const rowActions = Boolean(ownerKey) || slots.some(slot => slot.actions) || (workbenchUiEnabled && Boolean(onRunWorkflow));
+  const rowActions = Boolean(ownerKey) || slots.some(slot => slot.actions);
   const stickyLeft = (columnId: string, index: number) =>
     displayColumnIds.has(columnId) ? leadingLefts[index] : frozen.get(columnId);
 
@@ -385,14 +385,13 @@ export function BaseTableView({
                           header.getContext()
                         )}
                       </span>
-                      {sourceColumn && isWorkflowOnly(sourceColumn) && <WorkflowColumnMark />}
-                      {direction === "asc" ? (
+                        {direction === "asc" ? (
                         <ArrowUpIcon className="size-3 shrink-0 text-muted-foreground" />
                       ) : direction === "desc" ? (
                         <ArrowDownIcon className="size-3 shrink-0 text-muted-foreground" />
                       ) : null}
                     </button>
-                    {(onRenameColumn || onDeleteColumn || (onColumnWritableByChange && sourceColumn?.workflow)) && (
+                    {(onRenameColumn || onDeleteColumn) && (
                       <span
                         className="pointer-events-none mr-1 flex shrink-0 items-center opacity-0 transition-opacity group-hover/column-header:pointer-events-auto group-hover/column-header:opacity-100 group-has-[:focus-visible]/column-header:pointer-events-auto group-has-[:focus-visible]/column-header:opacity-100 no-hover:pointer-events-auto no-hover:opacity-100"
                         data-column-actions={header.id}
@@ -410,10 +409,6 @@ export function BaseTableView({
                           >
                             <PencilIcon className="size-3" />
                           </button>
-                        )}
-                        {onColumnWritableByChange && sourceColumn?.workflow && (
-                          <WorkflowWritableByMenu column={sourceColumn} disabled={busy}
-                            onChange={(writableBy) => void onColumnWritableByChange(header.id, writableBy)} />
                         )}
                         {onDeleteColumn && (
                           <button
@@ -567,8 +562,7 @@ export function BaseTableView({
                   // Checkbox and select stay inline on touch: one-tap status edits fit the cell; everything else opens the record.
                   const inline = !coarse || !onOpenRecord || column?.type === "checkbox" || column?.type === "select";
                   const title = column && column.id === columns[0]?.id && rowActions;
-                  const locked = Boolean(column && isWorkflowOnly(column));
-                  return (
+                                    return (
                   <div
                     key={cell.id}
                     className={cn(
@@ -578,21 +572,20 @@ export function BaseTableView({
                         ? "flex min-h-9 shrink-0 items-center justify-center border-r"
                         : "flex min-h-9 shrink-0 items-center border-r",
                       left !== undefined && STICKY_CELL_CLASS,
-                      locked && WORKFLOW_CELL_CLASS,
                       /* A sticky cell already anchors the row actions; adding "relative" would replace "sticky" (same property)
                          and leave the frozen cell shifted by its own left offset. */
                       title && cn(left === undefined && "relative", TITLE_ACTIONS_RESERVE)
                     )}
-                    style={{ width: cell.column.getSize(), left, "--record-actions-width": `${16 + 46 * (slots.filter(slot => slot.actions).length + (ownerKey ? 1 : 0) + (onRunWorkflow && !slots.some(slot => slot.id === "workflow") ? 1 : 0))}px` } as React.CSSProperties}
+                    style={{ width: cell.column.getSize(), left, "--record-actions-width": `${16 + 46 * (slots.filter(slot => slot.actions).length + (ownerKey ? 1 : 0))}px` } as React.CSSProperties}
                   >
-                    {column ? inline ? <BaseCellEditor column={column} disabled={busy || !onPatch || locked} surface="cell"
+                    {column ? inline ? <BaseCellEditor column={column} disabled={busy || !onPatch} surface="cell"
                       attachmentOwner={chatId && incarnationId ? { chatId, incarnationId } : undefined}
                       relationContext={context} relationOptions={relationOptions} storedValue={row.original.values[column.id]}
                       value={cellValue(row.original, column, context)}
                       onCommit={value => onPatch?.(row.original.id, { [column.id]: value })} /> :
                       <BaseCellDisplay column={column} row={row.original} context={context} attachmentOwner={chatId && incarnationId ? { chatId, incarnationId } : undefined}
                         onOpen={() => onOpenRecord!(row.original)} /> : flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    {title ? <TableRowActions onHistory={ownerKey ? setHistoryRowId : undefined} onRunWorkflow={onRunWorkflow}
+                    {title ? <TableRowActions onHistory={ownerKey ? setHistoryRowId : undefined}
                       row={row.original} title={String(cellValue(row.original, column, context) ?? "")} /> : null}
                   </div>
                   );

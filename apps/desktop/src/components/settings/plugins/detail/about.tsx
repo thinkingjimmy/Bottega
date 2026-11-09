@@ -20,7 +20,7 @@ import type { PluginDetail, PluginView, PluginsBridge } from "@ai-chat/cloud-pro
 import { lockedCard, PluginIcon, type CardState } from "../card";
 import { pluginPublisher, pluginText } from "../copy";
 import { usePluginDetail } from "../use-plugins";
-import { AboutSection, CapabilitiesSection, HealthDot, InformationSection, InUseSection, PluginBanners, WorksWithSection } from "./sections";
+import { AboutSection, CapabilitiesSection, HealthDot, InformationSection, PluginBanners, WorksWithSection } from "./sections";
 
 type Related = PluginDetail["related"][number];
 export type Switching = { state: CardState; toggle(plugin: PluginView, enabled: boolean): void };
@@ -106,7 +106,6 @@ export function PluginAboutPage({ pluginId, bridge, workbench, locale, plugins, 
       <CapabilitiesSection detail={detail} workbench={workbench} />
       {detail.kind === "provider" && <ProviderNativeTools providerId={detail.id} locale={locale} />}
       {!native && <WorksWithSection detail={detail} workbench={workbench} names={names} onOpenPlugin={onOpenPlugin} />}
-      <InUseSection detail={detail} workbench={workbench} />
       <PluginHistoryList id={pluginId} locale={locale} onEdit={onEditSource ? () => onEditSource(pluginId) : undefined} />
       <InformationSection detail={detail} workbench={workbench} onOpen={onOpenRelated} />
     </div>

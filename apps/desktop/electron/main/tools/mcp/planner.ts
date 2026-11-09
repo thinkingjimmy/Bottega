@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Hydrated MCP candidates, Project scope, runtime support and main-owned workflow policies.
+ * [INPUT]: Uses `node:crypto`, `../../../../shared/ipc/agent/agent-ipc`, `../../../../shared/ipc/settings/mcp-servers-ipc`, `../../../../shared/product/resource-scope`, `../../sections/coordinator/state/readonly-ledger`, `../../agent/turns/turn/turn-registry-model`, `../../sections/coordinator/admission/prepared-project-tools` for its declared types and implementation.
  * [OUTPUT]: Provides buildManualMcpPlan; manual turns or writable development roles get exactly eligible selected servers, while read-only/Plan/relay turns get none.
  * [POS]: Final MCP admission boundary before backend transport; no live store read or secret exposure to the renderer.
  */
@@ -17,7 +17,7 @@ import {
 import type { TurnProjectContext } from "../../../../shared/product/resource-scope";
 import { deepFreeze } from "../../sections/coordinator/state/readonly-ledger";
 import type { TurnOrigin } from "../../agent/turns/turn/turn-registry-model";
-import type { WorkflowTurnPolicy } from "../../workflows/turn-policy";
+
 import {
   manualSessionPlanDigest,
   supportedManualMcpCandidates,
@@ -31,7 +31,6 @@ export function buildManualMcpPlan(input: Readonly<{
   backendRuntimeIdentity: string;
   planMode: boolean;
   origin?: TurnOrigin;
-  workflow?: WorkflowTurnPolicy | null;
   packageEntries?: readonly ThirdPartyMcpPlanEntry[];
 }>): ThirdPartyMcpPlan {
   if ((input.packageEntries?.length ?? 0) > 0) {
@@ -39,10 +38,8 @@ export function buildManualMcpPlan(input: Readonly<{
       "PACKAGE_EXTENSION_MCP_DISABLED: package MCP entries cannot enter a turn plan"
     );
   }
-  const workflow = input.origin?.kind === "workflow" && input.origin.role === "develop" && input.workflow && !input.workflow.readOnly;
-  const permitted = !input.planMode && (input.origin?.kind === "manual" || workflow);
-  const candidates = input.origin?.kind === "workflow" ? input.candidates.filter(candidate =>
-    input.workflow?.resources?.mcpServers.some(selected => selected.id === candidate.serverId && selected.digest === candidate.configDigest)) : input.candidates;
+  const permitted = !input.planMode && input.origin?.kind === "manual";
+  const candidates = input.candidates;
   const included = permitted
     ? supportedManualMcpCandidates({
         candidates,
@@ -50,9 +47,6 @@ export function buildManualMcpPlan(input: Readonly<{
         backendRuntimeIdentity: input.backendRuntimeIdentity,
       })
     : [];
-  if (workflow && !input.planMode && included.length !== (input.workflow?.resources?.mcpServers.length ?? 0)) {
-    throw new Error("agent-config-mcp-unavailable");
-  }
   const entries = included.map((server): ThirdPartyMcpPlanEntry => {
     if (server.config.transport !== "stdio") {
       throw new Error("MCP planner transport projection failed closed");

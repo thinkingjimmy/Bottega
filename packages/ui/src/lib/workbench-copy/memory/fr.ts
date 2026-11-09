@@ -17,9 +17,6 @@ export const memoryPluginCopy = {
     "phoneFacade": {
       "label": "État et commandes de Memory sur téléphone et Web"
     },
-    "workflowRoles": {
-      "label": "Autoriser les rôles des workflows à lire Memory"
-    }
   },
   "sharing": {
     "chat": "Ce chat",
@@ -27,7 +24,7 @@ export const memoryPluginCopy = {
     "personal": "Tous les chats"
   },
   "capability": {
-    "recall": "Retrouver le contexte dans votre périmètre de partage",
+    "recall": "Suspendre le rappel pour les nouveaux tours des chats.",
     "capture": "Enregistrer le contexte admissible avec votre accord",
     "backfill": "Traiter uniquement l’historique autorisé"
   },
@@ -39,7 +36,7 @@ export const memoryPluginCopy = {
     "personal": "Partager désormais Memory entre tous les chats. L’extraction utilise {{model}} sur {{hostname}} et peut entraîner des frais de modèle. L’historique existant est exclu."
   },
   "effects": {
-    "recall": "Suspendre le rappel pour les nouveaux tours des chats et workflows.",
+    "recall": "Suspendre le rappel pour les nouveaux tours des chats.",
     "capture": "Suspendre la nouvelle capture et conserver les souvenirs enregistrés.",
     "backfill": "Suspendre le traitement habituel de l’historique.",
     "phone": "Suspendre Memory pour les chats sur téléphone et Web.",

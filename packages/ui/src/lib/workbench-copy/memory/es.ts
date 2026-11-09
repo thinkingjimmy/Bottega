@@ -17,9 +17,6 @@ export const memoryPluginCopy = {
     "phoneFacade": {
       "label": "Estado y controles de Memory en teléfono y Web"
     },
-    "workflowRoles": {
-      "label": "Permitir que los roles de los flujos lean Memory"
-    }
   },
   "sharing": {
     "chat": "Este chat",
@@ -27,7 +24,7 @@ export const memoryPluginCopy = {
     "personal": "Todos los chats"
   },
   "capability": {
-    "recall": "Recuperar contexto dentro del alcance elegido",
+    "recall": "Pausar el recuerdo en los nuevos turnos de Chat.",
     "capture": "Guardar contexto apto con tu permiso",
     "backfill": "Procesar solo el historial autorizado"
   },
@@ -39,7 +36,7 @@ export const memoryPluginCopy = {
     "personal": "Compartir Memory entre todos los chats a partir de ahora. La extracción usa {{model}} en {{hostname}} y puede generar cargos del modelo. No se incluye el historial existente."
   },
   "effects": {
-    "recall": "Pausar la recuperación en nuevos turnos de chats y flujos.",
+    "recall": "Pausar el recuerdo en los nuevos turnos de Chat.",
     "capture": "Pausar las nuevas capturas y conservar los recuerdos guardados.",
     "backfill": "Pausar el procesamiento habitual del historial.",
     "phone": "Pausar Memory en los chats del teléfono y la Web.",

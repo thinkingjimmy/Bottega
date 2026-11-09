@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the trusted manual submission contract, submission/precondition schemas, canonical hashing, and prepared turn types
- * [OUTPUT]: Re-validates submissions at admission, creates text-only prepared turns, and strips binary payloads Preserves trusted member origin during text-only preparation.
+ * [OUTPUT]: Provides normalizeManualSubmission, prepareTextOnlyManualTurn, binaryFreeSubmissionContent, emptyPreparedSkillSelection.
  * [POS]: Text-only boundary for prepared-manual-turn; binary staging and hydration live in the primary admission module and prepared/ respectively
  */
 
@@ -57,7 +57,6 @@ export function prepareTextOnlyManualTurn(
     ? { projectId: lifecycleProjectId, projectLifecycleRevision: 1 }
     : { projectId: null, projectLifecycleRevision: null };
   const body = {
-    memberSession: submission.memberSession,
     agentSwitch: submission.agentSwitch,
     expectedAgentRevision: submission.expectedAgentRevision,
     intentId: submission.intentId,

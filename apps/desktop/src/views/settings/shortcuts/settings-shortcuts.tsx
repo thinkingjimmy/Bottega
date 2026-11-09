@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on SettingsPage, SettingsCanvas and components/settings/keyboard-shortcuts-section
- * [OUTPUT]: Provides ShortcutsSettingsView: the Settings › Keyboard shortcuts overlay page (one section of rebindable product shortcuts)
+ * [OUTPUT]: Provides ShortcutsSettingsView with one page title, its description, a trailing restore action only for modified shortcuts, and rebindable shortcut rows.
  * [POS]: apps/desktop/src/views/settings/shortcuts; Thin view shell of the shortcuts settings surface; all interaction and persistence live in keyboard-shortcuts-section, binding truth in lib/shortcuts
  */
 
@@ -13,10 +13,12 @@ import { KeyboardShortcutsSection } from "@/components/settings/keyboard-shortcu
 export function ShortcutsSettingsView() {
   const { t } = useAppTranslation();
   return (
-    <SettingsPage title={t("common.keyboardShortcuts")}>
-      <SettingsCanvas>
-        <KeyboardShortcutsSection />
-      </SettingsCanvas>
-    </SettingsPage>
+    <KeyboardShortcutsSection>
+      {({ description, actions, content }) => (
+        <SettingsPage title={t("common.keyboardShortcuts")} description={description} actions={actions}>
+          <SettingsCanvas>{content}</SettingsCanvas>
+        </SettingsPage>
+      )}
+    </KeyboardShortcutsSection>
   );
 }

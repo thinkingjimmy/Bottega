@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on the settings bridge erase request and folder inspection, i18n, the shared confirmation dialog and Settings section/list/row primitives.
- * [OUTPUT]: Provides DangerZone: the "Erase all data on this computer" row and its confirmation, with the option to move the Bottega folder to the Trash as well, ticked by default only when the folder holds nothing but Bottega's own entries.
+ * [INPUT]: Depends on the settings bridge erase request and folder inspection, i18n, the lucide Trash2 icon, the shared confirmation dialog and Settings section/list/row primitives.
+ * [OUTPUT]: Provides DangerZone: a destructive-tone erase row with a neutral card border and Trash icon action, plus confirmation with the option to move the Bottega folder to the Trash, ticked by default only when the folder holds nothing but Bottega's own entries.
  * [POS]: Last section of General; the main process records the erase and restarts, and the next launch performs it before any store opens.
  */
 import { useState } from "react";
+import { Trash2 } from "lucide-react";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
@@ -37,11 +38,13 @@ export function DangerZone({ folder }: { folder: string | null }) {
   };
 
   return <SettingsSection title={t("settings.general.dangerZone")}>
-    <SettingsList className="ring-destructive/25">
+    <SettingsList>
       <SettingsRow
+        tone="destructive"
         label={t("settings.general.eraseAll")}
         description={t("settings.general.eraseAllDescription")}
         control={<SettingsButton variant="destructive" onClick={() => void openConfirmation()}>
+          <Trash2 aria-hidden="true" />
           {t("settings.general.eraseAllButton")}
         </SettingsButton>}
       />

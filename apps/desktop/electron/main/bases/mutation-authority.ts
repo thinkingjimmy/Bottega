@@ -1,13 +1,13 @@
 /**
  * [INPUT]: Depends on BaseStore snapshots, BaseOwnerResolver's owner identity and mutation checks, BaseCommitAuthorityRegistry, the App surface validator the App runtime configures, the run owner's VerifiedPrincipal, and the shared statusError constructor from main/errors
- * [OUTPUT]: Provides BaseMutationAuthority: the one rule that a Base must already exist (ownerSnapshot/requireOwner), the Tool, system, workflow and renderer issuers with their scope checks and error codes, and the identity/scope assertions every write runs before committing; BaseAppSurfaceValidator
+ * [OUTPUT]: Provides BaseAppSurfaceValidator, BaseMutationAuthority.
  * [POS]: Write-permission policy of bases, held by BasesService; the registry mints and checks capabilities, this decides who may get one
  */
 import type { BaseStore } from "./base-store";
 import type { BaseLeaseIdentity, BaseOwnerResolver } from "./service/base-owner-resolver";
 import type { BaseCommitAuthority, BaseCommitAuthorityRegistry, BaseMutationOperation } from "./service/base-commit-authority";
 import { statusError } from "../ipc/errors";
-import type { VerifiedPrincipal } from "../operations/principals";
+
 
 export type BaseAppSurfaceValidator = {
   validateMutation(input: {
@@ -84,17 +84,6 @@ export class BaseMutationAuthority {
     });
   }
 
-  /**
-   * A verified workflow run's authority: the only one that may change a workflow-only column (Q12). Its evidence is the run
-   * owner's live `workflow-run` principal; any other kind, or one whose attempt has ended, is refused.
-   */
-  async forWorkflow(ownerKey: string, operation: BaseMutationOperation, principal: VerifiedPrincipal) {
-    if (principal.principal.kind !== "workflow-run") throw statusError(403, "workflow authority requires a workflow-run principal");
-    principal.assertCurrent();
-    const snapshot = await this.requireOwner(ownerKey);
-    return this.registry.issueWorkflow({ ownerKey, ownerInstanceId: snapshot.meta.ownerInstanceId,
-      allowedOperations: [operation], expectedRevision: null }, principal.principal.runId);
-  }
 
   /**
    * renderer 的写入资格：owner 快照 + App surface 校验，没有第二次 IPC。

@@ -79,9 +79,9 @@ export const dock = {
     "error": "Échec de synchronisation ; disposition conservée"
   },
   "unsupportedReason": {
-    "platform": "Nécessite macOS 27",
+    "platform": "Nécessite macOS 26 ou 27",
     "architecture": "Nécessite une puce Apple",
-    "osVersion": "Nécessite macOS 27",
+    "osVersion": "Nécessite macOS 26 ou 27",
     "helperMissing": "Le programme auxiliaire du Dock est absent. Réinstallez Bottega."
   },
   "effects": {

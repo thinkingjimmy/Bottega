@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on SettingsPage, Settings layout primitives, the Setup context, update-client stores, lib/updates CLI verdicts, the Updates rows, react-router and Updates i18n
- * [OUTPUT]: Provides UpdatesSettingsView — Bottega plus every installed provider CLI with a grouped title/description, fixed page/row actions and download-only Update all, the App-compatibility requirement and the preview-platform note
+ * [OUTPUT]: Provides UpdatesSettingsView with deadline-aware page checks, explicit manual checks, fixed row actions, download-only Update all and App-compatibility/platform context
  * [POS]: apps/desktop/src/views/settings/updates; Settings › Updates page composition; each row owns its own verdict, this file owns ordering, the page-open check and the Update all sequence
  */
 
@@ -35,11 +35,11 @@ export function UpdatesSettingsView() {
   const [checking, setChecking] = useState(false);
   const [updatingAll, setUpdatingAll] = useState(false);
 
-  /* Opening the page is the question "is anything new?", so it asks once; there is no polling. */
+  /* Page visits share the background deadline; only an explicit check bypasses it. */
   useEffect(() => {
     updateStore.ensureLoaded();
     appInfoStore.ensureLoaded();
-    void updateStore.check();
+    void updateStore.check("automatic");
   }, []);
 
   const providers = (setup.status?.backends ?? []).filter(isUpdatableCli);

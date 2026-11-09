@@ -2,7 +2,6 @@
  * [INPUT]: Depends on SettingsStore, the Memory target resolver, ManagedRuntimeRegistry and consent bound to sharing mode/generation.
  * [OUTPUT]: Provides MemorySettingsOwner with independent plugin availability, sequential revision-bound service mutations, durable remote receipts, compensation and forward retries.
  * [POS]: The main/memory/service settings.memory is the only entry; The renderer's intent and lifecycle convergence must be met through it
- * The same queue owns default-off workflow reads, which require live consent and invalidate old role contexts on transition.
  */
 
 import type {
@@ -44,8 +43,6 @@ export type MemorySettingsOwnerDependencies = {
   rebuildActive(): boolean;
   /** Settings queue 只观测外层 lifecycle reservation，绝不反向 acquire。 */
   lifecycleHeld?(providerId: string): boolean;
-  workflowConsentActive?(): boolean;
-  workflowRolesChanged?(): void;
   retryDelayMs?: number;
 };
 
@@ -158,19 +155,8 @@ export class MemorySettingsOwner {
     return this.queue.enqueue(() => this.dependencies.settings.setTrusted({ memoryPhoneFacade: enabled }));
   }
 
-  /** Workflow reads reuse live consent; enabling never creates an epoch or grants capture. */
-  setWorkflowRoles(enabled: boolean): Promise<SettingsEnvelope> {
-    return this.queue.enqueue(async () => {
-      const current = this.dependencies.settings.get();
-      if (enabled && (!current.memory.pluginEnabled || !current.memory.enabled || current.memory.paused || !this.dependencies.workflowConsentActive?.())) {
-        throw new Error("memory-workflow-consent-required");
-      }
-      if (current.memoryWorkflowRoles === enabled) return this.dependencies.settings.envelope();
-      const envelope = await this.dependencies.settings.setTrusted({ memoryWorkflowRoles: enabled });
-      this.dependencies.workflowRolesChanged?.();
-      return envelope;
-    });
-  }
+
+
 
   /** orchestrator 已持外层锁，直接落禁用意图；不重入 mutation/apply。 */
   disableProviderTrusted(providerId: string): Promise<SettingsEnvelope> {

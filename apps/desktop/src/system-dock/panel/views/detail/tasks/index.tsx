@@ -48,7 +48,6 @@ export function TasksDetail() {
         const key = taskKey(task);
         const title = mask ? MASK : task.title ?? t("settings.presence.untitled");
         const phase = t(`settings.presence.${phaseKey(task.phase)}`);
-        const workflow = task.workflow ? detail?.workflowLabels?.[task.workflow.role] : null;
         return <li key={key}><button type="button" className="task-row" data-task-phase={task.phase}
           tabIndex={active === key ? 0 : -1} data-autofocus={active === key || undefined}
           onFocus={() => select(key)} onClick={() => void open(task)}>
@@ -56,7 +55,6 @@ export function TasksDetail() {
           <span className="task-content"><span className="task-title">{title}</span>
             {task.context && !mask && <span className="row-meta task-context">{task.context}</span>}
             <span className="row-meta task-phase"><TaskStateIcon phase={task.phase} />{phase}<span>· {backendLabel(task.backend)}</span></span>
-            {workflow && <span className="row-meta">{workflow}</span>}
             {!mask && task.subtaskCount > 0 && <span className="row-meta">{t("settings.presence.subtasks", { tasks: task.subtaskCount })}</span>}
           </span><ArrowUpRight className="task-open" aria-hidden="true" />
         </button></li>;

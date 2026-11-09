@@ -195,7 +195,7 @@ export class ChatStore {
         identity: identity ?? {},
         projects: this.dependencies,
       });
-      await this.persistRecord(record, undefined, identity?.workflowRole, identity?.memberSession);
+      await this.persistRecord(record);
       this.state.metadata.set(chatId, metadataOf(record));
       this.state.touch();
       this.state.messageRevisions.set(chatId, record.chatMessageRevision);
@@ -728,10 +728,9 @@ export class ChatStore {
     });
   }
 
-  private async persistRecord(record: ChatRecord, ownerCommit?: import("./sqlite/cloud/execution/commit").OwnerCommit,
-    workflowRole?: import("@ai-chat/cloud-protocol/chats/model").ChatWorkflowRole, memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts) {
+  private async persistRecord(record: ChatRecord, ownerCommit?: import("./sqlite/cloud/execution/commit").OwnerCommit) {
     return persistRecordToStorage({
-      ownerCommit, workflowRole, memberSession,
+      ownerCommit,
       record,
       database: this.state.database,
       deviceId: this.state.deviceId,

@@ -35,12 +35,6 @@ export type ProjectsServiceOptions = {
   removeBaseForProject?: (projectId: string) => Promise<void>;
   hasBaseForProject?: (projectId: string) => boolean;
   cancelTurnsByProject: (projectId: string) => Promise<void>;
-  /** The Project's workflows first: cancelled like a person would, forgotten only once proven stopped; throws (deletion stays in progress) otherwise. */
-  cleanupWorkflows?: (projectId: string) => Promise<void>;
-  /** A Chat that belongs to a workflow run (hidden from every list; opened only from its run). */
-  isWorkflowChat?: (chatId: string) => boolean;
-  /** Deletes one Chat; a detach uses it for the Project's workflow Chats, which have nowhere to be opened once it is gone. */
-  removeChat?: (chatId: string) => Promise<void>;
   hasActiveTurnsByProject: (projectId: string) => boolean;
   getChatBinding: (chatId: string) =>
     { projectId: string | null; incarnationId: string } | undefined;

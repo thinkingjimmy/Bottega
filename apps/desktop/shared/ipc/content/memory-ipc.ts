@@ -8,7 +8,6 @@ export type MemorySkipReason =
   | "disabled"
   | "paused"
   | "plan-mode"
-  | "workflow-not-allowed"
   | "prompt-not-issued";
 
 export type MemoryFailureKind =

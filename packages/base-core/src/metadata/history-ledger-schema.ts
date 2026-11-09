@@ -17,15 +17,12 @@ const baseHistoryActorSchema = z.enum([
   "agent",
   "system",
   "app-gui",
-  "workflow",
 ]);
 
 export const baseHistoryEntrySchema = z
   .object({
     at: z.number().int().nonnegative(),
     actor: baseHistoryActorSchema,
-    /** The workflow run that wrote, so history can say which run; only on `workflow` entries. */
-    runId: z.string().min(1).max(128).optional(),
     /** The Base revision this commit produced; a cell's latest entry revision is its change witness (A→B→A is two changes). */
     revision: z.number().int().nonnegative().optional(),
     operation: z.string().min(1).max(64),

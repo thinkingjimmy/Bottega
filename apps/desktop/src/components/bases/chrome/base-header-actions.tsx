@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Base/Apps/Chats/Projects providers, router navigation, dialogs, menus, i18n, and structured client error codes
- * [OUTPUT]: Provides BaseHeaderActions (with the build-flagged Workflow group of a Project Base's ⋯ menu) and useBaseAppActions with the canonical Save as plugin entry; XLSX issue disclosure stays local and Project promotion delegates original-request review to its dialog
+ * [OUTPUT]: Provides useBaseAppActions, BaseHeaderActions, ownerRoute.
  * [POS]: Header action boundary for components/bases/chrome; transport codes are translated here and Base data mutations stay in providers
  */
 
-import { useWorkflowEntry } from "../workflow/entry";
+
 import { useState } from "react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { Link, useNavigate } from "react-router";
@@ -253,7 +253,6 @@ export function BaseHeaderActions({
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
   const owner = ownerFromKey(ownerKey);
-  const workflow = useWorkflowEntry({ projectId: owner.kind === "project" ? owner.projectId : null });
   const projectOwnerKey = projectId
     ? `project:${projectId}`
     : "";
@@ -355,7 +354,6 @@ export function BaseHeaderActions({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {workflow.menuItems}
               <DropdownMenuItem onSelect={() => void exportCsv()}>
                 <DownloadIcon />
                 {t("bases.header.exportCsv")}
@@ -390,7 +388,6 @@ export function BaseHeaderActions({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-          {workflow.dialog}
           {canPromote && (
             <Button
               aria-label={t("bases.header.promoteAria")}

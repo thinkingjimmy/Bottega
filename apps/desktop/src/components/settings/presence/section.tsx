@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared settings controls and the confirmation dialog, localized copy, main-owned presence capabilities/commands, and the optional Dock settings bridge snapshot.
- * [OUTPUT]: Provides one background switch (confirming that turning it off also ends an enabled Bottega Dock when the last window closes) and an independent menu bar/tray visibility switch.
+ * [OUTPUT]: Provides a background section info tip, one background switch (confirming that turning it off also ends an enabled Bottega Dock when the last window closes) and an independent menu bar/tray visibility switch.
  * [POS]: General settings presence section; login, retention and native icon visibility remain independent.
  */
 
@@ -33,7 +33,7 @@ export function PresenceSettings() {
     }
     void presenceStore.set(field, enabled);
   };
-  return <SettingsSection title={copy("title")} description={copy("notice")}>
+  return <SettingsSection title={copy("title")} info={copy("notice")}>
     <SettingsList>{(["login", "retention", "menuBar"] as const).map((field) => {
       const command = state.commands[field];
       const status = command ?? value?.[field];

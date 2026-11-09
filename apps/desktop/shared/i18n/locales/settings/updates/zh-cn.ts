@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsUpdatesEn structural type
- * [OUTPUT]: Provides settingsUpdatesZhCN, the Simplified Chinese Settings › Updates catalog; unified row actions and collapsed failure details use shared update, retry and manual-download copy
+ * [OUTPUT]: Provides settingsUpdatesZhCN, the Simplified Chinese Settings › Updates catalog; stage-specific check/download recovery, current-version labels and explicit diagnostic-copy feedback
  * [POS]: Simplified Chinese leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
@@ -34,16 +34,27 @@ export const settingsUpdatesZhCN: typeof settingsUpdatesEn = {
   installingShort: "正在安装更新…",
   restartUpdate: "重启并更新",
   failedShort: "更新失败",
-  checkFailedShort: "检查更新失败",
+  checkFailedShort: "暂时无法检查更新",
   manualShort: "下载新版本",
   downloading: "正在下载 {{version}}",
   installing: "更新已下载 · 即将重启安装",
-  failed: "更新失败：{{message}}",
-  failedUnknown: "更新失败，原因未知。",
-  validationFailed: "下载的更新未通过校验，Bottega 会重新检查。",
-  failedResolution: "请从 Releases 页面下载新版本，或在 GitHub 反馈问题。",
-  backgroundFailed: "上次自动检查失败",
-  backgroundFailedOpen: "自动检查更新持续失败，点击查看详情",
+  validationFailed: "下载的更新未通过校验，请重新检查更新。",
+  failedResolution: "你也可以前往下载页下载 Bottega。",
+  currentVersion: "当前版本 {{version}}",
+  currentVersionRetained: "你可以继续使用当前版本。",
+  retryCheck: "重新检查",
+  retryDownload: "重新下载",
+  downloadFailedShort: "更新下载失败",
+  offline: "当前未联网。恢复连接后，Bottega 会重新检查。",
+  connectionFailed: "无法连接更新服务，请稍后再试。",
+  requestTimedOut: "更新服务响应超时，请稍后再试。",
+  serviceUnavailable: "更新服务暂时不可用，请稍后再试。",
+  rateLimited: "更新服务繁忙，Bottega 会稍后重试。",
+  checkFailedUnknown: "暂时无法获取更新信息，请稍后重新检查。",
+  downloadFailedUnknown: "未能下载更新，请稍后重新下载。",
+  copyDiagnostics: "复制诊断信息",
+  diagnosticsCopied: "已复制诊断信息",
+  diagnosticsCopyFailed: "无法复制诊断信息，请重试。",
   check: "检查更新",
   upgrade: "更新",
   manualUpgrade: "打开下载页",

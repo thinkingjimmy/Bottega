@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the OperationRegistry, VerifiedPrincipal, the public records contract and BasePublicPorts
  * [OUTPUT]: Provides registerBaseOperations (the eleven `base.*` operations) and callerOf (VerifiedPrincipal → PortCaller)
- * [POS]: The RPC face of the Base public ports; an Agent turn arrives through its execution ref, a host package as its own App-surface principal, and a Workflow run principal is refused (the run owner acts only through the workflow authority)
+ * [POS]: The RPC face of the Base public ports; an Agent turn arrives through its execution ref, a host package as its own App-surface principal
  */
 import type { z } from "zod";
 import type { JsonValue } from "@ai-chat/cloud-protocol/contracts/canonical";

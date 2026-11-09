@@ -115,10 +115,6 @@ export class AcpConnection {
     return this.steering;
   }
 
-  get supportsFork() {
-    return Boolean((this.negotiated?.agentCapabilities as { sessionCapabilities?: { fork?: unknown } } | undefined)?.sessionCapabilities?.fork);
-  }
-
   /** 进程已死或 transport 已断：所有者据此拒绝复用，而不是再试一次。 */
   get dead() {
     return this.deadFlag;

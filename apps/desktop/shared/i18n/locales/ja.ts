@@ -4,7 +4,7 @@
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
  * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
  * Artifact workspace labels are supplied by the shared workspace catalogs; retired App Design controls register no copy.
- * General Settings explains unsupported title generation and first-message fallback while retaining the chosen Agent.
+ * General Settings explains unsupported title generation and first-message fallback while retaining the chosen Agent; Chat guidance covers relay limits, background title generation and cross-chat read access.
  * [POS]: Japanese desktop locale; compile-time structure must match English exactly
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/ja";
@@ -193,7 +193,8 @@ eraseAllBody: "このコンピューター上の会話、設定、鍵、サイ�
 eraseAllTrashFolder: "Bottega フォルダもゴミ箱に移動する",
 eraseAllCloud: "アカウントに同期済みのデータはクラウドに残ります。再度サインインして同期をオンにすると戻ってきます。",
 eraseAllConfirm: "消去して再起動",
-chatDescription: "新しいチャットのタイトルはバックグラウンドで生成されます。",
+chatDescription: "リレーの上限、タイトル生成、チャット間の読み取り専用アクセスを設定します。",
+titleGenerationInfo: "新しいチャットのタイトルはバックグラウンドで生成されます。",
 titleGeneration: "タイトル生成",
 titleGenerationDescription: "タイトルモデルはバックエンドごとに保存します。",
 titleUnavailableDescription: "このバージョンでは {{agent}} でタイトルを生成できません。最初のメッセージをタイトルに使用します。",

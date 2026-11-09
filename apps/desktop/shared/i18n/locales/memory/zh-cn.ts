@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on memoryEn from ./en for both its structural type and the English leaves this catalog reuses
- * [OUTPUT]: Includes Memory access selection, explicit workflow-read consent, plugin chrome and native-memory distinction; Provides memoryZhCN, the Simplified Chinese Memory catalog
+ * [OUTPUT]: Provides memoryZhCN.
  * [POS]: Simplified Chinese leaf of shared/i18n/locales/memory; loaded on demand by the matching top-level locale
  */
 
@@ -9,8 +9,6 @@ import { memoryEn } from "./en";
 export const memoryZhCN: typeof memoryEn = {
   ...memoryEn,
   plugin: { serviceDisabled: "开启 Memory 插件后才能使用记忆服务。插件关闭期间会保留你的服务开关选择。", open: "打开 Memory 插件", name: "Memory", official: "官方 · 内置", about: "关于 Memory", unsupported: "此平台暂不支持 Memory。目前仅在 macOS 上可用。", nativeDistinction: "Bottega Memory 与 Codex、Claude 自带的记忆分开管理；原生记忆在各自插件设置中控制。" },
-  access: {"none": "不使用", "readOnly": "只读", "description": "只读时，为此角色召回相关记忆。流程角色不会写入 Memory。", "workflowOff": "Memory 插件尚未允许流程角色读取。", "workflowOn": "这台电脑已允许流程角色读取 Memory。"},
-  workflow: {"sectionTitle": "访问与控制", "label": "允许流程角色读取 Memory", "description": "只有配置选择“只读”的流程角色可以召回记忆。流程角色不会写入 Memory。", "consentTitle": "允许流程角色读取 Memory？", "consentBody": "已配置的规划、开发和评审角色可按任务名称和验收标准，在当前 Chat 或 Project 范围内召回记忆。流程角色不会写入记忆。暂停 Memory 或关闭此许可后，下一步骤将停止召回。", "confirm": "允许只读访问", "requiresActive": "请先启用 Memory 并完成同意。若已暂停，请先恢复 Memory。", "personal": "整台电脑共享记忆时，流程角色不能读取。请选择 Chat 或 Project 范围。", "saveFailed": "流程读取许可保存失败，请重试。"},
   store: {
     providerListFailed: "Memory provider 列表读取失败",
     statusFailed: "Memory 状态读取失败",

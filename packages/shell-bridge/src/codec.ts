@@ -33,12 +33,9 @@ const httpUrl: Guard = value => {
 /* Wrapped key material and AAD are UTF-8 JSON/base64 text of a few hundred bytes; the bound stays generous. */
 const material = text(16_384);
 const cloudId: Guard = value => typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value);
-/* R-34: each workflow target has exactly its own keys (R25-5); anything else is refused. */
-const workflowTarget: Guard = value => exact(value, { kind: oneOf(["needs-you", "new-computer"]) })
-  || exact(value, { kind: oneOf(["confirmation"]), runId: cloudId, stepId: cloudId })
-  || exact(value, { kind: oneOf(["agent-waiting"]), runId: cloudId, stepId: cloudId, role: oneOf(["plan", "develop", "review"]), chatId: cloudId });
+const newComputerTarget: Guard = value => exact(value, { kind: oneOf(["new-computer"]) });
 const pushTap: Guard = value => exact(value, { tapId: id, chatId: id, kind: oneOf(["settled", "attention"]) }, { turnSeq: int(0, Number.MAX_SAFE_INTEGER) })
-  || exact(value, { tapId: id, kind: oneOf(["attention"]), target: workflowTarget });
+  || exact(value, { tapId: id, kind: oneOf(["attention"]), target: newComputerTarget });
 const base64url = (min: number, max: number): Guard => value => typeof value === "string" && value.length >= min && value.length <= max && /^[A-Za-z0-9_-]+$/.test(value);
 /* R-36: shapes only; whether the proof verifies is the server's question. */
 const installProof: Guard = value => exact(value, { publicKey: base64url(80, 128), signature: base64url(86, 86), issuedAt: int(1, Number.MAX_SAFE_INTEGER) });

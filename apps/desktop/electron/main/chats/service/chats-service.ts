@@ -44,7 +44,7 @@ import { ChatDeletionDriver } from "../lifecycle/chat-deletion";
 import { ChatRemovalController } from "../lifecycle/chat-removal";
 import { ChatEvents } from "../chat-event-publisher";
 import { registerChatRendererIpc } from "../chat-renderer-ipc";
-import { summaryOfChatLike, workflowChatRole, workflowChatTitle, type ChatMetadata } from "../projection/chat-summary";
+import { summaryOfChatLike, type ChatMetadata } from "../projection/chat-summary";
 import { ChatTitleJobs } from "../projection/chat-title-jobs";
 import {
   appendInputSchema,
@@ -165,11 +165,6 @@ export class ChatsService {
     const home = this.requireCreationHome(value.id, value.incarnationId);
     const projectId = value.projectId ?? null;
     const execution = (await import("./creation")).chatHomeExecution(home, projectId);
-    /* A workflow Chat is created with its fixed title, so it never goes to title generation (it is in no list). */
-    const title = workflowChatTitle(value.id) ?? undefined;
-    /* R-35: its role goes with its first upload, so phone and Web never list it even for a moment. */
-    const workflowRole = workflowChatRole(value.id) ?? undefined;
-    const memberSession = (await import("../projection/chat-summary")).memberChatFacts(value.id) ?? undefined;
     if (projectId && this.options.isAppProject?.(projectId)) {
       throw statusError(
         403,
@@ -189,13 +184,11 @@ export class ChatsService {
                 options: value.options,
                 incarnationId: home.incarnationId,
                 homeDir: home.homeDir, ...execution,
-                title, workflowRole, memberSession,
               }
             : {
                 options: value.options,
                 incarnationId: home.incarnationId,
                 homeDir: home.homeDir, ...execution,
-                title, workflowRole, memberSession,
               }
         ), value.id
       );
@@ -204,7 +197,7 @@ export class ChatsService {
       : await create();
     const { record } = mutation;
     this.events.emitMutation(mutation);
-    if (!title) this.scheduleTitle(record, value.firstMessage.content);
+    this.scheduleTitle(record, value.firstMessage.content);
     return record;
   }
   async createAppChat(
@@ -456,7 +449,7 @@ export class ChatsService {
   publishEffectiveArchive(record: ChatRecord | ChatMetadata, effectiveArchived: boolean) { this.events.publishEffectiveArchive(record, effectiveArchived); }
   async beginCreation(submission: ManualTurnSubmission) {
     return (await import("./creation")).beginChatCreation({ store: this.store, chatHomes: this.options.chatHomes,
-      resolveProjectWorkspace: this.options.resolveProjectWorkspace, assertAdmission: () => this.assertAdmission() }, submission);
+      assertAdmission: () => this.assertAdmission() }, submission);
   }
   markCreationPrepared(submission: ManualTurnSubmission) {
     return submission.persistence.kind === "append"

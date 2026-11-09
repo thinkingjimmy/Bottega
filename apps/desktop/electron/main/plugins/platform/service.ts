@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical plugin contracts, real filesystem identity, strict durable storage and whole-package activation.
- * [OUTPUT]: Unified catalog with exact-owner crash cleanup, guarded native source roots, live activation/effective Slot readiness, bounded summaries/full detail, readonly official copy admission and guarded recovery.
+ * [OUTPUT]: Unified catalog with exact-owner crash cleanup, guarded native source roots, live activation/effective Slot readiness, bounded summaries/full detail and descriptive mode provenance, readonly official copy admission and guarded recovery.
  * [POS]: Main platform facade used by startup, authoring/build owners, renderer IPC and isolated contribution hosts.
  */
 import { lstat, readFile, realpath } from "node:fs/promises";
@@ -115,7 +115,7 @@ export class UnifiedPluginPlatform {
   modes(): UnifiedPluginMode[] {
     return this.store.read(state => state.plugins.flatMap(record => record.manifest.contributions
       .filter(value => value.kind === "mode").map(mode => ({
-        id: mode.id, pluginId: record.manifest.id, name: mode.name, prompt: mode.prompt, tools: mode.tools,
+        id: mode.id, pluginId: record.manifest.id, pluginName: record.manifest.name, name: mode.name, description: mode.description, prompt: mode.prompt, tools: mode.tools,
         ...(mode.nativeRequirements ? { nativeRequirements: mode.nativeRequirements } : {}),
         ready: this.isActive(record.manifest.id),
         ...(!record.installation.enabled ? { unavailableReason: "Plugin is disabled" }

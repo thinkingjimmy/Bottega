@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Electron BrowserWindow, owner-aware Bases schemas, canonical Chat/Project records, BaseStore/owner resolution, row mutation, IO, promotion, attachment, and file-dialog ports, plus the shared statusError constructor from main/errors; who may write is decided by BaseMutationAuthority (./mutation-authority), which it holds and delegates the issuers to
- * [OUTPUT]: Provides ownerKey CRUD/CAS/LWW, the explicit Create Base of a Project with none (ensure never creates one), stable Agent batch results, pre-copy Query snapshots, on-screen read evidence for cloud subscriptions, replay-aware App GUI commands, exact App-renderer fences, retained navigation, migration guards, attachments and format IO, and onBaseEvent for main-process subscribers. The workflow authority (issueWorkflowMutationAuthority) takes only a live workflow-run principal as its evidence.
+ * [OUTPUT]: Provides BasesServiceOptions, BasesService.
  * [POS]: Bases application service; owner and trusted App-renderer boundaries are resolved here while format IO and cross-store promotion remain delegated
  */
 
@@ -38,7 +38,7 @@ import { RetainedBaseNavigation } from "./navigation/retained-service";
 import { BaseEventPublisher } from "./service/base-event-publisher";
 import { statusError, withDeadline } from "../ipc/errors";
 import { BaseMutationAuthority, type BaseAppSurfaceValidator } from "./mutation-authority";
-import type { VerifiedPrincipal } from "../operations/principals";
+
 
 export type BasesServiceOptions = {
   getChat(chatId: string): Promise<BaseChatRef | null>;
@@ -234,10 +234,7 @@ export class BasesService {
     }
   }
 
-  /**
-   * The explicit "Create Base" of a Project that has none (General › Base, Project settings › Workflows). Read paths keep
-   * `ensure`, which never creates a Project Base; a Chat Base still reaches a Project only by promotion.
-   */
+
   async createProjectBase(projectId: string): Promise<BaseSnapshot> {
     this.assertAdmission();
     const { ownerInstanceId: _none, ...identity } = await this.ownerResolver.identityForOwnerKey(`project:${projectId}`);
@@ -310,10 +307,6 @@ export class BasesService {
 
   issueToolMutationAuthority(input: Parameters<BaseMutationAuthority["forTool"]>[0]) { return this.mutationAuthority.forTool(input); }
   issueSystemMutationAuthority(ownerKey: string, operation: BaseMutationOperation) { return this.mutationAuthority.forSystem(ownerKey, operation); }
-  /** The only authority that may change a workflow-only column (Q12); see BaseMutationAuthority.forWorkflow. */
-  issueWorkflowMutationAuthority(ownerKey: string, operation: BaseMutationOperation, principal: VerifiedPrincipal) {
-    return this.mutationAuthority.forWorkflow(ownerKey, operation, principal);
-  }
 
   assertAppRendererOwnerKey(ownerKey: string, appId: string) {
     return this.ownerResolver.assertOwnerKeyForApp(ownerKey, appId);

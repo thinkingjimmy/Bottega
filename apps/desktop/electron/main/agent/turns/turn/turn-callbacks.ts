@@ -5,7 +5,7 @@
  */
 
 import { providerTraits } from "../../../../../shared/providers/traits";
-import { recordWorkflowCommandExit } from "../../../workflows/turn-policy";
+
 import { artifactRuntime } from "../../../artifacts/core/runtime";
 import type { SessionServiceTierEffective } from "../../../../../shared/ipc/agent/agent-ipc";
 import { applySubagent } from "../../../../../shared/chats/model/chat-turn-reducer";
@@ -150,7 +150,6 @@ export function createTurnCallbacks(
             workspaceRoot: context.workspace,
           });
           observeTurnItem(sanitized);
-          if (metadata?.exitCode !== undefined) recordWorkflowCommandExit(entry.requestId, item.itemId, metadata.exitCode);
           publish(entry, { type: "item", item: sanitized });
         }),
         `item projection requestId=${entry.requestId}`

@@ -3,11 +3,9 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and i18n, Projects/Chats/History providers' global-add actions and pending flight, the viewed-computer scope and its pin set, ProjectItem, ProjectPendingRow, the pinning affordance, project-sort, the shared useDelayed gate, controlled collapse state, WorkspaceNavigationSection, ProjectSortMenu and sidebar primitives
  * [OUTPUT]: Provides the native Project section model and a shared presentation wrapper, scoped to the viewed computer and widened by the Projects pinned into its own tab, with ordered Chat metadata, the two-item add action, the rows a pinned Project leaves behind once its owner deletes or archives it, and the pending Project placeholder that stands in its future slot once an add has outlasted 300ms.
- *           A workflow Chat of another computer does not reorder its Project (R-35).
  * [POS]: Projects category for components/sidebar/project, placed by AppSidebar above the root Chats category
  */
 
-import { isWorkflowChat } from "@ai-chat/base-core/metadata/placement-facts";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { useCloudSidebar } from "../../cloud/context";
 import { ProjectItem } from "../item/project-item";
@@ -106,8 +104,8 @@ export function useProjectSection({
     visibleProjects,
     [
       ...chats,
-      /* A workflow Chat's turns do not reorder Projects: it is in no list (R-35). */
-      ...cloud.heads.filter((head) => !isWorkflowChat(head.chat)).map((head) => ({
+
+      ...cloud.heads.map((head) => ({
         projectId: head.chat.classification.projectId,
         updatedAt: head.chat.updatedAt,
       })),

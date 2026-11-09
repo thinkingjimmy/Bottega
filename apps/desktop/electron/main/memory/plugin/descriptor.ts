@@ -17,7 +17,6 @@ export const memoryPluginFields: SettingField[] = [
   { ...field("sharing-mode"), type: "select", default: "chat",
     options: ["chat", "group", "personal"].map(value => ({ value, label: memoryPluginText(`sharing.${value}`) })) },
   { ...field("phone-facade"), type: "toggle", default: false },
-  { ...field("workflow-roles"), type: "toggle", default: false },
 ];
 
 export function memoryPluginDescriptor(): PluginDescriptor {

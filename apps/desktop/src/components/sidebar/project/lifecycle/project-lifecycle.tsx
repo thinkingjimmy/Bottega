@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React state, Project/Chat contracts, the Chats provider and workflows bridge, ProjectsProvider detach mutation, archive client, optional caller-owned archive feedback and menu focus return, shared dialogs, and i18n
- * [OUTPUT]: Provides single-flight Project archive/detach confirmations (ordinary Chats counted like the sidebar, workflow Chats and their runs counted apart and named as deleted on removal, the workflow runtime's refusals in the interface language), with caller-owned confirmation focus return and success notification immediately after archive resolution and before leaving or closing
+ * [INPUT]: Uses `react`, `../../../../../shared/ipc/content/chats-ipc`, `../../../../../shared/ipc/workspace/projects-ipc`, `@/components/providers/projects-provider`, `@/components/providers/chats-provider`, `@/components/providers/preferences/i18n-provider`, `@/lib/clients/archive-client`, `@ai-chat/ui/lib/errors` for its declared types and implementation.
+ * [OUTPUT]: Provides localDetachArchiveReasons, useProjectLifecycle, ProjectLifecycleController, ProjectLifecycleDialogs.
  * [POS]: Shared Project lifecycle controller consumed by Sidebar Project rows and Project Settings General
  */
 
@@ -10,14 +10,13 @@ import { useRef, useState } from "react";
 import type { ChatSummary } from "../../../../../shared/ipc/content/chats-ipc";
 import type { Project, ProjectLocalDetachReason } from "../../../../../shared/ipc/workspace/projects-ipc";
 import { useProjects } from "@/components/providers/projects-provider";
-import { useOptionalChats } from "@/components/providers/chats-provider";
-import { workflowLifecycleFailure, workflowsBridge } from "@/lib/clients/workflows-client";
-import { isEffectivelyArchived, isWorkflowChat } from "../../../../../shared/placement/facts";
+
+
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { archiveTargets } from "@/lib/clients/archive-client";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
-import { formatWorkbench, pluralWorkbench, useOptionalWorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
+
 
 export function localDetachArchiveReasons(input: {
   hasProjectBase: boolean;
@@ -41,17 +40,7 @@ export function useProjectLifecycle(
   }
 ) {
   const { detachLocalProject } = useProjects();
-  /* Workflow Chats go with the Project but are in no list, so they are counted apart: the main number matches the sidebar,
-     and the dialogs name the workflow Chats (and the runs they came from) on a line of their own. */
-  const allChats = useOptionalChats()?.chats ?? options.chats;
-  const chats = options.chats.filter((chat) => !isWorkflowChat(chat));
-  const workflowChatCount = allChats.filter((chat) =>
-    chat.projectId === project.id && isWorkflowChat(chat) && !isEffectivelyArchived(chat)).length;
-  const [workflowRuns, setWorkflowRuns] = useState<number | null>(null);
-  const loadWorkflowRuns = () => {
-    if (!workflowChatCount) return;
-    void workflowsBridge()?.projectRunCount(project.id).then(setWorkflowRuns, () => setWorkflowRuns(null));
-  };
+  const chats = options.chats;
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [localDetachOpen, setLocalDetachOpen] = useState(false);
   const [localDetachReasons, setLocalDetachReasons] = useState<ProjectLocalDetachReason[]>([]);
@@ -113,8 +102,6 @@ export function useProjectLifecycle(
   return {
     project,
     chats,
-    /** null when the Project has no workflow Chats; `runs` is null until known. */
-    workflowChats: workflowChatCount ? { chats: workflowChatCount, runs: workflowRuns } : null,
     rootBaseCount: options.rootBaseCount,
     archiveOpen,
     localDetachOpen,
@@ -123,12 +110,10 @@ export function useProjectLifecycle(
     busy,
     requestArchive() {
       setOperationError("");
-      loadWorkflowRuns();
       setArchiveOpen(true);
     },
     requestLocalDetach() {
       setOperationError("");
-      loadWorkflowRuns();
       setLocalDetachReasons(
         localDetachArchiveReasons({
           hasProjectBase: options.hasProjectBase,
@@ -167,13 +152,10 @@ export function ProjectLifecycleDialogs({
   controller: ProjectLifecycleController;
   onCloseAutoFocus?: (event: Event) => void;
 }) {
-  const { t, i18n } = useAppTranslation();
-  // Workflow Chats exist only with the workbench flag; the flag-off build loads no workbench copy for this (E-01).
-  const workflowCopy = useOptionalWorkbenchCopy(i18n.language)?.projectWorkflows ?? null;
+  const { t } = useAppTranslation();
   const {
     project,
     chats,
-    workflowChats,
     rootBaseCount,
     archiveOpen,
     localDetachOpen,
@@ -183,18 +165,9 @@ export function ProjectLifecycleDialogs({
   } = controller;
   const failure = operationError ? (
     <span className="mt-3 block text-[13px] text-destructive" role="alert" data-lifecycle-failure="">
-      {workflowLifecycleFailure(operationError, workflowCopy) ?? operationError}
+      {operationError}
     </span>
   ) : null;
-  /* Workflow Chats go with the Project but sit in no list: named on a line of their own, after the ordinary count. */
-  const workflowLine = (verb: "archived" | "removed") => {
-    if (!workflowChats?.chats || !workflowCopy) return null;
-    const values = { chats: pluralWorkbench(workflowCopy, "workflowChats", i18n.language, workflowChats.chats),
-      runs: workflowChats.runs === null ? "" : pluralWorkbench(workflowCopy, "workflowRuns", i18n.language, workflowChats.runs) };
-    // Removing the Project deletes its workflow Chats with it (they are not kept anywhere else).
-    const key = verb === "removed" ? "alsoDeleted" : workflowChats.runs === null ? "alsoArchivedNoRuns" : "alsoArchived";
-    return <span className="mt-2 block" data-workflow-chats="">{formatWorkbench(workflowCopy[key], values)}</span>;
-  };
   const clearOnClose = (next: boolean) => {
     if (!next) controller.setOperationError("");
   };
@@ -212,7 +185,6 @@ export function ProjectLifecycleDialogs({
             })}
             {rootBaseCount > 0 &&
               ` ${t("projects.archiveRootBases", { bases: rootBaseCount })}`}
-            {workflowLine("archived")}
             {failure}
           </>
         }
@@ -247,7 +219,6 @@ export function ProjectLifecycleDialogs({
                     ? "projects.archiveInsteadMemory"
                     : "projects.removeLocalDescription"
             )}
-            {workflowLine(localDetachReasons.length ? "archived" : "removed")}
             {failure}
           </>
         }

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Zod only.
  * [OUTPUT]: Provides the eight trusted facts, the evidence kinds that may establish each, establishFact (rejecting the listed inferences) and unknownEventPolicy.
- * [POS]: Semantic guard shared by broker adapters, Provider bridges and Workflow; it names what a signal proves so no layer upgrades "sent" into "done".
+ * [POS]: Semantic guard shared by broker adapters and Provider bridges; it names what a signal proves so no layer upgrades "sent" into "done".
  */
 import { z } from "zod";
 

@@ -23,7 +23,7 @@ import { ProjectRebindJournal } from "./rebind/rebind-journal";
 import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import type { ProjectLocalDetachReason } from "../../../shared/ipc/workspace/projects-ipc";
 import type { ProjectResourceCleanupCoordinator } from "./resource-cleanup/coordinator";
-import { workflowRuntime } from "../workflows/runtime/installed";
+
 
 export function composeProjectsService(input: {
   store: ProjectStore;
@@ -72,11 +72,6 @@ export function composeProjectsService(input: {
     },
     hasBaseForProject: (projectId) =>
       input.bases()?.hasProjectBase(projectId) ?? true,
-    /* DM-04(a): with the runtime installed, clean up now; without it the removal goes on at once and the runtime removes this Project's
-       workflows when it is installed (removeOrphanedProjectWorkflows). */
-    cleanupWorkflows: async (projectId) => { await workflowRuntime()?.removeProject(projectId); },
-    isWorkflowChat: (chatId) => workflowRuntime()?.registry.roleOf(chatId) != null,
-    removeChat: async (chatId) => { await input.chats()!.remove(chatId); },
     cancelTurnsByProject: (projectId) =>
       cancelConversations(input.chatStore()?.listByProject(projectId) ?? []),
     hasActiveTurnsByProject: (projectId) =>

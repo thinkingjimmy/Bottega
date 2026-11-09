@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Typed startup failures, shared locale negotiation/native catalog loading, bundled desktop dialogs, renderer development identity and explicit SQLite rebuild ownership.
- * [OUTPUT]: Pre-renderer recovery with one initialized locale or coherent English fallback across the dialog, durable saves, development restart instructions and packaged relaunch.
+ * [OUTPUT]: Pre-renderer recovery with localized latest-release download, clipboard-only diagnostics, durable saves, development restart instructions and packaged relaunch.
  * [POS]: The composition root's failure boundary; no development-server dependency or diagnostic text in the page.
  */
 import { app, dialog } from "electron";
@@ -14,7 +14,7 @@ import { UserDataSocketBudgetError } from "../../custody/socket-budget";
 import { loadNativeCatalog, translate } from "../../../../shared/i18n/native";
 import { startupPresentation } from "../dialogs/presentation";
 import { openDesktopDialog } from "../dialogs/surface/window";
-import { dialogFeedback, supportActions } from "../dialogs/surface/feedback";
+import { dialogFeedback, startupSupportActions } from "../dialogs/surface/feedback";
 import { recoverFolder } from "./folder/controller";
 
 export type StartupRecoveryLibrary = {
@@ -53,10 +53,10 @@ async function showStartupRecovery(input: { error:Error; userData:string; librar
   let technical = `${input.error.name}: ${input.error.message}\n\n${input.error.stack ?? ""}`;
   const model = { screen:startup ? "startup-failed" : "recovery-failed", title,
     message:socket ? socketBudgetMessage(locale, socket.over) : startup?.message ?? copy.message,
-    support:supportActions(locale), actions:rebuild ? [{ id:"rebuild", label:copy.rebuild, primary:true }] : [] };
+    support:startupSupportActions(locale), actions:rebuild ? [{ id:"rebuild", label:copy.rebuild, primary:true }] : [] };
   let rebuilding = false;
   const surface = await openDesktopDialog({ locale, model, onAction:action => {
-    if (action.id === "copy" || action.id === "report") { void feedback(action.id); return; }
+    if (action.id === "copy" || action.id === "report" || action.id === "download") { void feedback(action.id); return; }
     if (action.id !== "rebuild" || !rebuild || rebuilding) return;
     rebuilding = true;
     void (async () => {

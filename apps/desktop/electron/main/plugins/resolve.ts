@@ -2,7 +2,7 @@
  * [INPUT]: Depends on the plugin contract types (PluginNode, Resolution, ContractKind) from @bottega/contracts/plugins/contracts.
  * [OUTPUT]: Provides resolvePlugins (the one dependency resolver) and dependencyCycles.
  * [POS]: Appendix C.2's single entry: the catalog's list and detail, the disable impact (resolve again with the target off), host-package
- *        negotiation and workflow admission all call it, so the page never says "met" while a runtime says `contract-missing`. Pure.
+ *        negotiation and plugin admission all call it, so the page never says "met" while a runtime says `contract-missing`. Pure.
  */
 import type { BlockReason, ContractKind, PluginNode, Resolution } from "@bottega/contracts/plugins/contracts";
 

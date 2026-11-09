@@ -71,7 +71,7 @@ export const createDescriptorBackend: DescriptorBackendFactory = (descriptor, pk
       return new BridgedTurn(options, spawnConfig(options), requireProviderBridge(), launch => preparePackageLaunch(descriptor, pkg, launch, {
         workspace: options.workspace, readOnly: options.filesystemAccess?.mode === "read-only" || Boolean(options.payload.planMode),
         readRoots: options.filesystemAccess?.readOnlyRoots, writeRoots: options.artifactDirectory ? [options.artifactDirectory] : [],
-        deniedReadRoots: options.skillIsolation?.deniedRoots, controlRoot: options.filesystemAccess?.controlRoot,
+        controlRoot: options.filesystemAccess?.controlRoot,
         network: options.filesystemAccess?.network !== "off",
       }));
     },

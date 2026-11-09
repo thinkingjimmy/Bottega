@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsUpdatesEn structural type
- * [OUTPUT]: Provides settingsUpdatesEs, the Spanish Settings › Updates catalog; unified row actions and collapsed failure details use shared update, retry and manual-download copy
+ * [OUTPUT]: Provides settingsUpdatesEs, the Spanish Settings › Updates catalog; stage-specific check/download recovery, current-version labels and explicit diagnostic-copy feedback
  * [POS]: Spanish leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
@@ -34,17 +34,27 @@ export const settingsUpdatesEs: typeof settingsUpdatesEn = {
   installingShort: "Instalando actualización…",
   restartUpdate: "Reiniciar y actualizar",
   failedShort: "Error de actualización",
-  checkFailedShort: "Error al buscar actualizaciones",
+  checkFailedShort: "No se pueden buscar actualizaciones",
   manualShort: "Descargar nueva versión",
   downloading: "Descargando {{version}}",
   installing: "Actualización descargada · reiniciando para instalarla",
-  failed: "Error de actualización: {{message}}",
-  failedUnknown: "La actualización falló por un motivo desconocido.",
-  validationFailed: "La actualización descargada no superó la verificación. Bottega volverá a buscarla.",
-  failedResolution:
-    "Descarga la nueva versión desde la página de Releases, o informa del problema en GitHub.",
-  backgroundFailed: "La última comprobación automática falló",
-  backgroundFailedOpen: "Las comprobaciones automáticas fallan; abre Actualizaciones para ver los detalles",
+  validationFailed: "La actualización descargada no superó la verificación. Vuelve a buscar actualizaciones.",
+  failedResolution: "También puedes descargar Bottega desde la página de descargas.",
+  currentVersion: "Versión actual {{version}}",
+  currentVersionRetained: "Puedes seguir usando la versión actual.",
+  retryCheck: "Volver a comprobar",
+  retryDownload: "Volver a descargar",
+  downloadFailedShort: "No se pudo descargar la actualización",
+  offline: "No tienes conexión. Bottega volverá a comprobar cuando te conectes.",
+  connectionFailed: "No se puede conectar con el servicio de actualizaciones. Inténtalo más tarde.",
+  requestTimedOut: "El servicio de actualizaciones no respondió a tiempo. Inténtalo más tarde.",
+  serviceUnavailable: "El servicio de actualizaciones no está disponible temporalmente. Inténtalo más tarde.",
+  rateLimited: "El servicio de actualizaciones está ocupado. Bottega lo intentará más tarde.",
+  checkFailedUnknown: "No se pudo obtener la información de actualización. Vuelve a comprobar más tarde.",
+  downloadFailedUnknown: "No se pudo descargar la actualización. Vuelve a intentarlo.",
+  copyDiagnostics: "Copiar diagnóstico",
+  diagnosticsCopied: "Diagnóstico copiado",
+  diagnosticsCopyFailed: "No se pudo copiar el diagnóstico. Inténtalo de nuevo.",
   check: "Buscar actualizaciones",
   upgrade: "Actualizar",
   manualUpgrade: "Abrir página de descarga",

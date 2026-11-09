@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the closed output-root parser, the shared LAZY_LANES table, Node fs/path, the shared system-font asset policy, the sealed Sketch boundary checker and the temporary Rollup module report.
- * [OUTPUT]: Enforces the independent dynamic boundaries declared in LAZY_LANES (charts, native/composer locales and the rest), with a generated negative self-test per lane, that no chunk carries main-only modules (MAIN_ONLY: shared/i18n/native) or the full shiki bundle, Oniguruma or non-GitHub themes (SHIKI_EXCLUDED, OPT-24), or any @phosphor-icons/react module (PHOSPHOR_PACKAGE, OPT-36), that the task panel, Dock bar and Dock panel first paint carry no zod (ZOD_FREE_ENTRIES, OPT-34), and that a build without the workbench flag, of any flavor, renders none of the workbench-only modules (E-01; the shared workbench copy stays, the read-only workflow columns use it in both builds); Sketch editor/history must remain outside every renderer chunk and in the exact signed on-demand resource pinned by the compiler while host compute retains a dedicated Worker; byte ceilings live in budget/check-budgets.mjs. Enforces shared system-font policy over emitted renderer assets. Existing self-tests require the unified Plugins page in default builds while AgentConfigs, Workflow and legacy plugin rows remain excluded.
+ * [OUTPUT]: Enforces the independent dynamic boundaries declared in LAZY_LANES (charts, native/composer locales and the rest), with a generated negative self-test per lane, that no chunk carries main-only modules (MAIN_ONLY: shared/i18n/native) or the full shiki bundle, Oniguruma or non-GitHub themes (SHIKI_EXCLUDED, OPT-24), or any @phosphor-icons/react module (PHOSPHOR_PACKAGE, OPT-36), that the task panel, Dock bar and Dock panel first paint carry no zod (ZOD_FREE_ENTRIES, OPT-34), and that every build excludes retired Workflow, Agent configuration and Team modules; Sketch editor/history must remain outside every renderer chunk and in the exact signed on-demand resource pinned by the compiler while host compute retains a dedicated Worker; byte ceilings live in budget/check-budgets.mjs. Enforces shared system-font policy over emitted renderer assets. Existing self-tests require the unified Plugins page in default builds while AgentConfigs, Workflow and legacy plugin rows remain excluded.
  * [POS]: apps/desktop/scripts/verification; Last segment of the desktop build script; the renderer first-load boundary is enforced mechanically here and the module report is deleted after checking so it never ships
  */
 
@@ -17,16 +17,14 @@ const outputRoot = resolveOutputRoot(process.argv.slice(2), process.env, ["--sel
 const rendererRoot = resolve(import.meta.dirname, "../..", outputRoot, "renderer");
 const reportPath = resolve(rendererRoot, ".chart-module-report.json");
 
-/* Deferred workbench pages, dialogs and run views require BOTTEGA_WORKBENCH_UI=1. Unified Plugins settings is a production
-   page; flag-constant entry hooks (`() => null` with the flag off) are not listed. */
-export const WORKBENCH_ONLY = /src\/views\/settings\/agent-configs\/settings-agent-configs\.tsx$|components\/settings\/project\/workflows\/|components\/settings\/agent-configs\/(config-dialog|config-list|available-in|guarantee-copy)|components\/settings\/plugins\/plugin-rows|components\/bases\/workflow\/(setup-host|runs-host)|base-ui\/dist\/ui\/workflow\/(setup-dialog|run-details|confirm-panel|record-section|run-chooser)\.js$/;
+/* Retired feature modules are forbidden in every production build, regardless of the workbench switch. */
+export const RETIRED_MODULES = /src\/views\/settings\/agent-configs\/settings-agent-configs\.tsx$|components\/settings\/project\/workflows\/|components\/settings\/agent-configs\/(config-dialog|config-list|available-in|guarantee-copy)|components\/settings\/plugins\/plugin-rows|components\/plugins\/team\/|components\/bases\/workflow\/(setup-host|runs-host)|base-ui\/dist\/ui\/workflow\/(setup-dialog|run-details|confirm-panel|record-section|run-chooser)\.js$/;
 
-/* A build without the workbench flag renders none of the workbench-only modules (any flavor, production included). */
-function validateWorkbenchOff(report) {
-  if (report.workbenchUi !== false) return;
+/* Unified Plugins remains available; removed feature entry points never render. */
+function validateRetiredModules(report) {
   for (const chunk of report.chunks) {
-    const kept = (chunk.rendered ?? []).filter((id) => WORKBENCH_ONLY.test(id));
-    if (kept.length) throw new Error(`workbench 开关关闭的构建仍含 workbench 模块: ${chunk.fileName} → ${kept.join(", ")}`);
+    const kept = (chunk.rendered ?? []).filter((id) => RETIRED_MODULES.test(id));
+    if (kept.length) throw new Error(`Build contains a retired feature module: ${chunk.fileName} → ${kept.join(", ")}`);
   }
 }
 
@@ -89,7 +87,7 @@ function validateBuiltBaseUi(report) {
 function validateModuleReport(report) {
   validateBuiltBaseUi(report);
   validateSketchReport(report);
-  validateWorkbenchOff(report);
+  validateRetiredModules(report);
   validateAuxiliaryZodFree(report);
   validateMainOnlyAbsent(report);
   validateShikiSlim(report);
@@ -214,7 +212,7 @@ function selfTest() {
   };
   validateModuleReport({ chunks: [entry, ...lazyChunks] });
 
-  // Deferred workbench screens stay excluded; unified Plugins is a production page.
+  // Removed modules stay excluded in both builds; unified Plugins remains a production page.
   const withPage = (id, workbenchUi) => ({ workbenchUi, chunks: [{ ...entry, rendered: [id] }, ...lazyChunks] });
   for (const id of [
     "src/views/settings/agent-configs/settings-agent-configs.tsx",
@@ -222,11 +220,13 @@ function selfTest() {
     "src/components/settings/project/workflows/project-workflows-section.tsx",
     "src/components/settings/plugins/plugin-rows.tsx",
     "packages/base-ui/dist/ui/workflow/setup-dialog.js",
+    "src/components/plugins/team/team-panel.tsx",
   ]) {
-    validateModuleReport(withPage(id, true));
-    let refused = false;
-    try { validateModuleReport(withPage(id, false)); } catch (cause) { refused = String(cause?.message).includes(id); }
-    if (!refused) throw new Error(`Workbench-off guard accepted deferred module: ${id}`);
+    for (const enabled of [false, true]) {
+      let refused = false;
+      try { validateModuleReport(withPage(id, enabled)); } catch (cause) { refused = String(cause?.message).includes(id); }
+      if (!refused) throw new Error(`Retirement guard accepted removed module: ${id}`);
+    }
   }
   const pluginsPage = "src/views/settings/plugins/settings-plugins.tsx";
   validateModuleReport(withPage(pluginsPage, true));

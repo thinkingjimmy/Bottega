@@ -21,7 +21,7 @@ const TRASH_SEGMENTS = new Set([".trash", ".trashes", "$recycle.bin"]);
 const VOLUME_PARENT = /^(?:\/Volumes|\/media(?:\/[^/]+)?|\/mnt|\/run\/media\/[^/]+)$/;
 /* Written by the OS or Bottega itself; they do not make a folder "someone else's". */
 const INCIDENTAL = new Set([".DS_Store", ".localized", "Icon\r", "desktop.ini", "Thumbs.db"]);
-const LIBRARY_ENTRIES = new Set([".bottega", ".trash", "apps", "bases", "chats", "projects", "plugins", "skills", "workflows", ...INCIDENTAL]);
+const LIBRARY_ENTRIES = new Set([".bottega", ".trash", "apps", "bases", "chats", "projects", "plugins", "skills", ...INCIDENTAL]);
 
 export type LibraryChoice = Readonly<{ root: string; subfolder: boolean }>;
 

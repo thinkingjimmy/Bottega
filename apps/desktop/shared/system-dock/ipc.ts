@@ -40,7 +40,7 @@ export type TrashState = "empty" | "full" | "unknown";
 export type LimitsFaceSource = Readonly<{ backend: AgentBackendId; remaining: number | null; windowMins: number | null; calendar: boolean;
   resetsAt: number | null; state: "ok" | "stale" | "loading" | "needs-auth" | "not-installed" | "unavailable" | "error" | "unknown" }>;
 export type DockTaskReference = Pick<PresenceTask, "chatId" | "incarnationId" | "requestId" | "generation">;
-export type DockTasksDetail = Readonly<{ activity: TaskActivitySnapshot; workflowLabels?: Partial<Record<"plan" | "develop" | "review", string>> }>;
+export type DockTasksDetail = Readonly<{ activity: TaskActivitySnapshot }>;
 export type WidgetFace =
   | CustomWidgetFace
   | Readonly<{ type: "builtin.tasks"; running: number | null; waiting: number | null; result: TaskActivitySnapshot["result"] }>

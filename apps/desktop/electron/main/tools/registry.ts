@@ -59,7 +59,7 @@ export class PluginToolRegistry {
         outputSchema: z.fromJSONSchema(tool.outputSchema as Parameters<typeof z.fromJSONSchema>[0]), outputJsonSchema: tool.outputSchema,
         timeoutMs: tool.timeoutMs, resultByteLimit: tool.resultBytes, planExcluded: tool.planAllowed ? undefined : true,
         manualTurnOnly: tool.manualTurnOnly ? true : undefined, exactIssued: tool.exactIssued ? true : undefined,
-        backendAllowlist: tool.backendAllowlist, workflowAllowed: Boolean(officialPlugin) && ["bases", "history"].includes(tool.domain ?? ""),
+        backendAllowlist: tool.backendAllowlist,
         annotations: { readOnlyHint: tool.access !== "write", destructiveHint: false, idempotentHint: tool.access !== "write" } };
     });
     const next = registerToolDeclarations(manifest.id, revision, alias, specs, { replace: Boolean(officialPlugin) || options.validateOnly, validateOnly: options.validateOnly });

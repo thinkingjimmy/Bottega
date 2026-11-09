@@ -79,9 +79,9 @@ export const dock = {
     "error": "同期失敗。レイアウトは保持"
   },
   "unsupportedReason": {
-    "platform": "macOS 27 が必要です",
+    "platform": "macOS 26 または 27 が必要です",
     "architecture": "Apple シリコンが必要",
-    "osVersion": "macOS 27 が必要です",
+    "osVersion": "macOS 26 または 27 が必要です",
     "helperMissing": "Dock ヘルパーがありません。Bottega を再インストールしてください。"
   },
   "effects": {

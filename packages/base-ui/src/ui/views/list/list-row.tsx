@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, i18n, lucide, shadcn Button/DropdownMenu, cn, shared Base column/line/attachment guard, state of BaseMutationOutcome, BaseCellEditor/BaseAttachmentPreview and the same directory attribute projection
- * [OUTPUT]: Provides BaseListRow: a fixed-height read mode (id/status dot/title/attribute chips/date), an edit mode that opens into the field grid, and a hover/focus action menu (aria label from bases.list.rowActions, always visible on touch; workflow-only fields marked and not editable) that renders nothing when both onPatch and onDelete are absent
+ * [OUTPUT]: Provides BaseListRow.
  * [POS]: Shared Base presentation in ui/views/list.
  */
 
-import { isWorkflowOnly } from "@ai-chat/base-core/compute/workflow-columns";
-import { WorkflowColumnMark } from "../../chrome/workflow-column";
+
+
 import { useEffect, useRef, useState } from "react";
 import { useAppTranslation } from "../../platform/i18n";
 import { HistoryIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
@@ -175,7 +175,7 @@ export function BaseListRow({
               <BaseCellEditor
                 attachmentOwner={owner}
                 column={titleColumn}
-                disabled={busy || isWorkflowOnly(titleColumn)}
+                disabled={busy}
                 relationContext={cellContext}
                 relationOptions={relationOptions}
                 storedValue={row.values[titleColumn.id]}
@@ -200,13 +200,7 @@ export function BaseListRow({
         <div className={FIELD_GRID_CLASS}>
           {columns.slice(1).map((column) => (
             <label key={column.id} className="flex min-w-0 items-center gap-2">
-              {isWorkflowOnly(column) ? (
-                /* Name and mark share the label's width; the mark gives way before the name (Q37). */
-                <span className="flex w-16 shrink-0 items-center gap-1">
-                  <span className="min-w-0 truncate text-[11px] text-muted-foreground" title={column.name}>{column.name}</span>
-                  <WorkflowColumnMark />
-                </span>
-              ) : (
+              {(
                 <span className={FIELD_LABEL_CLASS} title={column.name}>
                   {column.name}
                 </span>
@@ -215,7 +209,7 @@ export function BaseListRow({
                 <BaseCellEditor
                   attachmentOwner={owner}
                   column={column}
-                  disabled={busy || isWorkflowOnly(column)}
+                  disabled={busy}
                   relationContext={cellContext}
                   relationOptions={relationOptions}
                   storedValue={row.values[column.id]}

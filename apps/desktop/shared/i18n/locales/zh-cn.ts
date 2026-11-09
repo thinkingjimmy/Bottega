@@ -4,7 +4,7 @@
  * Points App plugin management to Plugins & Apps and explains credential and enterprise CA tool boundaries.
  * Generic Agent recovery copy belongs to agent-availability; the removed composer strip has no Chat-level check-again key.
  * Artifact workspace labels are supplied by the shared workspace catalogs; retired App Design controls register no copy.
- * General Settings explains unsupported title generation and first-message fallback while retaining the chosen Agent.
+ * General Settings explains unsupported title generation and first-message fallback while retaining the chosen Agent; Chat guidance covers relay limits, background title generation and cross-chat read access.
  * [POS]: zh-CN desktop locale; compile-time structure must match English exactly
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/zh-cn";
@@ -193,7 +193,8 @@ eraseAllBody: "这台电脑上的对话、设置、密钥和登录状态都会�
 eraseAllTrashFolder: "同时把 Bottega 文件夹移到废纸篓",
 eraseAllCloud: "已同步到账号的数据仍保留在云端。再次登录并开启同步后，这些数据会同步回来。",
 eraseAllConfirm: "清空并重启",
-chatDescription: "新聊天的标题由后台任务自动生成。",
+chatDescription: "设置聊天的接力上限、标题生成与跨聊天只读访问。",
+titleGenerationInfo: "新聊天的标题由后台任务自动生成。",
 titleGeneration: "标题生成",
 titleGenerationDescription: "标题模型按后端分别保存。",
 titleUnavailableDescription: "{{agent}} 在此版本中无法生成标题。聊天标题将使用首条消息。",

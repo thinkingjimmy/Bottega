@@ -9,13 +9,13 @@ import { Input } from "@ai-chat/ui/components/ui/input";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
 import { useCoarsePointer } from "@ai-chat/ui/hooks/use-mobile";
-import { baseCellText, cellValue, createBaseCellContext, isBaseAttachmentValue, type BaseCellValue, type BaseColumn, type BaseRow } from "@ai-chat/base-core/model/bases-ipc";
+import { cellValue, createBaseCellContext, isBaseAttachmentValue, type BaseCellValue, type BaseColumn, type BaseRow } from "@ai-chat/base-core/model/bases-ipc";
 import { BASE_ATTACHMENT_BYTE_LIMIT } from "@ai-chat/base-core/attachments/gallery-attachments";
 import { useAppTranslation } from "../../platform/i18n";
 import { BaseUIProvider, useBasePlatform } from "../../platform/context";
 import { BaseCellEditor } from "./base-cell-editor";
-import { isWorkflowOnly } from "@ai-chat/base-core/compute/workflow-columns";
-import { WorkflowColumnMark, WorkflowFieldValue } from "../../chrome/workflow-column";
+
+
 import { RecordActions, RecordResults } from "../../state/record-slots";
 import { codedFailure, describeBaseFailure } from "../../state/base-mutation-error";
 import type { SurfaceLease } from "../../state/lease-retry";
@@ -141,9 +141,8 @@ function RecordDialog({ columns: currentColumns, firstColumnId, record, initialV
         <BaseUIProvider value={fieldPlatform}><div className="space-y-4 py-2">{ordered.map(column => {
           const fieldId = "record-" + rowId + "-" + column.id, fieldError = fieldErrors[column.id];
           return <div key={column.id} className="grid gap-2 text-sm">
-            <label htmlFor={fieldId} className="flex items-center gap-1.5 font-medium">{column.name}{isWorkflowOnly(column) && <WorkflowColumnMark />}</label>
-            {isWorkflowOnly(column) ? <WorkflowFieldValue id={fieldId}>{baseCellText(column, cellValue(draftRow, column, context)) || "—"}</WorkflowFieldValue>
-            : column.type === "attachment" ? <>
+            <label htmlFor={fieldId} className="flex items-center gap-1.5 font-medium">{column.name}</label>
+            {column.type === "attachment" ? <>
               {isBaseAttachmentValue(values[column.id]) && <BaseCellEditor column={column} value={values[column.id]} disabled={busy || disabled || draftPort?.locked} onCommit={value => update(column.id, value)} />}
               <Input id={fieldId} type="file" accept={platform.attachments.imageSources?.accept ?? IMAGE_TYPES.join(",")} aria-label={column.name} aria-invalid={Boolean(fieldError)} className="pointer-coarse:h-10"
                 aria-describedby={fieldError ? fieldId + "-error" : undefined} disabled={busy || disabled || draftPort?.locked}

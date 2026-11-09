@@ -6,8 +6,7 @@
  * [POS]: apps/desktop/src/views/project; The sole `/projects/:projectId/settings` route; keeps the application Sidebar in Library context
  */
 
-import { workbenchUiEnabled } from "@ai-chat/ui/lib/workbench-flag";
-import { useOptionalWorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
+
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router";
 
@@ -43,32 +42,23 @@ import {
 } from "@ai-chat/ui/components/ui/tabs";
 import { AnimatedTabsList, RetainedTabsContent } from "@ai-chat/ui/components/ui/navigation/tabs-motion";
 
-/* Workflows sits after General (Q28) and exists only in builds with the workbench flag. */
 const PROJECT_TABS = [
   "general",
-  ...(workbenchUiEnabled ? ["workflows" as const] : []),
   "personalization",
   "skills",
   "tools",
 ] as const;
-type ProjectTab = (typeof PROJECT_TABS)[number] | "workflows";
+type ProjectTab = (typeof PROJECT_TABS)[number];
 
-import { useDeferredModule } from "@ai-chat/ui/hooks/use-deferred-module";
-import { DeferredStatus } from "@/components/deferred/status";
-const loadWorkflows = () => import("@/components/settings/project/workflows/project-workflows-section");
-function DeferredWorkflows({ project }: { project: Project }) {
-  const module = useDeferredModule(loadWorkflows), Section = module.value?.ProjectWorkflowsSection;
-  return Section ? <Section project={project} /> : <DeferredStatus failed={module.failed} retry={module.retry} reloadRequired={module.reloadRequired} />;
-}
-const ProjectWorkflowsSection = workbenchUiEnabled ? DeferredWorkflows : null;
+
+
 
 const validTab = (value: string | null): ProjectTab =>
   value === "extensions" ? "skills"
     : PROJECT_TABS.includes(value as ProjectTab) ? value as ProjectTab : "general";
 
 export function ProjectSettingsView() {
-  const { t, i18n } = useAppTranslation();
-  const workbench = useOptionalWorkbenchCopy(i18n.language);
+  const { t } = useAppTranslation();
   const { projectId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const { projects, loading } = useProjects();
@@ -105,7 +95,7 @@ export function ProjectSettingsView() {
             <AnimatedTabsList value={tab} className="flex w-max min-w-full justify-start border-b border-border group-data-horizontal/tabs:h-10">
               {PROJECT_TABS.map((value) => (
                 <TabsTrigger className="flex-none cursor-pointer px-3" key={value} value={value}>
-                  {value === "workflows" && workbench ? workbench.projectWorkflows.tab : t(`projectSettings.tabs.${value}`)}
+                  {t(`projectSettings.tabs.${value}`)}
                 </TabsTrigger>
               ))}
             </AnimatedTabsList>
@@ -116,11 +106,6 @@ export function ProjectSettingsView() {
         <RetainedTabsContent className="h-full" value="general" active={tab === "general"}>
           <ProjectGeneralSection key={project.id} chats={projectChats} project={project} />
         </RetainedTabsContent>
-        {ProjectWorkflowsSection && (
-          <RetainedTabsContent className="h-full" value="workflows" active={tab === "workflows"}>
-            <ProjectWorkflowsSection key={project.id} project={project} />
-          </RetainedTabsContent>
-        )}
         <RetainedTabsContent className="h-full" value="personalization" active={tab === "personalization"}>
           <ProjectInstructionsSection key={project.id} project={project} />
         </RetainedTabsContent>

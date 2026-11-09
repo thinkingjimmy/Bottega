@@ -99,7 +99,7 @@ export class CodexNativeTurn implements AgentTurn {
       const servers = { ...Object.fromEntries(Object.keys(inherited).map(name => [name, { enabled: false }])), ...selected };
       const threadParams = { ...this.config.thread, config: { ...this.config.thread.config, mcp_servers: servers } };
       if (this.config.purpose === "artifact-candidate" || this.config.purpose === "title") {
-        if (this.options.payload.session || this.options.sessionRecovery || this.options.memberFork || this.config.continuation) throw new Error("Candidate threads cannot resume another session");
+        if (this.options.payload.session || this.options.sessionRecovery || this.config.continuation) throw new Error("Candidate threads cannot resume another session");
         const listed = nativeRecord(await this.rpc.request("skills/list", { cwds: [this.options.workspace], forceReload: true }));
         if (!Array.isArray(listed.data) || listed.data.length > 32) throw new Error("Candidate Skill discovery is unavailable");
         const paths = listed.data.flatMap(row => {
@@ -114,19 +114,16 @@ export class CodexNativeTurn implements AgentTurn {
       if (resume && resume.backend !== BUILTIN_PROVIDER_IDS.codex) throw new Error("Native thread belongs to a different Provider");
       let candidate = resume?.id;
       let recovered = false;
-      if (!candidate && !this.options.memberFork && this.options.sessionRecovery?.candidate) {
+      if (!candidate && this.options.sessionRecovery?.candidate) {
         const hint = this.options.sessionRecovery.candidate;
         if (hint.backend === BUILTIN_PROVIDER_IDS.codex && await nativeHistoryMatches(this.rpc, hint).catch(cause => {
           if (this.missing(cause, hint.sessionId)) return false;
           throw cause;
         })) { candidate = hint.sessionId; recovered = true; }
       }
-      let response: Record<string, unknown>, memberForked = false;
-      const memberSource = this.options.memberFork?.sourceSessionId;
-      if (memberSource && this.options.memberFork?.backend !== BUILTIN_PROVIDER_IDS.codex) throw new Error("Native member fork belongs to a different Provider");
+      let response: Record<string, unknown>;
       try {
-        const opened = await openNativeThread(this.rpc, threadParams, candidate, this.config.continuation, memberSource, (cause, id) => this.missing(cause, id));
-        response = opened.response; memberForked = opened.forked;
+        response = await openNativeThread(this.rpc, threadParams, candidate, this.config.continuation);
       } catch (cause) {
         if (resume && this.missing(cause, resume.id)) { this.done = true; this.rpc.close(); return "resume-failed"; }
         throw cause;
@@ -148,7 +145,6 @@ export class CodexNativeTurn implements AgentTurn {
       }
       const terminals = nativeRecord(await this.rpc.request("thread/backgroundTerminals/list", { threadId: thread.id, cursor: null, limit: 1 }, { timeoutMs: 5000 }));
       if (!Array.isArray(terminals.data) || terminals.data.length || terminals.nextCursor !== null) throw new Error("Native terminal ownership cannot be established before input");
-      if (this.options.memberFork) await this.options.memberFork.complete(memberForked ? "forked" : "replayed");
       await this.options.callbacks.onThread({ backend: BUILTIN_PROVIDER_IDS.codex, id: thread.id }, this.config.continuation ? { backend: BUILTIN_PROVIDER_IDS.codex, id: this.config.continuation.threadId } : undefined);
       this.threadId = thread.id;
       if (response.serviceTier !== null && typeof response.serviceTier !== "string") throw new Error("Native CLI returned an invalid service tier");
@@ -164,7 +160,7 @@ export class CodexNativeTurn implements AgentTurn {
         this.options.onPromptContributionValidation?.(validation);
         if (validation.kind === "allowed") blocks.push({ type: "text", text: this.options.sensitiveContribution.text });
       }
-      blocks.push(...providerInput(recovered || memberForked ? this.options.input.input.filter(item => item.type !== "text" || item.text !== this.options.payload.handoff?.text) : this.options.input.input));
+      blocks.push(...providerInput(recovered ? this.options.input.input.filter(item => item.type !== "text" || item.text !== this.options.payload.handoff?.text) : this.options.input.input));
       const input = nativeInput(blocks);
       await this.options.onSessionPrompt?.(thread.id, input.flatMap(item => item.type === "text" ? [item.text] : []));
       signal.throwIfAborted(); this.options.trustedAuthority?.current();

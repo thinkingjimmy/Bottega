@@ -31,25 +31,13 @@ export const pluginSurfaceGenerationBindingSchema = generationBinding("pluginOwn
 /* The only account-configuration kind is the Dock layout; a generic key/value namespace is deliberately absent. */
 export const accountConfigBindingSchema = z.object({ configKind: z.literal("dock-layout"), configSchemaVersion: version.positive().max(65_535),
   expectedRevision: version }).strict();
-/* Agent configuration (purpose 9): the producer class is authenticated so a draft from a phone cannot be relabelled as a
-   desktop write; no Project appears here — where a config is offered lives only in the encrypted payload. */
-export const agentConfigurationBindingSchema = z.object({ configSchemaVersion: version.positive().max(65_535), expectedRevision: version,
-  producerClass: z.enum(["desktop", "draft"]) }).strict();
-/* Workflow projections (P13 §10.2, purpose 12 / 13; 13 is a workflow binding projection or an App's build status). Written only by the owner desktop; ids are random and name no content.
-   A run record is bound to its run, owner and Project; the attention row to its computer and the badge count it shows; a
-   binding projection to its Project, owner, schema version and state class (§3.1). */
-export const workflowRunBindingSchema = z.object({ runId: id, ownerDeviceId: id, parentRef: id, expectedRevision: version,
-  projectionKind: z.literal("run") }).strict();
-export const workflowAttentionBindingSchema = z.object({ ownerDeviceId: id, expectedRevision: version, pendingCount: version.max(1_000) }).strict();
-export const workflowBindingBindingSchema = z.object({ projectId: id, ownerDeviceId: id, schemaVersion: z.literal(1), expectedRevision: version,
-  stateClass: z.enum(["draft", "enabled", "disabled", "suspended"]) }).strict();
 /* An App's build status (U06-d, purpose 13 beside the binding projection): bound to its App, owner desktop and revision, so one App's
    row cannot be served under another App or owner, nor an older revision replayed. */
 export const appBuildStatusBindingSchema = z.object({ appId: id, ownerDeviceId: id, expectedRevision: version }).strict();
 /* Resource commands (P13 §10.1, purposes 10 / 11): routing, class and criticality are authenticated, so a server cannot
    re-address a command, and a sender cannot take a reserved control slot for an action the owner does not call critical. */
 export const resourceCommandBindingSchema = z.object({ protocolVersion: version.positive(), sourceDeviceId: id, targetDeviceId: id,
-  resourceKind: z.enum(["project", "provider-quota", "workflow-run", "workflow-binding", "app", "preview", "plugin", "artifact"]), resourceId: id, commandClass: z.enum(["read", "control", "work"]),
+  resourceKind: z.enum(["project", "provider-quota", "app", "preview", "plugin", "artifact"]), resourceId: id, commandClass: z.enum(["read", "control", "work"]),
   critical: z.boolean(), expiresAt: version }).strict();
 export const resourceResultBindingSchema = resourceCommandBindingSchema.extend({ commandCiphertextHash: digest, resultRevision: version.positive(),
   state: z.enum(["accepted", "succeeded", "refused", "unknown"]) }).strict();

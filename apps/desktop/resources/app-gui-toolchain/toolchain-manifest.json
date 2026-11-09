@@ -88,13 +88,13 @@
     "gate-3"
   ],
   "sliceDigests": {
-    "gate-1": "sha256:129dc8bbcbf403b15ed3a752de485f48e49691bea1245618827a770a1ba93932",
-    "gate-2": "sha256:30281cecf6a0a4f5c6dbc2b8873eeac3d922e834a65a30cc9772f472367f0f30",
-    "gate-3": "sha256:f50cd623bc010c3e347817c87f9013b25f1cf10ec9a185c612966aa1dfca4459"
+    "gate-1": "sha256:8dbc76e0df2af59cce24eef4d30ce11519db98ede3e19dce3cc2dfc8104ae3de",
+    "gate-2": "sha256:1e8461ebd88660224be7a801e5a0a25d65187359f761f4f9cfe2e880dabad53d",
+    "gate-3": "sha256:de45c58b42bfc07a6a02ebc7ae054ecb80a90c0368a1de803a1aa93bb52b1f77"
   },
   "authoringCatalogDigest": "sha256:7f09b176b96cca667c74a2e90bfb9b1fb10b13475530b4312c29ab40ce5c408f",
   "compatibilitySupportDigest": "sha256:5a876d99d1fef6e30040d49ea6283feabaecd97a871ee4955b98610a9cbbdba7",
-  "performanceBaselineDigest": "sha256:274f94b85ea683b57b72398e5ad8f1e32b5aea02e47af1b10f9d5845231241e5",
+  "performanceBaselineDigest": "sha256:f84b5d9f963ab500c77c4d761a06c65b26bcc758e9e4e98fc38a3767012ada8d",
   "runtimeSbomDigest": "sha256:e2b285067481bbfc3513142677c9f0f559bc2afb9d8d34ea480b483321b0d91b",
   "noticesDigest": "sha256:6df76f9d823ebe833f5a30bf73a99b41d6dd18815983e3b892796dfbc2b55923",
   "artifactPaths": {

@@ -1,8 +1,7 @@
 /**
  * [INPUT]: Depends on the lock version of Claude ACP adapter, Registry first-valid flight, user CLI, the managed-policy pre-reader in policy.ts, buildtinTools, oracle, ACP models/turn, authorized processEnv, Native Installer, headless/maintenance and system Skill
- * [OUTPUT]: Provides the Claude backend, minimum supported version, ACP chat, authorization environment, model options with optional probe admission, the Claude plugin's changed settings as SDK options with a workflow role's memory always off (claudePluginOptions, T-P5/T-D08), runtime/auth checks, its Provider bridge readiness plan, managed-policy validation and extensions.
+ * [OUTPUT]: Provides createClaudeRuntimeDetection, claudePluginOptions, claudeInteractiveSessionMeta, claudeSpawnConfig, claudeBackend.
  * [POS]: The only installation point for the Claude descriptor; No pre-checking, no reading, no isolating of the copy of user credentials; managed-policy validation is best-effort because the adapter re-reads the policy in its own process
- * Workflow Skill isolation reaches native Read/Glob/Grep permissions and the Bash sandbox through claudeInteractiveSessionMeta.
  */
 
 import { claudeQuota } from "./quota";
@@ -161,8 +160,8 @@ const capabilities: Omit<
  * （预批随档位、三条 deny、MCP 与 settings 来源收敛），而这些不变量必须
  * 能在不真的起进程的前提下被断言。
  */
-/* T-P5: the Claude plugin's changed settings become SDK options; an untouched default adds nothing. A workflow role's memory is off
-   whatever the plugin says (T-D08, disableProviderMemory). `Task` is the subagent tool's older name, `Agent` its current one. */
+/* Changed settings become SDK options; untouched defaults add nothing. Maintenance jobs can force memory off.
+   `Task` is the native subagent tool's older name, `Agent` its current one. */
 export const claudePluginOptions = (config: BackendTurnOptions["backendSessionConfig"], disableProviderMemory = false) => {
   const changed = config?.providerSettings ?? {};
   const memoryOff = disableProviderMemory || changed.memory === false;
@@ -178,7 +177,7 @@ export const claudePluginOptions = (config: BackendTurnOptions["backendSessionCo
   };
 };
 
-export const claudeInteractiveSessionMeta = (turn: Pick<BackendTurnOptions, "filesystemAccess" | "backendSessionConfig" | "disableProviderMemory" | "skillIsolation">
+export const claudeInteractiveSessionMeta = (turn: Pick<BackendTurnOptions, "filesystemAccess" | "backendSessionConfig" | "disableProviderMemory">
   & { payload: { turnOptions: Pick<BackendTurnOptions["payload"]["turnOptions"], "permissionMode"> } }) => {
   const plugin = claudePluginOptions(turn.backendSessionConfig, turn.disableProviderMemory);
   return turn.filesystemAccess
@@ -193,17 +192,16 @@ export const claudeInteractiveSessionMeta = (turn: Pick<BackendTurnOptions, "fil
                   : "ask-for-approval",
                 undefined,
                 turn.backendSessionConfig?.claudeDisabledPluginIds,
-                turn.skillIsolation?.deniedRoots,
+                undefined,
                 turn.backendSessionConfig?.claudeEnabledPluginIds
               ),
               ...(plugin.memoryOff ? { autoMemoryEnabled: false } : {}),
             }),
             ...plugin.options,
             ...CLAUDE_INTERACTIVE_LOCKDOWN,
-            ...(turn.skillIsolation ? { settingSources: [], disallowedTools: [...(plugin.options.disallowedTools ?? []), "Skill"] } : {}),
             /* A read-only turn gets no write-capable built-in at all; the sandbox denyWrite and Edit/Write deny stay as the second line (04 §5). */
             ...(turn.filesystemAccess.mode === "read-only" ? { tools: [...CLAUDE_READ_ONLY_TOOLS] } : {}),
-            ...(!turn.skillIsolation && turn.backendSessionConfig?.claudePluginPaths?.length
+            ...(turn.backendSessionConfig?.claudePluginPaths?.length
               ? {
                   plugins: turn.backendSessionConfig.claudePluginPaths.map(
                     (path) => ({ type: "local" as const, path })

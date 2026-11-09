@@ -2,7 +2,6 @@
  * [INPUT]: Depends on Policy v4/Delivery, runtime-owned instance, platform capabilities, paged native-history Consent/rebuild controllers, service/support, and build/authorise/observe/run coordination
  * [OUTPUT]: Provides a platform-gated admission/recall/capture façade (plus `onStatus` for main-side observers such as the phone Memory facade) with native-segment history, independent Provider/statistical alerts, O(1) metadata, preview/Consent, pause/resume, delete, and rebuild recovery
  * [POS]: The main/memory/service chat façade and composition root; policy/delivery/recall-stats stores and the orchestration controllers each own their own truth, provider recall/capture failures surface here as an attention warning that triggers recovery and republish
- * Plugin availability fences live traffic independently of service preferences; workflow capture remains prohibited.
  */
 
 import { randomUUID } from "node:crypto";
@@ -123,7 +122,6 @@ export class MemoryService {
         enabled: Boolean(this.memory?.pluginEnabled && this.memory.enabled),
         paused: this.memory?.paused ?? false,
         sharingMode: this.memory?.sharingMode ?? "chat",
-        workflow: this.authority.workflowSnapshot(),
       }),
       runtime: () => ({
         revision: this.controlGeneration,
@@ -152,7 +150,6 @@ export class MemoryService {
       },
     });
     this.authority = new MemoryAuthorityGuard({
-      workflowRolesEnabled: options.workflowRolesEnabled,
       policy: this.policy,
       delivery: this.delivery,
       runtimes: options.runtimes,
@@ -366,7 +363,6 @@ export class MemoryService {
     this.syncWorker();
     if (this.authority.executionEnabled()) void this.refreshHealth(true);
   }
-  invalidateWorkflowRoles() { this.authority.invalidateWorkflowRoles(); }
   prepareAdmission(canonical: CanonicalMemoryTurnSnapshot) {
     return this.admission.prepare(canonical);
   }

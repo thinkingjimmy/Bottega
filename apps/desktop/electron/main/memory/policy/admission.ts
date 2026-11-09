@@ -2,7 +2,6 @@
  * [INPUT]: Depends on immutable Settings/Policy/Runtime snapshot, canonical Chat snapshot, core Scope resolver/domain and realpath
  * [OUTPUT]: Provides a single fail-open MemoryTurnAdmissionPort façade, revision-fenced eligible/skipped/unavailable and a fully frozen optional observation domain by active consent; no admission at all (the turn goes without Memory) until Memory's startup has run
  * [POS]: The main/memory/policy boundary; Just read Owner, take a snapshot, don't search, don't connect, don't write Store
- * Workflow reads require explicit intent, local opt-in and non-personal consent; freshness comes from step admission time.
  */
 
 import { realpath } from "node:fs/promises";
@@ -32,7 +31,6 @@ export type MemoryIntentSnapshot = Readonly<{
   enabled: boolean;
   paused: boolean;
   sharingMode: MemorySharingMode;
-  workflow?: Readonly<{ enabled: boolean; generation: number }>;
 }>;
 
 export type MemoryRuntimeAdmissionSnapshot = Readonly<{
@@ -50,8 +48,9 @@ export type CanonicalMemoryTurnSnapshot = Readonly<{
   incarnationId: string;
   projectId: string | null;
   workspace: string;
-} & ({ origin: "manual" | "other"; userCreatedAt: number } |
-  { origin: "workflow"; admittedAt: number; workflowMemoryRead: boolean })>;
+  origin: "manual" | "other";
+  userCreatedAt: number;
+}>;
 
 export type MemoryAdmissionAttention = Readonly<{
   failureKind: MemoryFailureKind;
@@ -85,9 +84,6 @@ export class MemoryTurnAdmissionPort {
       const workspaceRealpath = await realpath(canonical.workspace);
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const intent = this.options.intent();
-        if (canonical.origin === "workflow" && (!canonical.workflowMemoryRead || !intent.workflow?.enabled || intent.sharingMode === "personal")) {
-          return this.skipped(canonical, "workflow-not-allowed");
-        }
         if (!intent.enabled) return this.skipped(canonical, "disabled");
         if (intent.paused) return this.skipped(canonical, "paused");
         if (canonical.planMode) return this.skipped(canonical, "plan-mode");
@@ -117,7 +113,7 @@ export class MemoryTurnAdmissionPort {
             observationScopeOf(consent)
           );
         }
-        const admittedAt = canonical.origin === "workflow" ? canonical.admittedAt : canonical.userCreatedAt;
+        const admittedAt = canonical.userCreatedAt;
         if (!Number.isFinite(admittedAt) || admittedAt < consent.effectiveAt) {
           return this.unavailable(
             canonical,
@@ -143,7 +139,6 @@ export class MemoryTurnAdmissionPort {
           kind: "eligible" as const,
           context: {
             requestId: canonical.requestId,
-            ...(canonical.origin === "workflow" ? { workflowGeneration: intent.workflow!.generation } : {}),
             sharingMode: consent.sharingMode,
             sharingGeneration: consent.sharingGeneration,
             memorySpace: resolved.memorySpace,
@@ -172,8 +167,6 @@ export class MemoryTurnAdmissionPort {
   ) {
     return (
       this.options.intent().revision === intent.revision &&
-      this.options.intent().workflow?.generation === intent.workflow?.generation &&
-      this.options.intent().workflow?.enabled === intent.workflow?.enabled &&
       this.options.policy.snapshot().state.revision === policy.state.revision &&
       this.options.runtime().revision === runtime.revision
     );
@@ -181,7 +174,7 @@ export class MemoryTurnAdmissionPort {
 
   private skipped(
     canonical: CanonicalMemoryTurnSnapshot,
-    reason: "disabled" | "paused" | "plan-mode" | "workflow-not-allowed"
+    reason: "disabled" | "paused" | "plan-mode"
   ) {
     return freezeMemoryValue({
       kind: "skipped" as const,

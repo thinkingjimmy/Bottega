@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod and the zod-free capability leaf (provider-capabilities.ts)
- * [OUTPUT]: Provides the four-layer Provider contract: providerIdSchema, PROVIDER_CAPABILITIES/PROVIDER_PURPOSES/APPLIES_AT, homePathSchema, providerDescriptorSchema (with an optional discovery version floor and optional CLI facts: instructions file, skills root, plugin mode, plan decisions; and the optional ACP launch arguments, bounded argv with no path separator) + providersDeclaring (layer 1), negotiateProviderGrammar (layer 2), measuredCapabilitySchema + currentMeasurements (layer 3), ROLE_REQUIREMENTS + admitRole + WORKFLOW_ROLES/admitWorkflowRole with typed refusals and host-enforced capabilities (layer 4), and configChangeEffect
+ * [OUTPUT]: Provides bounded Provider IDs and descriptors, capability declarations, launch grammar negotiation, home paths and configuration-change effects.
  * [POS]: Public Provider contract shared by the host, Provider packages and later the SDK; support is proven by host measurement, never by a package's own declaration
  */
 import { z } from "zod";
@@ -11,7 +11,7 @@ export type { ProviderId } from "./provider/id";
 
 export { APPLIES_AT, PROVIDER_CAPABILITIES, PROVIDER_PURPOSES, providersDeclaring, type AppliesAt, type ProviderCapability, type ProviderPurpose }
   from "./provider-capabilities";
-import { APPLIES_AT, PROVIDER_CAPABILITIES, PROVIDER_PURPOSES, type ProviderCapability } from "./provider-capabilities";
+import { APPLIES_AT, PROVIDER_CAPABILITIES, PROVIDER_PURPOSES } from "./provider-capabilities";
 
 /* ── Layer 1: static descriptor (ceilings only; a package declares, it never proves) ───────────── */
 const envName = z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/);
@@ -107,67 +107,6 @@ export function negotiateProviderGrammar(descriptor: ProviderDescriptor, hello: 
   const unknown = parsed.requiredFields.filter(field => !KNOWN_REQUIRED_FIELDS.has(field));
   if (unknown.length) return { ok: false as const, reason: "required-field-unknown", unknown };
   return { ok: true as const, grammar };
-}
-
-/* ── Layer 3: measured capabilities (host probes; bound to the exact CLI, package and probe) ─────── */
-export const measurementIdentitySchema = z.object({ cliIdentity: z.string().min(1).max(512), cliVersion: z.string().min(1).max(64),
-  packageDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/), probeVersion: z.string().min(1).max(64) }).strict();
-export type MeasurementIdentity = z.infer<typeof measurementIdentitySchema>;
-export const measuredCapabilitySchema = z.object({ providerId: providerIdSchema, capability: z.enum(PROVIDER_CAPABILITIES),
-  state: z.enum(["enforced", "unverified", "unsupported"]), identity: measurementIdentitySchema, probeId: z.string().min(1).max(128),
-  measuredAt: z.number().int().min(0) }).strict();
-export type MeasuredCapability = z.infer<typeof measuredCapabilitySchema>;
-
-/** Measurements whose CLI, package or probe identity no longer matches are dropped, never trusted as stale evidence. */
-export function currentMeasurements(records: readonly MeasuredCapability[], current: MeasurementIdentity) {
-  return records.filter(record => record.identity.cliIdentity === current.cliIdentity && record.identity.cliVersion === current.cliVersion &&
-    record.identity.packageDigest === current.packageDigest && record.identity.probeVersion === current.probeVersion);
-}
-
-/* ── Layer 4: role admission ───────────────────────────────────────────────────────────── */
-export const ROLE_REQUIREMENTS = Object.freeze({
-  /* Planning and review need a workspace the Provider cannot write; the absence of side-effecting business tools is
-     Bottega's own tool set, not a Provider capability. Only result-format runs with no tools at all. */
-  "plan-review": ["read-only"],
-  implement: ["cancel"],
-  "result-format": ["tool-filter", "read-only"],
-} as const satisfies Record<string, readonly ProviderCapability[]>);
-export type ProviderRole = keyof typeof ROLE_REQUIREMENTS;
-
-/**
- * Admitted only when every required capability is either enforced by the host itself (`hostEnforced`) or measured
- * `enforced` for the current identity and not declared unsupported by the package. `unverified` never counts. An explicit user request (e.g. no network) becomes a
- * hard requirement of the role for this binding.
- */
-export function admitRole(input: { role: ProviderRole; descriptor: ProviderDescriptor; measured: readonly MeasuredCapability[];
-  identity: MeasurementIdentity; userRequires?: readonly ProviderCapability[];
-  /** What the host itself enforces for this Provider on this computer (e.g. a read-only sandbox around it): met without the CLI. */
-  hostEnforced?: readonly ProviderCapability[] }) {
-  const required = [...new Set<ProviderCapability>([...ROLE_REQUIREMENTS[input.role], ...(input.userRequires ?? [])])];
-  const current = currentMeasurements(input.measured.filter(item => item.providerId === input.descriptor.providerId), input.identity);
-  const missing = required.filter(capability => !input.hostEnforced?.includes(capability) && (input.descriptor.capabilities[capability] === "unsupported" ||
-    !current.some(item => item.capability === capability && item.state === "enforced")));
-  return missing.length ? { admitted: false as const, missing } : { admitted: true as const };
-}
-
-/* Workflow steps map onto the provider roles: planning and review may not write the workspace, development implements. */
-export const WORKFLOW_ROLES = Object.freeze({ plan: "plan-review", review: "plan-review", develop: "implement" } as const);
-export type WorkflowRole = keyof typeof WORKFLOW_ROLES;
-/**
- * A step's picker shows every configuration and greys the ones that cannot take the step, with a typed reason:
- * `provider-cannot` when the descriptor rules a required capability out (Copilot cannot keep a workspace read-only, so
- * plan and review are refused for it), `not-measured` when the capability is possible but not proven enforced on
- * this exact CLI, package and probe.
- * Measured (CLI canary, 2026-09-25): Claude 2.1.282 proves read-only and tool-filter through a tool allowlist (plan
- * mode makes the model decline rather than be refused). Codex bb-native-v1 does not admit strict read-only,
- * network-off or no-tool roles; its ordinary Plan behavior retains the selected Chat permissions.
- */
-export function admitWorkflowRole(input: { role: WorkflowRole; descriptor: ProviderDescriptor; measured: readonly MeasuredCapability[];
-  identity: MeasurementIdentity; userRequires?: readonly ProviderCapability[]; hostEnforced?: readonly ProviderCapability[] }) {
-  const result = admitRole({ ...input, role: WORKFLOW_ROLES[input.role] });
-  if (result.admitted) return result;
-  const impossible = result.missing.filter(capability => input.descriptor.capabilities[capability] === "unsupported");
-  return { admitted: false as const, reason: impossible.length ? "provider-cannot" as const : "not-measured" as const, missing: result.missing };
 }
 
 /** What a changed config value requires; `process-start` changes the process identity, so a pool must not reuse it. */

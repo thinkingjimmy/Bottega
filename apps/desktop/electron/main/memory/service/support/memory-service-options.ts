@@ -2,7 +2,6 @@
  * [INPUT]: Depends on legacy full Chat reads, native-only paged segments, O(1) metadata, Memory provider/factory, host runtime registry, and the platform capability matrix
  * [OUTPUT]: Provides Memory service ports that distinguish live full-record reads, native history segments, and title-level observation reads
  * [POS]: The main/memory/service/support dependence is injected into the border; The facade is only to be kept in operation while coordinating duties
- * Workflow read authority is supplied as a default-off local setting callback.
  */
 
 import type { ChatRecord } from "../../../../../shared/ipc/content/chats-ipc";
@@ -35,7 +34,6 @@ export type MemoryServiceOptions = {
      而可选字段的缺省只能是放行——那正是把安全门写成默认开着。 */
   platformSupport: PlatformCapabilities;
   providerFactory?: (providerId: string, baseUrl: string) => MemoryProvider;
-  workflowRolesEnabled?: () => boolean;
   automaticWorker?: boolean;
   shutdownGraceMs?: number;
 };

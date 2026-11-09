@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on memoryEn from ./en for both its structural type and the English leaves this catalog reuses
- * [OUTPUT]: Includes Memory access selection, explicit workflow-read consent, plugin chrome and native-memory distinction; Provides memoryFr, the French Memory catalog
+ * [OUTPUT]: Provides memoryFr.
  * [POS]: French leaf of shared/i18n/locales/memory; loaded on demand by the matching top-level locale
  */
 
@@ -9,8 +9,6 @@ import { memoryEn } from "./en";
 export const memoryFr: typeof memoryEn = {
   ...memoryEn,
   plugin: { serviceDisabled: "Activez le plugin Memory pour utiliser ce service. Votre choix pour le service est conservé lorsque le plugin est désactivé.", open: "Ouvrir le plugin Memory", name: "Memory", official: "Officiel · Intégré", about: "À propos de Memory", unsupported: "Memory n’est pas pris en charge sur cette plateforme. Il est actuellement disponible uniquement sur macOS.", nativeDistinction: "Bottega Memory est distinct de la mémoire native gérée dans les paramètres des plugins Codex et Claude." },
-  access: {"none": "Aucune", "readOnly": "Lecture seule", "description": "Rappelle les souvenirs pertinents pour ce rôle. Les rôles de workflow n’écrivent jamais dans Memory.", "workflowOff": "La lecture des workflows n’est pas autorisée dans le plugin Memory.", "workflowOn": "La lecture des workflows est autorisée sur cet ordinateur."},
-  workflow: {"sectionTitle": "Accès et commandes", "label": "Autoriser les rôles de workflow à lire Memory", "description": "Seuls les rôles configurés en lecture seule peuvent rappeler des souvenirs. Ils n’écrivent jamais dans Memory.", "consentTitle": "Autoriser la lecture par les workflows ?", "consentBody": "Les rôles configurés de planification, développement et revue peuvent rappeler des souvenirs à partir du nom de la tâche et de ses critères d’acceptation, dans le Chat ou Project actuel. Ils n’écrivent pas de souvenirs. Mettre Memory en pause ou retirer cette autorisation arrête le rappel à l’étape suivante.", "confirm": "Autoriser la lecture seule", "requiresActive": "Activez Memory et terminez le consentement avant d’autoriser la lecture. Reprenez Memory s’il est en pause.", "personal": "La lecture des workflows n’est pas disponible dans le pool personnel. Choisissez le périmètre Chat ou Project.", "saveFailed": "Impossible d’enregistrer l’autorisation. Réessayez."},
   store: {
     providerListFailed: "Échec du chargement des fournisseurs Memory",
     statusFailed: "Échec de la lecture de l’état de Memory",

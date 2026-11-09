@@ -1,10 +1,11 @@
 "use client";
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, i18n, Sidebar UI, product providers, shared WorkspaceNavigation/SettingsNavigation and ComputerSwitcher, active App targets, footer affordances, cloud projections and the Sidebar notice dialog.
- * [OUTPUT]: Adapts native data and actions to the shared complete sidebar, mounts the account's computer strip with this computer first, creates a new Chat on the computer being viewed and stands its controls down in place while that computer sleeps, and preserves generation-fenced targets, feedback and Settings navigation (including the canonical Plugins catalog entry in flag-off builds, build-flagged Agent configs and the workbench Plugins group: All plugins plus each turned-on plugin that has settings, with Dock named Dock and using PanelBottom; the macOS-only standalone Dock entry remains in flag-off builds).
+ * [OUTPUT]: Provides AppSidebar.
  * [POS]: Unified Plugins entry and declared ready page navigation; sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  * Memory status follows its plugin item when the workbench UI is enabled; the footer uses the same destination.
  */
+import { useWorkbenchSettingsLabels } from "@/components/settings/plugins/navigation/labels";
 import {
   useCallback,
   useEffect,
@@ -14,30 +15,8 @@ import {
 } from "react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
-import {
-  Archive,
-  ChartNoAxesColumnIncreasing,
-  Database,
-  Download,
-  PanelBottom,
-  RefreshCw,
-  Keyboard,
-  Loader2,
-  PackagePlus,
-  Plus,
-  Settings,
-  Puzzle,
-  Server,
-  SlidersHorizontal,
-  BrainCircuit,
-  Globe,
-  TriangleAlert,
-  UserCog,
-  UserPen,
-  Users,
-  Wrench,
-} from "lucide-react";
-import { useWorkbenchSettingsLabels } from "@/components/settings/agent-configs/entry";
+import { Archive, ChartNoAxesColumnIncreasing, Database, Download, PanelBottom, RefreshCw, Keyboard, Loader2, PackagePlus, Plus, Settings, Puzzle, Server, SlidersHorizontal, BrainCircuit, Globe, TriangleAlert, UserPen, Users, Wrench } from "lucide-react";
+
 import type { ChatSummary } from "../../../shared/ipc/content/chats-ipc";
 import type { ChatStorageFailure } from "../../../shared/product/product-failure";
 import {
@@ -447,7 +426,6 @@ function AppSidebarContent({
       label: t("common.agents"),
       items: [
         settingItem("providers", t("settings.providers.title"), <Server />),
-        ...(workbenchLabels ? [settingItem("agent-configs", workbenchLabels.agentConfigs, <UserCog />)] : []),
         settingItem(
           "personalization",
           t("common.personalization"),

@@ -272,7 +272,7 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
     loadFailed: "No se pudieron cargar los ajustes del Dock.",
     unsupportedTitle: "Bottega Dock no está disponible",
     unsupportedPlatform: "Bottega Dock solo está disponible en macOS.",
-    unsupportedVersion: "Dock Alpha solo admite macOS 27. Las demás versiones aún no se han verificado.",
+    unsupportedVersion: "Dock Alpha admite macOS 26 y 27 en los Mac con chip de Apple. No se admiten otras versiones de macOS.",
     unsupportedArchitecture: "Bottega Dock requiere un Mac con chip de Apple.",
     unsupportedHelperMissing: "Falta un componente necesario para Bottega Dock en esta instalación. Reinstala Bottega para usar el Dock.",
     registrationUnknown: "Sin verificar",

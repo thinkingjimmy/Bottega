@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on reliable runtime PATH/executable file and process cloud routing environment
  * [OUTPUT]: Provides Claude ACP subsystems with minimal environment, production launcher and cloud routing whitelist (the sessionId validator is in turn-config.ts)
- * Workflow launches force CLAUDE_CODE_DISABLE_AUTO_MEMORY after caller environment overrides.
+ * Memory-disabled maintenance sessions force CLAUDE_CODE_DISABLE_AUTO_MEMORY after caller overrides.
  * [POS]: Environment seam for the Claude backend; never reads, copies, or rewrites credentials or ~/.claude configuration
  */
 

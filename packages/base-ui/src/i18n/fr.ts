@@ -190,7 +190,7 @@ export const basesFr: BasesCatalog = {
     uploadQueueFull: "Attendez la fin des autres envois ou enregistrez moins d’images à la fois.",
     imageVerificationFailed: "L’image n’a pas pu être vérifiée. Sélectionnez à nouveau le fichier.",
     recordChanged: "Cet enregistrement ou ses champs ont été modifiés ailleurs. Votre saisie est conservée ; vérifiez la version actuelle avant d’enregistrer.",
-    workflowOnly: "Ce champ est rempli par le Workflow et ne peut pas être modifié ici.",
+
     editTitle: "Modifier l’enregistrement",
     checkSave: "Vérifiez le résultat de l’enregistrement avant de continuer.",
     fileLimit: "Choisissez une image non vide de 50 Mo maximum.",
@@ -497,7 +497,7 @@ export const basesFr: BasesCatalog = {
     empty: "Aucune modification enregistrée",
     operation: "Opération : {{operation}}",
     fields: "Champs : {{fields}}",
-    actor: { renderer: "Vous", agent: "Agent", system: "Système", "app-gui": "App GUI", workflow: "Workflow" },
+    actor: { renderer: "Vous", agent: "Agent", system: "Système", "app-gui": "App GUI",  },
   },
   relation: {
     empty: "Choisir un enregistrement",

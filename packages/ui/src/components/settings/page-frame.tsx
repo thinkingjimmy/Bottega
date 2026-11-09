@@ -1,12 +1,14 @@
 /**
- * [INPUT]: React context, shared scrolling/feedback primitives and class-name utilities.
- * [OUTPUT]: SettingsPage and SettingsCanvas with inherited width, wrapping canvas or persistent page headings, optional grouped title descriptions, trailing page actions, section headers and alerts.
+ * [INPUT]: React context, the lucide Info icon, shared scrolling/feedback/tooltip primitives and class-name utilities.
+ * [OUTPUT]: SettingsPage and SettingsCanvas with inherited width, wrapping canvas or persistent page headings, optional grouped title descriptions, trailing page actions, section headers with optional hover/focus info, and alerts.
  * [POS]: Platform-independent settings presentation.
  */
 
 import { createContext, useContext, type ReactNode } from "react";
+import { Info } from "lucide-react";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { toastClearanceRef } from "@ai-chat/ui/components/ui/sonner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@ai-chat/ui/components/ui/tooltip";
 import { cn } from "@ai-chat/ui/lib/utils";
 
 type SettingsPageLayout = {
@@ -90,12 +92,14 @@ export function SettingsCanvas({
 export function SettingsSection({
   title,
   description,
+  info,
   action,
   alert,
   children,
 }: {
   title: string;
   description?: ReactNode;
+  info?: string;
   action?: ReactNode;
   alert?: ReactNode;
   children: ReactNode;
@@ -106,9 +110,27 @@ export function SettingsSection({
     <section aria-labelledby={titleId} className="flex flex-col gap-3">
       <div className="space-y-1">
         <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <h2 id={titleId} className="min-w-0 font-heading font-semibold text-sm">
-            {title}
-          </h2>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h2 id={titleId} className="min-w-0 font-heading font-semibold text-sm">
+              {title}
+            </h2>
+            {info && (
+              <Tooltip delayDuration={350}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={info}
+                    className="relative inline-flex size-5 shrink-0 cursor-help touch-manipulation items-center justify-center rounded-sm text-muted-foreground/60 transition-colors touch-target-44 [--touch-target-inset:-12px] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
+                  >
+                    <Info className="size-3.5" aria-hidden="true" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="start" sideOffset={6} className="max-w-xs text-pretty leading-relaxed">
+                  {info}
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
           {action}
         </div>
         {description && (

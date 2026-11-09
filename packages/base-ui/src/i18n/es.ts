@@ -190,7 +190,7 @@ export const basesEs: BasesCatalog = {
     uploadQueueFull: "Espera a que terminen las otras subidas o guarda menos imágenes a la vez.",
     imageVerificationFailed: "No se pudo verificar la imagen. Vuelve a seleccionar el archivo.",
     recordChanged: "Este registro o sus campos cambiaron en otro lugar. Tus datos se conservan; revisa la versión actual antes de guardar.",
-    workflowOnly: "Este campo lo rellena el Workflow y no se puede editar aquí.",
+
     editTitle: "Editar registro",
     checkSave: "Comprueba el resultado del guardado antes de continuar.",
     fileLimit: "Elige una imagen no vacía de hasta 50 MB.",
@@ -495,7 +495,7 @@ export const basesEs: BasesCatalog = {
     empty: "No hay cambios registrados",
     operation: "Operación: {{operation}}",
     fields: "Campos: {{fields}}",
-    actor: { renderer: "Tú", agent: "Agent", system: "Sistema", "app-gui": "App GUI", workflow: "Workflow" },
+    actor: { renderer: "Tú", agent: "Agent", system: "Sistema", "app-gui": "App GUI",  },
   },
   relation: {
     empty: "Elegir registro",

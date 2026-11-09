@@ -72,7 +72,6 @@ export type PluginToolSpec = {
   outputSchema?: z.ZodType;
   outputJsonSchema?: Record<string, unknown>;
   resultByteLimit?: number;
-  workflowAllowed?: boolean;
   description: string;
   /** 仅当 mentions 全部已签发时才拼到 description，避免泄漏已关闭工具名。 */
   crossReferences?: readonly Readonly<{

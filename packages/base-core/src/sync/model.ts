@@ -8,7 +8,7 @@ const id = z.string().min(1).max(192), hash = z.string().regex(/^[a-f0-9]{64}$/)
 export const baseSyncIdentitySchema = z.object({ ownerKey: z.string().min(1).max(256), baseId: id }).strict();
 export type BaseSyncIdentity = z.infer<typeof baseSyncIdentitySchema>;
 export const baseCandidateSummarySchema = z.object({ operationId: id, payloadHash: hash, fieldCount: count,
-  actor: z.enum(["user", "agent", "system", "workflow"]), waiting: z.boolean(), blocked: z.enum(["dependency", "tombstone", "app-structure"]).nullable(),
+  actor: z.enum(["user", "agent", "system"]), waiting: z.boolean(), blocked: z.enum(["dependency", "tombstone", "app-structure"]).nullable(),
   canRestore: z.boolean(), canCopy: z.boolean().optional(), copyName: z.string().max(100).optional(), copyRequested: z.boolean().optional(), copiedTo: baseSyncIdentitySchema.optional(),
   sourceDeviceId: id.nullable(), sourceDeviceName: z.string().min(1).max(40).nullable().optional(), createdAt: count.nullable() }).strict();
 export type BaseCandidateSummary = z.infer<typeof baseCandidateSummarySchema>;

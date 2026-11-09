@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsUpdatesEn structural type
- * [OUTPUT]: Provides settingsUpdatesFr, the French Settings › Updates catalog; unified row actions and collapsed failure details use shared update, retry and manual-download copy
+ * [OUTPUT]: Provides settingsUpdatesFr, the French Settings › Updates catalog; stage-specific check/download recovery, current-version labels and explicit diagnostic-copy feedback
  * [POS]: French leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
@@ -34,17 +34,27 @@ export const settingsUpdatesFr: typeof settingsUpdatesEn = {
   installingShort: "Installation de la mise à jour…",
   restartUpdate: "Redémarrer et mettre à jour",
   failedShort: "Échec de la mise à jour",
-  checkFailedShort: "Échec de la vérification",
+  checkFailedShort: "Impossible de vérifier les mises à jour",
   manualShort: "Télécharger la nouvelle version",
   downloading: "Téléchargement de {{version}}",
   installing: "Mise à jour téléchargée · redémarrage pour l’installer",
-  failed: "Échec de la mise à jour : {{message}}",
-  failedUnknown: "La mise à jour a échoué pour une raison inconnue.",
-  validationFailed: "La mise à jour téléchargée n’a pas passé la vérification. Bottega va la rechercher à nouveau.",
-  failedResolution:
-    "Téléchargez la nouvelle version depuis la page Releases, ou signalez le problème sur GitHub.",
-  backgroundFailed: "La dernière vérification automatique a échoué",
-  backgroundFailedOpen: "Les vérifications automatiques échouent ; ouvrez Mises à jour pour les détails",
+  validationFailed: "La mise à jour téléchargée n’a pas pu être vérifiée. Vérifiez à nouveau les mises à jour.",
+  failedResolution: "Vous pouvez aussi télécharger Bottega depuis la page de téléchargement.",
+  currentVersion: "Version actuelle {{version}}",
+  currentVersionRetained: "Vous pouvez continuer à utiliser la version actuelle.",
+  retryCheck: "Vérifier à nouveau",
+  retryDownload: "Télécharger à nouveau",
+  downloadFailedShort: "Échec du téléchargement de la mise à jour",
+  offline: "Vous êtes hors ligne. Bottega vérifiera à nouveau après la reconnexion.",
+  connectionFailed: "Impossible de joindre le service de mise à jour. Réessayez plus tard.",
+  requestTimedOut: "Le service de mise à jour n’a pas répondu à temps. Réessayez plus tard.",
+  serviceUnavailable: "Le service de mise à jour est temporairement indisponible. Réessayez plus tard.",
+  rateLimited: "Le service de mise à jour est occupé. Bottega réessaiera plus tard.",
+  checkFailedUnknown: "Impossible de récupérer les informations de mise à jour. Réessayez plus tard.",
+  downloadFailedUnknown: "Impossible de télécharger la mise à jour. Relancez le téléchargement.",
+  copyDiagnostics: "Copier le diagnostic",
+  diagnosticsCopied: "Diagnostic copié",
+  diagnosticsCopyFailed: "Impossible de copier le diagnostic. Réessayez.",
   check: "Rechercher les mises à jour",
   upgrade: "Mettre à jour",
   manualUpgrade: "Ouvrir la page de téléchargement",

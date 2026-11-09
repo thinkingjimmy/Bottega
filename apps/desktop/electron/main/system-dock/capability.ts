@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path and the macOS product version, architecture and packaging facts supplied by the caller.
- * [OUTPUT]: Provides the macOS 27 Apple silicon Dock Alpha gate, independent recovery availability, pending installation verification and bundled helper paths.
+ * [OUTPUT]: Provides DOCK_MACOS_VERSIONS, the macOS 26/27 Apple silicon Dock Alpha gate, independent recovery availability, pending installation verification and bundled helper paths.
  * [POS]: system-dock platform policy (5.6); never raises the whole app's minimum system version and never reads environment overrides.
  */
 
@@ -8,7 +8,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { DockCapability } from "../../../shared/system-dock/ipc";
 
-export const DOCK_MACOS_MAJOR = 27;
+export const DOCK_MACOS_VERSIONS: readonly number[] = [26, 27];
 export type DockPaths = { bridge: string; agent: string; glass: string; launchAgents: string };
 export type DockPlatform = { capability: DockCapability; paths: DockPaths; serviceName: string | null; recoveryAvailable: boolean; nativeRecoveryAvailable: boolean };
 
@@ -39,7 +39,7 @@ export function evaluateDockPlatform(input: { platform: NodeJS.Platform; arch: s
   base.serviceName = input.packaged ? findServiceName(paths.launchAgents, exists, input.list) : null;
   base.recoveryAvailable = base.nativeRecoveryAvailable && Boolean(base.serviceName) && exists(paths.agent);
   const major = /^\d+(?:\.\d+){0,2}$/.test(input.systemVersion) ? Number(input.systemVersion.split(".")[0]) : NaN;
-  if (major !== DOCK_MACOS_MAJOR) return unsupported("os-version");
+  if (!DOCK_MACOS_VERSIONS.includes(major)) return unsupported("os-version");
   if (!base.nativeRecoveryAvailable) return unsupported("helper-missing");
   const reason = !input.packaged ? "development" : base.recoveryAvailable ? "checking" : "helper-missing";
   return { ...base, capability: { supported: true, replacement: false, reason } };

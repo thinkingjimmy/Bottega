@@ -17,7 +17,6 @@ import {
   type BaseRow,
 } from "../model/bases-ipc";
 import { validateBaseView } from "./base-view-validation";
-import { isWorkflowOnly, WORKFLOW_ONLY_ISSUE } from "./workflow-columns";
 import { statusError } from "./validation-error";
 
 export function assertStableColumnTypes(
@@ -239,10 +238,10 @@ export function invalidCellReason(column: BaseColumn) {
 }
 
 /**
- * Every refused cell of an insert batch from an external writer (an App GUI, a tool): unknown columns, workflow-only columns (a new record never
- * starts in a Stage lane, Q12), and cells validateBaseCell rejects (formula, attachment, bad types, missing relation targets).
+ * Collects every refused cell of an external insert batch: unknown columns,
+ * formula/attachment fields, invalid types and missing relation targets.
  */
-export function baseRowIssues(rows: readonly BaseRow[], columns: readonly BaseColumn[], relationRows: readonly BaseRow[], writer: "workflow" | "other") {
+export function baseRowIssues(rows: readonly BaseRow[], columns: readonly BaseColumn[], relationRows: readonly BaseRow[]) {
   const byId = baseColumnIndex(columns);
   const relationTargets = baseRowIdSet(relationRows);
   const issues: Array<{ rowIndex: number; columnId: string; reason: string }> = [];
@@ -250,7 +249,6 @@ export function baseRowIssues(rows: readonly BaseRow[], columns: readonly BaseCo
     for (const [columnId, value] of Object.entries(row.values)) {
       const column = byId.get(columnId);
       if (!column) { issues.push({ rowIndex, columnId, reason: "unknown_column" }); continue; }
-      if (writer === "other" && value !== null && isWorkflowOnly(column)) { issues.push({ rowIndex, columnId, reason: WORKFLOW_ONLY_ISSUE }); continue; }
       try { validateBaseCell(column, value as BaseCellValue, "external", relationTargets); }
       catch { issues.push({ rowIndex, columnId, reason: invalidCellReason(column) }); }
     }

@@ -55,7 +55,7 @@ export function enqueueBaseMutation(current: Pick<StoredBase, "meta" | "rows" | 
     operationId: mutation.syncIntent?.operationId ?? randomUUID(), baseId: envelope.baseId,
     payloadHash: "", patches, schemaRevision: confirmed.schemaRevision, baseFieldVersions: {}, baseValues: {}, baseColumnSchemaVersions: {},
     dependsOnOperationIds: [], atomicGroup: mutation.syncIntent?.atomicGroup ?? null, batchId: mutation.syncIntent?.batchId ?? null,
-    actor: mutation.actor === "agent" || mutation.actor === "system" || mutation.actor === "workflow" ? mutation.actor : "user",
+    actor: mutation.actor === "agent" || mutation.actor === "system" ? mutation.actor : "user",
     sealed: false, attempts: 0, state: "queued",
     encryptionCapture: captureBaseEncryptionState({ ...confirmed, meta: current.meta, rows: current.rows, tombstones: source.tombstones }, patches),
   };

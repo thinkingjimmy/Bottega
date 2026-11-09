@@ -1,11 +1,9 @@
 /**
- * [INPUT]: Lightweight portable member ownership validator; Depends on strict Chat fork IPC contracts, ChatStore generation-fenced native/imported prefixes and receipts, Chat Home creation ownership, Project lifecycle serialization, main/errors, and managed Git worktree primitives
+ * [INPUT]: Depends on strict Chat fork IPC contracts, ChatStore generation-fenced native/imported prefixes and receipts, Chat Home creation ownership, Project lifecycle serialization, main/errors, and managed Git worktree primitives
  * [OUTPUT]: Provides native/imported fork preflight with native child-envelope validation, request-singleflight creation/replay, managed-worktree admission cleanup, and main-owned commits Main-only member mode and portable ownership are sealed in the original Home request.
  * [POS]: apps/desktop/electron/main/chats/fork; Focused fork orchestration boundary composed by ChatsService; ordinary Chat creation, attachments, titles, and removal remain outside it
  */
 
-import { pluginModeSelectionSchema, type PluginModeSelection } from "@bottega/contracts/plugins/platform";
-import { pluginMemberSessionFactsSchema, type PluginMemberSessionFacts } from "@bottega/contracts/plugins/team/member";
 import { artifactRuntime } from "../../artifacts/core/runtime";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
@@ -54,8 +52,7 @@ type ChatForkServiceDependencies = Readonly<{
   emit: (event: ChatsEvent) => void;
 }>;
 
-type MainForkRequest = ForkChatRequest & { initialMode?: PluginModeSelection; memberSession?: PluginMemberSessionFacts };
-type ForkAuthority = { validate(): Promise<void>; current(): void; initialMode?: PluginModeSelection; memberSession?: PluginMemberSessionFacts };
+type ForkAuthority = { validate(): Promise<void>; current(): void };
 
 export class ChatForkService {
   private readonly running = new Map<string, {
@@ -82,9 +79,7 @@ export class ChatForkService {
 
   fork(input: ForkChatRequest, authority?: ForkAuthority) {
     this.dependencies.assertAdmission();
-    const request = forkChatInputSchema.parse(input);
-    const value: MainForkRequest = { ...request, ...(authority?.initialMode ? { initialMode: pluginModeSelectionSchema.parse(authority.initialMode) } : {}),
-      ...(authority?.memberSession ? { memberSession: pluginMemberSessionFactsSchema.parse(authority.memberSession) } : {}) };
+    const value = forkChatInputSchema.parse(input);
     const operationId = forkOperationId(value.requestId);
     const fingerprint = createHash("sha256").update(JSON.stringify(value)).digest("hex");
     const active = this.running.get(operationId);
@@ -125,7 +120,7 @@ export class ChatForkService {
     });
   }
 
-  private async perform(value: MainForkRequest, authority?: ForkAuthority) {
+  private async perform(value: ForkChatRequest, authority?: ForkAuthority) {
     const replay = await this.dependencies.store.forkReplay(value);
     if (replay) return this.finishReplay(value, replay);
     this.dependencies.homes?.assertCanCreateChat();
@@ -150,7 +145,7 @@ export class ChatForkService {
     return replay;
   }
 
-  private async create(value: MainForkRequest, projectId: string, authority?: ForkAuthority) {
+  private async create(value: ForkChatRequest, projectId: string, authority?: ForkAuthority) {
     const source = await this.dependencies.store.forkSource(value);
     if (!source || source.projectId !== projectId) {
       throw statusError(409, "CHAT_FORK_SOURCE_PROJECT_CHANGED");
@@ -188,7 +183,7 @@ export class ChatForkService {
     try {
       const executionDir = descriptor ? join(home.homeDir, descriptor.relativePath) : null;
       if (descriptor) {
-        await authority?.validate(); authority?.current();
+            await authority?.validate(); authority?.current();
         await createManagedWorktree({
           sourceWorkspace: workspace,
           worktreeDir: executionDir!,
@@ -198,7 +193,7 @@ export class ChatForkService {
         });
       }
       await this.dependencies.homes!.markPrepared(value.childChatId);
-      await authority?.validate(); authority?.current();
+        await authority?.validate(); authority?.current();
       const prefix = materializeForkPrefix(source, value);
       await artifactRuntime()?.prepareFork(value.sourceChatId, source.incarnationId, value.childChatId, home.incarnationId, prefix.messages, source.subagents);
       const child = await this.dependencies.store.forkFromRecord({

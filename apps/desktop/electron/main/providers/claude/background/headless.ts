@@ -174,7 +174,7 @@ export function claudeHeadlessSettings(
  */
 const MAX_SETTINGS_BYTES = 256 * 1024;
 
-/** The built-ins a read-only turn (workflow planning and review) gets; the host probe measures exactly this set. */
+/** The built-ins a read-only turn gets; the host probe measures exactly this set. */
 export const CLAUDE_READ_ONLY_TOOLS = ["Read", "Glob", "Grep"] as const;
 
 export function claudeInteractiveSettings(
@@ -242,8 +242,8 @@ export function claudeInteractiveSettings(
      等于：UI 上写着"逐条审批"，shell 与工作区写入却一次都不弹——审批档位
      的全部承诺当场落空。`autoAllowBashIfSandboxed` 是同一件事的沙箱侧开关。 */
   const preapproved = permissionMode === "approve-for-me";
-  /* A read-only turn (workflow planning and review) has nobody to answer a prompt: the read-only roots the host granted it
-     — such as its run's evidence — stay readable without asking. Ordinary turns still ask. */
+  /* A read-only background turn cannot answer prompts. Its host-granted read roots stay readable;
+     ordinary interactive turns retain approval prompts. */
   if (!preapproved) settings.permissions.allow = readOnly ? access.readOnlyRoots.map(path => `Read(${permissionPath(path)})`) : [];
   settings.sandbox.autoAllowBashIfSandboxed = preapproved;
   /* 三条不变量此前**只**落在 `sandbox.filesystem`——那层只约束被沙箱化的

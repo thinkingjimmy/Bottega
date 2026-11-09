@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on an AcpConnection (process plus completed handshake), ACP session state, trusted execution authority, materialized prompt blocks and optional main-owned session proof persistence.
- * [OUTPUT]: Provides AcpTurn/acpMcpServers, end-to-end session/prompt lifecycle with typed ProductFailure terminals/notices, pre-prompt complete and continuously frozen model/mode facts, health observation, steering, approval, cancellation and resume Omits canonical inherited replay only after a confirmed native member fork.
+ * [OUTPUT]: Provides AcpTurn.
  * [POS]: ACP turn composition root, owning one session/prompt lifecycle over its own connection; session accept/reject doubles as MCP-health evidence, and terminal ownership is resolved here before failure classification and release
  */
 
@@ -287,8 +287,6 @@ export class AcpTurn implements AgentTurn {
       config: this.config,
       serverFacts: this.serverFacts,
       replay: this.replayProof,
-      supportsFork: this.connection.supportsFork,
-      onForked: () => { this.restoredSessionResumed = true; },
       onRecoveryOutcome: outcome => { this.restoredSessionResumed = outcome === "resumed"; },
       onSessionId: (sessionId) => {
         this.sessionId = sessionId;

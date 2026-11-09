@@ -1,13 +1,13 @@
 /**
- * [INPUT]: Depends on canonical unified enablement and the existing Memory/Workflow/Artifact/Dock/Sketch execution owners.
- * [OUTPUT]: Provides native official contribution adapters, explicit feature switches with guarded original-state capture and truthful late-owner readiness.
- * [POS]: Main-owned native feature delegation; canonical installation state is authoritative and code updates never replay feature switches.
+ * [INPUT]: Depends on canonical unified enablement and the existing Memory/Artifact/Dock/Sketch execution owners.
+ * [OUTPUT]: Provides native official contribution adapters, explicit feature switches with guarded original-state capture, confirmed native Dock setup/state adoption and truthful late-owner readiness.
+ * [POS]: Main-owned native feature delegation; native Dock setup retains its original state authority; other canonical switches remain authoritative and code updates never replay feature switches.
  */
 import type { PluginView } from "@bottega/contracts/plugins/catalog";
 import type { PluginCatalog } from "../../catalog";
 import type { UnifiedPluginPlatform } from "../../platform/service";
 import type { PluginEnablementRequest } from "../../platform/model";
-const NATIVE = new Set(["memory", "workflow", "dock", "sketch"]);
+const NATIVE = new Set(["memory", "dock", "sketch"]);
 const FEATURES = new Set([...NATIVE, "artifact"]);
 type Ports = { platform: UnifiedPluginPlatform; catalog: Pick<PluginCatalog, "list" | "setEnabled" | "onChanged">; reportError?(cause: unknown): void };
 export async function composeOfficialFeatureAdapters(ports: Ports) {
@@ -36,6 +36,8 @@ export async function composeOfficialFeatureAdapters(ports: Ports) {
     if (closed) return;
     await reload();
     for (const id of [...pending]) await applyOwner(id, desired.get(id) ?? false, false);
+    const dock = views.get("dock");
+    if (dock && registered.has("dock") && !pending.has("dock")) desired.set("dock", dock.enabled);
     for (const id of registered.keys()) await ports.platform.refreshHostAdapter(id);
     ports.platform.refreshReadiness();
   }
@@ -43,10 +45,12 @@ export async function composeOfficialFeatureAdapters(ports: Ports) {
     if (!FEATURES.has(input.pluginId) || closed) return;
     return enqueue(async () => {
       await reload();
-      if (input.capturePrevious) {
-        const view = views.get(input.pluginId);
-        if (!view) throw new Error("Official feature owner is not ready: " + input.pluginId);
-        input.capturePrevious(view.enabled);
+      const view = views.get(input.pluginId);
+      if (!view) throw new Error("Official feature owner is not ready: " + input.pluginId);
+      input.capturePrevious?.(view.enabled);
+      if (input.enabled && !view.enabled) {
+        if (view.availability.state === "unsupported") throw new Error("Official feature is unavailable on this computer: " + input.pluginId);
+        if (view.turnOn.mode === "setup") throw new Error("plugin-setup-required: " + input.pluginId);
       }
       desired.set(input.pluginId, input.enabled);
       try { await applyOwner(input.pluginId, input.enabled, true); }
@@ -56,10 +60,14 @@ export async function composeOfficialFeatureAdapters(ports: Ports) {
   async function synchronize() {
     return enqueue(async () => {
       if (closed) return { pending: [] as string[] };
+      await reload();
       for (const record of ports.platform.store.read(state => state.plugins)) {
         const id = record.manifest.id;
         if (!FEATURES.has(id) || record.installation.origin !== "official") continue;
-        desired.set(id, record.installation.enabled); pending.add(id);
+        const nativeEnabled = id === "dock" && !pending.has(id) ? views.get(id)?.enabled : undefined;
+        desired.set(id, nativeEnabled ?? record.installation.enabled);
+        // Dock setup owns its flag, including when its native owner attaches after the Library.
+        if (id !== "dock") pending.add(id);
         if (!NATIVE.has(id) || registered.has(id)) continue;
         registered.set(id, ports.platform.registerHostAdapter(id, {
           state: () => {

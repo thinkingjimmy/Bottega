@@ -1,6 +1,6 @@
 /**
  * [INPUT]: No runtime dependencies
- * [OUTPUT]: Provides settingsUpdatesEn — Settings › Updates page, provider CLI row, platform-support, and updater-state copy — and the structural shape its translated leaves derive from; unified row actions and collapsed failure details use shared update, retry and manual-download copy
+ * [OUTPUT]: Provides settingsUpdatesEn — Settings › Updates page, provider CLI row, platform-support, and updater-state copy — and the structural shape its translated leaves derive from; stage-specific check/download recovery, current-version labels and explicit diagnostic-copy feedback
  * [POS]: English leaf of shared/i18n/locales/settings/updates; the Updates feature catalog
  */
 
@@ -33,17 +33,27 @@ export const settingsUpdatesEn = {
   installingShort: "Installing update…",
   restartUpdate: "Restart and update",
   failedShort: "Update failed",
-  checkFailedShort: "Update check failed",
+  checkFailedShort: "Unable to check for updates",
   manualShort: "Download new version",
   downloading: "Downloading version {{version}}",
   installing: "Update downloaded · restarting to install",
-  failed: "Update failed: {{message}}",
-  failedUnknown: "The update failed for an unknown reason.",
-  validationFailed: "The downloaded update did not pass verification. Bottega will check for it again.",
-  failedResolution:
-    "Download the new version from the Releases page, or report the problem on GitHub.",
-  backgroundFailed: "The last automatic check failed",
-  backgroundFailedOpen: "Automatic update checks are failing; open Updates for details",
+  validationFailed: "The downloaded update did not pass verification. Check for updates again.",
+  failedResolution: "You can also download Bottega from the download page.",
+  currentVersion: "Current version {{version}}",
+  currentVersionRetained: "You can keep using the current version.",
+  retryCheck: "Check again",
+  retryDownload: "Download again",
+  downloadFailedShort: "Update download failed",
+  offline: "You're offline. Bottega will check again after you reconnect.",
+  connectionFailed: "Unable to connect to the update service. Try again later.",
+  requestTimedOut: "The update service did not respond in time. Try again later.",
+  serviceUnavailable: "The update service is temporarily unavailable. Try again later.",
+  rateLimited: "The update service is busy. Bottega will try again later.",
+  checkFailedUnknown: "Update information could not be retrieved. Try checking again later.",
+  downloadFailedUnknown: "The update could not be downloaded. Try downloading it again.",
+  copyDiagnostics: "Copy diagnostics",
+  diagnosticsCopied: "Diagnostics copied",
+  diagnosticsCopyFailed: "Unable to copy diagnostics. Try again.",
   check: "Check for updates",
   upgrade: "Update",
   manualUpgrade: "Open download page",

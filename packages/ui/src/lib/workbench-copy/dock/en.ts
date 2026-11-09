@@ -79,9 +79,9 @@ export const dock = {
     "error": "Sync failed; layout kept"
   },
   "unsupportedReason": {
-    "platform": "Requires macOS 27",
+    "platform": "Requires macOS 26 or 27",
     "architecture": "Requires Apple silicon",
-    "osVersion": "Requires macOS 27",
+    "osVersion": "Requires macOS 26 or 27",
     "helperMissing": "Dock helper is missing. Reinstall Bottega."
   },
   "effects": {

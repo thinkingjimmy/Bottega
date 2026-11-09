@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, shared Base meta/filter contracts, i18n, mutation outcomes, UI menus/forms/icons, the overflow menu module and the shared hit-area class
- * [OUTPUT]: Provides BaseToolbar (a container-query toolbar that folds filter/columns/group into an overflow menu below 30rem), the bounded column panel, localized column actions (Who can edit on a workflow's two columns), formula-aware column chips and the re-exported BaseFilterEditor
+ * [OUTPUT]: Provides baseActionButtonClass, baseDestructiveActionButtonClass, BaseToolbar, AddColumnMenu.
  * [POS]: Shared Base presentation in ui/chrome.
  */
 
@@ -54,7 +54,7 @@ import { BaseFilterEditor } from "./base-filter-editor";
 import { baseMenuItemHoverClass } from "./base-tab-chrome";
 import { BaseToolbarOverflowMenu, GroupByMenuItems, toolbarIconOnlyNarrowClass, toolbarLabelClass, toolbarNarrowOnlyClass, toolbarWideOnlyClass } from "./base-toolbar-overflow";
 import { InlineNameInput } from "./inline-name-input";
-import { WorkflowWritableByMenu } from "./workflow-column";
+
 import { viewConfigHitAreaClass } from "../views/view-config-bar";
 export { baseMenuItemHoverClass } from "./base-tab-chrome";
 
@@ -100,7 +100,7 @@ export function BaseToolbar({
   onAddColumn,
   onRenameColumn,
   onDeleteColumn,
-  onColumnWritableByChange,
+
   onGroupByChange,
   onVisibleColumnsChange,
   onAddRow,
@@ -123,8 +123,8 @@ export function BaseToolbar({
   ): Promise<BaseMutationOutcome>;
   onRenameColumn(id: string, name: string): Promise<BaseMutationOutcome>;
   onDeleteColumn(id: string): Promise<BaseMutationOutcome>;
-  /** "Who can edit", offered on the two columns a workflow adds (Q37), as in the table header. */
-  onColumnWritableByChange?(id: string, writableBy: "everyone" | "workflows"): Promise<BaseMutationOutcome>;
+
+
   onGroupByChange(columnId: string): Promise<BaseMutationOutcome>;
 
   onVisibleColumnsChange(columnIds: string[]): Promise<BaseMutationOutcome>;
@@ -388,10 +388,6 @@ export function BaseToolbar({
                       <EyeIcon className="size-3" />
                     )}
                   </button>
-                )}
-                {allowStructure && onColumnWritableByChange && column.workflow && (
-                  <WorkflowWritableByMenu column={column} disabled={busy}
-                    onChange={(writableBy) => void onColumnWritableByChange(column.id, writableBy)} />
                 )}
                 {allowStructure && <button
                   aria-label={t("bases.toolbar.deleteColumn", { column: column.name })}

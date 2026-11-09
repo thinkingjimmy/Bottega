@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ProviderId and the canonical Product resource scope vocabulary; has no platform side effects
- * [OUTPUT]: Provides scope-aware Extension inventory, dual component identity, App requirements, capability eligibility, turn classes (manual, relay, workflow, headless), grants, lifecycle, delivery, pathless development local preflight, and IPC v2 contracts
+ * [OUTPUT]: Provides Sha256Digest, SHA256_DIGEST_IDENTITY_PATTERN, assertExtensionDigestIdentity, PackageGenerationDataBinding, ExtensionPackageGenerationRef, PackageGenerationRecord, FrozenExtensionInventoryReason, FrozenExtensionDeliveryEligibilityReason, McpComponentHealthSubject, McpComponentHealthRecord, ExtensionComponentRecord, ExtensionEnableState, ExtensionAdministrativeState, ExtensionAdmissionState, ExtensionDeliveryReference, ExtensionCapabilityEntry, ExtensionCapabilitySnapshot, ExtensionInventoryPackage, ExtensionInventorySnapshot, AppExtensionRequirementDeclaration, AppExtensionRequirementManifestField, FrozenAppExtensionRequirement, FrozenAppExtensionRequirementSetV1, ScopedComponentGrant, AppExtensionConsentDecision, ExtensionTurnIdentity, ComponentDeliveryPlan, FrozenComponentDeliveryExclusionReason, ComponentDeliveryExclusion, ComponentDeliveryDecision, ExtensionDisclosureView, ExtensionAffectedAppView, ExtensionPreflightView, ExtensionBackendEligibilityView, ExtensionConvergenceStep, ExtensionUninstallStep, ExtensionLifecycleStep, ExtensionProjectionOwner, ExtensionUninstallView, ExtensionRetainedInstallDataView, ExtensionPackageView, AgentPluginInventoryEntry, AgentPluginBackendView, ExtensionsSnapshot, EXTENSIONS_CHANNEL, ExtensionScopeQuery, ExtensionScopeMutation, ExtensionsChangedEvent, ExtensionLocalPreflightInput, ExtensionsBridgeApi.
  * [POS]: apps/desktop/shared/ipc/settings; Shared Extension wire truth; renderer and runtime receive only main-owned exact-scope projections and revision invalidations
  */
 
@@ -305,7 +305,7 @@ export type AppExtensionConsentDecision = Readonly<
 >;
 
 export type ExtensionTurnIdentity = Readonly<{
-  turnClass: "manual" | "relay" | "workflow" | "member" | "headless";
+  turnClass: "manual" | "relay" | "headless";
   planMode: boolean;
   backendId: ProviderId;
   backendRuntimeIdentity: string;

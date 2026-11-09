@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on memoryEn from ./en for both its structural type and the English leaves this catalog reuses
- * [OUTPUT]: Includes Memory access selection, explicit workflow-read consent, plugin chrome and native-memory distinction; Provides memoryJa, the Japanese Memory catalog
+ * [OUTPUT]: Provides memoryJa.
  * [POS]: Japanese leaf of shared/i18n/locales/memory; loaded on demand by the matching top-level locale
  */
 
@@ -9,8 +9,6 @@ import { memoryEn } from "./en";
 export const memoryJa: typeof memoryEn = {
   ...memoryEn,
   plugin: { serviceDisabled: "このサービスを使うには Memory プラグインをオンにしてください。プラグインがオフの間もサービスの設定は保持されます。", open: "Memory プラグインを開く", name: "Memory", official: "公式 · 内蔵", about: "Memory について", unsupported: "このプラットフォームでは Memory を利用できません。現在は macOS のみに対応しています。", nativeDistinction: "Bottega Memory は Codex や Claude の標準メモリーとは別です。標準メモリーは各プラグインの設定で管理します。" },
-  access: {"none": "使用しない", "readOnly": "読み取りのみ", "description": "このロールに関連する記憶を読み取ります。ワークフローのロールは Memory に書き込みません。", "workflowOff": "Memory プラグインでワークフローの読み取りが許可されていません。", "workflowOn": "このコンピューターではワークフローの読み取りが許可されています。"},
-  workflow: {"sectionTitle": "アクセスと操作", "label": "ワークフローのロールに Memory の読み取りを許可", "description": "設定で「読み取りのみ」を選んだロールだけが記憶を呼び出せます。ワークフローのロールは書き込みません。", "consentTitle": "ワークフローの読み取りを許可しますか？", "consentBody": "設定済みの計画・開発・レビューロールが、タスク名と受け入れ条件を使い、現在の Chat または Project の範囲で記憶を呼び出せます。書き込みは行いません。Memory の一時停止または許可の解除は、次のステップから反映されます。", "confirm": "読み取りのみ許可", "requiresActive": "先に Memory を有効にして同意を完了してください。一時停止中の場合は再開してください。", "personal": "個人の記憶プールではワークフローの読み取りは使えません。Chat または Project の範囲を選んでください。", "saveFailed": "読み取り許可を保存できませんでした。再試行してください。"},
   store: {
     providerListFailed: "Memory プロバイダー一覧を読み込めませんでした",
     statusFailed: "Memory の状態を読み込めませんでした",

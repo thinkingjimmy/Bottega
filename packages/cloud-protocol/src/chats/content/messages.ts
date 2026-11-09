@@ -35,7 +35,7 @@ const memoryOutcomeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("unavailable"), failureKind: memoryFailureKindSchema }).strict(),
   z.object({
     kind: z.literal("skipped"),
-    reason: z.enum(["disabled", "paused", "plan-mode", "workflow-not-allowed", "prompt-not-issued"]),
+    reason: z.enum(["disabled", "paused", "plan-mode", "prompt-not-issued"]),
   }).strict(),
 ]);
 

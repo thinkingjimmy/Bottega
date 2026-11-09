@@ -41,38 +41,6 @@
       "types": "./dist/ui/editors/panels/base-row-history.d.ts",
       "default": "./dist/ui/editors/panels/base-row-history.js"
     },
-    "./ui/workflow/port": {
-      "types": "./dist/ui/workflow/port.d.ts",
-      "default": "./dist/ui/workflow/port.js"
-    },
-    "./ui/workflow/setup-dialog": {
-      "types": "./dist/ui/workflow/setup-dialog.d.ts",
-      "default": "./dist/ui/workflow/setup-dialog.js"
-    },
-    "./ui/workflow/run-port": {
-      "types": "./dist/ui/workflow/run-port.d.ts",
-      "default": "./dist/ui/workflow/run-port.js"
-    },
-    "./ui/workflow/run-details": {
-      "types": "./dist/ui/workflow/run-details.d.ts",
-      "default": "./dist/ui/workflow/run-details.js"
-    },
-    "./ui/workflow/runs-context": {
-      "types": "./dist/ui/workflow/runs-context.d.ts",
-      "default": "./dist/ui/workflow/runs-context.js"
-    },
-    "./ui/workflow/record-section": {
-      "types": "./dist/ui/workflow/record-section.d.ts",
-      "default": "./dist/ui/workflow/record-section.js"
-    },
-    "./ui/workflow/run-chooser": {
-      "types": "./dist/ui/workflow/run-chooser.d.ts",
-      "default": "./dist/ui/workflow/run-chooser.js"
-    },
-    "./ui/workflow/confirm-panel": {
-      "types": "./dist/ui/workflow/confirm-panel.d.ts",
-      "default": "./dist/ui/workflow/confirm-panel.js"
-    },
     "./ui/state/base-mutation-error": {
       "types": "./dist/ui/state/base-mutation-error.d.ts",
       "default": "./dist/ui/state/base-mutation-error.js"

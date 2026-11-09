@@ -4,8 +4,8 @@
  * [POS]: Tool-only row planning; existing renderer/App GUI kernels remain unchanged.
  */
 import { baseOperationSchema, baseOperationFitsBudget, canonicalJson, type BasePatch } from "@ai-chat/cloud-protocol";
-import { BASE_ROW_LIMIT, type BaseColumn, type BaseRow, type BaseRowPatch, type BaseSnapshot } from "../../../../../shared/bases/model/bases-ipc";
-import { isWorkflowOnly, WORKFLOW_ONLY_ISSUE } from "@ai-chat/base-core/compute/workflow-columns";
+import { BASE_ROW_LIMIT, type BaseRow, type BaseRowPatch, type BaseSnapshot } from "../../../../../shared/bases/model/bases-ipc";
+
 import { statusError } from "../../../ipc/errors";
 import { baseColumnIndex, baseRowIdSet, validateBaseRow, validateBaseCell } from "../../validation/base-mutation-validation";
 import type { BaseStore } from "../../base-store";
@@ -21,7 +21,7 @@ export type ToolRowsRequest = { kind: "insert"; rows: BaseRow[] } |
  */
 export type ToolRowsRefine = (current: BaseSnapshot, request: ToolRowsRequest) => { request: ToolRowsRequest; note: string | null };
 export type ToolRowsInput = { ownerKey: string; ownerInstanceId: string; batchId: string; atomic: boolean; request: ToolRowsRequest; signal?: AbortSignal; readOnly?: boolean;
-  refine?: ToolRowsRefine; actor?: "agent" | "system" | "workflow"; runId?: string };
+  refine?: ToolRowsRefine; actor?: "agent" | "system" };
 
 export async function mutateToolRows(store: BaseStore, input: ToolRowsInput, ports: {
   assertAdmission(): void; changed(snapshot: BaseSnapshot): void;
@@ -46,14 +46,14 @@ export async function mutateToolRows(store: BaseStore, input: ToolRowsInput, por
       input.signal?.throwIfAborted();
       ports.assertAdmission();
       const refined = input.refine ? input.refine(current, request) : { request, note: null };
-      const plan = prepareRows(current, refined.request, input.actor === "workflow" ? "workflow" : "other");
+      const plan = prepareRows(current, refined.request);
       if (plan.patches.some(patch => isBasePatchDeleted(store.sync.read(input.ownerKey, input.ownerInstanceId).tombstones, patch))) {
         throw statusError(404, "Base target was deleted", { code: "deleted" });
       }
       const syncIntent = { operationId: identity.operationId, batchId: input.batchId, atomicGroup: identity.operationId, patches: plan.patches };
       assertGroupBudget(plan.patches, input.ownerInstanceId, identity.operationId, input.batchId);
       return { meta: { ...current.meta, revision: current.meta.revision + 1 }, rows: plan.rows,
-        changedRowIds: new Set(plan.changed), removedRowIds: new Set(plan.removed), actor: input.actor ?? "agent", ...(input.runId ? { runId: input.runId } : {}),
+        changedRowIds: new Set(plan.changed), removedRowIds: new Set(plan.removed), actor: input.actor ?? "agent",
         operation: `row-${request.kind}`, syncIntent,
         ...(refined.note ? { receiptNote: refined.note } : {}) };
     });
@@ -65,21 +65,13 @@ export async function mutateToolRows(store: BaseStore, input: ToolRowsInput, por
   return toolBatchResult(input.batchId, results, snapshot.meta.revision, snapshot.rows.length);
 }
 
-/* A Chat Agent or another port writer never changes a workflow-only column; only a verified workflow run does (Q12). */
-const refuseWorkflowOnly = (column: BaseColumn, before: unknown, after: unknown, writer: "workflow" | "other") => {
-  if (writer === "other" && isWorkflowOnly(column) && canonicalJson(before ?? null) !== canonicalJson(after ?? null)) {
-    throw statusError(403, `Column ${column.id} is written only by a workflow`, { code: WORKFLOW_ONLY_ISSUE });
-  }
-};
-
-function prepareRows(current: BaseSnapshot, request: ToolRowsRequest, writer: "workflow" | "other") {
+function prepareRows(current: BaseSnapshot, request: ToolRowsRequest) {
   const columns = baseColumnIndex(current.meta.columns), byId = new Map(current.rows.map(row => [row.id, row]));
   const changed: string[] = [], removed: string[] = [], patches: BasePatch[] = [];
   if (request.kind === "insert") {
     const rowIds = baseRowIdSet([...current.rows, ...request.rows]);
     for (const row of request.rows) {
       validateBaseRow(row, columns, "external", rowIds);
-      for (const [columnId, value] of Object.entries(row.values)) refuseWorkflowOnly(columns.get(columnId)!, null, value, writer);
       const existing = byId.get(row.id);
       if (existing && canonicalJson(existing) !== canonicalJson(row)) throw statusError(409, "Row already exists with different values", { code: "row_id_conflict" });
       if (!existing) { byId.set(row.id, structuredClone(row)); changed.push(row.id); }
@@ -95,7 +87,6 @@ function prepareRows(current: BaseSnapshot, request: ToolRowsRequest, writer: "w
       for (const [columnId, value] of Object.entries(patch.patch)) {
         const column = columns.get(columnId);
         if (!column) throw statusError(400, "Unknown Base column", { code: "unknown_column" });
-        refuseWorkflowOnly(column, row.values[columnId], value, writer);
         if (value === null) { delete values[columnId]; patches.push({ kind: "unset", target: { rowId: row.id, columnId } }); }
         else { validateBaseCell(column, value, "external", rowIds); values[columnId] = structuredClone(value);
           patches.push({ kind: "set", target: { rowId: row.id, columnId }, value }); }

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, role-scoped plugin bridge installers, shared renderer IPC contracts, and the build-gated cloud account lifecycle.
  * Announces surface readiness only after the renderer command listener is installed.
- * [OUTPUT]: Exposes explicit Project history preview/import commands and renderer bridges including pathless native local-package selection, the main-window macOS Settings → Dock bridge, the main-window Agent-configuration, Plugins & Apps, workflow and Provider catalog bridges, nested quota snapshot/demand access, the fire-and-forget Agent connection warm intent, fixed-purpose background display selection and panel/Agent management, explicit manual/adopt retry intents, the main-window-only frozen startup snapshot, scoped plugin surfaces and GUI history in both product window roles, and the launch-flagged startup trace mark channel; rejects extra navigation arguments. Exposes typed App impact/enablement and independent preset update bridges.
+ * [OUTPUT]: Exposes explicit Project history preview/import commands and renderer bridges including pathless native local-package selection, the main-window macOS Settings → Dock bridge, the main-window Plugins & Apps and Provider catalog bridges, nested quota snapshot/demand access, the fire-and-forget Agent connection warm intent, fixed-purpose background display selection and panel/Agent management, explicit manual/adopt retry intents, the main-window-only frozen startup snapshot, scoped plugin surfaces and GUI history in both product window roles, and the launch-flagged startup trace mark channel; rejects extra navigation arguments. Exposes typed App impact/enablement, independent preset updates and intent-only manual/automatic/online update checks.
  * Native Stop carries exact Chat/incarnation/owner/item identities; native process IDs remain private.
  * Artifact workspace requests and revocable lifecycle events remain restricted to the trusted main frame.
  * Workspace file links expose scoped resolution and enumerated native actions, never a general path opener.
@@ -50,10 +50,10 @@ import {
   INITIAL_LANGUAGE_ARGUMENT,
 } from "../../shared/ipc/settings/settings-ipc";
 import { installSettingsBridge } from "./settings/bridge";
-import { installAgentConfigBridge } from "./settings/agent-configs";
+
 import { installPluginsBridge, installPluginSurfacesBridge } from "./settings/plugins";
 import { installProviderCatalogBridge } from "./settings/provider-catalog";
-import { installWorkflowsBridge } from "./settings/workflows";
+
 import { installSystemDockSettingsBridge } from "./settings/system-dock";
 import { DEFAULT_APP_LOCALE, isAppLocale } from "@ai-chat/ui/lib/locale";
 import {
@@ -334,7 +334,7 @@ contextBridge.exposeInMainWorld("presence", {
 
 contextBridge.exposeInMainWorld("update", {
   snapshot: () => ipcRenderer.invoke(UPDATE_CHANNEL.snapshot),
-  check: () => ipcRenderer.invoke(UPDATE_CHANNEL.check),
+  check: (source) => ipcRenderer.invoke(UPDATE_CHANNEL.check, source),
   checkForApp: (requestId) => ipcRenderer.invoke(UPDATE_CHANNEL.checkForApp, requestId),
   dismissAppRequirement: () => ipcRenderer.invoke(UPDATE_CHANNEL.dismissAppRequirement),
   installNow: (candidateId) => ipcRenderer.invoke(UPDATE_CHANNEL.installNow, candidateId),
@@ -636,7 +636,7 @@ contextBridge.exposeInMainWorld("globalSearch", {
 
 installSettingsBridge(initialLanguage, subscribe);
 installPluginSurfacesBridge(subscribe);
-if (windowRole === "main") { installAgentConfigBridge(subscribe); installPluginsBridge(subscribe); installWorkflowsBridge(subscribe); installProviderCatalogBridge(subscribe); }
+if (windowRole === "main") { installPluginsBridge(subscribe); installProviderCatalogBridge(subscribe); }
 /* Bottega Dock is macOS-only; elsewhere the Settings page simply does not exist. */
 if (windowRole === "main" && process.platform === "darwin") installSystemDockSettingsBridge(subscribe);
 

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on TurnRegistry state, synchronous coordinator identities, Agent activity, and ChatsService.onEvent.
- * [OUTPUT]: Provides bounded revisioned task snapshots, accurate phases/subtask counts for every turn origin (manual, relay, workflow — a workflow step's task is marked with its run, step and role, and a run counts once: its finished steps' rows leave while another of its steps runs), row expiry, and independent failure-prioritized batch results.
+ * [OUTPUT]: Provides taskPhase, ActivityProjection.
  * [POS]: Main task projection shared by the optional tray and Dock Tasks widget.
  */
 
@@ -68,8 +68,7 @@ export class ActivityProjection<TTurn extends RegistryTurn> {
       } else this.terminalAt.delete(key);
       tasks.push({ chatId: chat.id, incarnationId: chat.incarnationId, requestId: entry.requestId,
         generation: entry.generation, backend: entry.backend, title: chat.title?.slice(0, 160) ?? null,
-        context: null, startedAt: entry.startedAt || null, phase, subtaskCount: entry.currentSubagents?.size ?? 0,
-        ...(entry.origin.kind === "workflow" ? { workflow: { runId: entry.origin.runId, stepId: entry.origin.stepId, role: entry.origin.role } } : {}) });
+        context: null, startedAt: entry.startedAt || null, phase, subtaskCount: entry.currentSubagents?.size ?? 0 });
     }
     for (const task of remoteTasks) {
       const key = JSON.stringify([task.chatId, task.incarnationId, task.requestId, task.generation]);
@@ -93,12 +92,6 @@ export class ActivityProjection<TTurn extends RegistryTurn> {
       tasks.push({ chatId: pending.conversationId, incarnationId, requestId: pending.requestId ?? pending.operationId,
         generation: pending.generation, backend, title: chat?.title?.slice(0, 160) ?? null, context: null,
         startedAt: pending.startedAt ?? null, phase: "preparing", subtaskCount: 0 });
-    }
-    /* A run is one piece of work: while one of its steps runs, its earlier steps' result rows leave, so it is never counted twice. */
-    const liveRuns = new Set(tasks.flatMap(task => task.workflow && !finished(task.phase) ? [task.workflow.runId] : []));
-    for (let index = tasks.length - 1; index >= 0; index--) {
-      const task = tasks[index]!;
-      if (task.workflow && finished(task.phase) && liveRuns.has(task.workflow.runId)) tasks.splice(index, 1);
     }
     tasks.sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0) || a.chatId.localeCompare(b.chatId));
     const live = tasks.filter((task) => !finished(task.phase));

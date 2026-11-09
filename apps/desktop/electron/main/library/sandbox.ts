@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on the selected folder root and the current turn's canonical workspace.
- * [OUTPUT]: Names protected Library roots and exact current-object metadata, including local Workflow execution ownership.
+ * [OUTPUT]: Provides libraryReadOnlyRoots.
  * [POS]: Folder capability projection; backends consume paths without knowing the portable layout.
  */
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 /** Every top-level name the product owns. A folder holds nothing else the Agent may rewrite. */
-const CONTENT_ROOTS = [".bottega", ".trash", "projects", "bases", "skills", "chats", "apps", "plugins", "workflows"] as const;
+const CONTENT_ROOTS = [".bottega", ".trash", "projects", "bases", "skills", "chats", "apps", "plugins"] as const;
 /** The current object's own portable evidence; its writable directory is the only exception. */
 const CHAT_PROTECTED = ["chat.json", "transcript.jsonl", "attachments", "attachments.json", "artifacts", "branches"] as const;
 
@@ -18,7 +18,6 @@ function currentObject(root: string, workspace: string) {
   if (!collection || !id || !writable) return null;
   if (collection === "chats" && writable === "home") return { collection, id, protect: CHAT_PROTECTED };
   if (collection === "apps" && writable === "source") return { collection, id, protect: ["app.json"] as const };
-  if (collection === "workflows" && writable === "worktree") return { collection, id, protect: ["execution.json"] as const };
   if (collection === "plugins" && writable === "source") return { collection, id, protect: ["source/bottega.plugin.json"] as const };
   return null;
 }

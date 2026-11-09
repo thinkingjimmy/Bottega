@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Shipped immutable weather packages and lazy canonical Team/source admission, dependency/opt-in trace owners; shared HostRuntime/tool processes, Project/Chat services, optional live Library identity and isolated Surface transport. Forwards the active interface locale getter only to the lazy dependency owner.
+ * [INPUT]: Shipped immutable weather packages and lazy canonical source admission, dependency/opt-in trace owners; shared HostRuntime/tool processes, Project/Chat services, optional live Library identity and isolated Surface transport. Forwards the active interface locale getter only to the lazy dependency owner.
  * [OUTPUT]: Retryable official-source mounting after real Library admission, source Projects/builds bound to exact installed-input receipts, activation-bound Surface/failure/revocation, digest-fenced repairs and guarded recovery.
  * [POS]: Production unified plugin owner; startup and shutdown retain this owner independently of resident windows.
  */
@@ -140,8 +140,7 @@ export class UnifiedPluginIntegration{
       const source=await realpath(input.workspace);
       const item=this.platform.store.read(state=>state.plugins.find(value=>value.directory.sourceDirectory===source));
       if(!item||input.mode?.nativeRequirements?.readOnly)return null;
-      const {teamSourceAuthoringOwner}=await import('../team/runtime/authoring');
-      const owner=teamSourceAuthoringOwner(input,item.sourceProject?.projectId,this.platform,this.ports.chats)??{kind:'turn' as const,id:input.requestId};
+      const owner={kind:'turn' as const,id:input.requestId};
       const lease=await this.leases.acquire(source,owner,input.chatId,input.signal);
       const pending=this.timers.get(item.manifest.id);if(pending){clearTimeout(pending);this.timers.delete(item.manifest.id);}
       this.writers.set(item.manifest.id,(this.writers.get(item.manifest.id)??0)+1);

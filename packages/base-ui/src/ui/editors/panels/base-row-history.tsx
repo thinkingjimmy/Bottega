@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, the useBaseSnapshots rowHistory reading face, i18n, describeBaseFailure (a failed read shows its line, never the raw error), Unified Dialog with the current list of Base columns
- * [OUTPUT]: Provides BaseRowHistoryDialog, showing a rowId's last 50 actor/time/operation entries with per-entry field summaries filtered to that row's cells, falling back to the columnId when a column has been deleted; a workflow entry names its run (Workflow · Run #…)
+ * [OUTPUT]: Provides BaseRowHistoryDialog.
  * [POS]: Shared Base presentation in ui/editors/panels.
  */
 
-import { formatWorkbench } from "@ai-chat/ui/lib/workbench-copy";
-import { useWorkflowCopy } from "../../chrome/workflow-column";
+
+
 import { useEffect, useMemo, useState } from "react";
 import { useBaseSnapshots } from "../../platform/context";
 import { useAppTranslation } from "../../platform/i18n";
@@ -34,7 +34,6 @@ export function BaseRowHistoryDialog({
   onOpenChange(open: boolean): void;
 }) {
   const { t, i18n } = useAppTranslation();
-  const workbench = useWorkflowCopy();
   const bases = useBaseSnapshots();
 
   const columnNames = useMemo(
@@ -82,8 +81,7 @@ export function BaseRowHistoryDialog({
               return (
                 <li className="space-y-1 py-3 text-sm" key={`${entry.at}:${index}`}>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="font-medium">{t(`bases.history.actor.${entry.actor}`)}{entry.actor === "workflow" && entry.runId
-                      ? ` · ${formatWorkbench(workbench.run.label, { number: entry.runId })}` : ""}</span>
+                    <span className="font-medium">{t(`bases.history.actor.${entry.actor}`)}</span>
                     <time className="text-muted-foreground text-xs tabular-nums">
                       {new Intl.DateTimeFormat(i18n.language, { dateStyle: "medium", timeStyle: "short" }).format(entry.at)}
                     </time>

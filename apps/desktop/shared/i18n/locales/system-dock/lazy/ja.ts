@@ -272,7 +272,7 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     loadFailed: "Dock の設定を読み込めませんでした。",
     unsupportedTitle: "Bottega Dock は使用できません",
     unsupportedPlatform: "Bottega Dock は macOS でのみ使用できます。",
-    unsupportedVersion: "Dock Alpha は macOS 27 のみに対応しています。他の macOS バージョンは未検証です。",
+    unsupportedVersion: "Dock Alpha は Apple シリコン搭載 Mac の macOS 26 と 27 に対応しています。他の macOS バージョンには対応していません。",
     unsupportedArchitecture: "Bottega Dock には Apple シリコン搭載の Mac が必要です。",
     unsupportedHelperMissing: "Bottega Dock に必要なヘルパーがこのインストールにありません。Dock を使うには Bottega を再インストールしてください。",
     registrationUnknown: "確認できません",

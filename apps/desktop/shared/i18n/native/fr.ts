@@ -49,6 +49,8 @@ export const nativeFr: NativeCatalog = {
     "quitProcesses": "Certains processus en arrière-plan n’ont pas pu être fermés.",
     "quitOther": "Bottega n’a pas pu terminer la préparation à la fermeture. Réessayez.",
     "report": "Signaler un problème",
+    "downloadLatest": "Télécharger la dernière version",
+    "downloadFailed": "Impossible d’ouvrir. Réessayer",
     "copied": "Copié",
     "copyFailed": "Échec de la copie"
   },

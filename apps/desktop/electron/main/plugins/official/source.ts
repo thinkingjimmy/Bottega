@@ -12,8 +12,7 @@ import { officialToolPlugins, toolBudget, type OfficialToolPlugin } from "../../
 import { featureRpcOperation } from "../process/rpc";
 
 export function officialPluginManifest(plugin: OfficialToolPlugin): UnifiedPluginManifest {
-  const native = plugin.nativeFeature === "workflow" ? [{ kind: "page", id: "page", name: "Workflow", entry: "host-view/workflow", hostViewId: "workflow", slot: "main.pages", navigation: { label: "Workflow" } }]
-    : plugin.nativeFeature === "dock" ? [{ kind: "page", id: "settings", name: "Dock", entry: "host-view/dock-settings", hostViewId: "dock-settings", slot: "main.pages", navigation: { label: "Dock" } }]
+  const native = plugin.nativeFeature === "dock" ? [{ kind: "page", id: "settings", name: "Dock", entry: "host-view/dock-settings", hostViewId: "dock-settings", slot: "main.pages", navigation: { label: "Dock" } }]
       : plugin.nativeFeature === "sketch" ? [{ kind: "composer", id: "composer", name: "Sketch", entry: "host-view/sketch-composer", hostViewId: "sketch-composer", slot: "composer.below" }] : [];
   return unifiedPluginManifestSchema.parse({ schemaVersion: 1, id: plugin.id, name: plugin.name, version: "1.0.0",
     providerAlias: plugin.hostInfrastructure ? `host_${plugin.alias}` : plugin.alias,
@@ -23,7 +22,7 @@ export function officialPluginManifest(plugin: OfficialToolPlugin): UnifiedPlugi
       description: spec.description, inputSchema: z.toJSONSchema(spec.wireInputSchema ?? spec.inputSchema, { unrepresentable: "any" }), outputSchema: {},
       executor: { kind: plugin.copyable ? "process" : "host", entry: "service.mjs", method: spec.name },
       timeoutMs: spec.timeoutMs ?? 600_000, access: spec.access === "mutate" ? "write" : "read", planAllowed: !spec.planExcluded,
-      manualTurnOnly: Boolean(spec.manualTurnOnly), exactIssued: Boolean(spec.exactIssued), workflowAllowed: ["bases", "history"].includes(spec.domainId),
+      manualTurnOnly: Boolean(spec.manualTurnOnly), exactIssued: Boolean(spec.exactIssued),
       backendAllowlist: spec.backendAllowlist, domain: spec.domainId, resultBytes: toolBudget(spec.domainId).logicalResultByteLimit,
       budget: { rateLimit: toolBudget(spec.domainId).rateLimit, rateWindowMs: toolBudget(spec.domainId).rateWindowMs },
     }))],

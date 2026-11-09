@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Chat/adoption contracts, Chat metadata, Chat facts, and connection modes
- * [OUTPUT]: Defines closed SQLite commands/results with atomic message/title-job writes, nullable-session replay sealing, continuation notices, owner commits, and App transcript retention. Strict first-create transport includes main-owned member ownership.
+ * [OUTPUT]: Provides ChatDatabaseFailure, MutationReceipt, MutationOutcome, MemoryChatSummary, MemoryNativeSegmentPage, SearchDocumentHit, SearchDocumentCursor, HistoryImportSource, HistoryImportEntryInput, PreparedHistoryImportBatch, ContinuationSagaSnapshot, ContinuationHomeEvidence, DatabaseCommand, DatabaseRequest, DatabaseResponse, UpsertResult, RemoveResult, DatabaseResults, parseDatabaseRequest, parseDatabaseResponse.
  * [POS]: Trust boundary between Electron main and the sole SQLite owner; arbitrary SQL can never cross this port
  */
 
@@ -233,9 +233,6 @@ export type DatabaseCommand =
   | {
       kind: "upsert-record";
       ownerCommit?: import("./cloud/execution/commit").OwnerCommit;
-      /** R-35: a new workflow Chat's role for its first cloud upload; transient, never a column. */
-      workflowRole?: import("@ai-chat/cloud-protocol/chats/model").ChatWorkflowRole;
-  memberSession?: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts;
       operationId: string;
       requestHash: string;
       record: ChatRecord;

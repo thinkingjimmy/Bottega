@@ -2,7 +2,6 @@
  * [INPUT]: Depends on node:crypto and the shared memory-ipc/agent-ipc/settings-ipc type contracts
  * [OUTPUT]: Provides MemorySpaceRef/MemoryScopeSubject/FrozenTurnMemoryContext types, turn outcome/receipt derivation, and the memorySpaceId/expectedPeerId/sourceSessionKey/freezeMemoryValue primitives
  * [POS]: The main/memory domain algebra; policy, orchestration, and service consume these types instead of redefining their own
- * Frozen workflow contexts carry a role opt-in generation and support settled recall receipts.
  */
 
 import { createHash } from "node:crypto";
@@ -54,8 +53,6 @@ export type MemoryScopeSubject =
 
 export type FrozenTurnMemoryContext = Readonly<{
   requestId: string;
-  /** Present only on readonly workflow admissions; revokes on every opt-in transition. */
-  workflowGeneration?: number;
   memorySpace: MemorySpaceRef;
   memorySpaceId: string;
   sourceSessionKey: string;
@@ -75,7 +72,7 @@ export type FrozenTurnMemoryAdmission =
   | Readonly<{
       kind: "skipped";
       requestId: string;
-      reason: "disabled" | "paused" | "plan-mode" | "workflow-not-allowed";
+      reason: "disabled" | "paused" | "plan-mode";
     }>
   | Readonly<{
       kind: "unavailable";
@@ -110,7 +107,7 @@ export type MemoryPrePromptValidation = SensitiveContributionValidation;
 export type { PromptHandoff } from "../../../../shared/ipc/agent/agent-ipc";
 
 export type MemoryTurnFacts = Readonly<{
-  origin: "manual" | "workflow" | "other";
+  origin: "manual" | "other";
   frozenAdmission: FrozenTurnMemoryAdmission | null;
   prepared: MemoryRecallPrepared | null;
   prePromptValidation: MemoryPrePromptValidation;
@@ -159,7 +156,7 @@ export function freezeMemoryValue<T>(value: T): Readonly<T> {
 export function deriveMemoryTurnOutcome(
   facts: MemoryTurnFacts
 ): MemoryTurnOutcome | null {
-  if (facts.origin === "other" || !facts.assistantMessagePresent || (facts.origin === "workflow" && !facts.frozenAdmission)) return null;
+  if (facts.origin === "other" || !facts.assistantMessagePresent) return null;
   const admission = facts.frozenAdmission;
   if (!admission) {
     return { kind: "unavailable", failureKind: "initialization" };

@@ -2,12 +2,12 @@
 
 [English](./README.md) · [仓库首页](../README.md)
 
-当前版本：[0.4.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1)，适用于 macOS Apple 芯片（ARM64），使用协议 26。普通 Codex Chat 按原生协议和能力准入；原生标题生成与隔离编辑保留独立 CLI 资格要求。请阅读[原生命令权限](./features/README.zh-CN.md#codex-命令权限)和[安装与更新说明](./getting-started/README.zh-CN.md#升级到-040)。0.2.5 个人版需要手动更新。[Bottega Web](https://app.getbottega.app) 继续可用。
+当前 `main` 是**待发布的 0.4.2 源码**，使用**协议 27**。最新已发布安装包仍为 [0.4.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1)，使用**协议 26**。本次源码公开不表示 0.4.2 安装包、托管部署或原生验收已完成。 请阅读[当前源码范围](./getting-started/README.zh-CN.md#待发布-042-源码)与[已发布的 0.4.1 安装说明](./getting-started/README.zh-CN.md#升级到-041)。0.2.5 个人版需要手动安装已发布的稳定版本。
 
 文档按职责组织，让仓库根目录只聚焦源码与构建配置。
 
 - [快速开始](./getting-started/README.zh-CN.md)：产品价值、环境要求、安装、pnpm 命令、仓库边界与协作方式。
-- [功能](./features/README.zh-CN.md)：Multi-agent、四类 Artifact、Base、流程、Agent 配置、App、Project 级工具与 Extension、Memory，以及这些能力共享的产品基础。
+- [功能](./features/README.zh-CN.md)：四个 Agent、原生子代理、四类 Artifact、Base、插件、App、Project 级工具与 Extension、Memory，以及这些能力共享的产品基础。
 - [更新日志](./changelog/README.zh-CN.md)：只记录产品里程碑，不包含内部开发过程日志。
 
 ## 组件许可

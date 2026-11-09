@@ -1,7 +1,6 @@
 /**
  * [INPUT]: Depends on hash-verified prepared Project/Tools/Skill receipts, durable ManualTurnIntent, ChatsService, SettingsStore, session-plan rebuild, and Agent start ports
- * [OUTPUT]: Pins queued preparation before sequence reservation, freezes current history and boundaries, then persists trusted users before exact dispatch and session recovery; the turn's origin comes from the intent's recorded origin (a workflow step's stays workflow and carries no Skills selection); an append runs on the Chat's own options, a package Provider's included. Dispatches the original durable member origin.
- * Workflow turns carry their frozen Skill receipt and always create a fresh native session.
+ * [OUTPUT]: Provides preparedSkillSelections, manualConversationId, manualUserMessage, bindAdoptedSessionPlan, manualSubmission, userMessagePersisted, assertManualPrecondition, allocateManualSequences, ensureManualSequences, resolvedInputForFinalPayload, runManualTurn.
  * [POS]: apps/desktop/electron/main/sections/coordinator/turns; The durable manual-intent executor of sections/coordinator
  */
 
@@ -344,12 +343,10 @@ function manualAttachmentsMatch(
   );
 }
 
-/** The ledger's origin, never the message, decides whose turn it is: a workflow step's prompt is not a person's query. */
+
 function durableTurnOrigin(
-  userMessage: { id: string; content: string },
-  origin: DeepReadonly<ManualTurnIntent["origin"]>
+  userMessage: { id: string; content: string }
 ): TurnOrigin {
-  if (origin.kind === "workflow" || origin.kind === "member") return { ...origin, userMessageId: userMessage.id };
   return {
     kind: "manual",
     queryText: userMessage.content,
@@ -535,7 +532,7 @@ export async function runManualTurn(
   let session = record.session;
   if (
     session &&
-    (intent.origin.kind === "workflow" || !session.toolPlan ||
+    (!session.toolPlan ||
       session.toolPlan.planDigest !== hydrated.projectTools.sessionPlanDigest ||
       session.toolPlan.projectId !==
         hydrated.projectTools.receipt.projectContext.projectId)
@@ -557,7 +554,7 @@ export async function runManualTurn(
   } } } : undefined;
   const payload: AgentSendPayload = {
     ...submission.turn, agentRevision: record.agentRevision, handoff,
-    /* Workflow preparation already narrowed this receipt to the frozen selection. */
+    /* Keep the prepared selection pinned to this admitted turn. */
     preparedSkillSelection: prepared.skillSelection,
     ...(session ? { session } : { session: undefined }),
     input: session ? submission.turn.input : handoffInput(submission.turn.input, handoff),
@@ -584,7 +581,7 @@ export async function runManualTurn(
     await dependencies.startTurn(
       payload,
       stableId("assistant", intent.id),
-      durableTurnOrigin(expected, intent.origin),
+      durableTurnOrigin(expected),
       resolvedInput,
       intent.assistantSeq,
       projectLifecycleHeld,

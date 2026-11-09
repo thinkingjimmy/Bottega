@@ -29,7 +29,7 @@ import { createDatavizToolset } from "../../skills/dataviz/toolset";
 import { createChatHistoryToolset } from "../../agent/history/lease";
 import { toolSpec } from "../../../../shared/plugin-tools";
 import type { PluginToolset } from "../../tools/registry";
-import { createWorkflowToolset } from "../../workflows/step-results";
+
 import { createPluginToolset } from "../../plugins/authoring/toolset";
 import { createPreviewToolset } from "../../preview/tools";
 import type { EffectiveWorkspaceResolver } from "../../workspace/files/workspace-resolver";
@@ -129,7 +129,6 @@ export function createOfficialToolsets(deps: PluginToolsetDependencies) {
         return workspace.workspace;
       },
     }),
-    createWorkflowToolset(sections.read_section!),
     {
       use_skill: (args, context) =>
         deps.skillsCustody.use(context.lease.skillsCustodyId, args.name as string),

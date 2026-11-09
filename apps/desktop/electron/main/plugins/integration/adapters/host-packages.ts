@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the existing signed Registry/HostPackage runtime, actual contract/trust readiness and exact owner lifecycle actions.
+ * [INPUT]: Depends on the existing signed Registry/HostPackage runtime, actual contract/trust readiness, catalog change notifications and exact owner lifecycle actions.
  * [OUTPUT]: Provides one stable unified read-only external plugin per Host Package installation and delegated generation/enablement/removal updates.
  * [POS]: External-format adapter; SDK/Provider metadata remains a low-level execution protocol and creates no separate editable plugin identity.
  */
@@ -15,7 +15,7 @@ import { durableReplaceFile } from "../../../persistence/durable-json";
 export const hostPackagePluginId = (installIdentity: string) => "hostpkg_" + hashCanonical(installIdentity).slice(0, 40);
 type Ports = { platform: UnifiedPluginPlatform; registry: Pick<ExtensionRegistryStore, "hostPackages" | "onInventoryChanged">;
   packages: Pick<HostPackageRuntime, "manifest" | "negotiate" | "trustVerdict" | "isRevoked" | "onRevoked">;
-  catalog: Pick<PluginCatalog, "setEnabled">; libraryRoot(): string | null; remove?(installIdentity: string): Promise<void>; reportError?(cause: unknown): void };
+  catalog: Pick<PluginCatalog, "setEnabled" | "onChanged">; libraryRoot(): string | null; remove?(installIdentity: string): Promise<void>; reportError?(cause: unknown): void };
 export async function composeHostPackagePluginAdapters(ports: Ports) {
   const registered = new Map<string, () => void>(), fingerprints = new Map<string, string>(), readiness = new Map<string, { generationId: string; ready: boolean; error?: string }>();
   let closed = false, chain: Promise<unknown> = Promise.resolve();
@@ -58,8 +58,9 @@ export async function composeHostPackagePluginAdapters(ports: Ports) {
     });
     chain = task; return task;
   };
+  const releaseCatalog = ports.catalog.onChanged(() => { void refresh().catch(cause => ports.reportError?.(cause)); });
   const releaseInventory = ports.registry.onInventoryChanged(() => { void refresh().catch(cause => ports.reportError?.(cause)); });
   const releaseRevoked = ports.packages.onRevoked(() => { void refresh().catch(cause => ports.reportError?.(cause)); });
   await refresh();
-  return { refresh, async close() { closed = true; releaseInventory(); releaseRevoked(); await chain.catch(() => undefined); for (const stop of registered.values()) stop(); registered.clear(); } };
+  return { refresh, async close() { closed = true; releaseCatalog(); releaseInventory(); releaseRevoked(); await chain.catch(() => undefined); for (const stop of registered.values()) stop(); registered.clear(); } };
 }

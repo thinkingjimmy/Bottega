@@ -20,7 +20,7 @@ import type {
 import type { AppsService } from "../../apps/apps-service";
 import { backendRuntimeRegistry } from "../../backends";
 import { admittedAmbientTools, builtinToolAccess } from "../../tools/issuance";
-import { workflowCappedBuiltinTools, workflowTurnPolicyFor } from "../../workflows/turn-policy";
+
 import {
   initiatorResultByteBudget,
   type BuiltinMcpLeaseStore,
@@ -29,14 +29,12 @@ import {
 export function freezeBuiltinPolicy(
   backend: ProviderId,
   disabledTools: readonly string[],
-  requestId?: string
+  _requestId?: string
 ): BuiltinTurnToolPolicy {
   return {
     disabledTools: [...disabledTools],
-    /* A workflow planning or review turn is capped at read built-ins; every workflow turn is owed its report tool. */
-    builtinTools: workflowCappedBuiltinTools(runtimeBuiltinTools(backend), requestId),
+    builtinTools: runtimeBuiltinTools(backend),
     backendRuntimeIdentity: backendRuntimeIdentity(backend),
-    ...(workflowTurnPolicyFor(requestId) ? { workflowStep: true as const } : {}),
   };
 }
 

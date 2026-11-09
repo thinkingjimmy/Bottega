@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on memoryEn from ./en for both its structural type and the English leaves this catalog reuses
- * [OUTPUT]: Includes Memory access selection, explicit workflow-read consent, plugin chrome and native-memory distinction; Provides memoryEs, the Spanish Memory catalog
+ * [OUTPUT]: Provides memoryEs.
  * [POS]: Spanish leaf of shared/i18n/locales/memory; loaded on demand by the matching top-level locale
  */
 
@@ -9,8 +9,6 @@ import { memoryEn } from "./en";
 export const memoryEs: typeof memoryEn = {
   ...memoryEn,
   plugin: { serviceDisabled: "Activa el plugin Memory para usar este servicio. Tu preferencia del servicio se conserva mientras el plugin está desactivado.", open: "Abrir el plugin Memory", name: "Memory", official: "Oficial · Integrado", about: "Acerca de Memory", unsupported: "Memory no es compatible con esta plataforma. Actualmente solo está disponible en macOS.", nativeDistinction: "Bottega Memory es independiente de la memoria nativa que se gestiona en los ajustes de los plugins Codex y Claude." },
-  access: {"none": "Ninguno", "readOnly": "Solo lectura", "description": "Recupera recuerdos relevantes para este rol. Los roles de flujo nunca escriben en Memory.", "workflowOff": "La lectura de los flujos no está permitida en el plugin Memory.", "workflowOn": "La lectura de los flujos está permitida en este ordenador."},
-  workflow: {"sectionTitle": "Acceso y controles", "label": "Permitir que los roles de flujo lean Memory", "description": "Solo los roles configurados en solo lectura pueden recuperar recuerdos. Nunca escriben en Memory.", "consentTitle": "¿Permitir la lectura a los roles de flujo?", "consentBody": "Los roles configurados de planificación, desarrollo y revisión pueden recuperar recuerdos con el nombre de la tarea y sus criterios de aceptación, dentro del Chat o Project actual. No escriben recuerdos. Pausar Memory o retirar este permiso detiene la recuperación en el siguiente paso.", "confirm": "Permitir solo lectura", "requiresActive": "Activa Memory y completa el consentimiento antes de permitir la lectura. Reanuda Memory si está en pausa.", "personal": "La lectura de flujos no está disponible en el conjunto personal. Elige el ámbito Chat o Project.", "saveFailed": "No se pudo guardar el permiso. Inténtalo de nuevo."},
   store: {
     providerListFailed: "No se pudo cargar la lista de proveedores de Memory",
     statusFailed: "No se pudo leer el estado de Memory",

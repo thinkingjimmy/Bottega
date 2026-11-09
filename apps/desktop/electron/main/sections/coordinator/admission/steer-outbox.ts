@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on original ledger controls, Chat persistence, prepared staging and the existing Steer operation gate.
- * [OUTPUT]: Journals unsequenced steering; injected users append idempotently and queued fallbacks allocate sequences/context only at dispatch; a transferred next turn gets its own request and a Skill selection (with generation-ref custody) owned by that request. Preserves persistent member source through steering and queued fallback.
+ * [OUTPUT]: Provides SteerOutbox.
  * [POS]: The Steer outbox of sections/coordinator is the sole owner; Conversation Coordinator is responsible for life cycle assignments only
  */
 
@@ -50,7 +50,7 @@ import {
 type SteerOperation = ReturnType<
   NonNullable<CoordinatorDependencies["registerSteerOperation"]>
 >;
-type SteerAdmission = PublicSteerAdmission & Pick<ManualTurnSubmission, "remoteInput" | "memberSession">;
+type SteerAdmission = PublicSteerAdmission & Pick<ManualTurnSubmission, "remoteInput">;
 
 type SteerOutboxDependencies = Pick<
   CoordinatorDependencies,
@@ -439,7 +439,6 @@ export class SteerOutbox {
     };
     return {
       intentId: input.outboxRef,
-      ...(input.memberSession ? { memberSession: input.memberSession } : {}),
       ...(input.remoteInput?.length ? { remoteInput: input.remoteInput } : {}),
       persistence: {
         kind: "append" as const,
@@ -610,7 +609,6 @@ export class SteerOutbox {
       opEpoch,
       {
         id: intentId,
-        ...(prepared.memberSession ? { origin: { kind: "member" as const, ...prepared.memberSession } } : {}),
         conversationId:
           prepared.persistence.kind === "append"
             ? prepared.persistence.input.chatId

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod, the shared cloud identifier scalar and browser push subscription schemas.
- * [OUTPUT]: Provides push categories, Expo token/platform/locale scalars, the per-device registration projection, the closed notification data payload (a Chat push, or a workflow attention push (R-34) whose target is flattened into string keys), and R-36 token ownership: the install proof, the register result with its challenge outcome, and the data-only challenge payload.
+ * [OUTPUT]: Provides PUSH_LIMITS, pushCategoriesSchema, PushCategories, pushKindSchema, PushKind, expoPushTokenSchema, pushPlatformSchema, pushLocaleSchema, PushLocale, pushRegistrationSchema, PushRegistration, chatPushDataSchema, newComputerPushDataSchema, pushDataSchema, PUSH_OWNERSHIP, pushInstallProofSchema, PushInstallProof, pushInstallProofMessage, pushChallengeNonceSchema, pushRegisterResultSchema, PushRegisterResult, challengePushDataSchema, ChallengePushData, PushData, DEFAULT_PUSH_CATEGORIES.
  * [POS]: Push contract shared by the backend delivery, the Web settings/registration owner and the native shell's tap payload.
  */
 import { z } from "zod";
@@ -33,17 +33,10 @@ export type PushRegistration = z.infer<typeof pushRegistrationSchema>;
 export const chatPushDataSchema = z.object({
   chatId: cloudIdSchema, kind: pushKindSchema, turnSeq: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
 }).strict();
-/* R-34: `targetKind` marks a workflow push and each target has exactly its own keys; the Chat variant never carries it, so a
-   payload with both `targetKind` and `turnSeq` fits neither. Opening one only navigates. */
-export const workflowPushDataSchema = z.discriminatedUnion("targetKind", [
-  z.object({ kind: z.literal("attention"), targetKind: z.literal("needs-you") }).strict(),
-  z.object({ kind: z.literal("attention"), targetKind: z.literal("confirmation"), runId: cloudIdSchema, stepId: cloudIdSchema }).strict(),
-  z.object({ kind: z.literal("attention"), targetKind: z.literal("agent-waiting"), runId: cloudIdSchema, stepId: cloudIdSchema, role: z.enum(["plan", "develop", "review"]),
-    chatId: cloudIdSchema }).strict(),
-  /* R-37: a computer was just approved on this account; opens the device list. */
-  z.object({ kind: z.literal("attention"), targetKind: z.literal("new-computer") }).strict(),
-]);
-export const pushDataSchema = z.union([chatPushDataSchema, workflowPushDataSchema]);
+export const newComputerPushDataSchema = z.object({
+  kind: z.literal("attention"), targetKind: z.literal("new-computer"),
+}).strict();
+export const pushDataSchema = z.union([chatPushDataSchema, newComputerPushDataSchema]);
 /* R-36: proof that the phone registering a token is the installation already bound to it (a non-exportable Keystore P-256 key).
    The signed bytes name the registering account, so a proof cannot be replayed into another account. */
 export const PUSH_OWNERSHIP = Object.freeze({ proofSkewMs: 120_000, challengeMs: 60_000, perTokenChallenges: 3, perTokenWindowMs: 10 * 60_000,

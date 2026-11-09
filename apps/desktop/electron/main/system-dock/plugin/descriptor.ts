@@ -6,7 +6,7 @@
 import type { PluginDescriptor } from "@bottega/contracts/plugins/descriptor";
 import type { SettingField } from "@bottega/contracts/plugins/settings";
 import { DEFAULT_DOCK_LOCAL_STATE } from "../../../../shared/system-dock/local-state";
-import { DOCK_MACOS_MAJOR } from "../capability";
+import { DOCK_MACOS_VERSIONS } from "../capability";
 
 export const dockText = (key: string) => ({ key: `plugins.builtin.dock.${key.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}` });
 export const DOCK_FIELDS = {
@@ -25,7 +25,7 @@ const settings: SettingField[] = [
 ];
 export const DOCK_PLUGIN: PluginDescriptor = {
   id: "dock", kind: "feature", source: "builtin", name: dockText("name"), summary: dockText("summary"), description: dockText("description"), icon: "dock",
-  releaseStage: "alpha", systemRequirement: { ...dockText("systemRequirement"), params: { version: DOCK_MACOS_MAJOR } },
+  releaseStage: "alpha", systemRequirement: { ...dockText("systemRequirement"), params: { version: DOCK_MACOS_VERSIONS.join(" / ") } },
   provides: [], requires: [], turnOn: { mode: "setup", setup: "dock-setup" }, turnOff: { allowed: true }, settings,
   capabilities: [{ label: dockText("capabilities.launch"), id: null }, { label: dockText("capabilities.usage"), id: null },
     { label: dockText("capabilities.sync"), id: null }, { label: dockText("capabilities.permissions"), id: null }],

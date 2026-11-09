@@ -6,7 +6,7 @@
 
 # Getting started
 
-Bottega is a local-first macOS workspace for AI coding agents. It connects the Codex, Claude Code, Kimi Code, and OpenCode CLIs already installed and authenticated on your machine, then gives their conversations durable structure through Base, Apps, workflows, Memory, browser tools, and multi-agent collaboration.
+Bottega is a local-first macOS workspace for AI coding agents. It connects the Codex, Claude Code, Kimi Code, and OpenCode CLIs already installed and authenticated on your machine, then gives their conversations durable structure through Base, Apps, Memory, browser tools and native Provider subagents.
 
 The project is in an early, fast-moving stage. Interfaces and storage formats may change without a compatibility layer.
 
@@ -46,6 +46,16 @@ Setup has one path and never mentions an account: choose your Bottega folder, th
 - **Keep tool authority explicit.** Bottega checks App, tool, Memory and cross-chat access. Agent commands use the selected Provider's execution permissions; read the [Codex permission model](../features/README.md#codex-command-permissions).
 
 See the [features guide](../features/README.md) for the product model and its four core capability areas.
+
+### Upcoming 0.4.2 source
+
+Current main is unreleased 0.4.2 source using **protocol 27**. The latest published installer remains **0.4.1/protocol 26**. Use the 0.4.1 download and installation instructions below for the published application. There is no 0.4.2 download in this source-only update.
+
+The source removes Workflow, standalone Agent configurations and Bottega Team. Ordinary and former Lead Chats, native Provider subagents, Provider preferences, ordinary forks and plugin authoring remain. Former Stage and Acceptance criteria columns become ordinary editable Base fields, preserving their IDs, options, values and view references.
+
+Desktop, Web and backend delivery at protocol 27 must occur together. The targeted retirement maintenance remains pending and is not performed at product startup. Its scope is limited to verified records and execution worktrees owned by the retired features. Ordinary and former Lead Chats, original Project folders, Base field content, sync passwords and account keys are preserved by that maintenance contract. Back up the Bottega folder and complete application data before a later upgrade.
+
+The source also includes quiet update-check recovery, a Download latest action in startup recovery, clearer menus and settings, and Dock admission for Apple silicon on macOS 26.x or 27.x. Dock remains Alpha. Controlled-version checks do not establish physical macOS 26 or signed replacement, restoration, login/reboot or display acceptance. This source publication claims no new installer, deployment or native acceptance.
 
 ### Upgrading to 0.4.1
 
@@ -111,7 +121,7 @@ Your saved title Agent and model stay unchanged. This version's Codex connection
 
 This release keeps **protocol 19**, existing content, sync passwords and account keys. No data reset is required. Dock remains Alpha on macOS 27.x with Apple silicon; replacement, system recovery and display/fullscreen combinations are still being validated. See the [0.2.7 changelog](../changelog/README.md#2026-10-18--v027) and [installation steps](#download-and-install).
 
-The older upgrade notes describe their original versions. Use Requirements and the 0.4.1 upgrade section for the current release.
+The older upgrade notes describe their original versions. Use Requirements and the 0.4.1 upgrade section for the published release; the upcoming 0.4.2 source is described separately above.
 
 ## Upgrading to 0.2.6
 
@@ -179,7 +189,7 @@ Signing in is optional. Local use needs no account and queues no uploads, and se
 - **There is no password recovery.** No recovery key, no approval from another device, no reset. If you lose the password and no signed-in device can still decrypt, content that exists only in the cloud cannot be recovered. Bottega states this before the encrypted workspace is created and asks you to confirm it.
 - **One account, one encrypted workspace.** A second computer chooses its own Bottega folder, signs in with the same account, and enters the same sync password to join.
 - **Signing out** stops this computer publishing and stops it taking remote commands. It deletes nothing: what it already published stays readable in a browser and on your other computers, marked as signed out. Removing cloud data is a separate action in Settings, and Delete account is separate again.
-- **Cloud Web.** Signed in at [app.getbottega.app](https://app.getbottega.app) you can read Chats with their tool activity and attachments, search chat titles and the last seven days of message bodies, work with Bases in all six views, read and edit synced App records, restore or delete archived items, manage devices and preferences, and follow workflow runs — start them, confirm, decide, and answer everything under **Needs you**. Static and Base-backed App interfaces open there too; server App interfaces, the in-app Browser, and local tools stay on your computer. Phone browsers are supported; Chrome is the tested browser.
+- **Cloud Web.** Signed in at [app.getbottega.app](https://app.getbottega.app) you can read Chats with their tool activity and attachments, search chat titles and the last seven days of message bodies, work with Bases in all six views, read and edit synced App records, restore or delete archived items, manage devices and preferences. Static and Base-backed App interfaces open there too; server App interfaces, the in-app Browser, and local tools stay on your computer. Phone browsers are supported; Chrome is the tested browser.
 
 ### Signing in is remote control
 

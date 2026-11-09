@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the settingsUpdatesEn structural type
- * [OUTPUT]: Provides settingsUpdatesJa, the Japanese Settings › Updates catalog; unified row actions and collapsed failure details use shared update, retry and manual-download copy
+ * [OUTPUT]: Provides settingsUpdatesJa, the Japanese Settings › Updates catalog; stage-specific check/download recovery, current-version labels and explicit diagnostic-copy feedback
  * [POS]: Japanese leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
@@ -34,17 +34,27 @@ export const settingsUpdatesJa: typeof settingsUpdatesEn = {
   installingShort: "更新をインストール中…",
   restartUpdate: "再起動して更新",
   failedShort: "更新に失敗しました",
-  checkFailedShort: "更新の確認に失敗しました",
+  checkFailedShort: "更新を確認できません",
   manualShort: "新しいバージョンをダウンロード",
   downloading: "{{version}} をダウンロード中",
   installing: "更新をダウンロードしました · 再起動してインストールします",
-  failed: "更新に失敗しました: {{message}}",
-  failedUnknown: "不明な理由で更新に失敗しました。",
-  validationFailed: "ダウンロードした更新は検証に通りませんでした。Bottega がもう一度確認します。",
-  failedResolution:
-    "Releases ページから新しいバージョンをダウンロードするか、GitHub で問題を報告してください。",
-  backgroundFailed: "前回の自動確認に失敗しました",
-  backgroundFailedOpen: "自動アップデート確認が失敗しています。詳細はアップデートを開いてください",
+  validationFailed: "ダウンロードした更新を検証できませんでした。更新をもう一度確認してください。",
+  failedResolution: "ダウンロードページから Bottega をダウンロードすることもできます。",
+  currentVersion: "現在のバージョン {{version}}",
+  currentVersionRetained: "現在のバージョンは引き続き使用できます。",
+  retryCheck: "もう一度確認",
+  retryDownload: "再ダウンロード",
+  downloadFailedShort: "更新のダウンロードに失敗しました",
+  offline: "オフラインです。接続が回復すると、Bottega が再確認します。",
+  connectionFailed: "更新サービスに接続できません。後でもう一度お試しください。",
+  requestTimedOut: "更新サービスからの応答がタイムアウトしました。後でもう一度お試しください。",
+  serviceUnavailable: "更新サービスを一時的に利用できません。後でもう一度お試しください。",
+  rateLimited: "更新サービスが混み合っています。Bottega が後で再試行します。",
+  checkFailedUnknown: "更新情報を取得できませんでした。後でもう一度確認してください。",
+  downloadFailedUnknown: "更新をダウンロードできませんでした。もう一度ダウンロードしてください。",
+  copyDiagnostics: "診断情報をコピー",
+  diagnosticsCopied: "診断情報をコピーしました",
+  diagnosticsCopyFailed: "診断情報をコピーできませんでした。もう一度お試しください。",
   check: "更新を確認",
   upgrade: "更新",
   manualUpgrade: "ダウンロードページを開く",

@@ -7,7 +7,7 @@ import type { PluginDockWidgets } from './widgets/plugins/owner';
 import { installPluginDockWidgets } from './widgets/plugins/runtime';
 import { unifiedPluginIntegration } from '../plugins/integration/composition';
 import { pluginProcessRuntime } from '../plugins/process/runtime';
-import { localizeDockTasks, type DockTasksPort } from './widgets/tasks';
+import { type DockTasksPort } from './widgets/tasks';
 import type { PluginCatalog } from '../plugins/catalog';
 import { attachDockPlugin } from './plugin/owner';
 import { app } from 'electron';
@@ -64,9 +64,8 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
     service?: DockService;
   } = {}, surfaces = new Map<DockSurface, Parameters<DockCustomWidgetsPort['setVisible']>[1]>();
   let closing = false, failed = false;
-  const taskAdapter = localizeDockTasks(ports.tasks, ports.locale, () => projection.service?.schedule());
   const feature = createDeferredOwner<DockWidgetFeature>(async (current) => { if (!integration)
-    throw new Error('DOCK_AUTHORING_UNAVAILABLE'); const { createDockWidgetFeature } = await import('./widgets/custom/feature'); return createDockWidgetFeature({ runtime: ports, service, config, local, integration, tasks: taskAdapter.port, changed: widgetsChanged }, current); });
+    throw new Error('DOCK_AUTHORING_UNAVAILABLE'); const { createDockWidgetFeature } = await import('./widgets/custom/feature'); return createDockWidgetFeature({ runtime: ports, service, config, local, integration, tasks: ports.tasks, changed: widgetsChanged }, current); });
   const setup = createDeferredOwner(async current => {
     const {DockSetup}=await import('./setup');
     if(!current())throw new Error('DOCK_SETUP_CLOSED');
@@ -118,7 +117,7 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
       throw new Error('DOCK_ACTION_UNAVAILABLE'); return owner.data.invokeAction(id, ref); },
   };
   const service: DockService = new DockService({ platform, mainDirectory: ports.mainDirectory, local, config, locale: ports.locale, installation: ports.installation, profile: createHash('sha256').update(ports.userData).digest('hex').slice(0, 32),
-    host: { open: () => { app.emit('activate'); }, quit: () => app.quit() }, appPath: process.execPath, ownBundleId: null, limits: ports.limits, history: ports.history, apps: appAdapter.apps, tasks: taskAdapter.port, custom,
+    host: { open: () => { app.emit('activate'); }, quit: () => app.quit() }, appPath: process.execPath, ownBundleId: null, limits: ports.limits, history: ports.history, apps: appAdapter.apps, tasks: ports.tasks, custom,
     prepareCustom: async () => { if (hasWidgets())
       await getWidgets(); },
     accounts: { fingerprint: backend => backendRuntimeRegistry.accountFingerprint(backend), subscribe: listener => { const stop = backendRuntimeRegistry.subscribe(id => { const backend = knownBackend(builtinProviderCatalog, id); if (backend)
@@ -176,11 +175,11 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
   const stopSettings = service.onSettings(snapshot => windowRegistry.publish(SYSTEM_DOCK_SETTINGS_CHANNEL.changed, snapshot, record => record.role === 'main')), stopWidgets = integration?.onChanged(widgetsChanged), stopWidgetLayout = config.onChanged(widgetsChanged), stopWidgetLocal = local.onChanged(() => { feature.peek()?.reconcile(); pluginWidgets?.reconcile(); });
   let stopSync: (() => void) | null = null, stopTasks: (() => void) | undefined;
   return { service, config: () => config,
-    initialize: async () => { const [{WeatherOwner},{PluginDockWidgets:WidgetOwner}]=await Promise.all([import('../plugins/official/weather/owner'),import('./widgets/plugins/owner')]); if(closing)throw new Error('SYSTEM_DOCK_CLOSED'); pluginWidgets=createPluginWidgets(WidgetOwner); installPluginDockWidgets(pluginWidgets); installWeatherOwner(new WeatherOwner(ports.mainDirectory,ports.locale)); stopTasks = taskAdapter.port?.subscribe?.(() => { service.schedule(); feature.peek()?.reconcile(); }); await service.initialize(); await pluginWidgets.initialize(); widgetsChanged(); },
+    initialize: async () => { const [{WeatherOwner},{PluginDockWidgets:WidgetOwner}]=await Promise.all([import('../plugins/official/weather/owner'),import('./widgets/plugins/owner')]); if(closing)throw new Error('SYSTEM_DOCK_CLOSED'); pluginWidgets=createPluginWidgets(WidgetOwner); installPluginDockWidgets(pluginWidgets); installWeatherOwner(new WeatherOwner(ports.mainDirectory,ports.locale)); stopTasks = ports.tasks?.subscribe?.(() => { service.schedule(); feature.peek()?.reconcile(); }); await service.initialize(); await pluginWidgets.initialize(); widgetsChanged(); },
     menu: () => presenceSubmenu(service),
     attachSync(handle: SyncHandle | null) { stopSync?.(); service.sync = handle; stopSync = handle?.onChanged(() => service.schedule()) ?? null; service.schedule(); },
     restoreForQuit: () => service.restoreForQuit(),
-    async close() { closing = true; installWeatherOwner(null); stopWidgetLocal(); stopWidgetLayout(); stopWidgets?.(); stopApps(); taskAdapter.close(); stopTasks?.(); releasePlugin(); stopSettings(); stopSync?.(); service.sync = null; surfaces.clear(); installPluginDockWidgets(null); const errors: unknown[] = []; for (const run of [() => pluginWidgets?.close(), () => feature.close(), () => setup.close(), () => service.close()])
+    async close() { closing = true; installWeatherOwner(null); stopWidgetLocal(); stopWidgetLayout(); stopWidgets?.(); stopApps(); stopTasks?.(); releasePlugin(); stopSettings(); stopSync?.(); service.sync = null; surfaces.clear(); installPluginDockWidgets(null); const errors: unknown[] = []; for (const run of [() => pluginWidgets?.close(), () => feature.close(), () => setup.close(), () => service.close()])
       try {
         await run();
       }

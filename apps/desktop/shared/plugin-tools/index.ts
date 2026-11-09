@@ -37,8 +37,7 @@ export function registerToolDeclarations(pluginId: string, revision: string, pro
     const timeoutMs = spec.timeoutMs ?? 600_000;
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600_000) throw new Error(`Invalid tool timeout: ${identity}`);
     return Object.freeze({ ...spec, pluginId, toolId, identity, revision, providerAlias, timeoutMs,
-      outputSchema: spec.outputSchema ?? z.json(), outputJsonSchema: spec.outputJsonSchema ?? {},
-      workflowAllowed: spec.workflowAllowed ?? ["bases", "history"].includes(spec.domainId) });
+      outputSchema: spec.outputSchema ?? z.json(), outputJsonSchema: spec.outputJsonSchema ?? {} });
   });
   if (new Set(next.map(spec => spec.name)).size !== next.length || new Set(next.map(spec => spec.identity)).size !== next.length) throw new Error(`Duplicate tools in plugin ${pluginId}`);
   if (options.validateOnly) return next;
@@ -66,12 +65,12 @@ export function baseToolsAvailability(allowed: readonly string[]): BaseToolsAvai
   const writable = specs.some(spec => ["base_insert_rows", "base_patch_rows", "base_delete_rows"].includes(spec!.toolId));
   return readable ? writable ? "read-write" : "read-only" : writable ? "write-only" : "none";
 }
-export type BuiltinTurnKind = "manual" | "relay" | "workflow" | "member";
+export type BuiltinTurnKind = "manual" | "relay";
 export function allowedToolsFor(access: "none" | PluginToolAccess, turnKind: BuiltinTurnKind, planMode = false) {
   if (access === "none") return [];
   return registeredToolSpecs().filter(spec => pluginToolsAvailable(spec.pluginId) &&
     (access === "mutate" || spec.access === "read") && (turnKind === "manual" || !spec.manualTurnOnly) &&
-    (turnKind !== "workflow" || spec.workflowAllowed) && (!planMode || !spec.planExcluded) && !spec.exactIssued).map(spec => spec.name);
+    (!planMode || !spec.planExcluded) && !spec.exactIssued).map(spec => spec.name);
 }
 export * from "./official";
 export * from "./catalog/apps";

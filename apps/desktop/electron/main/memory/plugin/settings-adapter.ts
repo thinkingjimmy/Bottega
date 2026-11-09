@@ -21,8 +21,7 @@ export function createMemorySettingsAdapter(ports: MemorySettingsAdapterPorts): 
   return {
     async read() {
       const settings = ports.settings.get();
-      return { backend: settings.memory.provider, "sharing-mode": settings.memory.sharingMode, "phone-facade": settings.memoryPhoneFacade,
-        "workflow-roles": settings.memoryWorkflowRoles };
+      return { backend: settings.memory.provider, "sharing-mode": settings.memory.sharingMode, "phone-facade": settings.memoryPhoneFacade };
     },
     async submit(patch, confirmation) {
       const entries = Object.entries(patch);
@@ -38,10 +37,6 @@ export function createMemorySettingsAdapter(ports: MemorySettingsAdapterPorts): 
       }
       if (id === "phone-facade") {
         await ports.settingsOwner.setPhoneFacade(value as boolean);
-        return { status: "applied" };
-      }
-      if (id === "workflow-roles") {
-        await ports.settingsOwner.setWorkflowRoles(value as boolean);
         return { status: "applied" };
       }
       const current = envelope.settings.memory;

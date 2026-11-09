@@ -171,7 +171,6 @@ export function materializeForkPrefix(
 }
 
 type ForkRecordInput = Readonly<{
-  initialMode?: import("@bottega/contracts/plugins/platform").PluginModeSelection;
   source: ChatRecord;
   childChatId: string;
   childIncarnationId?: string;
@@ -218,7 +217,7 @@ function buildForkRecord(input: ForkRecordInput, messages: ChatMessage[]) {
     titleJob: { state: "none" },
     agent: input.source.agent,
     agentRevision: 0,
-    options: input.initialMode ? { ...structuredClone(input.source.options), mode: structuredClone(input.initialMode) } : structuredClone(input.source.options),
+    options: structuredClone(input.source.options),
     forkAgent: input.source.agent,
     session: null,
     importOrigin: null,

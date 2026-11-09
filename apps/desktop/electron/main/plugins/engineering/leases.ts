@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Durable canonical WorkspaceLeases and operation owners supplied by turn or team custody.
+ * [INPUT]: Durable canonical WorkspaceLeases and operation owners supplied by turn custody.
  * [OUTPUT]: FIFO cancellable source leases with reentrant execution-group membership and delayed release.
  * [POS]: Plugin-source writer admission; ordinary Project execution does not acquire these leases.
  */
 import {join} from 'node:path';
-import {WorkspaceLeases,canonicalWorkspace} from '../../workflows/runtime/workspace-leases';
-export type AuthoringOwner={kind:'turn'|'team';id:string};
+import {WorkspaceLeases,canonicalWorkspace} from '../../projects/git/leases/workspace-leases';
+export type AuthoringOwner={kind:'turn';id:string};
 export type AuthoringLease={owner:AuthoringOwner;workspace:string;release():Promise<void>};
 type Waiter={owner:AuthoringOwner;participant:string;signal?:AbortSignal;resolve(value:AuthoringLease):void;reject(error:unknown):void;abort?:()=>void};
 type Holder={owner:string;participants:Set<symbol>};

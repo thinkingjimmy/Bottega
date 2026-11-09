@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and the canonical BaseCellContext, React refs/state, dnd-kit mouse and long-press touch sensors, react-virtual, shared grouping, InlineNameInput, Kanban field projection, card rendering, and mutation outcomes
- * [OUTPUT]: Provides BaseKanbanView with canonical computed/relation values, virtualized lanes, option management, LWW drag patches, and locked lanes when grouped by a workflow-only column (no drop, no seeded add, the reason shown where the drop fails)
+ * [OUTPUT]: Provides KANBAN_MOUSE_ACTIVATION, KANBAN_TOUCH_ACTIVATION, BaseKanbanView.
  * [POS]: Shared Base presentation in ui/views/kanban.
  */
 
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useAppTranslation } from "../../platform/i18n";
 import type { BaseMutationOutcome } from "../../state/base-mutation-error";
 import { createPortal } from "react-dom";
@@ -21,10 +21,10 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { CheckIcon, KanbanIcon, LockIcon, PencilIcon, PlusIcon } from "lucide-react";
-import { formatWorkbench } from "@ai-chat/ui/lib/workbench-copy";
-import { isWorkflowOnly } from "@ai-chat/base-core/compute/workflow-columns";
-import { useWorkflowCopy } from "../../chrome/workflow-column";
+import { CheckIcon, KanbanIcon, PencilIcon, PlusIcon } from "lucide-react";
+
+
+
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   DropdownMenu,
@@ -117,7 +117,6 @@ export function BaseKanbanView({
   onOpenRow?(row: BaseRow): void;
 }) {
   const { t } = useAppTranslation();
-  const workbench = useWorkflowCopy();
 
   const group = useMemo(() => {
     const selectColumns = columns.filter((column) => column.type === "select");
@@ -150,15 +149,6 @@ export function BaseKanbanView({
     })
   );
   const [activeRowId, setActiveRowId] = useState("");
-  /* Grouped by a column only a workflow changes (Stage), lanes take no cards: the drop is refused where it happens,
-     with the reason, instead of failing later in the commit. */
-  const locked = Boolean(group && isWorkflowOnly(group));
-  const [lockNotice, setLockNotice] = useState("");
-  useEffect(() => {
-    if (!lockNotice) return;
-    const timer = setTimeout(() => setLockNotice(""), 6000);
-    return () => clearTimeout(timer);
-  }, [lockNotice]);
   const activeRow = useMemo(
     () => (activeRowId ? rows.find((row) => row.id === activeRowId) : undefined),
     [activeRowId, rows]
@@ -201,11 +191,6 @@ export function BaseKanbanView({
     const rowId = String(event.active.id);
     const laneId = event.over ? String(event.over.id) : "";
     if (!laneIds.has(laneId)) return;
-    if (locked) {
-      const current = rows.find((row) => row.id === rowId)?.values[group.id] ?? "__none__";
-      if (current !== laneId) setLockNotice(formatWorkbench(workbench.readOnly.laneLocked, { column: group.name }));
-      return;
-    }
     void onPatch?.(rowId, { [group.id]: laneId === "__none__" ? null : laneId });
   };
 
@@ -216,11 +201,6 @@ export function BaseKanbanView({
       onDragStart={dragStart}
       sensors={sensors}
     >
-      {lockNotice && (
-        <p className="mx-4 mt-3 flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-xs" data-lane-lock-notice="" role="status">
-          <LockIcon aria-hidden className="mt-px size-3.5 shrink-0 text-muted-foreground" />{lockNotice}
-        </p>
-      )}
       <SlimScroller className="@container/kanban flex min-h-0 flex-1 gap-3 overflow-x-auto scroll-pl-4 px-4 py-3 @max-[40rem]/kanban:snap-x @max-[40rem]/kanban:snap-mandatory @[40rem]/kanban:gap-5">
         {lanes.map((lane) => (
           <KanbanLane
@@ -231,15 +211,14 @@ export function BaseKanbanView({
             label={
               lane.unassigned ? t("bases.group.unassigned") : lane.label
             }
-            locked={locked}
             onAddRow={
-              onAddRow && (!locked || lane.id === "__none__")
+              onAddRow
                 ? () => onAddRow(lane.id === "__none__" ? {} : { [group.id]: lane.id })
                 : undefined
             }
 
             onUpdate={
-              onUpdateOption && lane.id !== "__none__" && !locked
+              onUpdateOption && lane.id !== "__none__"
                 ? (patch) => onUpdateOption(group.id, lane.id, patch)
                 : undefined
             }
@@ -277,7 +256,6 @@ function KanbanLane({
   tone,
   owner,
   busy,
-  locked,
   onAddRow,
   onUpdate,
   onOpenRow,
@@ -290,7 +268,6 @@ function KanbanLane({
   tone: KanbanTone;
   owner?: KanbanAttachmentOwner;
   busy: boolean;
-  locked: boolean;
   onAddRow?: () => Promise<BaseMutationOutcome>;
   onUpdate?(
     patch: Partial<Pick<BaseSelectOption, "label" | "color">>
@@ -314,9 +291,8 @@ function KanbanLane({
   return (
     <section
       ref={setNodeRef}
-      className={`flex ${LANE_WIDTH_CLASS} shrink-0 flex-col rounded-xl transition-colors ${isOver && !locked ? "bg-muted/60" : ""}`}
+      className={`flex ${LANE_WIDTH_CLASS} shrink-0 flex-col rounded-xl transition-colors ${isOver ? "bg-muted/60" : ""}`}
       data-lane-id={lane.id}
-      data-lane-locked={locked || undefined}
     >
       <header className="flex h-9 shrink-0 items-center gap-1.5 px-1.5 text-xs">
         <KanbanLaneDot
@@ -353,7 +329,6 @@ function KanbanLane({
             {label}
           </span>
         )}
-        {locked && <LockIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />}
         <span className="shrink-0 tabular-nums text-muted-foreground">
           {lane.rows.length}
         </span>

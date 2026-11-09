@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The sole durable ledger, target-bound controls and the original dispatch critical section.
- * [OUTPUT]: Content-free queued identities (a person's intents only, never a workflow step's) and atomic controls over unsequenced, unpinned inputs with durable transfer proof. Revision-bound take and source pause controls preserve immutable takeover evidence.
+ * [OUTPUT]: Content-free queued identities for a person's intents and atomic controls over unsequenced, unpinned inputs with durable transfer proof. Revision-bound take and source pause controls preserve immutable takeover evidence.
  * [POS]: Coordinator queue library; no Agent dispatch or network IO occurs inside its mutations.
  */
 import type { RemoteCommand } from "@ai-chat/cloud-protocol/remote/model";
@@ -11,8 +11,8 @@ import { failManualWithCapsule } from "../submission-outcome";
 import { controlReceiptSchema, type RemoteContext } from "./model";
 import { queueRows, queueProjection, transferQueuedInput, setSourceQueuePaused } from "./queue-custody";
 /**
- * Queued rows in dispatch order; the ledger sequence stays local and never leaves this module. A workflow step's intent is a
- * role's prompt, not the person's message, so it is never offered for editing or withdrawal (Q4).
+ * Queued rows in dispatch order; the ledger sequence stays local.
+ * Only unsequenced and unpinned inputs can be edited or withdrawn.
  */
 export function queuedProjection(state: DeepReadonly<LedgerState>, chatId: string) {
   return queueProjection(state, chatId);

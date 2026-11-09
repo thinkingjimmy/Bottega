@@ -1,10 +1,9 @@
 /**
- * [INPUT]: Plugin, team, Surface and record channel contracts plus trusted role-filtered IPC helpers.
- * [OUTPUT]: Main-only unified plugin catalog/source/Surface actions, team actions, original plugin settings, initialization retry and record lease/result bridges, with resident-window surface and generation bridges.
+ * [INPUT]: Uses `electron`, `@bottega/contracts/plugins/platform/bridge/index`, `@ai-chat/cloud-protocol/contracts/plugins/channel`, `@ai-chat/cloud-protocol/contracts/plugins/catalog`, `@bottega/contracts/plugins/surface/native`, `@bottega/contracts/plugins/records/native` for its declared types and implementation.
+ * [OUTPUT]: Provides installPluginsBridge, installPluginSurfacesBridge.
  * [POS]: Native preload registration; isolated package frames receive no bridge.
  */
 import { contextBridge, ipcRenderer } from "electron";
-import { PLUGIN_TEAM_CHANNEL as TEAM, type PluginTeamBridge } from "@bottega/contracts/plugins/team/bridge";
 import { PLUGIN_PLATFORM_CHANNEL as PLATFORM, type UnifiedPluginBridge } from "@bottega/contracts/plugins/platform/bridge/index";
 import { PLUGINS_CHANNEL } from "@ai-chat/cloud-protocol/contracts/plugins/channel";
 import type { PluginsBridge } from "@ai-chat/cloud-protocol/contracts/plugins/catalog";
@@ -15,11 +14,6 @@ import { RECORD_PLUGINS_CHANNEL as RECORD, type RecordPluginsBridge } from "@bot
 export function installPluginsBridge(subscribe: <T>(channel: string) => (callback: (value: T) => void) => () => void) {
   contextBridge.exposeInMainWorld("recordPlugins", Object.fromEntries(Object.entries(RECORD).map(([method, channel]) =>
     [method, (...args: unknown[]) => ipcRenderer.invoke(channel, ...args)])) as unknown as RecordPluginsBridge);
-  const teamChanged = subscribe<{ teamId: string; revision: number }>(TEAM.changed);
-  contextBridge.exposeInMainWorld("pluginTeams", {
-    ...Object.fromEntries(Object.entries(TEAM).filter(([method]) => method !== "changed").map(([method, channel]) =>
-      [method, (...args: unknown[]) => ipcRenderer.invoke(channel, ...args)])), onChanged: teamChanged,
-  } as PluginTeamBridge);
   const platformChanged = subscribe<{ revision: number }>(PLATFORM.changed);
   contextBridge.exposeInMainWorld("pluginPlatform", {
     ...Object.fromEntries(Object.entries(PLATFORM).filter(([method]) => method !== "changed").map(([method, channel]) =>

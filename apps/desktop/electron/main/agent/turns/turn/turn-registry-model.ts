@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Agent IPC, chats IPC, product failure, sections IPC, the shared turn reducer's draft and SubagentRegistry types, and agent/controls/completion's InteractionState
- * [OUTPUT]: Provides the turn model the registry keeps: TurnOrigin (manual, relay, or a workflow step with its run, step, attempt and role) and turnMessageId, SourceTerminal, TurnCleanup, TurnPersist, RegistryTurn, the startup, retry and steer states, SubagentOutcomeStatus, TurnChildTask, SteerOperation, TurnEntry, RetryClaim, DraftObservation, and the isTombstone, blocksNewTurn and awaitsUserResponse predicates TurnOrigin includes main-owned persistent member ownership.
+ * [OUTPUT]: Provides TurnOrigin, turnMessageId, SourceTerminal, TurnCleanup, TurnPersist, RegistryTurn, SteerOperationState, SubagentOutcomeStatus, TurnChildTask, SteerOperation, TurnEntry, RetryClaim, DraftObservation, isTombstone, blocksNewTurn, awaitsUserResponse.
  * [POS]: apps/desktop/electron/main/agent/turns/turn; Type and predicate half of the turn lifecycle; turn-registry.ts owns the state machine over these, agent/ re-exports TurnOrigin from here. No Electron dependency.
  */
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
@@ -17,15 +17,9 @@ import type {
 import type { TurnCommitInput } from "../../../../../shared/ipc/content/chats-ipc";
 import type { SubagentRegistry } from "../../../../../shared/tools/subagent-registry";
 import type { ProductFailure } from "../../../../../shared/product/product-failure";
-import type { WorkflowTurnSource } from "../../../../../shared/ipc/content/sections-ipc";
 import type { InteractionState } from "../../controls/completion";
 
-/**
- * turn 的发起证据：人工输入、relay 或 workflow 步骤。定义在本层
- * （无 Electron 依赖的 turn 单一真相源）；bridge-types 只再导出，方向恒为
- * agent/ → 本文件。
- * A workflow turn has no queryText: its step prompt is never a person's words; userMessageId only keys the step message's mechanics.
- */
+
 export type TurnOrigin =
   | {
       kind: "manual";
@@ -33,9 +27,7 @@ export type TurnOrigin =
       userText: string;
       userMessageId: string;
     }
-  | { kind: "relay" }
-  | ({ kind: "workflow"; userMessageId: string } & WorkflowTurnSource)
-  | ({ kind: "member"; userMessageId: string } & import("@bottega/contracts/plugins/team").PluginMemberSessionFacts);
+  | { kind: "relay" };
 
 /** The persisted message a turn answers, for mechanics keyed by it (sent-prompt evidence, session recovery, fresh retry); a relay has none. */
 export function turnMessageId(origin: TurnOrigin | undefined): string | undefined {

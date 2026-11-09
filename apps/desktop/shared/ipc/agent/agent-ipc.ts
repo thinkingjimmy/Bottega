@@ -107,7 +107,7 @@ export type TurnFilesystemAccess = {
   /** Absent means workspace-write. read-only is refused when the workspace overlaps a write root the fence must keep. */
   mode?: "workspace-write" | "read-only";
   /** Absent means the network the Provider normally has. "off": no tool reaches the network while the model stays online;
-   *  only a workflow step whose configuration asked for it, and only on a Provider measured to enforce it (TASK-12). */
+   *  main must grant this fence only on a Provider that enforces it. */
   network?: "off";
 };
 

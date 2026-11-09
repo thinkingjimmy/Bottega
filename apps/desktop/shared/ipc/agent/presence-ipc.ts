@@ -33,8 +33,6 @@ export type PresenceTask = TaskReference & Readonly<{
   requestId: string; generation: number; backend: ProviderId;
   title: string | null; context: string | null; startedAt: number | null;
   phase: TaskPhase; subtaskCount: number;
-  /** A workflow step's turn (a role's, not the person's): its run (the parent), step and role; absent for every other turn. */
-  workflow?: Readonly<{ runId: string; stepId: string; role: import("@ai-chat/cloud-protocol/contracts/workflow/recipe").WorkflowRoleName }>;
 }>;
 export type TaskActivitySnapshot = Readonly<{
   version: 1; revision: number; tasks: readonly PresenceTask[];

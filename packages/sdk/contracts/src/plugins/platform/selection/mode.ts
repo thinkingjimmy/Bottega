@@ -7,7 +7,7 @@ import { z } from "zod";
 export const pluginIdentitySchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
 export const pluginDigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 export const pluginNativeRequirementsSchema = z.object({
-  readOnly: z.boolean().optional(), toolSelection: z.boolean().optional(), persistentSessions: z.boolean().optional(),
+  readOnly: z.boolean().optional(), toolSelection: z.boolean().optional(),
 }).strict();
 export const pluginToolSelectionSchema = z.object({
   plugins: z.array(pluginIdentitySchema).max(256).default([]),

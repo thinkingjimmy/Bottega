@@ -1,7 +1,6 @@
 /**
  * [INPUT]: Depends on shared agent/MCP DTOs, model-catalog probe admission, the apps/runtime/agent-tools AgentToolInventory type, AbortSignal, and the Node subprocess environment type
- * [OUTPUT]: Defines backend contracts, optional model-probe admission, the credential-safe authentication-check claim and main-only turn authority with optional exact-conversation Full Access validation, ProviderReadinessPlan (a descriptor's Provider bridge readiness launch) and ProviderBackend (a backend for any Provider id, what the runtime registry and the Provider resolver work with). TurnProcessOwner with optional durable descendant recording (B2-01: the other layer that owns a turn's process, e.g. host custody for a bridged turn). Defines the main-only independent native member fork authority.
- * BackendTurnOptions carries main-only isolated title/candidate purposes, background result persistence and skillIsolation for workflow launch translation; descriptors expose optional separate title/candidate factories, never an ordinary-Chat fallback.
+ * [OUTPUT]: Provides ThirdPartyMcpProtocolObservation, AgentRuntime, ResolvedRuntime, RuntimeValidation, RuntimeConfirmation, BackendFailure, AgentTurnFacts, FailureHints, ResolvedAgentInputItem, ResolvedAgentInput, AgentTurnCallbacks, AgentTurnTrace, StartOutcome, AdapterSteerOutcome, TurnProcessOwner, AgentTurn, AgentProcessLaunch, ProviderReadinessPlan, AgentProcessLauncher, AgentProcessHost, TrustedTurnAuthority, BackendTurnOptions, SetupTerminalAction, SetupCommand, SetupExtension, AuthCheckStatus, AuthCheckResult, AuthExtension, AcpLaunch, AcpLaunchOverlay, AcpLauncher, ModelsExtension, SkillsExtension, HeadlessJob, HeadlessParserState, HeadlessExecutionSpec, HeadlessRun, MaintenanceJobInput, MaintenanceSession, MaintenanceAdapter, ConnectionDescriptor, CapabilityProvider, FailureClassifier, HeadlessExtension, BackendDescriptor, ProviderBackend.
  * ResolvedRuntime binds a registry version answer to its executable with versionIdentity for host measurements.
  * Carries fixed qualified setup commands and the main-owned disableProviderMemory policy into native Provider launch configuration.
  * [POS]: The backends contract module; runtime registry, transports, and product callers recognise each other only through the types declared here
@@ -252,8 +251,6 @@ export type TrustedTurnAuthority = {
 };
 
 export type BackendTurnOptions = {
-  /** Main-sealed member source; a canonical child Chat already exists and never inherits the parent session ID. */
-  memberFork?: import("../../library/sessions/member-fork").NativeMemberFork;
   /** Main-only title purpose; never accepted from renderer or ordinary Chat options. */
   titleOnly?: true;
   /** Main-only independent candidate purpose; never accepted from renderer or ordinary Chat options. */
@@ -273,8 +270,6 @@ export type BackendTurnOptions = {
   /** What the turn's work depends on (App references, extension plans): journaled with its process in host custody (TASK-11 flip, ruling (a)). */
   custodyDependencies?: readonly AgentTurnCustodyDependency[];
   processEnv?: NodeJS.ProcessEnv;
-  /** Main-owned workflow scope: native Skill discovery is disabled; selected Skills arrive through use_skill. */
-  skillIsolation?: { deniedRoots: readonly string[] };
   /** 第一次 createTurn 前冻结；同一 request 的 resume/retry 复用，不回读 live Settings。 */
   backendSessionConfig?: Readonly<{
     /** Concrete immutable roots resolved once at turn creation; never `current`. */
@@ -302,7 +297,7 @@ export type BackendTurnOptions = {
   /** main 在 runtime CAS 后冻结的产品上下文；逐 spawn 作为 prompt 首块下发。 */
   artifactDirectory?: string;
   productContext?: string;
-  /** Main-owned workflow isolation; ordinary Chats inherit the Provider setting. */
+
   disableProviderMemory?: boolean;
   /** 通用敏感 prompt contribution；backend 只消费 lease，不理解其业务来源。 */
   sensitiveContribution?: {
@@ -397,7 +392,7 @@ export type AcpLaunchOverlay = {
     planMode?: boolean;
     builtinMcp?: BuiltinMcpServerSpec;
     thirdPartyMcpPlan?: import("../../../../shared/ipc/settings/mcp-servers-ipc").ThirdPartyMcpPlan;
-    /** Codex's plugin settings and workflow-role flag, frozen with the turn (backendSessionConfig). */
+
     providerSettings?: Readonly<Record<string, boolean | string | number>>;
   };
 };

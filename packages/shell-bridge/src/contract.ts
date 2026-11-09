@@ -1,7 +1,6 @@
 /**
  * [INPUT]: No runtime dependencies; plain TypeScript types and frozen constants.
  * [OUTPUT]: Provides the ShellBridge page API, the wire message shapes (including the acknowledged PushTap: a Chat push or, R-34, a
- *           workflow push with its WorkflowPushTarget; pushTapKey), the closed method/event/capability sets, per-method timeouts and the limits both the page and the native shell enforce.
  * [POS]: Single source of truth of the page ⇄ native shell contract; codec.ts validates against it, client.ts and host.ts speak it.
  */
 
@@ -46,17 +45,14 @@ export interface ShellDescriptor {
 export type LinkPurpose = "artifact" | "web-context" | "preview-session";
 export type NetworkState = "online" | "offline" | "unknown";
 export type PushKind = "settled" | "attention";
-export type PushRole = "plan" | "develop" | "review";
-/** R-34: where a workflow push leads (R-37 adds the new-computer notice); opaque ids and closed kinds only, never a title or record text. */
-export type WorkflowPushTarget = { kind: "needs-you" } | { kind: "confirmation"; runId: string; stepId: string }
-  | { kind: "agent-waiting"; runId: string; stepId: string; role: PushRole; chatId: string } | { kind: "new-computer" };
-/** A Chat's push, or a workflow's (`target`); opening either only navigates, it never confirms anything. */
-export type PushOpened = { chatId: string; kind: PushKind; turnSeq?: number } | { kind: "attention"; target: WorkflowPushTarget };
+/** A push opens a Chat or the account's computer list. */
+export type PushOpened = { chatId: string; kind: PushKind; turnSeq?: number }
+  | { kind: "attention"; target: { kind: "new-computer" } };
 /* On the wire a tap carries the shell's id for it: the shell keeps the tap until the page acknowledges that id. */
 export type PushTap = PushOpened & { tapId: string };
 /** One key per thing a tap opens, so a newer tap for the same thing replaces the older one. */
 export const pushTapKey = (payload: PushOpened) => "target" in payload
-  ? `attention:${payload.target.kind}:${"runId" in payload.target ? `${payload.target.runId}:${payload.target.stepId}` : ""}`
+  ? `attention:${payload.target.kind}`
   : `chat:${payload.chatId}`;
 export interface VisibleChat { chatId: string; generation: number }
 /** R-36: the installation's Keystore P-256 key signed `bottega-push-install-v1\n<token>\n<userId>\n<issuedAt>`; base64url SPKI and P1363 signature. */

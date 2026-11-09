@@ -1,8 +1,8 @@
 "use client"
 
 /**
- * [INPUT]: Depends on cmdk, Dialog/InputGroup, Lucide, and other icon and style tools
- * [OUTPUT]: Full Command barrel with dialog focus callbacks, default framed and borderless divided CommandInput variants, result lists/groups/items and shortcut presentation.
+ * [INPUT]: Depends on cmdk, Dialog/Input/InputGroup, Lucide, and shared style tools.
+ * [OUTPUT]: Full Command barrel with dialog focus callbacks, framed, borderless and standard-field CommandInput variants, result lists/groups/items and shortcut presentation.
  * [POS]: packages/ui/src/components/ui/navigation; components/ui's candidate-list core; used both inside a Popover (max-h-72 density) and as the desktop command panel (consumers override CommandList's height)
  */
 
@@ -10,6 +10,7 @@ import * as React from "react"
 import { Command as CommandPrimitive } from "cmdk"
 
 import { cn } from "@ai-chat/ui/lib/utils"
+import { Input } from "@ai-chat/ui/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -83,8 +84,11 @@ function CommandInput({
   variant = "default",
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Input> & {
-  variant?: "default" | "borderless"
+  variant?: "default" | "borderless" | "field"
 }) {
+  if (variant === "field") {
+    return <CommandPrimitive.Input {...props} asChild><Input className={className} /></CommandPrimitive.Input>
+  }
   const borderless = variant === "borderless"
   const InputWrapper = borderless ? "div" : InputGroup
   return (

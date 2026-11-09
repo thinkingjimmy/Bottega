@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Host branch operations, localized copy, shared UI primitives and branch controller.
- * [OUTPUT]: BranchSelector with native/Web search, paging, checkout, create and retry controls.
+ * [INPUT]: Host branch operations, localized copy, shared field/Command/Popover primitives and branch controller.
+ * [OUTPUT]: BranchSelector with work-object menu styling, native/Web search, paging, checkout, create and retry controls.
  * [POS]: Shared Project toolbar branch surface; hosts retain execution authority.
  */
 import { useRef } from "react";
@@ -34,20 +34,20 @@ export function BranchSelector(props: BranchSelectorProps) {
         {s.loading && !s.page || s.busy ? <LoaderCircle className="size-4 shrink-0 animate-spin" /> : <GitBranch className="size-4 shrink-0" />}
         <span className="truncate">{s.page?.head ?? copy.fallback}</span>
       </Button></PopoverTrigger>
-      <PopoverContent side="top" align="start" sideOffset={10} collisionPadding={12} aria-label={copy.fallback}
-        className="flex w-[18.5rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl p-0"
+      <PopoverContent side="top" align="start" aria-label={copy.fallback}
+        className="flex w-80 flex-col overflow-hidden p-2"
         onOpenAutoFocus={event => { if (touch) { event.preventDefault(); (event.target as HTMLElement).focus(); } }}
         onCloseAutoFocus={event => { event.preventDefault(); if (focusIsLost() && trigger.current?.isConnected && !trigger.current.disabled) trigger.current.focus({ preventScroll: true }); }}>
-        <Command shouldFilter={false} loop className="min-h-0 rounded-2xl p-0 [&_[data-slot=command-input-wrapper]]:p-3 [&_[data-slot=input-group]]:border-0 [&_[data-slot=input-group]]:bg-transparent [&_[data-slot=input-group]]:shadow-none">
-          <CommandInput value={s.query} onValueChange={s.setQuery} aria-label={copy.search} placeholder={copy.search} disabled={s.locked} maxLength={256} className="text-sm max-md:text-base" />
-          <CommandList className="max-h-72 min-h-48 px-2">
-            <p className="px-3 pt-2 pb-1 text-xs text-muted-foreground">{copy.group}</p>
+        <Command shouldFilter={false} loop className="min-h-0 h-auto rounded-none p-0">
+          <CommandInput variant="field" value={s.query} onValueChange={s.setQuery} aria-label={copy.search} placeholder={copy.search} disabled={s.locked} maxLength={256} autoComplete="off" spellCheck={false} className="mb-2 h-8 text-xs" />
+          <CommandList className="max-h-72 min-h-0">
+            <p className="px-2 py-1 text-xs text-muted-foreground">{copy.group}</p>
             {!s.loading && !s.error && s.page?.branches.length === 0 && <p className="py-5 text-center text-sm">{copy.empty}</p>}
-            {s.page?.detached && <div className="flex min-h-11 items-center gap-2 px-3 py-2 text-sm"><GitBranch className="size-4" /><span className="min-w-0 flex-1 truncate">{s.page.head}<span className="block text-xs text-muted-foreground">{copy.detached}</span></span><Check className="size-4" /></div>}
+            {s.page?.detached && <div className="flex min-h-7 items-center gap-2 border border-transparent px-2 text-xs/relaxed font-medium"><GitBranch className="size-4" /><span className="min-w-0 flex-1 truncate">{s.page.head}<span className="block text-xs text-muted-foreground">{copy.detached}</span></span><Check className="size-4" /></div>}
             {s.page?.branches.map(branch => <CommandItem key={`${branch.kind}:${branch.name}`} value={`${branch.kind}:${branch.name}`} disabled={s.locked || s.loading}
-              className="min-h-11 px-3 py-2 text-sm" onSelect={() => void s.mutate(branch)}>
-              <GitBranch className="size-4 text-muted-foreground" /><span className="min-w-0 flex-1"><span className="block truncate">{branch.name}</span>
-                {branch.current && count > 0 && <span className="block text-xs text-muted-foreground">{uncommitted}</span>}</span>{branch.current && <Check className="ml-auto size-4" />}
+              data-checked={branch.current} className="min-h-7 rounded-md border border-transparent px-2 py-0 text-xs/relaxed font-medium [&>svg:last-child]:size-4" onSelect={() => void s.mutate(branch)}>
+              <GitBranch className="size-4" /><span className="min-w-0 flex-1"><span className="block truncate">{branch.name}</span>
+                {branch.current && count > 0 && <span className="block text-xs font-normal text-muted-foreground">{uncommitted}</span>}</span>
             </CommandItem>)}
             {s.loading && <p role="status" className="px-3 py-2 text-xs text-muted-foreground">{copy.refreshing}</p>}
             <div onKeyDown={event => { if (event.key === "Enter") event.stopPropagation(); }}>
@@ -55,8 +55,8 @@ export function BranchSelector(props: BranchSelectorProps) {
               {s.error && <div className="px-3 py-2"><p role="alert" className="text-xs text-destructive">{s.error}</p>{retry}</div>}
             </div>
           </CommandList>
-          <div className="relative p-1 before:absolute before:top-0 before:right-3 before:left-3 before:border-t before:border-border" onKeyDown={event => { if (event.key === "Enter") event.stopPropagation(); }}>
-            <Button type="button" variant="ghost" className="h-8 w-full justify-start gap-2 rounded-xl px-2 text-sm font-normal max-md:h-11 pointer-coarse:h-11" disabled={s.locked || !s.page || s.loading}
+          <div className="mt-1 shrink-0 border-t pt-1" onKeyDown={event => { if (event.key === "Enter") event.stopPropagation(); }}>
+            <Button type="button" variant="ghost" className="w-full justify-start gap-2" disabled={s.locked || !s.page || s.loading}
               onClick={() => { s.setOpen(false); s.setCreateOpen(true); }}><Plus className="size-4" /><span className="truncate">{copy.newAction}</span></Button>
           </div>
         </Command>

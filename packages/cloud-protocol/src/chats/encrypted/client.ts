@@ -9,7 +9,7 @@ import { remoteCreationIdentity, remoteHash } from "../../remote/encrypted/wire"
 import { canonicalJson } from "../../encryption/encoding";
 import { assertCrypto, assertExpectedScope, encodeBase64url } from "../../encryption";
 import type { FileCipherPort } from "../../blobs/encrypted";
-import { forkLineageFields, portableForkLineage, chatSortKeySchema, cloudChatHeadSchema, portableChatSchema, type ChatWorkflowRole, type CloudChatHead } from "../model";
+import { forkLineageFields, portableForkLineage, chatSortKeySchema, cloudChatHeadSchema, portableChatSchema, type CloudChatHead } from "../model";
 import { chatMetadataOperationSchema, chatMetadataReceiptSchema, hashChatMetadataOperation, type ChatMetadataOperation } from "../metadata";
 import { turnOptionsSchema } from "../options";
 import { chatPacketSchema, encryptedChatHeadSchema, encryptedChatMetadataReceiptSchema, frozenChatMetadataSchema, publicChatSchema,
@@ -18,12 +18,9 @@ import { chatOperationMetadata, chatPacketContext, validateChatPacket, hashEncry
 export type ChatCipherPort = FileCipherPort;
 const privateFacts = z.object({ title: portableChatSchema.shape.title, classification: portableChatSchema.shape.classification,
   archivedAt: cloudChatHeadSchema.shape.archivedAt, createdAt: portableChatSchema.shape.createdAt, sortKey: chatSortKeySchema.optional(),
-  workflowRole: portableChatSchema.shape.workflowRole, memberSession: portableChatSchema.shape.memberSession, ...forkLineageFields }).strict();
+  ...forkLineageFields }).strict();
 /** Facts packets carry the key only when set; packets sealed before sortKey existed open as "never moved". */
 export const sortKeyFacts = (sortKey: number | null | undefined) => sortKey == null ? {} : { sortKey };
-/** R-35: the workflow role, sealed with the facts only when set, so its clear copy is bound like sortKey's. */
-export const workflowRoleFacts = (workflowRole: ChatWorkflowRole | undefined) => workflowRole === undefined ? {} : { workflowRole };
-export const memberSessionFacts = (memberSession: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts | undefined) => memberSession === undefined ? {} : { memberSession };
 const privateOptions = z.object({ options: turnOptionsSchema }).strict();
 export async function sealChatPacket(crypto: ChatCipherPort, chatId: string, identity: Pick<ChatPacket, "operationId" | "role" | "metadata">,
   value: unknown, signal?: AbortSignal): Promise<ChatPacket> {
@@ -59,7 +56,7 @@ export async function openChatHead(raw: EncryptedChatHead, crypto: ChatCipherPor
   const options = privateOptions.parse(await openChatPacket(crypto, head.chat.id, head.options, signal)).options;
   assertCrypto(head.facts.metadata.incarnationId === head.chat.incarnationId && head.options.metadata.incarnationId === head.chat.incarnationId &&
     head.facts.metadata.expectedRevision + 1 === head.chat.cloudRevision && facts.createdAt === head.chat.createdAt &&
-    (facts.sortKey ?? null) === (head.chat.sortKey ?? null) && (facts.workflowRole ?? null) === (head.chat.workflowRole ?? null) && canonicalJson(facts.memberSession ?? null) === canonicalJson(head.chat.memberSession ?? null) &&
+    (facts.sortKey ?? null) === (head.chat.sortKey ?? null) &&
     facts.archivedAt === head.archivedAt && head.facts.metadata.archivedAt === head.archivedAt &&
     canonicalJson(facts.classification) === canonicalJson(head.chat.classification) &&
     canonicalJson(head.facts.metadata.classification) === canonicalJson({ kind: head.chat.classification.conversationKind,
@@ -86,18 +83,14 @@ export async function prepareChatMetadataOperation(raw: ChatMetadataOperation, c
   const changes = command.kind === "patch" ? command.changes : {};
   const sortKey = command.kind === "create" ? command.chat.sortKey ?? null
     : changes.sortKey === undefined ? current!.chat.sortKey ?? null : changes.sortKey;
-  /* R-35: set at creation or by set-workflow-role; every other command keeps the Chat's own. */
-  const workflowRole = command.kind === "create" ? command.chat.workflowRole : command.kind === "set-workflow-role" ? command.workflowRole : current!.chat.workflowRole;
-  const memberSession = command.kind === "set-member-session" ? command.memberSession : chat.memberSession;
   const base = { operationId: original.operationId, chatId: original.chatId, kind: command.kind,
     chat: publicChatSchema.parse({ id: chat.id, incarnationId: chat.incarnationId, agent: chat.agent, agentRevision: chat.agentRevision,
-      classification: chat.classification, cloudRevision: expectedRevision, createdAt: chat.createdAt, updatedAt: chat.updatedAt, ...sortKeyFacts(sortKey),
-      ...workflowRoleFacts(workflowRole), ...memberSessionFacts(memberSession) }),
+      classification: chat.classification, cloudRevision: expectedRevision, createdAt: chat.createdAt, updatedAt: chat.updatedAt, ...sortKeyFacts(sortKey) }),
     archivedAt, lifecycleKind: command.kind === "create" ? command.lifecycleKind : current!.kind,
     expectedRevision, sourceDeviceId: crypto.session.deviceId };
   const identity = { operationId: original.operationId, metadata: chatOperationMetadata(base) };
   const facts = await sealChatPacket(crypto, original.chatId, { ...identity, role: "facts" }, privateFacts.parse({ title,
-    classification: chat.classification, archivedAt, createdAt: chat.createdAt, ...sortKeyFacts(sortKey), ...workflowRoleFacts(workflowRole), ...memberSessionFacts(memberSession), ...portableForkLineage(chat) }), signal);
+    classification: chat.classification, archivedAt, createdAt: chat.createdAt, ...sortKeyFacts(sortKey), ...portableForkLineage(chat) }), signal);
   const options = command.kind === "create" ? await sealChatPacket(crypto, original.chatId, { ...identity, role: "options" }, { options: chat.options }, signal) : null;
   const operation = await sealChatPacket(crypto, original.chatId, { ...identity, role: "metadata" }, original, signal);
   const transport: EncryptedChatMetadataOperation = { ...base, facts, options, operation, ciphertextHash: "0".repeat(64) };

@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React, SetupProvider, shared Personalization contracts (a Provider refusal on save reads as a failed write), Agent branding, SettingsPage/Settings primitives, format helpers, shortcut registration, InstructionsFind, Tabs/Textarea, and i18n
- * [OUTPUT]: Provides global Personalization views plus a backend-agnostic InstructionsEditor with missing-file placeholders and an InstructionsPathBar with independent edit/search capabilities reusable by Project Settings
+ * [OUTPUT]: Provides global Personalization with one page title and its description, plus a backend-agnostic InstructionsEditor with missing-file placeholders and an InstructionsPathBar with independent edit/search capabilities reusable by Project Settings.
  * [POS]: apps/desktop/src/views/settings/personalization; Settings instruction editor surface; callers own file identity, save/reveal authority, drafts, and result normalization
  */
 
@@ -26,7 +26,7 @@ import {
   SettingsButton,
   SettingsCanvas,
   SettingsEmpty,
-  SettingsSection,
+  SettingsAlert,
   SettingsSurface,
 } from "@/components/settings/settings-layout";
 import { InstructionsFind } from "@/components/settings/instructions-find";
@@ -99,7 +99,7 @@ export function PersonalizationSettingsView() {
   }, [setup.status]);
 
   return (
-    <SettingsPage title={t("settings.personalization.title")}>
+    <SettingsPage title={t("settings.personalization.title")} description={t("settings.personalization.description")}>
       <PersonalizationSettingsContent
         bridge={window.personalization}
         installed={installed}
@@ -219,13 +219,10 @@ export function PersonalizationSettingsContent({
 
   return (
     <SettingsCanvas fill>
-      <SettingsSection
-        title={t("settings.personalization.sectionTitle")}
-        description={t("settings.personalization.description")}
-        alert={loadError}
-      >
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        {loadError&&<SettingsAlert>{loadError}</SettingsAlert>}
         {loading ? (
-          <SettingsEmpty icon={<FileText />} title={t("settings.personalization.loading")} hint={t("settings.personalization.description")} />
+          <SettingsEmpty icon={<FileText />} title={t("settings.personalization.loading")} hint={null} />
         ) : installed.length === 0 ? (
           <SettingsEmpty icon={<UserPen />} title={t("settings.personalization.emptyTitle")} hint={t("settings.personalization.emptyHint")} />
         ) : (
@@ -241,7 +238,7 @@ export function PersonalizationSettingsContent({
             {panel}
           </Tabs>
         )}
-      </SettingsSection>
+      </div>
     </SettingsCanvas>
   );
 }

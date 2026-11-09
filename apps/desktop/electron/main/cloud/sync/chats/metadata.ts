@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ChatStore's captured metadata intents, immutable checkpoints and scoped cloud RPCs.
- * [OUTPUT]: Serializes title/archive operations, resolves causal baselines from original receipts, reconciles cloud heads, and repairs a workflow Chat's missing role once per launch (R-35). Repairs missing portable member facts once per launch from the durable owner index.
+ * [OUTPUT]: Provides DesktopChatMetadataSync.
  * [POS]: Main metadata transport; local optimistic edits and conflict candidates remain in the existing Chat outbox.
  */
 import { type CloudBuildConfig } from "@ai-chat/cloud-protocol";
@@ -8,7 +8,6 @@ import { hashChatContent } from "@ai-chat/cloud-protocol/chats/transcript/body";
 import { hashChatMetadataOperation } from "@ai-chat/cloud-protocol/chats/metadata";
 import { EncryptedChatMetadata } from "./encryption/metadata";
 import type { ChatCipherPort } from "@ai-chat/cloud-protocol/chats/encrypted/client";
-import type { ChatWorkflowRole } from "@ai-chat/cloud-protocol/chats/model";
 import type { SyncScope } from "../../../../../shared/local-storage/contracts";
 import type { AccountTransport } from "../../runtime/transport/transport";
 import { chatMetadataIntentSchema } from "../../../chats/sqlite/cloud/delivery/metadata-contracts";
@@ -21,8 +20,6 @@ export class DesktopChatMetadataSync {
   private readonly flights = new Map<string, Promise<void>>();
   private readonly dirty = new Set<string>();
   private readonly encrypted: EncryptedChatMetadata;
-  /* R-35: Chats whose cloud head already carries their workflow role this launch; nothing more is asked about them. */
-  private readonly roleConfirmed = new Set<string>();
   constructor(private readonly ports: Ports) {
     if (ports.scope.environment !== ports.config.environmentId) throw new Error("environment-mismatch");
     this.encrypted = new EncryptedChatMetadata({ ...ports, userId: ports.scope.userId });
@@ -77,35 +74,6 @@ export class DesktopChatMetadataSync {
       sent++; this.dirty.add(chatId);
     }
   }
-  /**
-   * R-35 repair, once per launch per Chat: a workflow Chat this desktop owns whose cloud head lacks its role gets it through
-   * set-workflow-role. A Chat not in the cloud yet is skipped (the next pass tries again); another desktop's Chat is not ours to set.
-   */
-  async repairWorkflowRoles(roles: Iterable<readonly [string, ChatWorkflowRole]>) {
-    for (const [chatId, role] of roles) {
-      if (this.closed) return;
-      if (this.roleConfirmed.has(chatId)) continue;
-      const head = await this.encrypted.head(chatId);
-      if (!head || this.closed) continue;
-      if (head.ownerDeviceId !== this.ports.deviceId || head.chat.workflowRole !== undefined) { this.roleConfirmed.add(chatId); continue; }
-      const receipt = await this.encrypted.setWorkflowRole(head, role);
-      if (receipt.head?.chat.workflowRole !== role) continue;
-      /* The repair advanced the cloud revision: the local baseline takes the new head, so the next local edit is not a conflict. */
-      await this.ports.store.mutate(this.ports.scope, hashChatContent(["chat-metadata-head", receipt.head]), { type: "accept-chat-head", head: receipt.head });
-      this.roleConfirmed.add(chatId); this.ports.changed(chatId);
-    }
-  }
-  async repairMemberSessions(entries: Iterable<readonly [string, import("@bottega/contracts/plugins/team").PluginMemberSessionFacts]>) {
-    for (const [chatId, facts] of entries) {
-      if (this.closed || this.roleConfirmed.has("member:" + chatId)) continue;
-      const head = await this.encrypted.head(chatId);
-      if (!head || this.closed) continue;
-      if (head.ownerDeviceId !== this.ports.deviceId || head.chat.memberSession) { this.roleConfirmed.add("member:" + chatId); continue; }
-      const receipt = await this.encrypted.setMemberSession(head, facts);
-      if (!receipt.head?.chat.memberSession) continue;
-      await this.ports.store.mutate(this.ports.scope, hashChatContent(["chat-metadata-head", receipt.head]), { type: "accept-chat-head", head: receipt.head });
-      this.roleConfirmed.add("member:" + chatId); this.ports.changed(chatId);
-    }
-  }
+
   async close() { this.closed = true; this.dirty.clear(); await Promise.all(this.flights.values()); }
 }

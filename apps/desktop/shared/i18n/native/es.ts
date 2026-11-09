@@ -49,6 +49,8 @@ export const nativeEs: NativeCatalog = {
     "quitProcesses": "No se pudieron cerrar algunos procesos en segundo plano.",
     "quitOther": "Bottega no pudo terminar de prepararse para salir. Vuelve a intentarlo.",
     "report": "Informar de un problema",
+    "downloadLatest": "Descargar la última versión",
+    "downloadFailed": "No se pudo abrir. Reintentar",
     "copied": "Copiado",
     "copyFailed": "Error al copiar"
   },

@@ -2,7 +2,7 @@
  * [INPUT]: Depends on the bridge's live turn registry and cancel, the host-custody launch identity (pid + birth) of a turn, and process-group's birth-checked signalOwnedGroup / cleanOwnedProcessGroup.
  * [OUTPUT]: Provides launchIdentityOf (a live turn's one launch identity; a bridged turn's is its host-custody owner's, B2-01), agentTurnProcess (what still holds a request's process: the live turn, else the outer custody's recoverable entry with an identity, else host custody's entry for the request (a bridged turn), else the outer intent, else none),
  *           verifyForceStoppedGroup (the check on a group left unconfirmed) and forceKillAgentTurn: SIGKILL the whole process group of one live turn only by its launch identity — adapter, CLI and MCP children — then confirm within a short deadline that the group is gone.
- * [POS]: apps/desktop/electron/main/agent/turns/force; Workflow Force stop (06 §8): the one path that ends a turn whose Agent ignores cancel. The normal cancel still runs, so
+ * [POS]: apps/desktop/electron/main/agent/turns/force; Force stop: the one path that ends a turn whose Agent ignores cancel. The normal cancel still runs, so
  *        custody and the Chat record settle the usual way; this only makes sure nothing of the turn keeps running.
  */
 import { cancelAgentTurn, turns } from "../../bridge/agent-bridge";

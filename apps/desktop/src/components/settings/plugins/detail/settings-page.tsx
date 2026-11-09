@@ -14,7 +14,7 @@ import { pluginText } from "../copy";
 import { usePluginDetail } from "../use-plugins";
 import { PluginLoadState, type Switching } from "./about";
 import { PluginSettingsForm } from "./settings-form";
-import { HealthSection, PluginBanners, UsedBySection } from "./sections";
+import { HealthSection, PluginBanners } from "./sections";
 import { PluginRequirement } from "./metadata";
 
 export function PluginSettingsPage({ pluginId, bridge, workbench, locale, switching, onOpenRelated, settingsContent }: {
@@ -36,7 +36,6 @@ export function PluginSettingsPage({ pluginId, bridge, workbench, locale, switch
       {settingsContent ?? (detail.settings && <PluginSettingsForm pluginId={detail.id} name={pluginText(detail.name, workbench)} provider={detail.kind === "provider"}
         view={detail.settings} bridge={bridge} workbench={workbench} />)}
       <HealthSection detail={detail} workbench={workbench} locale={locale} />
-      <UsedBySection detail={detail} workbench={workbench} onOpen={onOpenRelated} />
     </div>
   );
 }

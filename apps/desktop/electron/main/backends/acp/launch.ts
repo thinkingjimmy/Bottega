@@ -1,7 +1,6 @@
 /**
  * [INPUT]: Depends on ACP McpServer, BackendTurnOptions, the session config values, the startup budget type, and the Seatbelt fence table
  * [OUTPUT]: Provides AcpSpawnConfig (with each Provider's optional session-absence matcher and prompt replay), turnLaunch (the fenced launch main seals on a bridged turn's execution ref, its env carrying the host-sandbox marker exactly when it wrapped; a Chat plan turn always gets the read-only fence; a network-off fence denies the whole network) and acpMcpServers (the servers a session is created with); built-ins are fenced here and package Providers pass this plan through HostPackageRuntime's shared fence before sealing
- * Workflow Skill isolation contributes explicit read denials to the host fence.
  * [POS]: Main's half of an ACP turn's launch (TASK-11 flip, step 5): main builds and seals it, the bridge only runs it, so it lives outside the bridge's turn machinery
  */
 
@@ -65,7 +64,6 @@ export function turnLaunch(options: BackendTurnOptions, config: AcpSpawnConfig) 
           plan,
           stateWriteRoots: options.artifactDirectory ? [options.artifactDirectory] : [],
           readOnlyRoots: options.filesystemAccess.readOnlyRoots,
-          deniedReadRoots: options.skillIsolation?.deniedRoots,
           controlRoot: options.filesystemAccess.controlRoot,
           builtinMcpServer: options.builtinMcp?.server,
           thirdPartyMcpServers: options.thirdPartyMcpPlan?.entries.flatMap(

@@ -2,7 +2,6 @@
  * [INPUT]: Canonical SDK built-in Provider identities; Depends on Zod, the contract grammar (contracts.ts), localized text (text.ts) and the settings fields (settings.ts).
  * [OUTPUT]: Includes optional releaseStage and localized systemRequirement metadata.
  * Provides PLUGIN_KINDS, PLUGIN_SOURCES, TURN_ON_SETUPS, TURN_OFF_REASONS, pluginDescriptorSchema / PluginDescriptor, nativePluginId,
- *           BUILTIN_PLUGINS (Base, Workflow and the four built-in Providers with their introductions, and the first batch of Claude and Codex settings) builtinPlugin and the reserved builtin identity policy.
  * [POS]: Appendix C.1: one descriptor for every plugin (built-in feature, built-in Provider, host package, Agent-native). Memory, Tunnel,
  *        Dock and Sketch join BUILTIN_PLUGINS from their own documents. Defaults equal today's behaviour, so an untouched setting sends nothing.
  */
@@ -30,7 +29,7 @@ export const pluginDescriptorSchema = z.object({
   summary: localizedTextSchema.nullable(),
   /** The longer introduction on the plugin's page; paragraphs are separated by a blank line. */
   description: localizedTextSchema.nullable().optional(),
-  /** A built-in icon name: base, workflow, memory, tunnel, dock, sketch or a Provider id. */
+
   icon: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/).nullable(),
   provides: z.array(pluginContractSchema).max(32),
   requires: z.array(pluginContractSchema).max(32),
@@ -66,10 +65,6 @@ export const BUILTIN_PLUGINS: readonly PluginDescriptor[] = Object.freeze([
     description: copy("plugins.builtin.base.description"), icon: "base",
     provides: [BASE_CONTRACT], requires: [], turnOn: { mode: "direct" }, turnOff: { allowed: false, reason: "always-on" }, settings: [],
     capabilities: [{ label: copy("plugins.capability.baseStore"), id: null }, { label: copy("plugins.capability.baseTools"), id: null }] },
-  { id: "workflow", kind: "feature", source: "builtin", name: copy("plugins.builtin.workflow.name"), summary: copy("plugins.builtin.workflow.summary"),
-    description: copy("plugins.builtin.workflow.description"),
-    icon: "workflow", provides: [], requires: [BASE_CONTRACT, AGENT_PROVIDER_CONTRACT], turnOn: { mode: "direct" }, turnOff: { allowed: true }, settings: [],
-    capabilities: [{ label: copy("plugins.capability.workflowColumns"), id: null }, { label: copy("plugins.capability.workflowRoles"), id: null }] },
   { id: "artifact", kind: "feature", source: "builtin", name: copy("plugins.builtin.artifact.name"),
     summary: copy("plugins.builtin.artifact.summary"), description: copy("plugins.builtin.artifact.description"), icon: "artifact",
     provides: [], requires: [], turnOn: { mode: "direct" }, turnOff: { allowed: true }, settings: [],

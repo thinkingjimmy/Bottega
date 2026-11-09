@@ -4,6 +4,8 @@
 
 Bottega treats an Agent conversation as the control surface for a durable local workspace. The following capability areas define the product.
 
+Current `main` contains the **upcoming, unreleased 0.4.2 source**, using **protocol 27**. The latest published installer is [0.4.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1), using **protocol 26**. The source publication does not announce a 0.4.2 installer, hosted deployment or native acceptance.
+
 ## Multi-agent
 
 - Connect Codex through its native App Server; Claude Code, Kimi Code and OpenCode use their existing local CLI connections. Ordinary Codex Chat checks actual native protocol and required capabilities rather than one exact CLI version. Generated native titles and isolated editor tasks retain separate CLI qualification. The conversation layout stays the same.
@@ -12,7 +14,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Read available Codex, Claude Code, Kimi and OpenCode Go quota windows, remaining amounts and reset times in Settings and the Agent selector. Codex quota reads and optional update notices are independent of ordinary Chat version admission; unavailable limits are not invented.
 - Choose a title-capable Agent and model in Settings › General › Title generation. Qualified Codex titles use the selected model in a separate ephemeral, read-only task with no tools or workspace instructions. If title execution is unavailable, Bottega keeps the selected Agent and model and uses the first message; it never switches Providers automatically.
 - Use Plan mode, live steering, queued messages and visible tool activity without hiding backend differences. Queued first messages continue when the runtime becomes available; long histories load in small batches and keep the reading position, while code highlighting runs in a shared worker.
-- Create Sections and Subagents for parallel work, inspect their progress, pass bounded context between them, and promote useful results into durable Sections.
+- Create Sections and native Provider subagents for parallel work, inspect their progress, pass bounded context between them, and promote useful results into durable Sections. Provider settings and ordinary Chat forks remain available.
 - Search and adopt supported local CLI histories without silently rewriting their original records.
 - Import Project history explicitly from Settings. Only installed Agents are included; reopening a Project does not scan again.
 - Continue an imported conversation with the ordinary composer, whatever the profile it is opened in and whether or not its Project has a folder. One divider marks where the imported history ends.
@@ -57,24 +59,7 @@ Command output stays in the original command details. Background services show t
 - Support formulas, relations, filtering, sorting, attachments, row history, and CSV/JSON/XLSX exchange.
 - Let Agents read and mutate Base data through explicit built-in tools and revision checks.
 - Keep App writes capability-scoped so a GUI cannot silently gain unrestricted data access.
-
-## Workflows
-
-- Turn on the built-in **Plan · Develop · Review** workflow for a Project's Base, from the Base's ⋯ menu (**Set up a workflow…**) or from Project settings › Workflows. Choose which Agent configuration plans, develops, and reviews; you confirm the plan and decide on the result.
-- The Base gains a locked **Stage** column (Plan, Develop, Review, Done) and an **Acceptance criteria** column, plus a **Board · by Stage** view when there is room. Your existing columns are not changed.
-- Start a run from a row's ▶ **Run workflow**. Accept the plan or end the run; then accept the result, accept it with an exception and a reason, send it back for rework — keeping the plan or planning again — or end it.
-- Pause, continue, cancel, or force-stop a run, retry a step, or check the result of a step whose outcome is unknown, and open the Chat behind any step. A run waiting on you reminds you when it starts waiting and again at 23 hours, and pauses at 24 hours.
-- Planning and review require a Provider that can enforce their read-only and tool restrictions. Codex does not qualify for these strict roles in this release. Each step checks the selected Provider's capabilities; unsupported configurations stay unavailable with the reason, and a CLI version change triggers a fresh check.
-- A change to a configuration or to the workflow applies only to runs that start afterwards.
-
-## Agent configurations
-
-- Keep reusable configurations in Settings › Agent configs. Start from Blank, Planner, Developer, or Reviewer, then choose the Provider and model, write the instructions and purpose, and request permissions (Ask for approval, Approve for me, or Full access), workspace access (Can change files or Read-only), and network access. A setting can be used only when the selected Provider can enforce it; unsupported combinations state why.
-- Offer a configuration in all Projects or only in some.
-- Choose models and reasoning levels from the same dropdowns as the composer. Loading failures offer Retry while keeping the list and unsaved edits.
-- Select Skills and MCP tools and see the actual scope a run receives. Planning and review start only with a Provider that can enforce their read-only restrictions and exclusion of external MCP tools. Skills selection alone does not restrict Codex commands from reading files.
-- Decide whether a workflow may read long-term Memory; workflow runs do not capture new Memory.
-- Synchronize configurations with your account; a saved change applies to runs that start afterwards.
+- Edit former Workflow Stage and Acceptance criteria columns as ordinary fields. Their IDs, options, values and view references remain.
 
 ## Plugins
 
@@ -87,20 +72,13 @@ Command output stays in the original command details. Background services show t
 - Turning a plugin off keeps content and settings. Missing dependencies suspend affected contributions and explain why. Code recovery, plugin removal and data deletion retain their separate owners.
 - Third-party Provider modules are not enabled in this release. The four built-in Providers remain the available production choices; no public plugin marketplace or SDK publication is included.
 
-## Teams
-
-- Start a Lead Chat in a Project, create named members and manage tasks, owners and dependencies. Open each member's Chat to add instructions. Member Chats stay under the Lead rather than entering the ordinary Chat list.
-- Keep member sessions, task records and messages across restarts. Message delivery and task completion have separate states; an unknown delivery is not silently sent again.
-- Codex and Claude can receive messages during a turn; Kimi and OpenCode queue them until idle. Team and Workflow writes can opt into isolated workspaces and reviewed merges. Complete real-Provider and physical-device acceptance retains the scope described in the changelog.
-
 ## App
 
 - Install static, server, or Base-backed Apps from immutable Git revisions.
-- Use React interfaces across the bundled Expense Tracker, Fitness Log, and Design Canvas, with shared interface conventions.
-- Check each App's minimum Bottega version before installation, rebuilding, authorization, or activation; return to the original candidate after upgrading. All three bundled Apps require Bottega 0.1.3 or newer.
+- Use React interfaces across the bundled Expense Tracker and Fitness Log, with shared interface conventions.
+- Check each App's minimum Bottega version before installation, rebuilding, authorization, or activation; return to the original candidate after upgrading. Both bundled Apps require Bottega 0.1.3 or newer.
 - Rename an App without rebuilding its active version or changing its data and permissions.
 - Turn an App off or back on from the desktop or Web. Turning it off explains the running work it will stop, retains queued work, and keeps its Base data editable. Destructive actions have their own confirmation.
-- Use the bundled Bottega Design Canvas to create self-contained HTML directions, compare live and historical versions, and send numbered visual anchors back to the Agent without granting the preview network or storage access.
 - Use the bundled Fitness Log to explore 72 exercises across 17 muscle regions, view animated demonstrations, and manage training plans in five languages through the host React interface.
 - Read complete, revision-consistent Base snapshots through the App SDK, with recoverable loading and explicit retry states.
 - Bind Apps to Chats and Projects while keeping use, editing, and authorization separate.
@@ -135,13 +113,15 @@ Command output stays in the original command details. Background services show t
 
 ## Bottega Dock
 
+Controlled-version checks cover macOS 26.4.1 and 27.0.0 on a macOS 27 Apple silicon host. Physical macOS 26, exact signed Dock replacement, approval, restoration, login/reboot and display combinations retain separate acceptance.
+
 - Pin an available Bottega App from its menu and open or focus it in a separate window with its session and draft. Dock and sidebar pins are independent. Drag to reorder or drag out to unpin; menus open beside the selected icon.
 
-**Alpha · macOS 27 · Apple silicon**
+**Alpha · macOS 26 or 27 · Apple silicon**
 
-Dock remains **Alpha**. Replacement, recovery across logout or restart, and display/fullscreen combinations are still being validated. The plugin requires macOS 27.x and Apple silicon; the main application's requirements stay unchanged.
+Dock remains **Alpha**. Replacement, recovery across logout or restart, and display/fullscreen combinations are still being validated. The plugin requires macOS 26.x or 27.x and Apple silicon; the main application's requirements stay unchanged.
 
-- On macOS 27.x with Apple silicon, keep the Apps you build in Bottega, your other Apps, Finder, Downloads, the Trash, and an AI-limits ring per Agent in one Dock. This requirement applies to the entire Dock plugin; the main application's requirements stay unchanged.
+- On macOS 26.x or 27.x with Apple silicon, keep the Apps you build in Bottega, your other Apps, Finder, Downloads, the Trash, and an AI-limits ring per Agent in one Dock. This requirement applies to the entire Dock plugin; the main application's requirements stay unchanged.
 - Enable it from Settings › Plugins › Dock. Choose coexistence, or replacement after the installed app, native helper, recovery executable and bundled background-service configuration pass verification. Development and unsigned builds offer coexistence.
 - Choose a mode and layout, then confirm the impact before replacement registers a background item or changes the system Dock. Existing coexistence settings and layouts are retained.
 - If background approval is needed, open System Settings from Dock settings. Returning refreshes the status without automatic registration or takeover. If macOS cannot find the recovery registration, it may not have been created yet. After replacement consent, use Continue enabling to retry when installation verification passes and pending recovery is resolved.
@@ -179,7 +159,7 @@ Weather is preinstalled. Add it from Settings or Dock Add, choose current locati
 - Read Chats in a browser at [app.getbottega.app](https://app.getbottega.app), with the same transcript, tool activity, Subagents, and attachments as the desktop.
 - Search chat titles and the last seven days of message bodies. Search runs in the browser against decrypted content; queries and plain-text indexes are never uploaded.
 - Work with Bases through the same six views, read and edit synced App records, restore or delete archived items, and manage devices, sessions, and preferences.
-- Follow workflow runs on a Project's Base: start a run, confirm the plan, decide on the result, send it back for rework, pause, continue, cancel, or retry a step. The **Needs you** bell lists everything waiting for your decision, with complete step reports and evidence available from the run. Workflow and Agent configuration setup stays on the desktop; plugin requests that require a computer are confirmed there.
+- Confirm plugin requests that require a computer on that computer.
 - Stay unlocked on a browser you trust, or lock it again at any time. Static and Base-backed App interfaces open in the browser as well; server App interfaces, the in-app Browser, and local tools remain on the computer that owns them.
 - Use a phone browser: layout, touch targets, sheets, and drag interactions adapt below 768px. App and Base menus adapt to narrow screens and keep offline status beside the affected action.
 - Opt in to browser notifications where the browser supports them. Delivery depends on the browser, operating system permissions, and device state.
@@ -201,7 +181,7 @@ Weather is preinstalled. Add it from Settings or Dock Add, choose current locati
 - Rebuild conversations from the folder when the local Chat database cannot be opened, while the previous database is preserved.
 - Move the folder from Settings › General, including to another disk, with every saved path following it; or erase all of Bottega's data on this computer while cloud data stays in your account.
 - Keep a Bottega folder with the computer that published it: the same computer takes it back after a reinstall, a cleared data folder, or a new profile with nothing to confirm, and another computer is refused by name. A folder that has never synchronized opens anywhere.
-- Back up the Bottega folder and complete application data before changing versions. 0.4.1 retains existing content and uses protocol 26; see the [upgrade guide](../getting-started/README.md#upgrading-to-041), including historical migration notes for older releases.
+- Back up the Bottega folder and complete application data before changing versions. The upcoming 0.4.2 source uses protocol 27 and removes Workflow, standalone Agent configurations and Bottega Team. Coordinated delivery and targeted maintenance remain pending; read the [unreleased source scope](../getting-started/README.md#upcoming-042-source). The published installer remains 0.4.1/protocol 26.
 
 ## Bundled runtime and Agent boundaries
 

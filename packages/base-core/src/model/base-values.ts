@@ -57,10 +57,6 @@ export type BaseColumn = {
   relation?: {
     labelColumnId: string | null;
   };
-  /** Set only on the two columns a workflow adds; the kernel recognises them by this marker and their id, never by name. */
-  workflow?: { role: "stage" | "acceptance-criteria" };
-  /** Who may change the cells; only workflow columns carry it. Absent: Stage is workflows-only, Acceptance criteria everyone. */
-  writableBy?: "everyone" | "workflows";
 };
 
 export type BaseRow = {

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Native clipboard/shell, current error diagnostics, localized copy and the owned desktop surface.
- * [OUTPUT]: Equally styled Copy error details / Report actions with honest inline acknowledgement and no diagnostic viewer or automatic submission.
+ * [OUTPUT]: Shared Copy/Report actions, startup-only Download latest actions and localized inline feedback with a single in-flight fixed Release-page open.
  * [POS]: Reused by startup and quit error windows; timers and late results belong to one window only.
  */
 import { clipboard, shell } from "electron";
@@ -15,8 +15,14 @@ export const supportActions = (locale: AppLocale): DesktopDialogButton[] => [
   { id:"report", label:desktopCopy(locale, "report"), quiet:true },
 ];
 
+export const startupSupportActions = (locale: AppLocale): DesktopDialogButton[] => [
+  { id:"download", label:desktopCopy(locale, "downloadLatest"), quiet:true },
+  ...supportActions(locale),
+];
+
 export function dialogFeedback(surface: DesktopDialog, locale: AppLocale, diagnostics: () => string) {
   let timer: ReturnType<typeof setTimeout> | undefined, closed = false, revision = 0;
+  let openingLatest = false;
   void surface.closed.then(() => { closed = true; revision++; clearTimeout(timer); });
   return async (action: string) => {
     if (closed) return;
@@ -37,6 +43,18 @@ export function dialogFeedback(surface: DesktopDialog, locale: AppLocale, diagno
       }
     } else if (action === "report") {
       await shell.openExternal("https://github.com/thinkingjimmy/Bottega/issues/new").catch(error => console.warn("[desktop-dialog] feedback unavailable", error));
+    } else if (action === "download" && !openingLatest) {
+      openingLatest = true;
+      let opened = false;
+      try {
+        await shell.openExternal("https://github.com/thinkingjimmy/Bottega/releases/latest");
+        opened = true;
+      } catch (error) {
+        console.warn("[desktop-dialog] release page unavailable", error);
+      } finally {
+        if (!closed) await surface.label("download", desktopCopy(locale, opened ? "downloadLatest" : "downloadFailed")).catch(() => {});
+        openingLatest = false;
+      }
     }
   };
 }

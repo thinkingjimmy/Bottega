@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on BrowserWindow, shared update IPC including manual-only policy, one UpdateAdapter, signed candidate compatibility preflight, scheduling/forced-exit hooks, and a two-phase safe-quit port
- * [OUTPUT]: Provides app-singleton UpdateService with check/download state, explicit restart admission, durable-contract preflight, native installer handoff, deferred requirement cancellation, candidate fences and retryable validation failures.
+ * [INPUT]: Depends on BrowserWindow, shared update IPC, the bounded retry policy, one UpdateAdapter, connectivity/scheduling ports, signed candidate preflight and a two-phase safe-quit port
+ * [OUTPUT]: Provides app-singleton UpdateService with bounded offline-aware check recovery, retained version facts, typed check/download failures and explicit restart admission
  * [POS]: The main-owned update lifecycle authority; windows subscribe to it but never own timers or updater listeners
  */
 
@@ -22,8 +22,9 @@ import type {
   UpdateInfo,
 } from "./adapter";
 import type { AppGuiCompatibilitySupport } from "../../../shared/app-gui/support";
+import { checkRetryDelay, classifyUpdateFailure, DAILY_CHECK_MS } from "./retry/policy";
 
-const DAY_MS = 24 * 60 * 60 * 1_000;
+const DAY_MS = DAILY_CHECK_MS;
 const FIRST_CHECK_DELAY_MS = 30_000;
 const INSTALL_EXIT_TIMEOUT_MS = 10_000;
 /* Staging a ~200 MiB zip on a slow disk can take minutes; only a stuck installer should reach this (F-17). */
@@ -51,6 +52,7 @@ export type UpdateServiceOptions = {
   now?: () => number;
   setTimer?: (action: () => void, delay: number) => Timer;
   clearTimer?: (timer: Timer) => void;
+  isOnline?: () => boolean;
 };
 
 const idleSnapshot = (
@@ -64,6 +66,7 @@ const idleSnapshot = (
   checkedAt: null,
   error: null,
   lastError: null,
+  failure: null,
   automaticInstall: options.automaticInstall,
   manualOnly: options.manualOnly ?? false,
 });
@@ -95,6 +98,11 @@ export class UpdateService {
     return () => { this.observers.delete(listener); };
   }
   private checkKind: "background" | "manual" = "background";
+  private checkBaseline: UpdateSnapshot | null = null;
+  private retryAttempt = 0;
+  private nextCheckAt: number | null = null;
+  private lastCheckAttemptAt: number | null = null;
+  private waitingForNetwork = false;
 
   constructor(private readonly options: UpdateServiceOptions) {
     this.snapshotValue = idleSnapshot(options);
@@ -135,20 +143,39 @@ export class UpdateService {
     }
     if (this.checkFlight) return this.checkFlight;
     const now = this.now();
-    if (
-      !manual &&
-      this.snapshotValue.checkedAt !== null &&
-      now - this.snapshotValue.checkedAt < DAY_MS
-    ) {
+    if (!manual && this.nextCheckAt !== null && now < this.nextCheckAt) {
       this.scheduleNextCheck();
       return Promise.resolve(this.snapshotValue);
     }
-    const operationId = ++this.adapterEpoch;
+    if (
+      !manual &&
+      this.retryAttempt === 0 &&
+      this.snapshotValue.failure?.stage !== "check" &&
+      this.snapshotValue.checkedAt !== null &&
+      now - this.snapshotValue.checkedAt < DAY_MS
+    ) {
+      this.nextCheckAt = this.snapshotValue.checkedAt + DAY_MS;
+      this.scheduleNextCheck();
+      return Promise.resolve(this.snapshotValue);
+    }
     this.checkKind = manual ? "manual" : "background";
+    this.checkBaseline = this.snapshotValue;
+    this.suspendChecks();
+    if (this.options.isOnline?.() === false) {
+      if (this.retryAttempt === 0) this.nextCheckAt = null;
+      this.waitingForNetwork = true;
+      this.handleError(new Error("UPDATE_NETWORK_OFFLINE"));
+      this.checkBaseline = null;
+      return Promise.resolve(this.snapshotValue);
+    }
+    this.waitingForNetwork = false;
+    this.lastCheckAttemptAt = now;
+    const operationId = ++this.adapterEpoch;
     this.publish({
       ...this.snapshotValue,
       phase: "checking",
       error: null,
+      failure: null,
       progress: null,
     });
     const flight = this.options.adapter
@@ -160,10 +187,20 @@ export class UpdateService {
       })
       .finally(() => {
         this.checkFlight = null;
+        this.checkBaseline = null;
         this.scheduleNextCheck();
       });
     this.checkFlight = flight;
     return flight;
+  }
+
+  resumeOnlineChecks() {
+    if (!this.started || !this.waitingForNetwork || this.candidateHeld() || this.options.isOnline?.() === false) return this.snapshotValue;
+    this.waitingForNetwork = false;
+    this.nextCheckAt = Math.max(this.now() + FIRST_CHECK_DELAY_MS, this.nextCheckAt ?? 0,
+      this.lastCheckAttemptAt === null ? 0 : this.lastCheckAttemptAt + checkRetryDelay(0));
+    this.scheduleNextCheck();
+    return this.snapshotValue;
   }
 
   checkMinimum(context: AppCompatibilityFailure): Promise<UpdateSnapshot> {
@@ -266,7 +303,7 @@ export class UpdateService {
   private async clearCandidate() {
     ++this.adapterEpoch;
     this.downloadVersion = null;
-    this.publish({ ...this.snapshotValue, phase: "idle", candidateId: null, availableVersion: null, progress: null, error: null });
+    this.publish({ ...this.snapshotValue, phase: "idle", candidateId: null, availableVersion: null, progress: null, error: null, failure: null });
     await this.options.adapter?.invalidateCandidate?.();
   }
 
@@ -280,11 +317,13 @@ export class UpdateService {
     }
     if (this.candidateHeld()) return Promise.resolve(this.snapshotValue);
     if (this.snapshotValue.phase === "downloading" && this.downloadFlight) return this.downloadFlight;
-    if (this.snapshotValue.phase !== "available") {
+    const retry = this.snapshotValue.phase === "error" && this.snapshotValue.failure?.stage === "download" && this.snapshotValue.availableVersion;
+    if (this.snapshotValue.phase !== "available" && !retry) {
       return Promise.reject(new Error("当前没有可下载的更新"));
     }
     if (this.downloadFlight) return this.downloadFlight;
     const version = this.snapshotValue.availableVersion;
+    this.suspendChecks();
     this.downloadVersion = version;
     const operationId = ++this.adapterEpoch;
     const flight = Promise.resolve()
@@ -295,6 +334,7 @@ export class UpdateService {
           phase: "downloading",
           progress: { percent: 0, transferred: 0, total: 0 },
           error: null,
+          failure: null,
         });
         const compatibility = this.options.candidateCompatibility;
         if (compatibility) {
@@ -314,6 +354,7 @@ export class UpdateService {
       })
       .finally(() => {
         this.downloadFlight = null;
+        this.scheduleNextCheck();
       });
     this.downloadFlight = flight;
     return flight;
@@ -327,7 +368,11 @@ export class UpdateService {
     this.windows.add(window);
     registrar(rendererUrl, "拒绝非主窗口的更新请求")
       .handle(UPDATE_CHANNEL.snapshot, () => this.snapshot())
-      .handle(UPDATE_CHANNEL.check, () => this.check(true))
+      .handle(UPDATE_CHANNEL.check, (source) => {
+        if (source === "online") return this.resumeOnlineChecks();
+        if (source !== undefined && source !== "manual" && source !== "automatic") throw new Error("UPDATE_CHECK_SOURCE_INVALID");
+        return this.check(source !== "automatic");
+      })
       .handle(UPDATE_CHANNEL.checkForApp, async (requestId) => {
         if (typeof requestId !== "string" || !this.options.resolveAppRequirement) throw new Error("APP_COMPATIBILITY_REQUEST_UNAVAILABLE");
         return this.checkMinimum(await this.options.resolveAppRequirement(requestId));
@@ -366,7 +411,7 @@ export class UpdateService {
       if (!this.currentEvent(info) || this.snapshotValue.phase !== "downloading" || info.version !== this.downloadVersion) return;
       const candidateId = randomUUID();
       this.suspendChecks();
-      this.publish({ ...this.snapshotValue, phase: "ready", candidateId, progress: null, error: null });
+      this.publish({ ...this.snapshotValue, phase: "ready", candidateId, progress: null, error: null, lastError: null, failure: null });
       // Downloading is not permission to interrupt the workspace with a restart.
     });
     this.listen("error", (error) => {
@@ -394,6 +439,8 @@ export class UpdateService {
 
   private available(info: UpdateInfo) {
     if (this.snapshotValue.phase !== "checking") return;
+    this.retryAttempt = 0;
+    this.nextCheckAt = this.now() + DAY_MS;
     this.publish({
       ...this.snapshotValue,
       phase: "available",
@@ -402,11 +449,14 @@ export class UpdateService {
       progress: null,
       error: null,
       lastError: null,
+      failure: null,
     });
   }
 
   private notAvailable() {
     if (this.snapshotValue.phase !== "checking") return;
+    this.retryAttempt = 0;
+    this.nextCheckAt = this.now() + DAY_MS;
     this.publish({
       ...this.snapshotValue,
       phase: "not-available",
@@ -415,6 +465,7 @@ export class UpdateService {
       progress: null,
       error: null,
       lastError: null,
+      failure: null,
     });
   }
 
@@ -506,12 +557,28 @@ export class UpdateService {
       return;
     }
     const message = sanitizeError(error.message);
-    if (kind === "check" && this.checkKind === "background") {
+    const failure = classifyUpdateFailure(error, this.now());
+    if (kind === "check") {
+      if (failure.reason === "offline" || this.options.isOnline?.() === false) {
+        if (this.retryAttempt === 0) this.nextCheckAt = null;
+        this.waitingForNetwork = true;
+      }
+      else {
+        const delay = failure.retryable ? checkRetryDelay(this.retryAttempt++) : DAY_MS;
+        if (!failure.retryable) this.retryAttempt = 0;
+        this.retryAttempt = Math.min(this.retryAttempt, 3);
+        this.nextCheckAt = this.now() + Math.max(delay, failure.retryAfterMs);
+      }
+      const baseline = this.checkBaseline;
+      const retained = baseline && ["available", "not-available"].includes(baseline.phase) ? baseline.phase : null;
+      // A failed version refresh cannot replace an unresolved user-started download failure.
+      const downloadFailed = baseline?.failure?.stage === "download";
       this.publish({
         ...this.snapshotValue,
-        phase: "idle",
-        error: null,
+        phase: downloadFailed ? baseline.phase : retained ?? (this.checkKind === "background" ? "idle" : "error"),
+        error: downloadFailed ? baseline.error : this.checkKind === "background" ? null : message,
         lastError: message,
+        failure: downloadFailed ? baseline.failure : { stage: "check", reason: failure.reason },
       });
       return;
     }
@@ -520,6 +587,7 @@ export class UpdateService {
       phase: "error",
       error: message,
       lastError: message,
+      failure: { stage: "download", reason: failure.reason },
       progress: null,
     });
   }
@@ -537,9 +605,13 @@ export class UpdateService {
   }
 
   private scheduleNextCheck() {
-    if (!this.started || !this.options.adapter || this.candidateHeld()) return;
+    if (!this.started || !this.options.adapter || this.candidateHeld() || this.waitingForNetwork || this.checkFlight || this.downloadFlight) return;
     if (this.intervalTimer) this.clearTimer(this.intervalTimer);
-    this.intervalTimer = this.timer(() => void this.check(false), DAY_MS);
+    this.nextCheckAt ??= this.now() + DAY_MS;
+    this.intervalTimer = this.timer(() => {
+      this.intervalTimer = null;
+      void this.check(false);
+    }, Math.min(DAY_MS, Math.max(0, this.nextCheckAt - this.now())));
   }
 
   private now() {

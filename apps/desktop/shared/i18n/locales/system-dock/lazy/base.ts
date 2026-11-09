@@ -491,7 +491,7 @@ export const systemDockBaseEn={
     "loadFailed": "Couldn’t load Dock settings.",
     "unsupportedTitle": "Bottega Dock isn’t available",
     "unsupportedPlatform": "Bottega Dock is only available on macOS.",
-    "unsupportedVersion": "Dock Alpha supports macOS 27 only. Other macOS versions are not yet verified.",
+    "unsupportedVersion": "Dock Alpha supports macOS 26 and 27 on Apple silicon. Other macOS versions are not supported.",
     "unsupportedArchitecture": "Bottega Dock requires a Mac with Apple silicon.",
     "unsupportedHelperMissing": "Bottega Dock needs a helper that is missing from this installation. Reinstall Bottega to use the Dock.",
     "registrationUnknown": "Could not verify",

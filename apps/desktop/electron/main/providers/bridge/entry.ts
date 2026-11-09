@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Uses HostApi, pinned protocol declarations, lazily loaded ACP/native drivers and ordered process/event ports and live names-only MCP consent queries.
- * [OUTPUT]: Exports activate for protocol-specific readiness, native catalogs, turns, independent-terminal and owner-wide background Stop/results, headless parsing and quota. Reconstructs only the main-sealed member fork source and completion callback.
+ * [OUTPUT]: Provides activate.
  * [POS]: Provider utility-process dispatcher; main alone freezes launch policy, grants tool authority and owns custody.
  */
 import type { HostApi } from "../../host/entry";
@@ -82,8 +82,6 @@ export function activate(api: HostApi) {
     } });
     return {
       chatIncarnationId: start.chatIncarnationId,
-      ...(start.memberFork ? { memberFork: { ...start.memberFork, complete: (outcome: "forked" | "replayed") =>
-        outbox.request({ k: "member-fork-complete", outcome }) as Promise<void> } } : {}),
       payload: start.payload,
       input: { input: start.input, commit() {}, rollback() {}, release() {} } as unknown as BackendTurnOptions["input"],
       callbacks: { ...callbacks, onThread: (session: SessionRef, previous?: SessionRef) => outbox.request({ k: "thread", session, ...(previous ? { previous } : {}) }) as Promise<void> } as unknown as AgentTurnCallbacks,

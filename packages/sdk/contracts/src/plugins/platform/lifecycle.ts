@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Zod, plugin identities and manifest contribution types.
- * [OUTPUT]: Side-effect-separated service, trusted RPC, authoring owner and persistent member contracts.
+ * [OUTPUT]: Provides PLUGIN_RUNTIME_CONTRACT, PLUGIN_SENSITIVE_PATH_POLICY, pluginServicePhaseSchema, PluginServicePhase, PluginServiceContext, PluginServiceRuntime, pluginHostRpcRequestSchema, pluginHostRpcResponseSchema, PluginHostRpcRequest, PluginHostRpcResponse, PluginHostApi, pluginAuthoringLeaseOwnerSchema, PluginAuthoringLeaseOwner.
  * [POS]: Host/plugin execution boundary; filesystem and process proxies must share the sensitive-path policy.
  */
 import { z } from "zod";
@@ -39,35 +39,7 @@ export type PluginHostApi = Readonly<{
   pluginId: string; revision: string;
   call(operation: string, input: unknown, options?: { signal?: AbortSignal }): Promise<unknown>;
 }>;
-export const pluginAuthoringLeaseOwnerSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("turn"), operationId: pluginIdentitySchema, chatId: pluginIdentitySchema, incarnation: pluginIdentitySchema }).strict(),
-  z.object({ kind: z.literal("team"), operationId: pluginIdentitySchema, leadChatId: pluginIdentitySchema, leadIncarnation: pluginIdentitySchema }).strict(),
-]);
-export type PluginAuthoringLeaseOwner = z.infer<typeof pluginAuthoringLeaseOwnerSchema>;
-export const pluginMemberSessionSchema = z.object({
-  pluginId: pluginIdentitySchema, leadChatId: pluginIdentitySchema, leadIncarnation: pluginIdentitySchema,
-  projectId: pluginIdentitySchema, chatId: pluginIdentitySchema, incarnation: pluginIdentitySchema,
-  memberId: pluginIdentitySchema, name: z.string().min(1).max(160), providerId: z.string().min(1).max(128),
-  status: z.enum(["idle", "running", "stopping", "stopped", "failed"]), createdAt: z.number().int().nonnegative(),
+export const pluginAuthoringLeaseOwnerSchema = z.object({
+  kind: z.literal("turn"), operationId: pluginIdentitySchema, chatId: pluginIdentitySchema, incarnation: pluginIdentitySchema,
 }).strict();
-export const pluginMemberMessageSchema = z.object({
-  id: pluginIdentitySchema, pluginId: pluginIdentitySchema, leadChatId: pluginIdentitySchema,
-  leadIncarnation: pluginIdentitySchema, senderChatId: pluginIdentitySchema,
-  targetChatId: pluginIdentitySchema, targetIncarnation: pluginIdentitySchema,
-  body: z.string().min(1).max(32_768),
-  status: z.enum(["queued", "inserted", "delivered", "unknown", "processed", "cancelled"]),
-  consumptionId: pluginIdentitySchema.optional(), processedAt: z.number().int().nonnegative().optional(),
-  createdAt: z.number().int().nonnegative(),
-}).strict().superRefine((value, context) => {
-  if (value.status === "processed" && (!value.consumptionId || value.processedAt === undefined))
-    context.addIssue({ code: "custom", message: "Processed messages require explicit consumption and acknowledgement" });
-});
-export type PluginMemberSession = z.infer<typeof pluginMemberSessionSchema>;
-export type PluginMemberMessage = z.infer<typeof pluginMemberMessageSchema>;
-export type PluginMemberSessionPort = Readonly<{
-  create(input: Omit<PluginMemberSession, "chatId" | "incarnation" | "status" | "createdAt"> & { task: string; forkChatId?: string }): Promise<PluginMemberSession>;
-  submit(input: { chatId: string; incarnation: string; messageId: string; text: string }): Promise<{ outcome: "inserted" | "not-consumed" | "unknown" | "queued"; turnId?: string }>;
-  stop(input: { chatId: string; incarnation: string }): Promise<void>;
-  status(input: { chatId: string; incarnation: string }): Promise<PluginMemberSession["status"]>;
-  recover(input: { pluginId: string; leadChatId: string; leadIncarnation: string }): Promise<PluginMemberSession[]>;
-}>;
+export type PluginAuthoringLeaseOwner = z.infer<typeof pluginAuthoringLeaseOwnerSchema>;

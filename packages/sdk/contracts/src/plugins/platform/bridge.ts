@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Unified entities, manifest and Zod.
- * [OUTPUT]: Renderer channels, mode snapshots, typed platform actions and exact-activation unified Surface descriptors.
+ * [OUTPUT]: Renderer channels, display-only mode descriptions/provenance, execution snapshots, typed platform actions and exact-activation unified Surface descriptors.
  * [POS]: Stable main/preload/Web boundary; host owns source Projects and immutable activation.
  */
 import { z } from "zod";
@@ -24,7 +24,7 @@ export type PluginPrepareAuthoringInput = z.infer<typeof pluginPrepareAuthoringI
 export type PluginPrepareAuthoringResult = Readonly<{ pluginId: string; projectId: string; workspacePath: string; workspacePrecondition: { kind: "project"; projectId: string; membershipRevision: number } }>;
 export type UnifiedPluginInstallInput = z.infer<typeof unifiedPluginInstallInputSchema>;
 export type UnifiedPluginRestoreInput = z.infer<typeof unifiedPluginRestoreInputSchema>;
-export type UnifiedPluginMode = PluginModeSelection & { pluginId: string; ready: boolean; unavailableReason?: string };
+export type UnifiedPluginMode = PluginModeSelection & { pluginId: string; pluginName?: string; description?: string; ready: boolean; unavailableReason?: string };
 export type UnifiedPluginHostImpact = Readonly<{ revision: number; digest: string }>;
 export type UnifiedPluginSurfaceDescriptor = PluginSurfaceDescriptor & Readonly<{ activationId: string }>;
 export type UnifiedPluginBridge = import("./delivery").PluginPackageDeliveryBridge & Readonly<{

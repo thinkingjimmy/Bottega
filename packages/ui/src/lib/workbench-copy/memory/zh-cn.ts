@@ -17,9 +17,6 @@ export const memoryPluginCopy = {
     "phoneFacade": {
       "label": "在手机与 Web 上查看和控制 Memory"
     },
-    "workflowRoles": {
-      "label": "允许流程角色读取 Memory"
-    }
   },
   "sharing": {
     "chat": "当前对话",
@@ -27,7 +24,7 @@ export const memoryPluginCopy = {
     "personal": "所有对话"
   },
   "capability": {
-    "recall": "在你选择的共享范围内回忆信息",
+    "recall": "暂停新对话轮次的记忆召回。",
     "capture": "经你授权后保存符合条件的信息",
     "backfill": "仅处理你已授权的历史对话"
   },
@@ -39,7 +36,7 @@ export const memoryPluginCopy = {
     "personal": "今后的 Memory 在所有对话间共享。记忆提取使用 {{hostname}} 的 {{model}}，可能产生模型费用。不包含现有历史对话。"
   },
   "effects": {
-    "recall": "暂停新对话轮次和流程轮次的记忆召回。",
+    "recall": "暂停新对话轮次的记忆召回。",
     "capture": "暂停新增记忆，保留已保存的记忆。",
     "backfill": "暂停常规历史处理。",
     "phone": "暂停手机与 Web 对话的 Memory。",

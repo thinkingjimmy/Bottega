@@ -37,7 +37,7 @@ export const imageStatusSchema = z.object({ transferId: z.string().uuid(), offse
   value: baseAttachmentValueSchema.optional() }).strict();
 export type ImageStatus = z.infer<typeof imageStatusSchema>;
 export const imageErrorSchema = z.enum(["image_upload_limit", "image_transfer_missing", "image_transfer_conflict", "image_invalid",
-  "image_transfer_io", "base_scope_changed", "record_conflict", "record_missing", "schema_conflict", "invalid_record", "record_save_failed", "column_workflow_only"]);
+  "image_transfer_io", "base_scope_changed", "record_conflict", "record_missing", "schema_conflict", "invalid_record", "record_save_failed"]);
 export type ImageErrorCode = z.infer<typeof imageErrorSchema>;
 export type ImageReply<T> = { ok: true; value: T } | { ok: false; error: { code: ImageErrorCode; retryable: boolean } };
 export interface BaseImagesBridge {

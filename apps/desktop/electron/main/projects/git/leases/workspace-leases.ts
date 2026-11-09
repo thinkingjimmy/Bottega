@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on DurableJson, Zod and node fs/path for the canonical workspace path.
  * [OUTPUT]: Provides WorkspaceLeases (one durable writer lease per canonical workspace: acquire for a run's writing step, holder, release, releaseRun, list) and canonicalWorkspace.
- * [POS]: review-0926 A-07 (2-design §553): two records of one Project never develop in the same workspace at once. The executor acquires before a writing step's attempt, holds through cleanup and evidence, and releases only on positive evidence; startup settles leftovers against custody.
+ * [POS]: Shared durable workspace exclusion primitive used by plugin authoring; callers own custody and recovery.
  */
 import { realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { DurableJson } from "../../persistence/durable-json";
+import { DurableJson } from "../../../persistence/durable-json";
 
 const leaseSchema = z.object({ key: z.string().min(1).max(4_096), runId: z.string().min(1).max(128), stepId: z.string().min(1).max(128), since: z.number().int() }).strict();
 const fileSchema = z.object({ schemaVersion: z.literal(1), leases: z.array(leaseSchema).max(1_024) }).strict();

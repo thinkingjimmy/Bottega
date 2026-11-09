@@ -2,7 +2,6 @@
  * [INPUT]: Depends on TurnRegistry projection lane, bridge, stabilization/Steer durable finalizer, port, canonical commit, projection and process group clearance only by the turn's custody launch identity or, for a bridged turn, its host-custody owner (a reused PID is never signalled; no identity, no signal; a reported PID with no identity is unverified, B2-01)
  * [OUTPUT]: Keeps uncommitted persistence failures retryable beyond the automatic budget; verifies cleanup owners and retries effects/ACKs separately.
  * [POS]: apps/desktop/electron/main/agent/bridge; The agent module's terminal transaction owner; agent-bridge is only responsible for launching, event routing and lifecycle
- * Workflow recall receipts use settled handoff facts without granting capture.
  */
 
 import { artifactRuntime } from "../../artifacts/core/runtime";
@@ -364,7 +363,7 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
       const prepared = turns.prepare(
         entry,
         prepareTurnCommit(entry, {
-          origin: entry.origin?.kind === "manual" ? "manual" : entry.origin?.kind === "workflow" ? "workflow" : "other",
+          origin: entry.origin?.kind === "manual" ? "manual" : "other",
           frozenAdmission: entry.context?.memory ?? null,
           prepared: entry.memoryRecall?.prepared ?? null,
           prePromptValidation:

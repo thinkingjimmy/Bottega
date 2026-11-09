@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Owner Project Git resource operations, the PreparedCloudRuntime shape from prepare.ts, Electron account/lifecycle ports and preferred languages, shared locale negotiation, the bounded recovery timeline, isolated userData, original coordinator/control owners, bounded connection-first shutdown and artifact custody/publication.
- * [OUTPUT]: Wires binding-fenced offline identity, a read-only operation-receipt lookup for the broker, startup/token admission, synchronization with library-confirmed remote readiness independent of historical backlog, bidirectional Chat read acknowledgements, scoped artifact transfers, sleep/quit presence (resume is refreshed by the application lifecycle), continuation, remote IPC and the `attachAccountConfig(store)` Dock-layout sync seam onto an already prepared runtime, with deferred immutable Widget package delivery and verified owner/account record resource ports, Agent-configuration sync, the Workflow projection outbox and the resource-command executor attached alongside, behind one shared Memory reconnect barrier.
+ * [OUTPUT]: Provides createCloudRuntime.
  * Native mirror Artifact commands retain original execution-owner identity and durable encrypted request recovery. Terminal shutdown reports offline within two seconds and cancels the connection before draining network consumers.
  * [POS]: Heavy half of the cloud composition, dynamically loaded and never reached from prepare.ts; stable builds exclude the implementation and SDK.
  */
@@ -78,10 +78,10 @@ import { RemoteActivityObserver, type RemoteActivityPort } from "../remote/activ
 import { ChatReadSync, type ReadActivityPort } from "../remote/read/sync";
 import { AccountConfigSyncCoordinator, type AccountConfigSyncHandle } from "../sync/account-config/coordinator";
 import type { DockConfigStore } from "../../system-dock/store/config-store";
-import { attachAgentConfigSync } from "../../agent-configs/runtime";
-import { attachWorkflowProjection } from "../../workflows/projection/attach";
+
+
 import { ResourceCommandRuntime } from "../remote/resources/runtime";
-import { workflowResourcePort } from "../remote/resources/workflows";
+
 import { appResourcePort, type RemoteApps } from "../remote/resources/apps";
 import { ledgerActivityReason } from "../../sections/coordinator/agent-switch/activity";
 /* Device registration and folder ownership are compared with each other by the server, so they share the cloud purpose. */
@@ -203,8 +203,8 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
   const remote = new RemoteCommandRuntime({ remoteReady: () => sync.remoteReady(), onRemoteReady: listener => sync.onRemoteReady(listener), memoryBarrier, plugins: () => ui.pluginSurfaces?.() ?? null, liveHead: chatId => chatReader?.liveHead(chatId), apps: () => ui.apps?.() ?? null, crypto: contentCrypto, clock: () => encryption.owner.clock(), config, deviceId, binding, transport, account: service, store: owners.chats, projects: ui.projectGate,
     files: userId => new DesktopBlobStore(userData, { ...config, userId }, desktopFileTransport({ config, userId, transport, crypto: contentCrypto, token: () => http.getToken() })),
     ...ui.remote, ...ui.turns, forks: ui.events.chats, execution, own: activity => scope.own(activity) });
-  /* P13 R-24 / R-32: a phone or Web asks this computer to act on its workflows or read a Provider's quota again. */
-  const resources = new ResourceCommandRuntime({ memoryBarrier, config, deviceId, binding, account: service, transport, crypto: contentCrypto, workflows: workflowResourcePort, apps: appResourcePort(() => ui.apps?.() ?? null),
+
+  const resources = new ResourceCommandRuntime({ memoryBarrier, config, deviceId, binding, account: service, transport, crypto: contentCrypto, apps: appResourcePort(() => ui.apps?.() ?? null),
     files: userId => new DesktopBlobStore(userData, { ...config, userId }, desktopFileTransport({ config, userId, transport, crypto: contentCrypto, token: () => http.getToken() })),
     projects: projectResourcePort({ projects: ui.projectGate, deviceId, environment: config.environmentId }),
     records: recordResourcePort({ bases: owners.bases, records: () => ui.recordPlugins?.() ?? null, environment: config.environmentId,
@@ -261,12 +261,9 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
   void service.initialize().then(() => { inbox.bind(url => onProtocolArgs([url])); onProtocolArgs(process.argv); });
   await service.localIdentityReady;
   let accountConfig: AccountConfigSyncHandle | null = null;
-  /* Agent configurations (TASK-12): their store is composed before the cloud runtime and works signed out; sync shares the
-     account connection, the content cipher and the scope fence, and closes before them. */
-  const agentConfigs = attachAgentConfigSync({ config, deviceId, binding, account: service, transport, crypto: contentCrypto, own: activity => scope.own(activity) });
+
   const previews = attachPreviewCloud({ config, deviceId, binding, account: service, transport, crypto: contentCrypto, own: activity => scope.own(activity) });
-  /* The Workflow outbox (P13): this computer's runs, needs-you items and bindings, mirrored for phones and Web while signed in. */
-  const workflowProjection = attachWorkflowProjection({ config, deviceId, binding, account: service, transport, crypto: contentCrypto, own: activity => scope.own(activity) });
+
   /* The one account-config synchronizer. The Dock runtime owns its store and attaches it once; the returned handle
      serves Settings → Dock status and conflict choices and closes before the account connection does. */
   const attachAccountConfig = (store: DockConfigStore): AccountConfigSyncHandle => {
@@ -312,10 +309,10 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
     registerCloudApps(cloudApps!, window, rendererUrl);
     registerCloudRemote(remoteClient, window, rendererUrl);
   }, onProtocolArgs, refresh: () => service.refresh(true),
-    /** Read-only: who is signed in on this computer (the verified operator of a workflow confirmation). */
+
     accountIdentity: () => service.connectionIdentity(), close: async () => {
       await closeCloudConnection({ reportOffline: reportQuit, disconnect: () => { transport.stop(); service.close(); }, drain: async () => {
-        await widgetPackages.close(); await previews.close(); await accountConfig?.close(); await agentConfigs?.close(); await workflowProjection.close();
+        await widgetPackages.close(); await previews.close(); await accountConfig?.close();
         await resources.close(); await memoryBarrier.close(); await remoteActivity?.close(); await readState?.close();
       } });
       powerMonitor.removeListener("suspend", sleep); app.removeListener("before-quit", quit); if (promotionTimer) clearInterval(promotionTimer); inbox.close(); unsubscribeSync(); await encryption.close(); await remote.close(); avatars.close(); await avatars.settled(); await cloudApps?.close(); await execution.close(); await chatReader?.close(); await baseImages.close(); baseReview?.close(); await service.login.drain(); await vault.drain(); await sync.close(); await recorder.close(); await prepared.homeCapture?.close(); await scope.close(); await recoveringPromotion; await binding.close(); void recoveryDiagnostics.flush(); } };

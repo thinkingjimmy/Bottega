@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on Zod and standard URL parsing.
- * [OUTPUT]: Protocol-26 unified plugin manifests, lifecycle, package, mode and member contracts alongside Artifact, Widget and retained-navigation handshakes.
+ * [OUTPUT]: Protocol-27 unified plugin manifests, lifecycle, package, mode and member contracts alongside Artifact, Widget and retained-navigation handshakes.
  * [POS]: Shared configuration boundary for desktop, Web and the private backend.
  */
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 26;
+export const PROTOCOL_VERSION = 27;
 export const MAX_BLOB_BYTES = 50_000_000;
 export const MAX_PART_BYTES = 8_388_608;
 export const MAX_PARTS = 6;
@@ -17,9 +17,7 @@ export const CLOUD_LIMITS = Object.freeze({
   heartbeatMs: 30_000, offlineAfterMs: 90_000, streamingWindowMs: 500,
   // The challenge covers the whole browser sign-in: account chooser, password, 2FA, code comparison and the desktop exchange.
   loginChallengeMs: 300_000,
-  /* Agent configurations (D-BUDGET, 2026-09-25): plaintext per record and per account, and the directory/head bounds
-     every config subscription reads. Receipts of config writes live 30 days; a later retry is judged by CAS again. */
-  agentConfigBytes: 32_768, agentConfigsPerAccount: 100, agentConfigTotalBytes: 3_276_800,
+
   directoryPageHeads: 50, directoryPageBytes: 65_536, headBytes: 1_024,
   configReceiptRetentionMs: 2_592_000_000,
 });

@@ -79,9 +79,9 @@ export const dock = {
     "error": "同步失败；布局已保留"
   },
   "unsupportedReason": {
-    "platform": "需要 macOS 27",
+    "platform": "需要 macOS 26 或 27",
     "architecture": "需要 Apple 芯片",
-    "osVersion": "需要 macOS 27",
+    "osVersion": "需要 macOS 26 或 27",
     "helperMissing": "Dock 辅助程序缺失，请重新安装 Bottega。"
   },
   "effects": {

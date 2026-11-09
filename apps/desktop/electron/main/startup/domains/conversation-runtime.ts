@@ -1,7 +1,6 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and Chat/Project/App/Memory/Gallery/Browser services, the History Import handle, canonical Project Tools resolver, scoped Extension inventory, Skills selection authority, canonical Provider purposes/defaults, first-message title fallback, manual staging, RelayLedger, and backend bridge; main-resolved native-file authorization source separate from final execution/Skill workspace.
  * [OUTPUT]: Composes runtime-only chat admission, registry-driven dispatch wakes, scoped retries, queue pausing and single-backend title generation/recovery with direct first-message completion for explicitly unsupported purposes and demand-driven authentication refresh — headless job or dedicated/ordinary one-shot Agent turn — qualified against the same configured model and workspace; a package Provider's turn resolves no Project tools and names the Provider from the catalog when it fails. Refuses closed App submissions and keeps their queued messages undispatched.
- * Workflow preparation narrows Skills and MCP candidates before their receipts enter custody.
  * [POS]: The conversation-domain startup composition module; the external-history half lives in history-import-runtime.ts and assembles dependencies without holding global lifecycle state
  */
 import { builtinProviderCatalog, DEFAULT_PROVIDER_ID, knownBackend } from "../../../../shared/providers/catalog";
@@ -10,8 +9,8 @@ import { requireProvider } from "../../backends";
 import { composedProviderCatalog } from "../../providers/host/catalog";
 import { fallbackTitle } from "../../chats/chat-commit";
 import { join } from "node:path";
-import { workflowSkillSelection, workflowToolSelection } from "../../agent-configs/selection";
-import { workflowExecutionWorkspace, workflowTurnPolicyFor } from "../../workflows/turn-policy";
+
+
 import type { AgentBackendId, AgentWorkspaceScope, BackendCapabilities } from "../../../../shared/ipc/agent/agent-ipc";
 import type { TurnProjectContext } from "../../../../shared/product/product-resource-scope";
 
@@ -409,7 +408,7 @@ export function createManualTurnPreparer({
     const baseWorkspace = persistence.kind === "adopt"
       ? importedWorkspace(persistence.input.importOrigin.originalCwd, resolved.workspace) ?? resolved.workspace
       : resolved.workspace;
-    const workspace = submission.workflow ? await workflowExecutionWorkspace(submission.turn.requestId, baseWorkspace, submission.workflow.runId) : baseWorkspace;
+    const workspace = baseWorkspace;
     const backend = submission.turn.turnOptions.backend;
     const target = await backendRuntimeRegistry.executionTarget(backend, runtime, {
       cwd: workspace, model: submission.turn.turnOptions.model ?? undefined,
@@ -439,8 +438,7 @@ export function createManualTurnPreparer({
       planMode: Boolean(submission.turn.planMode),
       mode: submission.turn.turnOptions.mode,
     });
-    const workflowPolicy = workflowTurnPolicyFor(submission.turn.requestId);
-    const projectTools = submission.workflow && resolvedTools ? workflowToolSelection(resolvedTools, workflowPolicy) : resolvedTools;
+    const projectTools = resolvedTools;
     if (
       projectTools &&
       (projectTools.projectContext.projectId !== projectContext.projectId ||
@@ -479,7 +477,7 @@ export function createManualTurnPreparer({
             { status: 409 }
           );
         }
-        return submission.workflow ? workflowSkillSelection(receipt, workflowPolicy) : receipt;
+        return receipt;
       },
       sections: {
         conversationId: submission.turn.scope.conversationId,

@@ -49,6 +49,8 @@ export const nativeZhCN: NativeCatalog = {
     "quitProcesses": "部分后台进程未能关闭。",
     "quitOther": "未能完成退出前的准备。请重试。",
     "report": "反馈问题",
+    "downloadLatest": "下载最新版",
+    "downloadFailed": "无法打开，请重试",
     "copied": "已复制",
     "copyFailed": "复制失败"
   },

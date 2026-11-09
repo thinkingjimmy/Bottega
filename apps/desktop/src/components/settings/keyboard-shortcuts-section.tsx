@@ -1,9 +1,9 @@
 /**
  * [INPUT]: Shared ShortcutSettings/copy, native binding policy, settingsStore and platform identity.
- * [OUTPUT]: KeyboardShortcutsSection backed by native settings with capability-filtered product rows.
+ * [OUTPUT]: KeyboardShortcutsSection backed by native settings with capability-filtered product rows and an optional page-layout slot for the description, conditional restore action and content.
  * [POS]: Native shortcut settings adapter; shared UI owns recording and row presentation.
  */
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore, type ComponentProps } from "react";
 import { ShortcutSettings } from "@ai-chat/ui/components/settings/shortcuts/section";
 import { getShortcutCopy } from "@ai-chat/ui/lib/shortcuts/copy";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
@@ -15,7 +15,7 @@ import {
   SHORTCUT_IDS,
   useShortcutBindings,
 } from "@/lib/navigation/shortcuts/shortcuts";
-export function KeyboardShortcutsSection() {
+export function KeyboardShortcutsSection({ children }: Pick<ComponentProps<typeof ShortcutSettings>, "children">) {
   const { i18n } = useAppTranslation(),
     copy = getShortcutCopy(i18n.resolvedLanguage ?? i18n.language);
   const bindings = useShortcutBindings(),
@@ -58,6 +58,7 @@ export function KeyboardShortcutsSection() {
           copy.restoreFailed,
         );
       }}
+      children={children}
     />
   );
 }

@@ -2,13 +2,12 @@
  * [INPUT]: Depends on lucide icons, Settings layout primitives, the Setup context with providerHealth, UpdateList and CliUpdateRow (a built-in
  *           Provider's live CLI facts and one-click update), app i18n, workbench-copy, the report-issue button and the plugin detail.
  * [OUTPUT]: Provides the pieces both plugin pages compose: PluginBanners (the one most urgent state, with its fix), HealthSection,
- *           UsedBySection (settings page), and for the introduction AboutSection, CapabilitiesSection, WorksWithSection, InUseSection
- *           and InformationSection with owner health facts, including plugins without a settings page. InUseSection accepts only read-only usage fields so the unified Workflow detail can reuse the same renderer.
+ *           AboutSection, CapabilitiesSection, WorksWithSection and InformationSection
  * [POS]: Read-only parts of the plugin pages; about.tsx and settings-page.tsx place them. Dependencies read as sentences (who meets
  *        each need, or why nothing does), with the contract id as small print.
  */
 import type { ReactNode } from "react";
-import { ArrowUpRight, Check, Folder, Lock, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { ArrowUpRight, Check, Lock, RefreshCw, TriangleAlert, X } from "lucide-react";
 import { formatWorkbench, type WorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { SettingsButton, SettingsList, SettingsSection } from "@/components/settings/settings-layout";
@@ -48,7 +47,7 @@ function Banner({ tone, icon, children, action }: { tone: "warn" | "info" | "dan
 }
 
 /** Only the most urgent state is shown, so the page never stacks a column of banners. */
-export function PluginBanners({ detail, workbench, note, onOpenRelated }: Props & { note?: "busy" | "reinstall"; onOpenRelated(section: Related): void }) {
+export function PluginBanners({ detail, workbench, note, onOpenRelated: _onOpenRelated }: Props & { note?: "busy" | "reinstall"; onOpenRelated(section: Related): void }) {
   const copy = workbench.plugins;
   const name = pluginText(detail.name, workbench);
   const blocked = detail.enabled && detail.availability.state === "blocked" ? detail.availability.blockedBy : [];
@@ -57,7 +56,7 @@ export function PluginBanners({ detail, workbench, note, onOpenRelated }: Props 
       {formatWorkbench(copy.reinstallRequired, { name })} {copy.reinstallHelp}</Banner>;
   }
   if (blocked.length) {
-    return <Banner tone="warn" icon={<TriangleAlert />} action={detail.id === "workflow" ? <SettingsButton variant="outline" onClick={() => onOpenRelated("providers")}>{copy.relatedProviders}</SettingsButton> : undefined}>
+    return <Banner tone="warn" icon={<TriangleAlert />}>
       <span data-plugin-blocked="">{formatWorkbench(copy.blockedBanner, { name, reason: blockReasonLabel(blocked[0]!.reason, copy) })}</span></Banner>;
   }
   if (note === "busy") return <Banner tone="warn" icon={<TriangleAlert />}>{formatWorkbench(copy.busyNote, { name })}</Banner>;
@@ -97,20 +96,6 @@ export function HealthSection({ detail, workbench, locale }: Props & { locale: s
       </SettingsList>
       {/* The same update row as Settings › Updates: one-click update, progress, verified failure and the Terminal fallback. */}
       {backend && isAgentBackendId(backend.id) && backend.runtimeStatus === "installed" && <UpdateList><CliUpdateRow backend={{ ...backend, id: backend.id }} /></UpdateList>}
-    </SettingsSection>
-  );
-}
-
-const Chips = ({ items, icon }: { items: readonly string[]; icon?: ReactNode }) => <div className="flex flex-wrap gap-1.5">{items.map(item => (
-  <span key={item} className="inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs">{icon}{item}</span>))}</div>;
-
-export function UsedBySection({ detail, workbench, onOpen }: Props & { onOpen(section: Related): void }) {
-  const copy = workbench.plugins;
-  if (!detail.usedBy) return null;
-  return (
-    <SettingsSection title={copy.sectionUsedBy} action={<SettingsButton variant="ghost" onClick={() => onOpen("agent-configs")}>
-      {copy.relatedAgentConfigs}<ArrowUpRight aria-hidden /></SettingsButton>}>
-      {detail.usedBy.length ? <Chips items={detail.usedBy} /> : <p className="text-muted-foreground text-sm">{copy.usedByNobody}</p>}
     </SettingsSection>
   );
 }
@@ -193,21 +178,9 @@ export function WorksWithSection({ detail, workbench, names, onOpenPlugin }: Pro
   );
 }
 
-export function InUseSection({ detail, workbench }: { detail: Readonly<Pick<PluginDetail, "usedBy" | "workflowIn">>; workbench: WorkbenchCopy }) {
-  const copy = workbench.plugins;
-  const items = detail.usedBy ?? detail.workflowIn;
-  if (!items) return null;
-  return (
-    <IntroSection title={copy.sectionInUse}>
-      {items.length ? <>
-        <Chips items={items} icon={detail.workflowIn ? <Folder aria-hidden className="size-3.5" /> : undefined} />
-        <p className="text-muted-foreground text-xs">{detail.usedBy ? copy.usedByConfigs : copy.usedByProjects}</p>
-      </> : <p className="text-muted-foreground text-sm">{copy.usedByNobody}</p>}
-    </IntroSection>
-  );
-}
 
-const RELATED_LABEL = { providers: "relatedProviders", "agent-configs": "relatedAgentConfigs", usage: "relatedUsage", skills: "relatedSkills", memory: "relatedMemory", dock: "relatedDock" } as const;
+
+const RELATED_LABEL = { providers: "relatedProviders", usage: "relatedUsage", skills: "relatedSkills", memory: "relatedMemory", dock: "relatedDock" } as const;
 
 export function InformationSection({ detail, workbench, onOpen }: Props & { onOpen(section: Related): void }) {
   const copy = workbench.plugins;

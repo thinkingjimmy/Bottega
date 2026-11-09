@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the public Principal contract, BuiltinMcpLease liveness, the App surface lease registry's per-request `describe`, and a trusted renderer context
- * [OUTPUT]: Provides VerifiedPrincipal (principal + stable key + assertCurrent), PrincipalRevokedError, and the host constructors agentTurnPrincipal, appSurfacePrincipal, hostPackagePrincipal, providerTurnPrincipal, userDevicePrincipal, workflowRunPrincipal (the run owner's step attempt) and WORKFLOW_PACKAGE_ID
+ * [OUTPUT]: Provides VerifiedPrincipal (principal + stable key + assertCurrent), PrincipalRevokedError, and the host constructors agentTurnPrincipal, appSurfacePrincipal, hostPackagePrincipal, providerTurnPrincipal, userDevicePrincipal
  * [POS]: The only way a principal enters the host operation layer: built from a channel main already verified, and re-checked on every call so revocation takes effect immediately
  */
 import { principalKey, principalSchema, type Principal } from "@ai-chat/cloud-protocol/contracts/principals";
@@ -75,15 +75,4 @@ export function hostPackagePrincipal(caller: { hostId: string; installIdentity: 
 export function userDevicePrincipal(context: TrustedRendererContext, deviceId: string, live: () => boolean): VerifiedPrincipal {
   return verified({ kind: "user-device", deviceId, rendererIncarnation: context.rendererIncarnation },
     () => !context.window.isDestroyed() && live());
-}
-
-/** Q3: a first-party run is the Workflow plugin's own, under the id that plugin already carries in the plugin list. */
-export const WORKFLOW_PACKAGE_ID = "workflow";
-
-/**
- * One step attempt of a Workflow run, minted only by the run owner (the executor) from its own ledger state, never from a
- * runId a caller names; `live` must re-check that this attempt is still the step's open one, so the principal dies with it.
- */
-export function workflowRunPrincipal(attempt: { runId: string; stepId: string; attempt: number }, live: () => boolean): VerifiedPrincipal {
-  return verified({ kind: "workflow-run", runId: attempt.runId, stepId: attempt.stepId, attempt: attempt.attempt, packageId: WORKFLOW_PACKAGE_ID }, live);
 }

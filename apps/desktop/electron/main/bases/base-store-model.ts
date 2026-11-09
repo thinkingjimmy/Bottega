@@ -75,8 +75,6 @@ export type BaseStoreMutation = {
   gallery?: BaseGalleryLedger;
   galleryChanged?: boolean;
   actor?: BaseHistoryActor;
-  /** The workflow run behind a `workflow` commit; recorded in history. */
-  runId?: string;
   operation?: string;
   /** Recorded on the tool receipt, so a replay can answer exactly what the first call answered (≤ 256 chars). */
   receiptNote?: string;

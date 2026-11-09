@@ -2,7 +2,6 @@
  * [INPUT]: Depends on settled frozen admission, canonical Chat, positive provider proof, Policy fence, Delivery reservation and network runtime
  * [OUTPUT]: Provides live/rebuild two explicit capability capture; Each provider attempt has a target-backed reservation and a stable payload/turn id
  * [POS]: The main/memory/orchestration capture executor; The authorization and the water level are held by Policy/Delivery, and this document lists only side effects of single wheels
- * Workflow contexts are rejected independently of caller-provided settlement origin.
  */
 
 import type { ChatRecord } from "../../../../shared/ipc/content/chats-ipc";
@@ -55,7 +54,7 @@ export class MemoryCaptureController {
       event.planRequested
     ) return;
     const admission = event.context?.memory;
-    if (!admission || admission.kind !== "eligible" || admission.context.workflowGeneration !== undefined) return;
+    if (!admission || admission.kind !== "eligible") return;
     const context = admission.context;
     if (this.dependencies.validateContext(context).kind !== "allowed") return;
     const chat = await this.dependencies.readChat(event.conversationId);

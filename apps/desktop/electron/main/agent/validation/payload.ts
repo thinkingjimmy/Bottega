@@ -47,7 +47,7 @@ export function parseAgentPayload(
     throw new Error("请求格式无效");
   }
   const acceptsPreparedSelection =
-    (authority?.origin?.kind === "manual" || authority?.origin?.kind === "workflow" || authority?.origin?.kind === "member") && authority.projectContext !== undefined;
+    authority?.origin?.kind === "manual" && authority.projectContext !== undefined;
   assertExactKeys(
     value,
     [

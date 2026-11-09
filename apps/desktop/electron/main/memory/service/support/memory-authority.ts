@@ -33,7 +33,6 @@ type MemoryAuthorityDependencies = Readonly<{
   delivery: MemoryDeliveryStore;
   runtimes: ManagedRuntimeRegistry;
   active(): MemoryAuthorityState;
-  workflowRolesEnabled?(): boolean;
   accepting(): boolean;
   ownersAvailable(): boolean;
   rebuildActive(): boolean;
@@ -42,19 +41,13 @@ type MemoryAuthorityDependencies = Readonly<{
 }>;
 
 export class MemoryAuthorityGuard {
-  private workflowGeneration = 0;
   constructor(private readonly dependencies: MemoryAuthorityDependencies) {}
 
-  workflowSnapshot() {
-    return { enabled: this.dependencies.workflowRolesEnabled?.() ?? false, generation: this.workflowGeneration };
-  }
 
-  invalidateWorkflowRoles() { this.workflowGeneration += 1; }
 
-  private workflowAllowed(context: FrozenTurnMemoryContext) {
-    return context.workflowGeneration === undefined || (this.workflowSnapshot().enabled &&
-      context.workflowGeneration === this.workflowGeneration && context.sharingMode !== "personal");
-  }
+
+
+
 
   snapshot() {
     return this.dependencies.active();
@@ -66,7 +59,6 @@ export class MemoryAuthorityGuard {
     deadlineAt: number,
     rebuild = false
   ): Promise<TrustedProviderProof> {
-    if (!this.workflowAllowed(context)) throw new Error("memory-workflow-authority-revoked");
     const active = this.snapshot();
     if (!active.provider) throw new Error("Memory provider 不可用");
     const status = await raceMemoryDeadline(
@@ -96,7 +88,7 @@ export class MemoryAuthorityGuard {
     proof?: TrustedProviderProof,
     rebuild = false
   ) {
-    return this.workflowAllowed(context) && validateFrozenAuthority(
+    return validateFrozenAuthority(
       {
         policy: this.dependencies.policy,
         active: () => this.snapshot(),
@@ -110,7 +102,6 @@ export class MemoryAuthorityGuard {
   }
 
   validateContext(context: FrozenTurnMemoryContext) {
-    if (!this.workflowAllowed(context)) return { kind: "unavailable" as const, failureKind: "stale-capability" as const };
     return validateCurrentContext(
       this.dependencies.policy,
       context,

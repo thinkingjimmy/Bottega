@@ -35,7 +35,7 @@ import {
   validateBaseRow,
 } from "../validation/base-mutation-validation";
 import { statusError } from "../../ipc/errors";
-import { isWorkflowOnly, WORKFLOW_ONLY_ISSUE } from "@ai-chat/base-core/compute/workflow-columns";
+
 
 type BaseJsonServiceOptions = {
   chooseExportPath?(suggestedName: string): Promise<string | null>;
@@ -116,24 +116,7 @@ export class BaseJsonService {
         if (revision !== null && revision !== current.meta.revision) {
           throw mutationConflict(current.meta.revision);
         }
-        /* A workflow's two columns keep their markers across an import, and an import never changes a workflow-only
-           column's values (Q12): those belong to the run that wrote them. */
-        const workflowColumns = new Map(current.meta.columns.filter((column) => column.workflow).map((column) => [column.id, column]));
-        const columns = mergeImportedColumns(
-          current.meta.columns,
-          imported.columns
-        ).map((column) => {
-          const kept = workflowColumns.get(column.id);
-          return kept ? { ...column, workflow: kept.workflow, ...(kept.writableBy ? { writableBy: kept.writableBy } : {}) } : column;
-        });
-        const beforeById = new Map(current.rows.map((row) => [row.id, row]));
-        for (const row of imported.rows) {
-          for (const column of workflowColumns.values()) {
-            if (isWorkflowOnly(column) && !sameJson(beforeById.get(row.id)?.values[column.id] ?? null, row.values[column.id] ?? null)) {
-              throw statusError(400, `列 ${column.id} 只由流程填写，导入不能改它`, { code: WORKFLOW_ONLY_ISSUE });
-            }
-          }
-        }
+        const columns = mergeImportedColumns(current.meta.columns, imported.columns);
         const incomingRows = new Map(
           imported.rows.map((row) => [row.id, structuredClone(row)])
         );

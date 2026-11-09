@@ -1,9 +1,8 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and confirmed Chat catalogs, account/device metadata, the viewed-computer scope and native Chat identities.
- * [OUTPUT]: Shares one confirmed/pending catalog projection, mirrors deduplicated, scoped to the viewed computer and without workflow Chats (R-35), device labels, the computer scope and retry state.
+ * [OUTPUT]: Provides useCloudSidebar, CloudSidebarProvider.
  * [POS]: Sidebar composition boundary; portable heads never enter the executable ChatsProvider.
  */
-import { isWorkflowChat } from "@ai-chat/base-core/metadata/placement-facts";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { CloudDevice } from "@ai-chat/cloud-protocol";
@@ -24,8 +23,8 @@ export function CloudSidebarProvider({ children }: { children: ReactNode }) {
   /* A mirror belongs to the computer whose installations hold its owner; one that belongs to no computer of this
      account (a revoked installation) belongs in no computer's sidebar, so it is offered in none of them. A pinned
      Project brings its own Chats with it: they are still the owner's, shown under the row that was pinned here. */
-  /* R-35: another computer's workflow Chat is in no list here either; it opens by id from its run. */
-  const mirrors = catalog.heads.filter(head => !native.has(head.chat.id) && !isWorkflowChat(head.chat) && facts.get(head.chat.id)?.state !== "deleted" &&
+
+  const mirrors = catalog.heads.filter(head => !native.has(head.chat.id) && facts.get(head.chat.id)?.state !== "deleted" &&
     (scope.owns(head.ownerDeviceId) || scope.pinnedHere(head.chat.classification.projectId)));
   const archived = (head: CloudChatHead) => (facts.has(head.chat.id) ? facts.get(head.chat.id)!.archivedAt : head.archivedAt) !== null;
   return <context.Provider value={{ heads: catalog.heads, mirrors: mirrors.filter(head => !archived(head)), archived: mirrors.filter(archived),

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The production plugin preload bridge and canonical source metadata types.
- * [OUTPUT]: Bridge access and source/editability/original-installation metadata helpers that preserve readonly official declarations and delegated App-format classification.
+ * [OUTPUT]: Bridge access and source/editability/original-installation metadata helpers that preserve readonly official declarations, native Dock identity and delegated App-format classification.
  * [POS]: Lightweight renderer authority boundary; paged management and optional detail/search hooks live in projection leaves.
  */
 import type {UnifiedPluginBridge,UnifiedPluginCatalogItem,UnifiedPluginCatalogSummary} from '@bottega/contracts/plugins/platform';
@@ -11,5 +11,7 @@ export const editablePlugin=(item:SourceItem)=>item.manifest.source.format==='bo
 
 /** Original installed authority is metadata only; main owns host-package provenance admission. */
 export const hostPackageIdentity=(item:SourceItem)=>item.manifest.source.format==='host-package'?item.manifest.source.installIdentity??('contributions'in item.manifest?item.manifest.contributions.flatMap(contribution=>contribution.kind==='service'&&contribution.hostPackageId?[contribution.hostPackageId]:[])[0]:undefined):undefined;
+
+export const isNativeDockPlugin=(item:SourceItem)=>item.manifest.id==='dock'&&item.manifest.source.format==='bottega'&&item.manifest.source.kind==='official';
 
 export const isHostedAppPlugin=(item:SourceItem)=>['base-app','web-app','server-app'].includes(item.manifest.source.format);

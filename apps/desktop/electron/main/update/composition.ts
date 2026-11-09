@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Electron app packaging facts and ASAR release-profile metadata, build-time cloud update isolation, formal release trust, the adapter selection matrix, a durable App compatibility preflight, a safe-quit port
- * [OUTPUT]: Provides createDesktopUpdateService: the one UpdateService this product ships, gating candidate compatibility on provisioned trust and owning platform and personal manual-update policy
+ * [INPUT]: Depends on Electron app packaging facts, an optional native connectivity probe, ASAR release-profile metadata, build-time update isolation, formal trust, adapter selection and safe quit
+ * [OUTPUT]: Provides createDesktopUpdateService with native connectivity, trust-gated candidate compatibility and platform/manual-update policy
  * [POS]: main/update assembly; the composition root owns lifecycle order while this file owns what "the updater for this app" means
  */
 
@@ -25,6 +25,7 @@ export type DesktopUpdateServiceOptions = Readonly<{
   resolveAppRequirement?(requestId: string): Promise<AppCompatibilityFailure>;
   prepareSafeQuit(reason: "update", interactive?: boolean): Promise<SafeQuitResult>;
   
+  isOnline?: () => boolean;
   applyCandidateCompatibility?: (
     matrix: AppGuiCompatibilitySupport
   ) => Promise<void>;
@@ -47,6 +48,7 @@ export function createDesktopUpdateService(
       options.adapter ??
       (typeof __BOTTEGA_CLOUD_UPDATES_ENABLED__ !== "undefined" && !__BOTTEGA_CLOUD_UPDATES_ENABLED__ ? null : createSelectedUpdateAdapter({ isPackaged: app.isPackaged })),
     currentVersion: app.getVersion(),
+    isOnline: options.isOnline,
     resolveAppRequirement: options.resolveAppRequirement,
     electronVersion: process.versions.electron,
     platform: process.platform,

@@ -272,7 +272,7 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     loadFailed: "无法载入程序坞设置。",
     unsupportedTitle: "Bottega Dock 不可用",
     unsupportedPlatform: "Bottega Dock 仅适用于 macOS。",
-    unsupportedVersion: "Dock Alpha 仅支持 macOS 27。其他 macOS 版本尚未通过验证。",
+    unsupportedVersion: "Dock Alpha 支持 macOS 26 和 27，且要求 Apple 芯片。不支持其他 macOS 版本。",
     unsupportedArchitecture: "Bottega Dock 需要搭载 Apple 芯片的 Mac。",
     unsupportedHelperMissing: "当前安装缺少 Bottega Dock 所需的辅助程序。请重新安装 Bottega 后使用 Dock。",
     registrationUnknown: "无法确认",

@@ -1,7 +1,6 @@
 /**
  * [INPUT]: Depends on shared builtin-tool access/backend allowlists, ProviderId, Agent TurnOrigin, frozen Skills capability facts and live Artifact admission
- * [OUTPUT]: Provides ambient access projection, exact `use_skill` issuance for capable turns, turn-kind mapping (a workflow turn: Base and its Chat's history, plus its exact step tools only), and fail-closed MCP issuance
- * Capable workflow turns exact-issue use_skill from their frozen catalog.
+ * [OUTPUT]: Provides builtinToolAccess, turnKindForOrigin, BuiltinIssuanceInput, issueBuiltinMcpWhenAllowed, projectBuiltinTools, admittedAmbientTools.
  * [POS]: Authorization composition with live plugin admission; backend exclusions, missing origins, and missing Skills capability fail closed before a lease exists
  */
 
@@ -35,8 +34,6 @@ export function turnKindForOrigin(
   origin: TurnOrigin | undefined
 ): BuiltinTurnKind {
   if (origin?.kind === "manual") return "manual";
-  if (origin?.kind === "workflow") return "workflow";
-  if (origin?.kind === "member") return "member";
   return "relay";
 }
 
@@ -53,10 +50,6 @@ export type BuiltinIssuanceInput = {
   useSkill?: boolean;
   /** 只属于当前 managed-worktree Chat 的精确 main-owned commit authority。 */
   managedWorktreeCommit?: boolean;
-  /** A workflow step's turn owes one report: exact-issue submit_step_result (read or mutate access alike). */
-  workflowStepResult?: boolean;
-  /** A review turn with a linked development Chat: exact-issue read_step_history (TASK-18). */
-  workflowStepHistory?: boolean;
 };
 
 export function issueBuiltinMcpWhenAllowed<T>(
@@ -74,15 +67,11 @@ export function projectBuiltinTools(
 ): PluginToolName[] {
   const access = builtinToolAccess(input);
   if (access === "none") return [];
-  /* A role turn carries no Skills and commits nothing itself: only its step tools are exact-issued (AGT-06 (a)). */
-  const person = turnKindForOrigin(input.origin) !== "workflow";
   const exact = [
     ...(input.useSkill ? (["use_skill"] as PluginToolName[]) : []),
-    ...(person && input.managedWorktreeCommit && access === "mutate" && !input.planMode
+    ...(input.managedWorktreeCommit && access === "mutate" && !input.planMode
       ? (["commit_managed_worktree"] as PluginToolName[])
       : []),
-    ...(input.workflowStepResult ? (["submit_step_result"] as PluginToolName[]) : []),
-    ...(input.workflowStepHistory ? (["read_step_history"] as PluginToolName[]) : []),
   ];
   return [...admittedTools(input), ...exact].filter((name) => {
     const declaration = toolSpec(name);

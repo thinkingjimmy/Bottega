@@ -86,7 +86,6 @@ export async function initializeMemoryRuntime({
   const runtimes = supplied?.runtimes ?? new ManagedRuntimeRegistry(userData, { platformSupport });
   const service = new MemoryService(userData, {
     platformSupport,
-    workflowRolesEnabled: () => settings.get().memoryWorkflowRoles,
     providerFactory: supplied?.providerFactory,
     readChat: (chatId) => chats.getConversation(chatId),
     readChatRef: (chatId) => chats.getChatRef(chatId),
@@ -100,8 +99,6 @@ export async function initializeMemoryRuntime({
     settings,
     runtimes,
     apply: (target, memory) => service.applyMemoryConfig(target, memory),
-    workflowConsentActive: () => Boolean(service.policy.activeConsent()),
-    workflowRolesChanged: () => service.invalidateWorkflowRoles(),
     consumeConsentAuthority: (token, target, purpose) =>
       service
         .consumeConsentAuthority(token, target, purpose)

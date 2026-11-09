@@ -64,13 +64,6 @@ const OFFICIAL_TOOL_BUDGETS = {
     logicalResultByteLimit: 40 * 1024,
   },
   plugins: { id: "plugins", rateLimit: 10, rateWindowMs: 60_000, logicalResultByteLimit: 64 * 1024 },
-  /* One report per attempt; a few retransmissions at most. */
-  workflows: {
-    id: "workflows",
-    rateLimit: 6,
-    rateWindowMs: 60_000,
-    logicalResultByteLimit: 4 * 1024,
-  },
 } as const satisfies Record<string, PluginToolBudget>;
 
 Object.values(OFFICIAL_TOOL_BUDGETS).forEach(registerToolBudget);

@@ -189,7 +189,7 @@ export const basesJa: BasesCatalog = {
     uploadQueueFull: "他のアップロードが完了するまで待つか、一度に保存する画像を減らしてください。",
     imageVerificationFailed: "画像を検証できませんでした。ファイルを選び直してください。",
     recordChanged: "レコードまたはフィールドが別の場所で変更されました。入力内容は保持されています。最新のレコードを確認してから保存してください。",
-    workflowOnly: "この項目はワークフローが入力するため、ここでは編集できません。",
+
     editTitle: "レコードを編集",
     checkSave: "保存結果を確認してから続行してください。",
     fileLimit: "空でない 50 MB 以下の画像を選択してください。",
@@ -490,7 +490,7 @@ export const basesJa: BasesCatalog = {
     empty: "記録された変更はありません",
     operation: "操作: {{operation}}",
     fields: "フィールド: {{fields}}",
-    actor: { renderer: "あなた", agent: "Agent", system: "システム", "app-gui": "App GUI", workflow: "ワークフロー" },
+    actor: { renderer: "あなた", agent: "Agent", system: "システム", "app-gui": "App GUI",  },
   },
   relation: {
     empty: "レコードを選択",

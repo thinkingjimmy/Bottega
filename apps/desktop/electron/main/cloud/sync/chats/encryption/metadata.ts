@@ -1,14 +1,14 @@
 /**
  * [INPUT]: Existing account transport, admitted crypto owner and original Chat delivery checkpoints.
- * [OUTPUT]: Request-bound heads, receipt-first recovery for every prepared operation, exactly frozen ciphertext metadata delivery, and the idempotent R-35 workflow-role repair. Exposes exact owner-only missing member identity repair.
+ * [OUTPUT]: Provides EncryptedChatMetadata.
  * [POS]: Main metadata codec adapter; original SQLite outbox remains the only durable task owner.
  */
 import { protocolHeader, canonicalJson, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
 import { frozenChatMetadataSchema } from "@ai-chat/cloud-protocol/chats/encrypted";
 import { openChatHeadForRequest, openChatMetadataReceipt, prepareChatMetadataOperation, type ChatCipherPort } from "@ai-chat/cloud-protocol/chats/encrypted/client";
-import { hashChatMetadataOperation, type ChatMetadataOperation } from "@ai-chat/cloud-protocol/chats/metadata";
-import type { ChatWorkflowRole, CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
-import { hashChatContent } from "@ai-chat/cloud-protocol/chats/transcript/body";
+import { type ChatMetadataOperation } from "@ai-chat/cloud-protocol/chats/metadata";
+
+
 import type { AccountTransport } from "../../../runtime/transport/transport";
 import type { ChatDeliveryCheckpoints } from "../checkpoints";
 export class EncryptedChatMetadata {
@@ -27,28 +27,7 @@ export class EncryptedChatMetadata {
     const crypto = this.input.crypto(), value = await this.input.transport.query("chats/metadata:receipt", { ...this.header, operationId });
     signal?.throwIfAborted(); return value ? openChatMetadataReceipt(value, crypto, signal) : null;
   }
-  /**
-   * R-35 repair: set a workflow Chat's missing role from its current head. Idempotent on the server (the same role is converged),
-   * so no checkpoint is kept: a lost response is settled by the next pass reading the role on the head.
-   */
-  async setWorkflowRole(head: CloudChatHead, workflowRole: ChatWorkflowRole, signal?: AbortSignal) {
-    const crypto = this.input.crypto(), header = this.header;
-    const operation = { operationId: hashChatContent(["workflow-role", head.chat.id, head.chat.incarnationId, workflowRole, String(head.chat.cloudRevision)]),
-      chatId: head.chat.id, payloadHash: "0".repeat(64),
-      command: { kind: "set-workflow-role" as const, incarnationId: head.chat.incarnationId, expectedRevision: head.chat.cloudRevision, workflowRole } };
-    const original = { ...operation, payloadHash: hashChatMetadataOperation(operation) };
-    const frozen = await prepareChatMetadataOperation(original, head, crypto, signal);
-    const receipt = await this.input.transport.mutate("chats/metadata:apply", { ...header, operation: frozen.transport });
-    return openChatMetadataReceipt(receipt, crypto, signal);
-  }
-  async setMemberSession(head: CloudChatHead, memberSession: import("@bottega/contracts/plugins/team").PluginMemberSessionFacts) {
-    const crypto = this.input.crypto(), header = this.header;
-    const operation = { operationId: hashChatContent(["member-session", head.chat.id, head.chat.incarnationId, memberSession, head.chat.cloudRevision]),
-      chatId: head.chat.id, payloadHash: "0".repeat(64), command: { kind: "set-member-session" as const,
-        incarnationId: head.chat.incarnationId, expectedRevision: head.chat.cloudRevision, memberSession } };
-    const frozen = await prepareChatMetadataOperation({ ...operation, payloadHash: hashChatMetadataOperation(operation) }, head, crypto);
-    return openChatMetadataReceipt(await this.input.transport.mutate("chats/metadata:apply", { ...header, operation: frozen.transport }), crypto);
-  }
+
   async deliver(checkpoints: ChatDeliveryCheckpoints, operation: ChatMetadataOperation, signal?: AbortSignal) {
     const crypto = this.input.crypto(), header = this.header, key = `cipher-metadata:${operation.operationId}`;
     let raw = await checkpoints.get(key);

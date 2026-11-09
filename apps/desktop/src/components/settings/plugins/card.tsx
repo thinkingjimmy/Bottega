@@ -8,7 +8,7 @@
  *        card opens the introduction through its name's stretched button and shows a pointer; keyboard users reach the name and the control as two stops.
  */
 import type { ReactNode } from "react";
-import { Box, Brain, Globe, LoaderCircle, Lock, PanelBottom, PanelsTopLeft, PenTool, Puzzle, Table2, Workflow } from "lucide-react";
+import { Box, Brain, Globe, LoaderCircle, Lock, PanelBottom, PanelsTopLeft, PenTool, Puzzle, Table2 } from "lucide-react";
 import { formatWorkbench, type WorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { SettingsSwitch } from "@/components/settings/settings-layout";
@@ -18,7 +18,7 @@ import type { PluginView } from "@ai-chat/cloud-protocol/contracts/plugins/catal
 import { pluginPublisher, pluginText } from "./copy";
 import { PluginRequirement, PluginStage } from "./detail/metadata";
 
-const BUILTIN_ICONS: Record<string, typeof Table2> = { base: Table2, workflow: Workflow, memory: Brain, tunnel: Globe, dock: PanelBottom, sketch: PenTool, artifact: PanelsTopLeft };
+const BUILTIN_ICONS: Record<string, typeof Table2> = { base: Table2, memory: Brain, tunnel: Globe, dock: PanelBottom, sketch: PenTool, artifact: PanelsTopLeft };
 
 const ICON_SIZE = { md: ["size-9 rounded-lg", "size-[18px]"], lg: ["size-11 rounded-xl", "size-[22px]"], xl: ["size-16 rounded-2xl", "size-8"] } as const;
 

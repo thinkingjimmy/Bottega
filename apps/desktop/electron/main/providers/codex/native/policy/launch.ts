@@ -18,7 +18,7 @@ export type NativeSpawnConfig = { protocol: "codex-app-server"; launch: AgentPro
 export async function nativeCodexTurnPlan(options: BackendTurnOptions): Promise<NativeSpawnConfig> {
   if (options.artifactCandidate) return (await import("./candidate-plan")).nativeCandidateTurnPlan(options);
   assertUniqueMcpBackendAliases(options.thirdPartyMcpPlan?.entries ?? []);
-  if (options.filesystemAccess?.mode === "read-only" || options.filesystemAccess?.network === "off" || options.skillIsolation?.deniedRoots.length) {
+  if (options.filesystemAccess?.mode === "read-only" || options.filesystemAccess?.network === "off") {
     throw new Error("Codex bb-native-v1 chat does not enforce this role's read-only, network-off or Skill disk-isolation requirement");
   }
   const turn = options.payload.turnOptions as CodexTurnOptions;

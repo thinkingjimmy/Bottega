@@ -1,12 +1,13 @@
 /**
- * [INPUT]: Depends on shared update IPC and the preload-exposed window.update bridge
- * [OUTPUT]: Provides updateStore, appInfoStore, public latest and personal prerelease download URLs, and never-rejecting update commands for renderer components
+ * [INPUT]: Depends on shared update IPC, the preload-exposed window.update bridge and browser online events
+ * [OUTPUT]: Provides updateStore, appInfoStore, public download URLs and never-rejecting manual/automatic/reconnect commands that share main's retry deadline
  * [POS]: apps/desktop/src/lib/platform; The renderer's single update client; About and Sidebar share one subscription and one snapshot
  */
 
 import type {
   AppInfo,
   UpdateBridgeApi,
+  UpdateCheckSource,
   UpdateSnapshot,
 } from "../../../shared/ipc/settings/update-ipc";
 
@@ -48,6 +49,7 @@ class UpdateStore {
     this.loaded = true;
     // One store per renderer, subscribed for its whole life: there is no teardown to hold a handle for.
     window.update.onChanged((snapshot) => this.publish(snapshot));
+    window.addEventListener("online", () => { void this.check("online"); });
     void this.settle(window.update.snapshot());
   }
 
@@ -58,11 +60,11 @@ class UpdateStore {
     return window.update ? this.settle(window.update.dismissAppRequirement()) : Promise.resolve(this.value);
   }
 
-  check() {
+  check(source: UpdateCheckSource = "manual") {
     const requestId = this.value.appRequirement?.context.requestId;
-    if (requestId) return this.checkForApp(requestId);
+    if (requestId && source === "manual") return this.checkForApp(requestId);
     return window.update
-      ? this.settle(window.update.check())
+      ? this.settle(window.update.check(source))
       : Promise.resolve(this.value);
   }
 

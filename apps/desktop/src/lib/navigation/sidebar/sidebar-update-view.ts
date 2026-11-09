@@ -1,24 +1,23 @@
 /**
  * [INPUT]: Depends on the shared UpdateSnapshot contract only.
  * [OUTPUT]: Provides SidebarUpdateTone, SidebarUpdateGlyph, SidebarUpdateIntent, SidebarUpdateView and describeSidebarUpdate.
- * [POS]: Pure Sidebar update policy; compact text and accessible labels share one phase and one action decision.
+ * [POS]: Pure Sidebar update policy; confirmed updates and user-started progress remain visible while all update failures stay in Settings.
  */
 
 import type { UpdateSnapshot } from "../../../../shared/ipc/settings/update-ipc";
 
-export type SidebarUpdateTone = "loud" | "quiet" | "danger";
+export type SidebarUpdateTone = "loud" | "quiet";
 export type SidebarUpdateGlyph = "download" | "external" | "spinner" | "alert" | "restart";
 export type SidebarUpdateIntent = "install" | "restart" | "releases" | "updates";
 
 type SidebarUpdateLabelKey =
-  | "appHost.waitingDownload" | "appHost.checking" | "appHost.unavailable" | "appHost.installBusy" | "appHost.retryError"
+  | "appHost.waitingDownload" | "appHost.checking" | "appHost.unavailable" | "appHost.installBusy"
   | "settings.updates.restartUpdate" | "settings.updates.download" | "settings.updates.manualUpgrade"
-  | "settings.updates.downloading" | "settings.updates.installing" | "settings.updates.failedShort"
-  | "settings.updates.backgroundFailedOpen";
+  | "settings.updates.downloading" | "settings.updates.installing";
 
 type SidebarUpdateTextKey = SidebarUpdateLabelKey
   | "settings.updates.newVersion" | "settings.updates.downloadingShort"
-  | "settings.updates.installingShort" | "settings.updates.checkFailedShort" | "settings.updates.manualShort";
+  | "settings.updates.installingShort" | "settings.updates.manualShort";
 
 export type SidebarUpdateView = Readonly<{
   tone: SidebarUpdateTone;
@@ -37,8 +36,9 @@ function show(patch: Pick<SidebarUpdateView, "glyph" | "labelKey" | "intent"> & 
 
 export function describeSidebarUpdate(update: UpdateSnapshot): SidebarUpdateView | null {
   const requirement = update.appRequirement;
+  if (requirement?.status === "error") return null;
   if (requirement && requirement.status !== "satisfied") {
-    const keys = { "waiting-download": "appHost.waitingDownload", checking: "appHost.checking", unavailable: "appHost.unavailable", "install-busy": "appHost.installBusy", error: "appHost.retryError" } as const;
+    const keys = { "waiting-download": "appHost.waitingDownload", checking: "appHost.checking", unavailable: "appHost.unavailable", "install-busy": "appHost.installBusy" } as const;
     return show({ glyph: ["waiting-download", "checking"].includes(requirement.status) ? "spinner" : "alert", labelKey: keys[requirement.status], intent: "updates", tone: "quiet" });
   }
   const version = update.availableVersion ?? update.currentVersion;
@@ -56,13 +56,11 @@ export function describeSidebarUpdate(update: UpdateSnapshot): SidebarUpdateView
     case "installing":
       return show({ tone: "quiet", glyph: "spinner", labelKey: "settings.updates.installing", textKey: "settings.updates.installingShort", intent: null });
     case "error":
-      return show({ tone: "danger", glyph: "alert", labelKey: "settings.updates.failedShort", labelVars: { version }, intent: "updates" });
+      return null;
     case "checking":
     case "not-available":
       return null;
     default:
-      return update.lastError
-        ? show({ tone: "quiet", glyph: "alert", labelKey: "settings.updates.backgroundFailedOpen", textKey: "settings.updates.checkFailedShort", intent: "updates" })
-        : null;
+      return null;
   }
 }

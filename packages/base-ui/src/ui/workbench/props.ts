@@ -4,7 +4,7 @@
  * [POS]: Base workbench public composition and capability contract.
  */
 import type { ReactNode } from "react";
-import type { BaseRow } from "@ai-chat/base-core/model/bases-ipc";
+
 import { type RecordContribution } from "../state/record-slots";
 
 export type BaseWorkbenchCommonProps = {
@@ -16,8 +16,8 @@ export type BaseWorkbenchCommonProps = {
   onRecordChange?(recordId: string | null): void;
   recordContributions?: readonly RecordContribution[];
   toolbar?: ReactNode;
-  /** The host's workflow entry for a task; the table shows ▶ only in builds with the workbench flag. */
-  onRunWorkflow?(row: BaseRow): void;
+
+
 };
 
 export type BaseWorkbenchProps = BaseWorkbenchCommonProps &

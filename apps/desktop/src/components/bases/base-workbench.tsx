@@ -1,12 +1,12 @@
 /**
- * [INPUT]: Depends on the shared Base workbench, desktop platform, recovery status and lazy Workflow/record package contribution hosts.
+ * [INPUT]: Depends on the shared Base workbench, desktop platform, recovery status and lazy record package contribution hosts.
  * [OUTPUT]: Provides BaseWorkbench with recovery notices and composed generic record slots without remounting drafts.
  * [POS]: Desktop Base composition; transport and package leases stay in native adapters.
  */
 import { lazy, Suspense, useEffect, useState, type ComponentProps } from "react";
 import { workbenchUiEnabled } from "@ai-chat/ui/lib/workbench-flag";
 import { BaseWorkbench as SharedBaseWorkbench } from "@ai-chat/base-ui/ui/base-workbench";
-import { WorkflowRunsProvider, type WorkflowRunsSurface } from "@ai-chat/base-ui/ui/workflow/runs-context";
+
 import type { RecordContribution } from "@ai-chat/base-ui/ui/state/record-slots";
 import type { BasesBridgeApi } from "../../../shared/bases/model/bases-ipc";
 import { Button } from "@ai-chat/ui/components/ui/button";
@@ -14,8 +14,6 @@ import { DesktopBasePlatform } from "./platform";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { useCloudAccount } from "@/lib/cloud/client";
 const POLL_MIN_MS = 2_000, POLL_MAX_MS = 30_000;
-/* Runs belong to Project Bases and exist only with the workbench flag; the host loads on demand (OPT-30). */
-const WorkflowRunsHost = workbenchUiEnabled ? lazy(() => import("./workflow/runs-host")) : null;
 const RecordPluginsHost = workbenchUiEnabled ? lazy(() => import("./records/host")) : null;
 type FolderRecovery = Awaited<ReturnType<NonNullable<BasesBridgeApi["getRecovery"]>>>;
 export function BaseWorkbench(props: ComponentProps<typeof SharedBaseWorkbench>) {
@@ -23,7 +21,6 @@ export function BaseWorkbench(props: ComponentProps<typeof SharedBaseWorkbench>)
   const account = useCloudAccount();
   const [status, setStatus] = useState<{ ownerKey: string; value: FolderRecovery } | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [runs, setRuns] = useState<WorkflowRunsSurface | null>(null);
   const [contributions, setContributions] = useState<readonly RecordContribution[]>([]);
   const recovery = status?.ownerKey === props.ownerKey ? status.value : null;
   useEffect(() => {
@@ -52,13 +49,8 @@ export function BaseWorkbench(props: ComponentProps<typeof SharedBaseWorkbench>)
     </Button>}
   </div>;
   const shared = <SharedBaseWorkbench {...props} recordContributions={[...props.recordContributions ?? [], ...contributions]} />;
-  const hostsRuns = Boolean(WorkflowRunsHost) && props.ownerKey.startsWith("project:");
-  /* The workbench renders once, in one place: the lazily loaded runs host is its sibling and hands its surface up.
-     A Suspense fallback holding a second workbench made the host's arrival remount it, dropping a view switched or
-     a dialog opened in the first moments (T16). */
   return <DesktopBasePlatform chatId={props.attachmentOwner?.chatId}>
-    {hostsRuns ? <WorkflowRunsProvider value={runs}>{shared}</WorkflowRunsProvider> : shared}
-    {hostsRuns && WorkflowRunsHost && <Suspense fallback={null}><WorkflowRunsHost ownerKey={props.ownerKey} onSurface={setRuns} /></Suspense>}
+    {shared}
     {RecordPluginsHost && <Suspense fallback={null}><RecordPluginsHost ownerKey={props.ownerKey} disabled={props.capability === "read" || props.capability === "row-write"} onContributions={setContributions} /></Suspense>}
   </DesktopBasePlatform>;
 }

@@ -2,7 +2,6 @@
  * [INPUT]: Node fs/path, zod, shared preference policy, Agent/Settings IPC, the live Provider catalog, durable persistence and SerialQueue.
  * [OUTPUT]: SettingsStore v11 with atomic recent-Chat preferences, complete per-Agent model options, conditional/no-op learning, configured-default fallback and stored Provider preservation.
  * [POS]: apps/desktop/electron/main/settings; The canonical multi-backend settings owner in Electron main
- * Persists local workflow Memory opt-in with a default of false.
  */
 
 import { recoverDurableCorruption } from "../persistence/recovery-policy";
@@ -53,7 +52,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   chatHomeState: "unconfigured",
   allowCrossChatRead: false,
   memoryPhoneFacade: false,
-  memoryWorkflowRoles: false,
   disabledBuiltinTools: [],
   fullAccessAcknowledgedAt: null,
   launchAtLogin: false,
@@ -134,7 +132,6 @@ const settingsSchema = z
     chatHomeState: chatHomeStateSchema,
     allowCrossChatRead: z.boolean(),
     memoryPhoneFacade: z.boolean().default(false),
-    memoryWorkflowRoles: z.boolean().default(false),
     /* 工具名故意不做 enum：删除/改名工具不会把既有设置档变成炸弹。 */
     disabledBuiltinTools: z
       .array(z.string().min(1).max(64))

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Application translations, Button and Dialog primitives.
  * [OUTPUT]: DeferredStatus and DeferredDialog with loading, failure, retry and close controls.
- * [POS]: Shared renderer feedback for demand-loaded settings and workflow panels.
+ * [POS]: Shared renderer feedback for demand-loaded settings and plugin panels.
  */
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";

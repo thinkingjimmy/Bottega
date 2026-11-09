@@ -1,13 +1,13 @@
 /**
  * [INPUT]: Depends on Electron IPC, Node crypto/fs, Chat/Project stores, ChatHome/Purge journals, Coordinator pending CreationIntent/conversation critical area, ProjectsService durable cleanup, ChatsService deletion-resource chain, and optional Memory rebuild port
- * [OUTPUT]: Provides archive projections, optional scope/incarnation-fenced restoration, admission-first immutable purge, canonical member snapshots and verified tokenized previews. Project restoration also restores ordinary workflow pauses (V-02).
+ * [OUTPUT]: Provides ArchiveService.
  * [POS]: The trans-book coordinator of the archive module; initialize only publishes gates and the caller resumes interrupted purges through recoverPurge; The product gate only packs intent/CAS, Memory receipt/drain/network both outside the gate and hold multiple conversation locks at different times
  */
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import type { BrowserWindow } from "electron";
-import { workflowRuntime } from "../workflows/runtime/installed";
+
 import {
   ARCHIVE_CHANNEL,
   type ArchiveEvent,
@@ -206,7 +206,6 @@ export class ArchiveService {
               throw new Error("App Project 请从 Apps 页删除，不能直接归档");
             }
             const chatIds = this.projectConversationIds(target.id);
-            /* 2-design §115 / D3-02: the Project's workflow runs follow its archivedAt (workflows/runtime followProjectArchive). */
             this.gates.set(target.id, "archiving");
             try {
               for (const chatId of chatIds) {
@@ -641,7 +640,6 @@ export class ArchiveService {
   ) {
     return this.coordinator.runConversationExclusive(chatId, async () => {
       if (this.coordinator.hasDurableActiveTurn(chatId)) {
-        if (workflowRuntime()?.registry.roleOf(chatId)) throw new Error("workflow-step-running");
         throw new Error("聊天仍有 claimed/charged 活动 turn，不能归档");
       }
       if (await this.coordinator.isTransitioning(chatId)) {

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, ui Spinner/Collapsible, shared Settings controls, lucide glyphs and Updates i18n
- * [OUTPUT]: Provides UpdateList, UpdateRow, uniform text UpdateButton, visible status helpers with decorative nested glyphs and collapsed failure details
+ * [OUTPUT]: Provides UpdateList, UpdateRow, uniform text UpdateButton, visible status helpers, optional current-version labels and severity-aware collapsed failure details
  * [POS]: Shared presentation of Settings › Updates; app and CLI rows supply state and commands while one grid aligns all actions
  */
 
@@ -15,14 +15,15 @@ export function UpdateList({ children }: { children: ReactNode }) {
   return <SettingsList className="grid grid-cols-[minmax(0,1fr)_fit-content(45%)]">{children}</SettingsList>;
 }
 
-export function UpdateRow({ icon, name, current, latest, trailing, failure }: {
+export function UpdateRow({ icon, name, current, currentLabel, latest, trailing, failure }: {
   icon: ReactNode;
   name: string;
   current?: string;
+  currentLabel?: string;
   /** Only a newer version is shown; the arrow is the whole message. */
   latest?: string;
   trailing?: ReactNode;
-  failure?: { summary: string; detail: ReactNode };
+  failure?: { summary: string; detail: ReactNode; tone?: "quiet" | "danger" };
 }) {
   const { t } = useAppTranslation();
   return <Collapsible key={failure ? "failed" : "settled"} role="group" aria-label={name}
@@ -32,11 +33,11 @@ export function UpdateRow({ icon, name, current, latest, trailing, failure }: {
       <div className="min-w-0">
         <p data-update-name className="break-words font-medium text-sm leading-5">{name}</p>
         {current && <p data-update-version className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 break-all text-xs leading-[18px] text-muted-foreground tabular-nums">
-          <span>{current}</span>
+          <span>{currentLabel ?? current}</span>
           {latest && <><ArrowRight aria-hidden="true" className="size-3 shrink-0" /><span className="text-foreground">{latest}</span></>}
         </p>}
         {failure && <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-          <span role="alert" className="text-destructive">{failure.summary}</span>
+          <span role={failure.tone === "quiet" ? "status" : "alert"} className={failure.tone === "quiet" ? "text-muted-foreground" : "text-destructive"}>{failure.summary}</span>
           <CollapsibleTrigger className="group flex min-h-5 cursor-pointer items-center gap-0.5 rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40">
             <span className="group-data-[state=open]:hidden">{t("settings.updates.showDetails")}</span>
             <span className="hidden group-data-[state=open]:inline">{t("settings.updates.hideDetails")}</span>

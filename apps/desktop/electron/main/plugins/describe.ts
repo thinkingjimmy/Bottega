@@ -57,7 +57,7 @@ export const nativeEntry = (backendId: string, plugin: { id: string; displayName
 export const nodeOf = (entry: PluginEntry): PluginNode => ({ id: entry.descriptor.id, provides: entry.descriptor.provides, requires: entry.descriptor.requires,
   enabled: entry.enabled, platformSupported: entry.unsupported === null });
 
-export function viewOf(entry: PluginEntry, resolution: Resolution, extras: Pick<PluginView, "usedBy" | "workflowIn">): PluginView {
+export function viewOf(entry: PluginEntry, resolution: Resolution): PluginView {
   const { descriptor } = entry;
   const blockedBy = resolution.plugins[descriptor.id]?.blockedBy ?? [];
   return {
@@ -68,7 +68,6 @@ export function viewOf(entry: PluginEntry, resolution: Resolution, extras: Pick<
     availability: entry.unsupported ? { state: "unsupported", reason: "platform", detail: entry.unsupported }
       : blockedBy.length ? { state: "blocked", blockedBy: [...blockedBy] } : { state: "usable" },
     turnOn: descriptor.turnOn, turnOff: descriptor.turnOff, hasSettings: descriptor.settings.length > 0,
-    ...extras,
     ...(entry.managedBy ? { managedBy: entry.managedBy } : {}), ...(entry.origin ? { origin: entry.origin.slice(0, 512) } : {}),
     ...(entry.turnedOffAt === undefined ? {} : { turnedOffAt: entry.turnedOffAt }),
   };
