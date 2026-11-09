@@ -5,7 +5,7 @@
  */
 
 export const memoryEn = {
-  plugin: { serviceDisabled: "Turn on the Memory plugin to use this service. Your service preference is kept while the plugin is off.", open: "Open Memory plugin", name: "Memory", official: "Official · Built in", about: "About Memory", unsupported: "Memory is not supported on this platform. It is currently available on macOS only.", nativeDistinction: "Bottega Memory is separate from the native memory managed in the Codex and Claude plugin settings." },
+  plugin: { serviceDisabled: "Turn on the Memory plugin to use this service. Your service preference is kept while the plugin is off.", name: "Memory", official: "Official · Built in", about: "About Memory", unsupported: "Memory is not supported on this platform. It is currently available on macOS only.", nativeDistinction: "Bottega Memory is separate from the native memory managed in the Codex and Claude plugin settings." },
   store: {
     providerListFailed: "Failed to load Memory providers",
     statusFailed: "Failed to read Memory status",

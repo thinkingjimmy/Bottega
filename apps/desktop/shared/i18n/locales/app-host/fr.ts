@@ -29,7 +29,6 @@ export const appHostFr = {
   "checking": "Recherche d’une version compatible de Bottega…",
   "unavailable": "Cette recherche n’a trouvé aucune version publiée de Bottega répondant aux exigences de cette App.",
   "installBusy": "Une mise à jour est en préparation pour l’installation. Sa version ne peut pas encore être remplacée.",
-  "retryError": "La mise à jour n’a pas abouti. Vérifiez à nouveau pour réessayer.",
   "returnToApp": "Retour à l’App",
   "dismiss": "Fermer le guide de mise à jour",
   "candidateUnavailable": "La version initiale de l’App n’est plus disponible ou autorisée. Vérifiez et examinez la nouvelle version.",

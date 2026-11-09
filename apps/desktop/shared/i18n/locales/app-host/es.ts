@@ -29,7 +29,6 @@ export const appHostEs = {
   "checking": "Buscando una versión de Bottega que cumpla los requisitos…",
   "unavailable": "Esta comprobación no encontró ninguna versión publicada de Bottega que cumpla los requisitos de esta App.",
   "installBusy": "Se está preparando una actualización para instalarla. Su versión aún no se puede cambiar.",
-  "retryError": "La actualización no se completó. Vuelve a comprobar para reintentarlo.",
   "returnToApp": "Volver a la App",
   "dismiss": "Cerrar guía de actualización",
   "candidateUnavailable": "La versión original de la App ya no está disponible o permitida. Comprueba y revisa la nueva versión.",

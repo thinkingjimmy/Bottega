@@ -8,7 +8,7 @@ import { memoryEn } from "./en";
 
 export const memoryJa: typeof memoryEn = {
   ...memoryEn,
-  plugin: { serviceDisabled: "このサービスを使うには Memory プラグインをオンにしてください。プラグインがオフの間もサービスの設定は保持されます。", open: "Memory プラグインを開く", name: "Memory", official: "公式 · 内蔵", about: "Memory について", unsupported: "このプラットフォームでは Memory を利用できません。現在は macOS のみに対応しています。", nativeDistinction: "Bottega Memory は Codex や Claude の標準メモリーとは別です。標準メモリーは各プラグインの設定で管理します。" },
+  plugin: { serviceDisabled: "このサービスを使うには Memory プラグインをオンにしてください。プラグインがオフの間もサービスの設定は保持されます。", name: "Memory", official: "公式 · 内蔵", about: "Memory について", unsupported: "このプラットフォームでは Memory を利用できません。現在は macOS のみに対応しています。", nativeDistinction: "Bottega Memory は Codex や Claude の標準メモリーとは別です。標準メモリーは各プラグインの設定で管理します。" },
   store: {
     providerListFailed: "Memory プロバイダー一覧を読み込めませんでした",
     statusFailed: "Memory の状態を読み込めませんでした",

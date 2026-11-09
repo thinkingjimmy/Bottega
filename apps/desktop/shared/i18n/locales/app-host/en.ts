@@ -29,7 +29,6 @@ export const appHostEn = {
   "checking": "Checking for the required Bottega version…",
   "unavailable": "No Bottega release meeting this App’s requirement was found in this check.",
   "installBusy": "An update is being prepared for installation. Its version cannot be changed yet.",
-  "retryError": "The update could not complete. Check again to retry.",
   "returnToApp": "Return to App",
   "dismiss": "Close update guidance",
   "candidateUnavailable": "The original App candidate is no longer available or allowed. Check the latest candidate and review it again.",

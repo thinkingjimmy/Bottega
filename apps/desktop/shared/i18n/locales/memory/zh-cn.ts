@@ -8,7 +8,7 @@ import { memoryEn } from "./en";
 
 export const memoryZhCN: typeof memoryEn = {
   ...memoryEn,
-  plugin: { serviceDisabled: "开启 Memory 插件后才能使用记忆服务。插件关闭期间会保留你的服务开关选择。", open: "打开 Memory 插件", name: "Memory", official: "官方 · 内置", about: "关于 Memory", unsupported: "此平台暂不支持 Memory。目前仅在 macOS 上可用。", nativeDistinction: "Bottega Memory 与 Codex、Claude 自带的记忆分开管理；原生记忆在各自插件设置中控制。" },
+  plugin: { serviceDisabled: "开启 Memory 插件后才能使用记忆服务。插件关闭期间会保留你的服务开关选择。", name: "Memory", official: "官方 · 内置", about: "关于 Memory", unsupported: "此平台暂不支持 Memory。目前仅在 macOS 上可用。", nativeDistinction: "Bottega Memory 与 Codex、Claude 自带的记忆分开管理；原生记忆在各自插件设置中控制。" },
   store: {
     providerListFailed: "Memory provider 列表读取失败",
     statusFailed: "Memory 状态读取失败",

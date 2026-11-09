@@ -29,7 +29,6 @@ export const appHostJa = {
   "checking": "要件を満たす Bottega のバージョンを確認中…",
   "unavailable": "今回の確認では、この App の要件を満たす Bottega のリリースが見つかりませんでした。",
   "installBusy": "更新のインストールを準備中のため、まだバージョンを変更できません。",
-  "retryError": "更新が完了しませんでした。再確認して再試行できます。",
   "returnToApp": "App に戻る",
   "dismiss": "更新案内を閉じる",
   "candidateUnavailable": "元の App 候補は取得できないか、許可されなくなりました。最新の候補を確認してください。",

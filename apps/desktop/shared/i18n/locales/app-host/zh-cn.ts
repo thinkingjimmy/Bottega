@@ -29,7 +29,6 @@ export const appHostZhCN = {
   "checking": "正在检查满足要求的 Bottega 版本…",
   "unavailable": "本次检查未找到满足此 App 要求的 Bottega 发布版本。",
   "installBusy": "正在准备安装，暂时无法更换版本。",
-  "retryError": "更新未完成，可以重新检查并重试。",
   "returnToApp": "返回 App",
   "dismiss": "关闭升级引导",
   "candidateUnavailable": "原 App 候选已无法获取或不再被允许，请检查并重新确认新候选。",

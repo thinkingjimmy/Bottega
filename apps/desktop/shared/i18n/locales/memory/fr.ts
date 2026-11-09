@@ -8,7 +8,7 @@ import { memoryEn } from "./en";
 
 export const memoryFr: typeof memoryEn = {
   ...memoryEn,
-  plugin: { serviceDisabled: "Activez le plugin Memory pour utiliser ce service. Votre choix pour le service est conservé lorsque le plugin est désactivé.", open: "Ouvrir le plugin Memory", name: "Memory", official: "Officiel · Intégré", about: "À propos de Memory", unsupported: "Memory n’est pas pris en charge sur cette plateforme. Il est actuellement disponible uniquement sur macOS.", nativeDistinction: "Bottega Memory est distinct de la mémoire native gérée dans les paramètres des plugins Codex et Claude." },
+  plugin: { serviceDisabled: "Activez le plugin Memory pour utiliser ce service. Votre choix pour le service est conservé lorsque le plugin est désactivé.", name: "Memory", official: "Officiel · Intégré", about: "À propos de Memory", unsupported: "Memory n’est pas pris en charge sur cette plateforme. Il est actuellement disponible uniquement sur macOS.", nativeDistinction: "Bottega Memory est distinct de la mémoire native gérée dans les paramètres des plugins Codex et Claude." },
   store: {
     providerListFailed: "Échec du chargement des fournisseurs Memory",
     statusFailed: "Échec de la lecture de l’état de Memory",
