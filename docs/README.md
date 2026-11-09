@@ -2,7 +2,7 @@
 
 [简体中文](./README.zh-CN.md) · [Repository home](../README.md)
 
-Current `main` contains the **upcoming, unreleased 0.4.2 source**, using **protocol 27**. The latest published installer is [0.4.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1), using **protocol 26**. The source publication does not announce a 0.4.2 installer, hosted deployment or native acceptance. Read the [current source scope](./getting-started/README.md#upcoming-042-source) and the [published 0.4.1 installation notes](./getting-started/README.md#upgrading-to-041). The 0.2.5 personal build needs a manual installation of the published stable version.
+Source version: **0.4.2/protocol 27**, targeting macOS on Apple silicon (ARM64). Installer availability, accepted platforms and actual validation scope come from the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest) and its evidence. A source version does not certify publication. Read the [native command permissions](./features/README.md#codex-command-permissions) and [installation and upgrade notes](./getting-started/README.md#upgrading-to-042). The 0.2.5 personal build needs a manual stable installation.
 
 Documentation is organized by responsibility so the repository root remains focused on source and build configuration.
 

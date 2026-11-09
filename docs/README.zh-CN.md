@@ -2,7 +2,7 @@
 
 [English](./README.md) · [仓库首页](../README.md)
 
-当前 `main` 是**待发布的 0.4.2 源码**，使用**协议 27**。最新已发布安装包仍为 [0.4.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1)，使用**协议 26**。本次源码公开不表示 0.4.2 安装包、托管部署或原生验收已完成。 请阅读[当前源码范围](./getting-started/README.zh-CN.md#待发布-042-源码)与[已发布的 0.4.1 安装说明](./getting-started/README.zh-CN.md#升级到-041)。0.2.5 个人版需要手动安装已发布的稳定版本。
+源码版本：**0.4.2／协议 27**，目标为 macOS Apple 芯片（ARM64）。安装包是否可用、支持的平台及实际验收范围，以[最新稳定 Release](https://github.com/thinkingjimmy/Bottega/releases/latest)及其发布材料为准。源码版本号不表示已发布。请阅读[原生命令权限](./features/README.zh-CN.md#codex-命令权限)和[安装与升级说明](./getting-started/README.zh-CN.md#升级到-042)。0.2.5 个人版需要手动安装稳定版本。
 
 文档按职责组织，让仓库根目录只聚焦源码与构建配置。
 

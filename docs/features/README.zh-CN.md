@@ -4,7 +4,7 @@
 
 Bottega 把 Agent 对话视为一个可持续、本地工作空间的控制面。产品由以下核心能力域构成。
 
-当前 `main` 是**待发布的 0.4.2 源码**，使用**协议 27**。最新已发布安装包仍为 [0.4.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1)，使用**协议 26**。本次源码公开不表示 0.4.2 安装包、托管部署或原生验收已完成。
+本文描述 **0.4.2／协议 27** 的源码能力。安装包可用性与实际验收范围以[最新稳定 Release](https://github.com/thinkingjimmy/Bottega/releases/latest)为准。
 
 ## Multi-agent
 
@@ -181,7 +181,7 @@ Dock 继续处于 **Alpha**。替代模式、注销或重启后的恢复，以�
 - 本机 Chat 数据库无法打开时，可在保留旧数据库的前提下从文件夹重建对话。
 - 在 设置 › 通用 里移动文件夹（包括移到另一块磁盘），所有保存的路径随之更新；也可以清空这台电脑上 Bottega 的全部数据，云端数据仍保留在账号里。
 - Bottega 文件夹属于发布它的那台电脑：同一台电脑在重装、清数据或换 profile 后零操作接管，另一台电脑被指名拒绝；从未同步过的文件夹在任何电脑上都能打开。
-- 更换版本前备份 Bottega 文件夹与完整应用数据目录。待发布的 0.4.2 源码使用协议 27，并移除 Workflow、独立 Agent 配置与 Bottega Team。协调交付和定向维护尚未完成；请阅读[待发布源码范围](../getting-started/README.zh-CN.md#待发布-042-源码)。已发布安装包仍为 0.4.1／协议 26。
+- 更换版本前备份 Bottega 文件夹与完整应用数据目录。0.4.2 使用协议 27，移除 Workflow、独立 Agent 配置与 Bottega Team。请阅读[移除范围与升级说明](../getting-started/README.zh-CN.md#升级到-042)，确认发布维护将删除哪些数据。
 
 ## 随包运行时与 Agent 边界
 

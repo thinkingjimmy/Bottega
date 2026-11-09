@@ -47,15 +47,17 @@ Setup has one path and never mentions an account: choose your Bottega folder, th
 
 See the [features guide](../features/README.md) for the product model and its four core capability areas.
 
-### Upcoming 0.4.2 source
+### Upgrading to 0.4.2
 
-Current main is unreleased 0.4.2 source using **protocol 27**. The latest published installer remains **0.4.1/protocol 26**. Use the 0.4.1 download and installation instructions below for the published application. There is no 0.4.2 download in this source-only update.
+0.4.2 uses protocol **27**. Update connected desktops and reload Bottega Web after the coordinated service update. Protocol 26 clients must update before reconnecting to Cloud. Back up your Bottega folder and complete application data before changing versions.
 
-The source removes Workflow, standalone Agent configurations and Bottega Team. Ordinary and former Lead Chats, native Provider subagents, Provider preferences, ordinary forks and plugin authoring remain. Former Stage and Acceptance criteria columns become ordinary editable Base fields, preserving their IDs, options, values and view references.
+Workflow, standalone Agent configurations and Bottega Team are removed. Targeted release maintenance removes only records verified as belonging to the retired features. Retained plugins keep their source and data. Ordinary Chats, former Lead Chats, original Project folders and Base field content remain. Former Stage and Acceptance criteria columns become ordinary editable fields. Provider preferences, native subagents, ordinary forks, sync passwords and account keys remain.
 
-Desktop, Web and backend delivery at protocol 27 must occur together. The targeted retirement maintenance remains pending and is not performed at product startup. Its scope is limited to verified records and execution worktrees owned by the retired features. Ordinary and former Lead Chats, original Project folders, Base field content, sync passwords and account keys are preserved by that maintenance contract. Back up the Bottega folder and complete application data before a later upgrade.
+This release uses targeted retirement maintenance and does not reset the whole account. Product startup does not perform the retirement cleanup.
 
-The source also includes quiet update-check recovery, a Download latest action in startup recovery, clearer menus and settings, and Dock admission for Apple silicon on macOS 26.x or 27.x. Dock remains Alpha. Controlled-version checks do not establish physical macOS 26 or signed replacement, restoration, login/reboot or display acceptance. This source publication claims no new installer, deployment or native acceptance.
+Update checks recover quietly after temporary failures. Confirmed updates and user-started downloads stay visible; a failed download needs an explicit retry. Restart still needs your action. Startup recovery offers **Download latest**, which opens the official latest-release page in your browser.
+
+Dock remains Alpha and admits Apple silicon on macOS 26.x or 27.x. Controlled-version checks do not establish physical macOS 26 or exact signed replacement, restoration, login/reboot or display acceptance.
 
 ### Upgrading to 0.4.1
 
@@ -121,7 +123,7 @@ Your saved title Agent and model stay unchanged. This version's Codex connection
 
 This release keeps **protocol 19**, existing content, sync passwords and account keys. No data reset is required. Dock remains Alpha on macOS 27.x with Apple silicon; replacement, system recovery and display/fullscreen combinations are still being validated. See the [0.2.7 changelog](../changelog/README.md#2026-10-18--v027) and [installation steps](#download-and-install).
 
-The older upgrade notes describe their original versions. Use Requirements and the 0.4.1 upgrade section for the published release; the upcoming 0.4.2 source is described separately above.
+The older upgrade notes describe their original versions. Use Requirements and the 0.4.2 upgrade section for the current release.
 
 ## Upgrading to 0.2.6
 
@@ -153,31 +155,31 @@ Cloud Sync now uses protocol 15. Update all computers that use cloud features to
 
 ## Download and install
 
-[Download 0.4.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0) for **macOS on Apple silicon (ARM64) only**. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
+Use the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest) for the available installer and accepted platform. Version 0.4.2 source targets **macOS on Apple silicon (ARM64)**. The source version does not certify that an installer has been published. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
 
-| Platform | Asset | Notes |
+| Platform | Download | Notes |
 | --- | --- | --- |
-| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0) | Official stable channel. |
+| macOS (Apple silicon / ARM64) | [Latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest) | Check the version and platform on the Release page. |
 
-Use the official **Developer ID signed and Apple notarized** installers. Official builds from 0.2.6 onward use the stable automatic-update channel; the shipped 0.2.5 personal build requires a manual update.
+For an official release, use its **Developer ID signed and Apple notarized** installer. Official builds from 0.2.6 onward use the stable automatic-update channel; the shipped 0.2.5 personal build requires a manual update.
 
 1. Quit Bottega completely and back up both your Bottega folder and application data.
-2. Download the DMG or ZIP and `Bottega-0.4.0-release-evidence.tar.gz` from the same release. Read `release-manifest.json` at the archive's root. Run `shasum -a 256` followed by the installer's path, then compare the output with that installer's `sha256` in the manifest.
+2. Download the DMG or ZIP and the release-evidence archive attached to that same Release. Read `release-manifest.json` at the archive's root. Compare the installer's SHA-256 with its entry in that manifest.
 3. Open the DMG and drag Bottega into `Applications`, or extract the ZIP and copy the app there.
 4. Open Bottega from `Applications` and confirm the normal macOS first-launch prompt. If macOS reports a signature or notarization problem, keep the error details and report the bug before opening that package.
 
-To read the manifest and check the DMG without extracting the full archive:
+Replace the paths below with the actual files downloaded from the same Release:
 
 ```bash
-tar -xOf Bottega-0.4.0-release-evidence.tar.gz release-manifest.json
-shasum -a 256 Bottega-0.4.0-arm64.dmg
+tar -xOf /path/to/release-evidence.tar.gz release-manifest.json
+shasum -a 256 /path/to/Bottega-arm64.dmg
 ```
 
-For the ZIP, use `Bottega-0.4.0-arm64-mac.zip` in the checksum command. The archive groups release and acceptance evidence; inspect its records for the exact validated scope. It does not imply complete physical-device qualification.
+For a ZIP, use its actual path in the checksum command. The evidence archive records the exact validated scope; it does not certify complete physical-device or installed old-to-new upgrade acceptance.
 
-Automatic updates use `latest-mac.yml`, `Bottega-0.4.0-arm64.dmg.blockmap` and `Bottega-0.4.0-arm64-mac.zip.blockmap`. The App compatibility files are `app-gui-compatibility-support.json` and `app-gui-compatibility-support.json.sig`.
+Automatic updates use `latest-mac.yml` and the versioned installer blockmaps listed on that Release. The App compatibility files are `app-gui-compatibility-support.json` and `app-gui-compatibility-support.json.sig`.
 
-Version 0.2.7 was published by owner decision before complete local and final-package GUI acceptance. It has no complete acceptance evidence archive, and a real installed upgrade was not verified. Do not use 0.2.8's archive to claim acceptance of 0.2.7.
+Version 0.2.7 was published by owner decision before complete local and final-package GUI acceptance. It has no complete acceptance evidence archive, and a real installed upgrade was not verified. Do not use another version's archive to claim acceptance of 0.2.7.
 
 ## Cloud Sync and Cloud Web
 

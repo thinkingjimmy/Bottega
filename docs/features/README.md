@@ -4,7 +4,7 @@
 
 Bottega treats an Agent conversation as the control surface for a durable local workspace. The following capability areas define the product.
 
-Current `main` contains the **upcoming, unreleased 0.4.2 source**, using **protocol 27**. The latest published installer is [0.4.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1), using **protocol 26**. The source publication does not announce a 0.4.2 installer, hosted deployment or native acceptance.
+This guide describes **0.4.2/protocol 27** source behavior. Installer availability and actual acceptance scope come from the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest).
 
 ## Multi-agent
 
@@ -181,7 +181,7 @@ Weather is preinstalled. Add it from Settings or Dock Add, choose current locati
 - Rebuild conversations from the folder when the local Chat database cannot be opened, while the previous database is preserved.
 - Move the folder from Settings › General, including to another disk, with every saved path following it; or erase all of Bottega's data on this computer while cloud data stays in your account.
 - Keep a Bottega folder with the computer that published it: the same computer takes it back after a reinstall, a cleared data folder, or a new profile with nothing to confirm, and another computer is refused by name. A folder that has never synchronized opens anywhere.
-- Back up the Bottega folder and complete application data before changing versions. The upcoming 0.4.2 source uses protocol 27 and removes Workflow, standalone Agent configurations and Bottega Team. Coordinated delivery and targeted maintenance remain pending; read the [unreleased source scope](../getting-started/README.md#upcoming-042-source). The published installer remains 0.4.1/protocol 26.
+- Back up the Bottega folder and complete application data before changing versions. 0.4.2 uses protocol 27 and retires Workflow, standalone Agent configurations and Bottega Team. Read the [removal and upgrade scope](../getting-started/README.md#upgrading-to-042), including the data that release maintenance removes.
 
 ## Bundled runtime and Agent boundaries
 

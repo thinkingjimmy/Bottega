@@ -47,15 +47,17 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 产品模型与四个核心能力域见[功能文档](../features/README.zh-CN.md)。
 
-### 待发布 0.4.2 源码
+### 升级到 0.4.2
 
-当前 main 是待发布的 0.4.2 源码，使用**协议 27**。最新已发布安装包仍为 **0.4.1／协议 26**。已发布应用请继续使用下方 0.4.1 下载与安装说明；本次仅源码更新不提供 0.4.2 下载。
+0.4.2 使用**协议 27**。服务协调升级后，请更新已连接的桌面端并刷新 Bottega Web。协议 26 客户端需更新后才能重新连接 Cloud。更换版本前，请备份 Bottega 文件夹与完整应用数据。
 
-源码移除 Workflow、独立 Agent 配置与 Bottega Team。普通 Chat、原 Lead Chat、Provider 原生子代理、Provider 偏好、普通分叉与插件创作保留。原阶段与验收标准列成为普通可编辑 Base 字段，保留 ID、选项、值与视图引用。
+Workflow、独立 Agent 配置与 Bottega Team 已移除。定向发布维护仅移除经核验归属退役功能的记录，保留其他插件的源码与数据。普通 Chat、原 Lead Chat、原 Project 文件夹与 Base 字段内容保留。原阶段与验收标准列成为普通可编辑字段。Provider 偏好、原生子代理、普通分叉、同步密码与账号密钥保留。
 
-桌面、Web 和后端必须同批交付协议 27。定向退役维护仍待执行，产品启动不会自动清理。维护范围只包括经核验归属退役功能的记录与执行工作区；其契约保留普通 Chat、原 Lead Chat、原 Project 文件夹、Base 字段内容、同步密码与账号密钥。之后升级前，请备份 Bottega 文件夹与完整应用数据。
+本版使用定向退役维护，不会完整清空账号。产品启动不会自动执行退役清理。
 
-源码还包含安静恢复更新检查、启动恢复中的「下载最新版」、菜单与设置改进，以及 macOS 26.x 或 27.x Apple 芯片的 Dock 准入。Dock 仍为 Alpha。受控版本检查不代表物理 macOS 26、签名包替代、恢复、登录／重启或显示器场景已通过。本次源码公开不声明新安装包、部署或原生验收已完成。
+临时检查失败后，更新器会安静重试。已确认的新版本与主动开始的下载继续显示；下载失败需要明确重试，重启仍由你选择。启动恢复提供**下载最新版**，在浏览器中打开官方最新 Release 页面。
+
+Dock 仍为 Alpha，准入 macOS 26.x 或 27.x 的 Apple 芯片电脑。受控版本检查不代表物理 macOS 26、准确签名包替代、恢复、登录／重启或显示器场景已通过。
 
 ### 升级到 0.4.1
 
@@ -121,7 +123,7 @@ Codex CLI **仅支持 0.163.0-alpha.10.2**，命令使用原生审批。逐项�
 
 本次继续使用**协议 19**，保留已有内容、同步密码与账号密钥，无需清空数据。Dock 在 macOS 27.x / Apple 芯片上保持 Alpha；替代模式、系统恢复以及显示器与全屏组合仍在验证。见 [0.2.7 更新日志](../changelog/README.zh-CN.md#2026-10-18--v027)和[安装步骤](#下载与安装)。
 
-旧版升级说明描述各自版本。已发布版本请以环境要求和 0.4.1 升级说明为准；待发布的 0.4.2 源码在上方单独说明。
+旧版升级说明描述各自版本。当前版本请以环境要求和 0.4.2 升级说明为准。
 
 ## 升级到 0.2.6
 
@@ -153,31 +155,31 @@ Cloud Sync 现使用协议 15。使用云功能的所有电脑都需升级到 0.
 
 ## 下载与安装
 
-[下载 0.4.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0)，桌面安装包**仅适用于 macOS Apple 芯片（ARM64）**。[Bottega Web](https://app.getbottega.app) 已可在电脑和手机浏览器中使用。
+请从[最新稳定 Release](https://github.com/thinkingjimmy/Bottega/releases/latest)确认可用安装包及支持平台。0.4.2 源码面向 **macOS Apple 芯片（ARM64）**；源码版本号不表示安装包已发布。[Bottega Web](https://app.getbottega.app) 可在电脑和手机浏览器中使用。
 
-| 平台 | 安装包 | 说明 |
+| 平台 | 下载 | 说明 |
 | --- | --- | --- |
-| macOS（Apple 芯片 / ARM64） | [DMG 或 ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0) | 正式稳定更新渠道。 |
+| macOS（Apple 芯片 / ARM64） | [最新稳定 Release](https://github.com/thinkingjimmy/Bottega/releases/latest) | 以 Release 页面上的版本与平台为准。 |
 
-请使用具有 **Developer ID 签名与 Apple 公证**的正式安装包。0.2.6 起的正式版使用稳定自动更新通道；已发布的 0.2.5 个人版需要手动更新。
+正式发布请使用该版本具有 **Developer ID 签名与 Apple 公证**的安装包。0.2.6 起的正式版使用稳定自动更新通道；已发布的 0.2.5 个人版需要手动更新。
 
 1. 完全退出 Bottega，并备份 Bottega 文件夹与应用数据。
-2. 从同一版本页面下载 DMG 或 ZIP，以及 `Bottega-0.4.0-release-evidence.tar.gz`。读取归档根目录的 `release-manifest.json`。运行 `shasum -a 256`，后接安装包路径，将输出与清单中对应安装包的 `sha256` 比较。
+2. 从同一 Release 下载 DMG 或 ZIP，以及随附的发布证据归档。读取归档根目录的 `release-manifest.json`，将安装包的 SHA-256 与清单中对应记录比较。
 3. 打开 DMG，将 Bottega 拖入「应用程序」；使用 ZIP 时，解压后将应用复制到该目录。
 4. 从「应用程序」打开 Bottega，确认正常的 macOS 首次启动提示。如果 macOS 报告签名或公证问题，请保留错误信息并反馈 bug，暂勿打开该安装包。
 
-无需解压整个归档，即可读取清单并检查 DMG：
+将以下路径替换为从同一 Release 下载的实际文件：
 
 ```bash
-tar -xOf Bottega-0.4.0-release-evidence.tar.gz release-manifest.json
-shasum -a 256 Bottega-0.4.0-arm64.dmg
+tar -xOf /path/to/release-evidence.tar.gz release-manifest.json
+shasum -a 256 /path/to/Bottega-arm64.dmg
 ```
 
-使用 ZIP 时，将校验命令中的文件名改为 `Bottega-0.4.0-arm64-mac.zip`。归档集中保存发布与验收材料；具体通过范围以其中的实际记录为准，不表示全部物理设备验收完成。
+使用 ZIP 时，将校验命令的路径换为实际 ZIP 路径。证据归档记录准确的验收范围，不表示全部物理设备或已安装旧版到新版的升级验收已完成。
 
-自动更新使用 `latest-mac.yml`、`Bottega-0.4.0-arm64.dmg.blockmap` 与 `Bottega-0.4.0-arm64-mac.zip.blockmap`。App 兼容文件为 `app-gui-compatibility-support.json` 与 `app-gui-compatibility-support.json.sig`。
+自动更新使用 `latest-mac.yml` 与该 Release 列出的版本化安装包 blockmap。App 兼容文件为 `app-gui-compatibility-support.json` 与 `app-gui-compatibility-support.json.sig`。
 
-0.2.7 根据维护者决定，在完整本机与最终安装包 GUI 验收完成前发布。该版本没有完整验收证据归档，真实安装升级尚未验证。0.2.8 的归档不能用于宣称 0.2.7 已完成验收。
+0.2.7 根据维护者决定，在完整本机与最终安装包 GUI 验收完成前发布。该版本没有完整验收证据归档，真实安装升级尚未验证。其他版本的归档不能用于宣称 0.2.7 已完成验收。
 
 ## Cloud Sync 与 Cloud Web
 
