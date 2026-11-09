@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on exact Widget journal schemas, the original authored runtime pins and guarded account-owned filesystem paths.
+ * [INPUT]: Depends on exact Widget journal schemas and bounded legacy migration, the original authored runtime pins and guarded account-owned filesystem paths.
  * [OUTPUT]: Provides cold account cleanup, original source-pin release and bounded scoped API/archive/ciphertext removal without touching source Projects or Chats.
  * [POS]: Deferred cleanup implementation; loaded owners replace direct file mutation through WidgetScopeCleanup.
  */
@@ -8,8 +8,9 @@ import { join } from "node:path";
 import { hashCanonical } from "@bottega/contracts/core/canonical-json";
 import { DurableJson, syncDirectory } from "../../../persistence/durable-json";
 import { removeWidgetAccountArchives } from "../../../plugins/surface-runtime/packages/retention";
-import { widgetPackageLedgerSchema } from "../../../plugins/surface-runtime/packages/store";
-import { runtimeFileSchema } from "../../../plugins/surface-runtime/model";
+import { widgetPackageLedgerSchema, legacyWidgetPackageLedgerSchema } from "../../../plugins/surface-runtime/packages/store";
+import { runtimeFileSchema, legacyRuntimeFileSchema } from "../../../plugins/surface-runtime/model";
+import { migratePluginFile } from "../../../plugins/surface-runtime/persistence";
 import type { PluginSurfaceRuntime } from "../../../plugins/surface-runtime/service";
 import {widgetDefinitionLedgerSchema} from '../../../system-dock/widgets/lifecycle/model';
 import { localWidgetRuntimeSchema } from "../../../system-dock/store/custom/model";
@@ -41,8 +42,9 @@ export async function widgetAccountPins(
 ) {
   const path = join(userData, "dock-widget-packages.json");
   if (!(await regular(path))) return [];
+  await migratePluginFile(path,widgetPackageLedgerSchema,legacyWidgetPackageLedgerSchema);
   const file = new DurableJson(path, widgetPackageLedgerSchema, () => ({
-    version: 1 as const,
+    version: 2 as const,
     packages: [],
   }));
   await file.initialize();
@@ -164,8 +166,9 @@ export async function clearWidgetAccountFile(
       await file.closeAndFlush();
     }
   } else if (name === "packages") {
+    await migratePluginFile(path,widgetPackageLedgerSchema,legacyWidgetPackageLedgerSchema);
     const file = new DurableJson(path, widgetPackageLedgerSchema, () => ({
-      version: 1 as const,
+      version: 2 as const,
       packages: [],
     }));
     await file.initialize();
@@ -180,8 +183,9 @@ export async function clearWidgetAccountFile(
     }
   } else {
     const pins = await widgetAccountPins(userData, installationId, accountId);
+    await migratePluginFile(path,runtimeFileSchema,legacyRuntimeFileSchema);
     const file = new DurableJson(path, runtimeFileSchema, () => ({
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       plugins: [],
       quarantined: [],
     }));

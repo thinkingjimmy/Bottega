@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0"><img alt="0.4.0" src="https://img.shields.io/badge/release-0.4.0-blue"></a>
+  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1"><img alt="0.4.1" src="https://img.shields.io/badge/release-0.4.1-blue"></a>
   <a href="https://github.com/thinkingjimmy/Bottega/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/thinkingjimmy/Bottega?style=flat&amp;logo=github"></a>
   <a href="./LICENSE"><img alt="First-party MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
@@ -21,7 +21,7 @@
   <a href="https://www.getbottega.app">Website</a> ·
   <a href="./docs/README.md">Docs</a> ·
   <a href="./docs/getting-started/README.md">Quickstart</a> ·
-  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0">Download</a> ·
+  <a href="https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1">Download</a> ·
   <a href="./docs/features/README.md">Features</a> ·
   <a href="./docs/changelog/README.md">Changelog</a> ·
   <a href="https://x.com/hellojimmywong">X</a>
@@ -58,19 +58,19 @@ Choose a prebuilt desktop release or run Bottega directly from source. Before la
 
 ## Download
 
-[Download 0.4.0 →](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0)
+[Download 0.4.1 →](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1)
 
 | Platform | Download |
 | --- | --- |
-| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0) |
+| macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1) |
 
-0.4.0 supports **macOS on Apple silicon (ARM64) only**. Official installers use the stable automatic-update channel.
+0.4.1 supports **macOS on Apple silicon (ARM64) only**. Official installers use the stable automatic-update channel.
 
-**Updating:** 0.2.6 and 0.2.7 installations use the stable update channel. The shipped 0.2.5 personal build has its updater disabled and requires a manual installation of 0.4.0. Before replacing the app, quit Bottega completely and back up your Bottega folder and application data.
+**Updating:** 0.2.6 and 0.2.7 installations use the stable update channel. The shipped 0.2.5 personal build has its updater disabled and requires a manual installation of 0.4.1. Before replacing the app, quit Bottega completely and back up your Bottega folder and application data.
 
-0.4.0 uses **protocol 26**. Update connected desktops and reload Bottega Web after the coordinated service update. Existing Bottega content, cloud content, sync passwords, and account keys remain. No data reset is required. Retired Artifact files and snapshots remain unchanged, with unsupported-format cards. See the [changelog](./docs/changelog/README.md) for unified plugins, Teams, Weather and validation limits.
+0.4.1 uses **protocol 26**. Update connected desktops and reload Bottega Web after the coordinated service update. Existing Bottega content, cloud content, sync passwords, and account keys remain. No data reset is required. Retired Artifact files and snapshots remain unchanged, with unsupported-format cards. See the [changelog](./docs/changelog/README.md) for unified plugins, Teams, Weather and validation limits.
 
-Use the official **Developer ID signed and Apple notarized** DMG or ZIP. Download `Bottega-0.4.0-release-evidence.tar.gz` from the same release and read `release-manifest.json` at its root. Run `shasum -a 256` on the installer and compare the result with its `sha256` in the manifest, then copy Bottega into `Applications`. See the [installation guide](./docs/getting-started/README.md#download-and-install) for the commands.
+Use the official **Developer ID signed and Apple notarized** DMG or ZIP. Download `Bottega-0.4.1-release-evidence.tar.gz` from the same release and read `release-manifest.json` at its root. Run `shasum -a 256` on the installer and compare the result with its `sha256` in the manifest, then copy Bottega into `Applications`. See the [installation guide](./docs/getting-started/README.md#download-and-install) for the commands.
 
 **Historical validation:** 0.2.7 was published by owner decision before complete local and final-package GUI acceptance. It has no complete acceptance evidence archive. Those facts remain specific to 0.2.7; its Release page lists the actual assets.
 
@@ -98,13 +98,13 @@ pnpm build
 pnpm dist
 ```
 
-A signed distribution requires your own Apple signing configuration. Find official release installers and their verification records on the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0). See the [getting-started guide](./docs/getting-started/README.md) for requirements, supported Agent CLIs, and build commands.
+A signed distribution requires your own Apple signing configuration. Find official release installers and their verification records on the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1). See the [getting-started guide](./docs/getting-started/README.md) for requirements, supported Agent CLIs, and build commands.
 
 ## Build provenance
 
 The [macOS candidate workflow](./.github/workflows/build-macos.yml) builds the production source in this repository. Its [Actions runs](https://github.com/thinkingjimmy/Bottega/actions/workflows/build-macos.yml) record the exact source commit, pinned tools, installer hashes and GitHub provenance. Published installers keep the original GitHub build bytes and their recorded hashes.
 
-Build-only candidates validate this build process and expire after one day. Official stable downloads are published on the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0). Personal installers use manual updates; official 0.4.0 installers enable the stable automatic-update channel.
+Build-only candidates validate this build process and expire after one day. Official stable downloads are published on the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1). Personal installers use manual updates; official 0.4.1 installers enable the stable automatic-update channel.
 
 # Collaboration
 

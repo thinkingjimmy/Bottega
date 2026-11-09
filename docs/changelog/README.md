@@ -5,6 +5,16 @@
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
 
+## 2026-11-09 — v0.4.1
+
+[Download 0.4.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1) for macOS on Apple silicon (ARM64).
+
+- **Open after an upgrade.** Fix startup failure after updating to 0.4.0 when older plugin records retain retired Chat ownership fields.
+- **Preserve existing state.** Validate and migrate the records, keep an exact original-file backup, then replace the file atomically. Plugin settings, Widget packages, generation data and pending deliveries remain. Interrupted migration retries keep the same backup guarantee.
+- **Retain earlier Sketch versions.** Old Sketch compilation generations remain in provenance quarantine, retained and disabled.
+
+**Compatibility.** Protocol 26 continues. Existing content, sync passwords and account keys remain. No data reset is required. If 0.4.0 cannot open, install the 0.4.1 DMG directly.
+
 ## 2026-11-07 — v0.4.0
 
 [Download 0.4.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0) for macOS on Apple silicon (ARM64).

@@ -201,7 +201,7 @@ Weather is preinstalled. Add it from Settings or Dock Add, choose current locati
 - Rebuild conversations from the folder when the local Chat database cannot be opened, while the previous database is preserved.
 - Move the folder from Settings › General, including to another disk, with every saved path following it; or erase all of Bottega's data on this computer while cloud data stays in your account.
 - Keep a Bottega folder with the computer that published it: the same computer takes it back after a reinstall, a cleared data folder, or a new profile with nothing to confirm, and another computer is refused by name. A folder that has never synchronized opens anywhere.
-- Back up the Bottega folder and complete application data before changing versions. 0.4.0 retains existing content and uses protocol 26; see the [upgrade guide](../getting-started/README.md#upgrading-to-040), including historical migration notes for older releases.
+- Back up the Bottega folder and complete application data before changing versions. 0.4.1 retains existing content and uses protocol 26; see the [upgrade guide](../getting-started/README.md#upgrading-to-041), including historical migration notes for older releases.
 
 ## Bundled runtime and Agent boundaries
 

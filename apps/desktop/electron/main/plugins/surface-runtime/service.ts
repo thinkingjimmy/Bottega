@@ -1,15 +1,16 @@
 /**
- * [INPUT]: Depends on the shared immutable compiler/seal, Surface file-tree digest, durable file publication, source inventory, catalog admission, source provenance and host authorization.
+ * [INPUT]: Depends on the shared immutable compiler/seal, Surface file-tree digest, durable versioned file migration/publication, source inventory, catalog admission, source provenance and host authorization.
  * [OUTPUT]: Provides capacity-admitted authored sources, manual Dock candidates, automatic composer activation, account-scoped durable delivery retention and cleanup, rollback/forward and strict-current composer delivery with bounded session pins. Retained source registration and authorization have no author-Chat identity.
  * [POS]: Plugin surface lifecycle owner; reuses App compiler artifacts without App records, Base grants or host-package execution.
  */
 import {assertPluginIdentity} from "./identity";
+import {migratePluginFile} from "./persistence";
 import { randomUUID } from "node:crypto";
 import { REMOTE_PLUGIN_CATALOG_LIMITS } from "@ai-chat/cloud-protocol/surfaces/plugin/catalog";
 import { appSurfaceTreeDigest } from "@ai-chat/cloud-protocol/surfaces/manifest";
 import { readFile, realpath, mkdir } from "node:fs/promises";
 import { extname, join } from "node:path";
-import { runtimeFileSchema, generationCustodyScopeSchema, type GenerationCustodyScope, type PluginRuntimeRecord, type PluginGeneration, type PluginRuntimeOptions } from "./model";
+import { runtimeFileSchema, legacyRuntimeFileSchema, generationCustodyScopeSchema, type GenerationCustodyScope, type PluginRuntimeRecord, type PluginGeneration, type PluginRuntimeOptions } from "./model";
 import { pluginGuiManifestSchema } from "../../apps/gui-build/source/manifest";
 import { inspectPluginSource } from "../../apps/gui-build/source/inspection";
 import { verifyCompiledV3Artifact } from "../../apps/gui-build/pipeline/seal";
@@ -35,8 +36,7 @@ export class PluginSurfaceRuntime {
   }
   async initialize() {
     if(!this.stopped) throw new Error("Plugin runtime is already initialized");
-    const bytes = await readFile(this.file,"utf8").catch((error:NodeJS.ErrnoException)=>{if(error.code==="ENOENT")return null;throw error;});
-    const state = bytes === null ? {plugins:[],quarantined:[]} : runtimeFileSchema.parse(JSON.parse(bytes));
+    const state = await migratePluginFile(this.file,runtimeFileSchema,legacyRuntimeFileSchema)??{plugins:[],quarantined:[]};
     this.quarantined=state.quarantined;
     this.records=new Map();
     for(const record of state.plugins){
@@ -334,7 +334,7 @@ export class PluginSurfaceRuntime {
     for(const listener of this.listeners){try{listener(record.pluginId);}catch{/* Observers cannot undo a durable activation. */}}
   }
   private async persist(records:Map<string,PluginRuntimeRecord>) {
-    const state=runtimeFileSchema.parse({schemaVersion:1,plugins:[...records.values()],quarantined:this.quarantined});await mkdir(this.root,{recursive:true,mode:0o700});await durableReplaceFile(this.file,canonicalJson(state));
+    const state=runtimeFileSchema.parse({schemaVersion:2,plugins:[...records.values()],quarantined:this.quarantined});await mkdir(this.root,{recursive:true,mode:0o700});await durableReplaceFile(this.file,canonicalJson(state));
   }
   private reason(cause:unknown) {return (cause instanceof Error?cause.message:String(cause)).slice(0,2048);}
 }

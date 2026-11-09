@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on durable JSON, exact package freezing, the authored generation owner and the current main-owned account/installation scope.
- * [OUTPUT]: Provides verified/repairable local archives, selective entry reads, exact retained-generation lookup, terminal full-source retirement, the original resumable delivery queue, exact completion receipts, explicit retry/abandon, receiver custody, same-generation source archive restoration, repair revision signals, account-scoped collection and orphan cleanup and the exact package ledger schema.
+ * [INPUT]: Depends on versioned durable JSON migration, exact package freezing, the authored generation owner and the current main-owned account/installation scope.
+ * [OUTPUT]: Provides verified/repairable local archives, selective entry reads, exact retained-generation lookup, terminal full-source retirement, the original resumable delivery queue, exact completion receipts, explicit retry/abandon, receiver custody, same-generation source archive restoration, repair revision signals, account-scoped collection and orphan cleanup and the strict current and bounded legacy package ledger schemas.
  * [POS]: Private source-package custody owner; local application does not depend on Cloud availability or writable source after freezing.
  */
 import {createHash} from 'node:crypto';
@@ -13,10 +13,19 @@ import {canonicalJson,hashCanonical} from '@bottega/contracts/core/canonical-jso
 import {widgetPackageDescriptorSchema,type WidgetPackageDescriptor} from '@bottega/contracts/plugins/dock/packages';
 import {DurableJson,durableReplaceBytes} from '../../../persistence/durable-json';
 import type {PluginSurfaceRuntime} from '../service';
+import {migratePluginFile} from '../persistence';
 import {BUDGET,freezePackage,verifyPackage} from './codec';
 import {removeWidgetArchives,removeWidgetAccountArchives,widgetArchiveDirectory,ensureWidgetArchiveDirectory} from './retention';
 const record=z.object({reference:z.string().regex(/^sha256:[a-f0-9]{64}$/),descriptor:widgetPackageDescriptorSchema,bytes:z.number().int().nonnegative().max(BUDGET.packageBytes),operationIds:z.array(z.string().regex(/^[A-Za-z0-9_-]{8,128}$/)).max(256),retired:z.boolean().default(false),delivery:z.enum(['prepared','pending','delivered','abandoned','discarded']),error:z.literal('WIDGET_DELIVERY_FAILED').nullable().default(null),createdAt:z.number().int().nonnegative()}).strict();
-export const widgetPackageLedgerSchema=z.object({version:z.literal(1),packages:z.array(record).max(BUDGET.retainedPackages)}).strict();
+export const widgetPackageLedgerSchema=z.object({version:z.literal(2),packages:z.array(record).max(BUDGET.retainedPackages)}).strict();
+const legacyRecord=record.extend({sourceChatId:z.string().min(1).max(160).optional()}).transform(({sourceChatId:_retiredChat,...value})=>value);
+export const legacyWidgetPackageLedgerSchema=z.object({version:z.literal(1),packages:z.array(legacyRecord).max(BUDGET.retainedPackages)}).strict()
+ .transform((value,context)=>{
+  const parsed=widgetPackageLedgerSchema.safeParse({...value,version:2});
+  if(parsed.success)return parsed.data;
+  for(const issue of parsed.error.issues)context.addIssue({...issue});
+  return z.NEVER;
+ });
 const schema=widgetPackageLedgerSchema;
 type Frozen={reference:string;descriptor:WidgetPackageDescriptor;bytes:Buffer};
 type Scope={accountId:string;installationId:string};
@@ -28,9 +37,9 @@ export class WidgetPackageStore{
  private readonly invalid=new Set<string>();
  private readonly listeners=new Set<()=>void>();
  constructor(private readonly userData:string,private readonly runtime:PluginSurfaceRuntime,private readonly scope:()=>Scope){
-  this.file=new DurableJson(join(userData,'dock-widget-packages.json'),schema,()=>({version:1,packages:[]}));
+  this.file=new DurableJson(join(userData,'dock-widget-packages.json'),schema,()=>({version:2,packages:[]}));
  }
- async initialize(){await this.file.initialize();this.closed=false;const scope=this.scope();
+ async initialize(){await migratePluginFile(this.file.filePath,schema,legacyWidgetPackageLedgerSchema);await this.file.initialize();this.closed=false;const scope=this.scope();
   const completed=this.file.read(state=>state.packages.filter(value=>(value.delivery==='delivered'||value.delivery==='abandoned')&&value.descriptor.source.accountId===scope.accountId&&value.descriptor.source.installationId===scope.installationId).map(value=>({source:value.descriptor.source,operationIds:value.operationIds})));
   for(const entry of completed){this.assertScope(scope);if(!this.runtime.descriptor(entry.source.definitionId))continue;for(const id of entry.operationIds){await this.runtime.releaseGeneration(entry.source.definitionId,id);this.assertScope(scope);}}
  }

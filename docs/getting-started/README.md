@@ -47,6 +47,12 @@ Setup has one path and never mentions an account: choose your Bottega folder, th
 
 See the [features guide](../features/README.md) for the product model and its four core capability areas.
 
+### Upgrading to 0.4.1
+
+0.4.1 continues protocol 26 and fixes startup with older plugin metadata. Existing content, sync passwords and account keys remain. The upgrade validates and backs up the original plugin files before migration. Older quarantined Sketch compilation versions remain retained and disabled.
+
+If 0.4.0 cannot open, [download the 0.4.1 DMG](https://github.com/thinkingjimmy/Bottega/releases/download/v0.4.1/Bottega-0.4.1-arm64.dmg) and replace the application. Keep your Bottega folder and application data. Back up both before changing versions.
+
 ### Upgrading to 0.4.0
 
 0.4.0 uses protocol 26. After the coordinated service update, update connected desktops and reload Bottega Web. Earlier clients require an update for Cloud access. Existing content, sync passwords and account keys remain; no data reset is required. Back up the Bottega folder and application data before updating. Official macOS Apple silicon builds use the stable update channel; the 0.2.5 personal build requires manual installation.
@@ -105,7 +111,7 @@ Your saved title Agent and model stay unchanged. This version's Codex connection
 
 This release keeps **protocol 19**, existing content, sync passwords and account keys. No data reset is required. Dock remains Alpha on macOS 27.x with Apple silicon; replacement, system recovery and display/fullscreen combinations are still being validated. See the [0.2.7 changelog](../changelog/README.md#2026-10-18--v027) and [installation steps](#download-and-install).
 
-The older upgrade notes describe their original versions. Use Requirements and the 0.4.0 upgrade section for the current release.
+The older upgrade notes describe their original versions. Use Requirements and the 0.4.1 upgrade section for the current release.
 
 ## Upgrading to 0.2.6
 

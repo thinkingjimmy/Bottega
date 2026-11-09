@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on strict plugin manifests, shared remote catalog limits, the GUI build service and compiled digest contracts.
- * [OUTPUT]: Provides retained Surface source identities, manual Dock candidates, bounded generation retention pins with optional account custody, source provenance and runtime authority ports without an author-Chat field.
+ * [INPUT]: Depends on strict plugin manifests, explicit v1 file migration, shared remote catalog limits, the GUI build service and compiled digest contracts.
+ * [OUTPUT]: Provides retained Surface source identities, manual Dock candidates, bounded generation retention pins with optional account custody, source provenance and runtime authority ports without an author-Chat field, plus strict v2 state and bounded v1 migration schemas.
  * [POS]: Plugin surface runtime model; grants/settings remain host-owned and never come from an artifact.
  */
 import { z } from "zod";
@@ -21,7 +21,7 @@ export const recordSchema = z.object({pluginId:id,origin:z.enum(["local","offici
  retentionPins:z.array(z.object({id:z.string().regex(/^[A-Za-z0-9_-]{8,128}$/),generationId,scope:generationCustodyScopeSchema.optional()}).strict()).max(128).default([]),
  lastActivation:z.object({operationId:z.string().regex(/^[A-Za-z0-9_-]{8,128}$/),generationId,expectedPrevious:generationId.nullable()}).strict().nullable().default(null),
  error:z.string().max(2048).nullable(),revision:z.number().int().nonnegative()}).strict();
-export const runtimeFileSchema = z.object({schemaVersion:z.literal(1),plugins:z.array(recordSchema).max(REMOTE_PLUGIN_CATALOG_LIMITS.entries,`Plugin catalog capacity exceeds ${REMOTE_PLUGIN_CATALOG_LIMITS.entries} entries`),quarantined:z.array(recordSchema).max(128).default([])}).strict().superRefine((value,context)=>{
+export const runtimeFileSchema = z.object({schemaVersion:z.literal(2),plugins:z.array(recordSchema).max(REMOTE_PLUGIN_CATALOG_LIMITS.entries,`Plugin catalog capacity exceeds ${REMOTE_PLUGIN_CATALOG_LIMITS.entries} entries`),quarantined:z.array(recordSchema).max(128).default([])}).strict().superRefine((value,context)=>{
  if(new Set(value.plugins.map(plugin=>plugin.pluginId)).size!==value.plugins.length) context.addIssue({code:"custom",message:"Duplicate plugin identity"});
  for(const plugin of value.plugins) {
   const generations = new Set(plugin.generations.map(generation=>generation.generationId));
@@ -32,6 +32,17 @@ export const runtimeFileSchema = z.object({schemaVersion:z.literal(1),plugins:z.
   if(plugin.lastActivation&&plugin.lastActivation.generationId!==plugin.activeGenerationId)context.addIssue({code:'custom',message:'Activation receipt does not match the selected generation'});
  }
 });
+const legacyRecordSchema = recordSchema.extend({ownerChatId:z.string().min(1).max(160).optional()})
+ .transform(({ownerChatId: _retiredOwner, ...record})=>record);
+export const legacyRuntimeFileSchema = z.object({schemaVersion:z.literal(1),
+ plugins:z.array(legacyRecordSchema).max(REMOTE_PLUGIN_CATALOG_LIMITS.entries),
+ quarantined:z.array(legacyRecordSchema).max(128).default([])}).strict()
+ .transform((value,context)=>{
+  const parsed=runtimeFileSchema.safeParse({...value,schemaVersion:2});
+  if(parsed.success)return parsed.data;
+  for(const issue of parsed.error.issues)context.addIssue({...issue});
+  return z.NEVER;
+ });
 export type PluginGeneration = z.infer<typeof generationSchema>;
 export type PluginRuntimeRecord = z.infer<typeof recordSchema>;
 export type PluginRuntimeAuthorization = Readonly<{pluginId:string;generationId:string;manifest:PluginGuiManifest;previousManifest:PluginGuiManifest|null;reason:"install"|"rebuild"|"activate"|"serve"}>;

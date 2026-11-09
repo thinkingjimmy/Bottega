@@ -2,7 +2,7 @@
 
 [简体中文](./README.zh-CN.md) · [Repository home](../README.md)
 
-Current version: [0.4.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.0) for macOS on Apple silicon (ARM64), using protocol 26. Ordinary Codex Chat checks its native protocol and capabilities; generated native titles and isolated editor tasks keep separate CLI qualification. Read the [native command permissions](./features/README.md#codex-command-permissions) and [installation and update notes](./getting-started/README.md#upgrading-to-040). The 0.2.5 personal build needs a manual update. [Bottega Web](https://app.getbottega.app) remains available.
+Current version: [0.4.1](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.1) for macOS on Apple silicon (ARM64), using protocol 26. Ordinary Codex Chat checks its native protocol and capabilities; generated native titles and isolated editor tasks keep separate CLI qualification. Read the [native command permissions](./features/README.md#codex-command-permissions) and [installation and update notes](./getting-started/README.md#upgrading-to-040). The 0.2.5 personal build needs a manual update. [Bottega Web](https://app.getbottega.app) remains available.
 
 Documentation is organized by responsibility so the repository root remains focused on source and build configuration.
 
