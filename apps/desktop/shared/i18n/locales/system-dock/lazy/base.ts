@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Original English Dock literals excluding only the Weather UI namespace.
- * [OUTPUT]: systemDockBaseEn for synchronous native menus and renderer fallback; retired manual Widget editor labels are excluded.
+ * [OUTPUT]: systemDockBaseEn for synchronous native menus and renderer fallback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded.
  * [POS]: Shared native base; the complete renderer wrapper adds English Weather data.
  */
 export const systemDockBaseEn={
@@ -491,7 +491,7 @@ export const systemDockBaseEn={
     "loadFailed": "Couldn’t load Dock settings.",
     "unsupportedTitle": "Bottega Dock isn’t available",
     "unsupportedPlatform": "Bottega Dock is only available on macOS.",
-    "unsupportedVersion": "Dock Alpha supports macOS 26 and 27 on Apple silicon. Other macOS versions are not supported.",
+    "unsupportedVersion": "Dock supports macOS 26 and 27 on Apple silicon. Other macOS versions are not supported.",
     "unsupportedArchitecture": "Bottega Dock requires a Mac with Apple silicon.",
     "unsupportedHelperMissing": "Bottega Dock needs a helper that is missing from this installation. Reinstall Bottega to use the Dock.",
     "registrationUnknown": "Could not verify",
@@ -512,15 +512,14 @@ export const systemDockBaseEn={
     "reading": "Reading your system Dock…",
     "previewFailed": "Couldn’t read your system Dock. Try again, or add apps later.",
     "layoutTitle": "Your Dock layout",
-    "layoutKept": "Your existing Dock layout is kept as it is.",
+    "replacementLayout": "Your pinned apps will follow the current system Dock. Your widgets will be kept.",
+    "replacementImportFailed": "Could not read your system Dock apps. Try again before replacing it.",
     "previewLabel": "Dock layout preview",
-    "importReplaceLabel": "Apps from your system Dock",
     "importCopyLabel": "Choose apps to copy",
     "coexistImportHint": "Start with Finder, AI Limits, Downloads and the Trash, or copy apps from your system Dock.",
     "copyFromSystem": "Copy from System Dock",
     "noCandidates": "No apps could be copied from your system Dock.",
     "addLater": "You can add apps later from the Dock.",
-    "skipImport": "Skip Import",
     "readFailure": {
       "unavailable": "Your system Dock couldn’t be read.",
       "managed": "Your system Dock is managed by your organization and can’t be copied.",

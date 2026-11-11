@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, the desktop i18n provider, the shared Dialog root and StepDialogContent shell, Settings primitives, the Dock settings store/session calls, the shared candidate checklist, and Dock layout/preview projections.
  * [OUTPUT]: Distinguishes signed-installation admission states.
- * Provides `DockSetupDialog`: choose mode → layout preview (replace: system Dock Apps preselected, uncheck or skip; coexist: nothing until "Copy from System Dock"; an existing layout is kept) → impact and acknowledgement (replace) → confirm; `flow: "consent"` opens straight on the impact step to switch to replacement later. Cancelling, closing or leaving releases the preview session, including previews returned after cancellation.
+ * Provides `DockSetupDialog`: replacement goes from mode directly to impact consent, then main automatically configures current system pins without an app checklist. Coexistence retains optional copy choices. Progress and Back follow visible steps; the footer omits Cancel, while dismissal releases preview sessions, including late replies. `flow: "consent"` opens directly on impact.
  * [POS]: settings/dock onboarding flow (3.1, DCK-08, DCK-46, INV-01), opened by the master switch; nothing is written before confirm, and the page reports the resulting phase honestly instead of declaring success here.
  */
 
@@ -17,6 +17,7 @@ import type { DockMode } from "../../../../shared/system-dock/local-state";
 import { CandidateChecklist, readFailureKey } from "./candidates";
 
 export type DockSetupFlow = "full" | "consent";
+type PreviewStep = "layout" | "impact" | "import";
 type Step =
   | { kind: "mode"; mode: DockMode }
   | { kind: "loading"; mode: DockMode }
@@ -43,15 +44,17 @@ function PreviewStrip({ preview, selected }: { preview: DockSetupPreview; select
   </ol>;
 }
 
-export function DockSetupDialog({ capability, flow, onExit }: { capability: DockCapability; flow: DockSetupFlow | null; onExit(): void }) {
+export function DockSetupDialog({ capability, layoutInitialized, flow, onExit }: { capability: DockCapability; layoutInitialized: boolean; flow: DockSetupFlow | null; onExit(): void }) {
   return <Dialog open={flow !== null} onOpenChange={(open) => { if (!open) onExit(); }}>
-    {flow && <SetupFlow capability={capability} consentOnly={flow === "consent"} onExit={onExit} />}
+    {flow && <SetupFlow capability={capability} layoutInitialized={layoutInitialized} consentOnly={flow === "consent"} onExit={onExit} />}
   </Dialog>;
 }
 
-function SetupFlow({ capability, consentOnly, onExit }: { capability: DockCapability; consentOnly: boolean; onExit(): void }) {
+function SetupFlow({ capability, layoutInitialized, consentOnly, onExit }: { capability: DockCapability; layoutInitialized: boolean; consentOnly: boolean; onExit(): void }) {
   const { t } = useAppTranslation();
   const [step, setStep] = useState<Step>(consentOnly ? { kind: "loading", mode: "replace" } : { kind: "mode", mode: capability.replacement ? "replace" : "coexist" });
+  const [layoutExists, setLayoutExists] = useState(layoutInitialized);
+  const [copyRequested, setCopyRequested] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -60,21 +63,28 @@ function SetupFlow({ capability, consentOnly, onExit }: { capability: DockCapabi
   const release = () => { if (session.current) void dockSettingsStore.cancelSetup(session.current); session.current = null; };
   // Closing the dialog or leaving the page mid-flow must not leave a preview session (or its read candidates) behind.
   useEffect(() => () => { request.current += 1; release(); }, []);
-  const open = (mode: DockMode, loader: () => Promise<DockSetupPreview>, next: "layout" | "impact" = "layout") => {
+  const open = (mode: DockMode, loader: () => Promise<DockSetupPreview>, next: PreviewStep = "layout") => {
     setError(null); setStep({ kind: "loading", mode });
     return load(mode, loader, next);
   };
-  const load = async (mode: DockMode, loader: () => Promise<DockSetupPreview>, next: "layout" | "impact") => {
+  const load = async (mode: DockMode, loader: () => Promise<DockSetupPreview>, next: PreviewStep) => {
     const current = ++request.current;
     try {
       const preview = await loader();
       if (current !== request.current) { void dockSettingsStore.cancelSetup(preview.sessionId); return; }
       release();
       session.current = preview.sessionId;
-      const selected = new Set(preview.candidates.filter((candidate) => candidate.preselected && candidate.status === "ok").map((candidate) => candidate.key));
-      setStep({ kind: next, mode, preview, selected });
+      setLayoutExists(preview.layoutExists);
+      const selected = new Set(preview.candidates.filter((candidate) => candidate.status === "ok" && (candidate.preselected || next === "import")).map((candidate) => candidate.key));
+      if (mode === "replace") {
+        setStep({ kind: "impact", mode, preview, selected: new Set() });
+      } else if (next === "layout" && preview.layoutExists) {
+        setStep({ kind: "mode", mode });
+      } else setStep({ kind: next === "import" ? "layout" : next, mode, preview, selected });
+      return preview;
     } catch {
       if (current !== request.current) return;
+      if (next === "import") setCopyRequested(false);
       setError(t("systemDock.settings.previewFailed"));
       if (!consentOnly) setStep({ kind: "mode", mode });
     }
@@ -82,7 +92,6 @@ function SetupFlow({ capability, consentOnly, onExit }: { capability: DockCapabi
   // The consent-only path starts already loading; state changes only after main answers.
   const startConsent = useEffectEvent(() => { void load("replace", () => dockSettingsStore.beginSetup("replace"), "impact"); });
   useEffect(() => { if (consentOnly) startConsent(); }, [consentOnly]);
-  const cancel = () => { request.current += 1; release(); onExit(); };
   const finish = async (mode: DockMode, preview: DockSetupPreview, selected: ReadonlySet<string>) => {
     setBusy(true); setError(null);
     const result = await dockSettingsStore.confirmSetup({ sessionId: preview.sessionId, mode, selected: [...selected], acknowledged: mode === "replace" && acknowledged });
@@ -90,9 +99,13 @@ function SetupFlow({ capability, consentOnly, onExit }: { capability: DockCapabi
     if (!result) {
       // The layout changed after this preview (another Mac, or an edit): show the fresh preview instead of applying the old one.
       if (dockSettingsStore.getSnapshot().failedCode === "DOCK_LAYOUT_REVISION_CHANGED") {
-        await load(mode, () => dockSettingsStore.beginSetup(mode), "layout");
+        setAcknowledged(false);
+        await load(mode, () => copyRequested ? dockSettingsStore.importCandidates() : dockSettingsStore.beginSetup(mode), copyRequested ? "import" : "layout");
         setError(t("systemDock.settings.previewChanged"));
         return;
+      }
+      if (dockSettingsStore.getSnapshot().failedCode === "DOCK_SYSTEM_IMPORT_UNAVAILABLE") {
+        setError(t("systemDock.settings.replacementImportFailed")); return;
       }
       setError(t("systemDock.settings.confirmFailed")); return;
     }
@@ -100,53 +113,69 @@ function SetupFlow({ capability, consentOnly, onExit }: { capability: DockCapabi
     session.current = null;
     onExit();
   };
+  const start = async (mode: DockMode) => {
+    const preview = await open(mode, () => dockSettingsStore.beginSetup(mode));
+    // A Continue click must not become confirmation if a layout appeared while the preview was loading.
+    if (mode === "coexist" && layoutExists && preview?.layoutExists && session.current === preview.sessionId) {
+      await finish(mode, preview, new Set());
+    }
+  };
 
-  const total = step.mode === "replace" ? (consentOnly ? 1 : 3) : 2;
-  const index = consentOnly ? 1 : step.kind === "mode" ? 1 : step.kind === "impact" ? 3 : 2;
-  const cancelButton = <SettingsButton variant="ghost" disabled={busy} onClick={cancel}>{t("common.cancel")}</SettingsButton>;
+  const reviewLayout = !layoutExists || copyRequested;
+  const total = consentOnly ? 1 : step.mode === "replace" ? 2 : 1 + Number(reviewLayout);
+  const index = consentOnly || step.kind === "mode" ? 1 : step.kind === "impact" ? total : Math.min(2, total);
+  const title = consentOnly || step.kind === "loading" && step.mode === "replace" ? TITLE_KEYS.impact
+    : step.kind === "loading" && layoutExists && !copyRequested ? TITLE_KEYS.mode : TITLE_KEYS[step.kind];
   const confirmLabel = busy ? t("systemDock.settings.turningOn") : t(consentOnly ? "systemDock.settings.switchConfirm" : "systemDock.settings.turnOnConfirm");
   /* Escape used to dismiss the dialog while the Dock was being turned on, hiding the outcome of a takeover in flight (F-22). */
   return <StepDialogContent aria-live="off" onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }}
-    onInteractOutside={(event) => { if (busy) event.preventDefault(); }} title={t(consentOnly ? TITLE_KEYS.impact : TITLE_KEYS[step.kind])}
+    onInteractOutside={(event) => { if (busy) event.preventDefault(); }} title={t(title)}
+    description={step.kind === "impact" ? t("systemDock.settings.replacementLayout") : undefined}
     progress={{ index, total, label: t("systemDock.settings.step", { index, total }) }}
-    back={step.kind === "impact" && !consentOnly ? <SettingsButton variant="ghost" disabled={busy}
-      onClick={() => setStep({ ...step, kind: "layout" })}>{t("common.back")}</SettingsButton> : undefined}
+    back={!consentOnly && (step.kind === "impact" || step.kind === "layout" && copyRequested) ? <SettingsButton variant="ghost" disabled={busy}
+      onClick={() => {
+        release(); setCopyRequested(false); setStep({ kind: "mode", mode: step.mode });
+      }}>{t("common.back")}</SettingsButton> : undefined}
     actions={<>
-      {cancelButton}
-      {step.kind === "mode" && <SettingsButton onClick={() => void open(step.mode, () => dockSettingsStore.beginSetup(step.mode))}>{t("systemDock.settings.continue")}</SettingsButton>}
+      {step.kind === "mode" && <SettingsButton disabled={busy} onClick={() => void start(step.mode)}>{step.mode === "coexist" && layoutExists ? confirmLabel : t("systemDock.settings.continue")}</SettingsButton>}
       {step.kind === "layout" && <>
-        {step.mode === "replace" && !step.preview.layoutExists && step.preview.candidates.length > 0 &&
-          <SettingsButton variant="outline" onClick={() => setStep({ ...step, kind: "impact", selected: new Set() })}>{t("systemDock.settings.skipImport")}</SettingsButton>}
-        {step.mode === "replace" ? <SettingsButton onClick={() => setStep({ ...step, kind: "impact" })}>{t("systemDock.settings.continue")}</SettingsButton>
-          : <SettingsButton disabled={busy} onClick={() => void finish("coexist", step.preview, step.selected)}>{confirmLabel}</SettingsButton>}
+        <SettingsButton disabled={busy} onClick={() => void finish("coexist", step.preview, step.selected)}>{confirmLabel}</SettingsButton>
       </>}
       {step.kind === "impact" && <SettingsButton disabled={!acknowledged || busy} onClick={() => void finish("replace", step.preview, step.selected)}>{confirmLabel}</SettingsButton>}
     </>}>
       {error && <SettingsAlert>{error}</SettingsAlert>}
       {step.kind === "mode" && <div role="radiogroup" aria-label={t("systemDock.settings.modeTitle")} className="divide-inset rounded-lg ring-1 ring-foreground/10">
-        <SettingsChoiceRow label={t("systemDock.settings.modeReplace")} checked={step.mode === "replace"} disabled={!capability.replacement}
+        <SettingsChoiceRow label={t("systemDock.settings.modeReplace")} checked={step.mode === "replace"} disabled={!capability.replacement || busy}
           labelMeta={capability.replacement ? <span className="text-muted-foreground text-xs">{t("systemDock.settings.recommended")}</span> : undefined}
           description={capability.replacement ? t("systemDock.settings.modeReplaceDescription") : t(capability.reason === "helper-missing" ? "systemDock.settings.replacementHelperMissing"
             : capability.reason === "checking" ? "systemDock.settings.replacementChecking" : capability.reason === "signature-unverified"
             ? "systemDock.settings.replacementUnverified" : "systemDock.settings.replacementDevelopment")}
           onSelect={() => setStep({ kind: "mode", mode: "replace" })} />
-        <SettingsChoiceRow label={t("systemDock.settings.modeCoexist")} checked={step.mode === "coexist"} description={t("systemDock.settings.modeCoexistDescription")}
+        <SettingsChoiceRow label={t("systemDock.settings.modeCoexist")} checked={step.mode === "coexist"} disabled={busy} description={t("systemDock.settings.modeCoexistDescription")}
           onSelect={() => setStep({ kind: "mode", mode: "coexist" })} />
+      </div>}
+      {step.kind === "mode" && step.mode === "coexist" && layoutExists && <div className="space-y-2">
+        <p className="text-muted-foreground text-xs leading-relaxed">{t("systemDock.settings.copyDescription")}</p>
+        <SettingsButton variant="outline" disabled={busy} onClick={() => {
+          setCopyRequested(true); setAcknowledged(false);
+          void open(step.mode, () => dockSettingsStore.importCandidates(), "import");
+        }}>{t("systemDock.settings.copyFromSystem")}</SettingsButton>
       </div>}
       {step.kind === "loading" && !error && <p className="flex min-h-24 items-center justify-center gap-2 text-muted-foreground text-sm" role="status">
         <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />{t("systemDock.settings.reading")}
       </p>}
-      {step.kind === "layout" && (step.preview.layoutExists ? <p className="text-muted-foreground text-xs leading-relaxed">{t("systemDock.settings.layoutKept")}</p> : <>
-        <PreviewStrip preview={step.preview} selected={step.selected} />
+      {step.kind === "layout" && <>
+        {step.preview.layoutExists ? <p className="text-muted-foreground text-xs leading-relaxed">{t("systemDock.settings.copyDescription")}</p>
+          : <PreviewStrip preview={step.preview} selected={step.selected} />}
         {step.preview.readFailure && <SettingsAlert tone="warn">{t(readFailureKey(step.preview.readFailure))} {t("systemDock.settings.addLater")}</SettingsAlert>}
         {step.preview.candidates.length > 0 ? <CandidateChecklist candidates={step.preview.candidates} selected={step.selected}
-          label={t(step.mode === "replace" ? "systemDock.settings.importReplaceLabel" : "systemDock.settings.importCopyLabel")}
+          label={t("systemDock.settings.importCopyLabel")}
           onChange={(selected) => setStep({ ...step, selected })} />
-          : step.mode === "coexist" ? <div className="space-y-2">
+          : <div className="space-y-2">
             <p className="text-muted-foreground text-xs leading-relaxed">{t("systemDock.settings.coexistImportHint")}</p>
             <SettingsButton variant="outline" onClick={() => void open("coexist", () => dockSettingsStore.importCandidates())}>{t("systemDock.settings.copyFromSystem")}</SettingsButton>
-          </div> : !step.preview.readFailure && <p className="text-muted-foreground text-xs">{t("systemDock.settings.noCandidates")} {t("systemDock.settings.addLater")}</p>}
-      </>)}
+          </div>}
+      </>}
       {step.kind === "impact" && <>
         <ul className="space-y-2 text-xs leading-relaxed">
           {IMPACT_KEYS.map((key) =>

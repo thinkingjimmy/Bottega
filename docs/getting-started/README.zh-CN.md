@@ -47,6 +47,10 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 产品模型与四个核心能力域见[功能文档](../features/README.zh-CN.md)。
 
+### 升级到 0.4.3
+
+0.4.3 使用**协议 27**。通过稳定更新渠道更新，或从最新稳定 Release 下载安装包。从 0.4.1 或更早版本升级时，请先阅读[升级到 0.4.2](#升级到-042)。
+
 ### 升级到 0.4.2
 
 0.4.2 使用**协议 27**。服务协调升级后，请更新已连接的桌面端并刷新 Bottega Web。协议 26 客户端需更新后才能重新连接 Cloud。更换版本前，请备份 Bottega 文件夹与完整应用数据。
@@ -123,7 +127,7 @@ Codex CLI **仅支持 0.163.0-alpha.10.2**，命令使用原生审批。逐项�
 
 本次继续使用**协议 19**，保留已有内容、同步密码与账号密钥，无需清空数据。Dock 在 macOS 27.x / Apple 芯片上保持 Alpha；替代模式、系统恢复以及显示器与全屏组合仍在验证。见 [0.2.7 更新日志](../changelog/README.zh-CN.md#2026-10-18--v027)和[安装步骤](#下载与安装)。
 
-旧版升级说明描述各自版本。当前版本请以环境要求和 0.4.2 升级说明为准。
+旧版升级说明描述各自版本。当前版本请以环境要求和 0.4.3 升级说明为准。
 
 ## 升级到 0.2.6
 
@@ -155,7 +159,7 @@ Cloud Sync 现使用协议 15。使用云功能的所有电脑都需升级到 0.
 
 ## 下载与安装
 
-请从[最新稳定 Release](https://github.com/thinkingjimmy/Bottega/releases/latest)确认可用安装包及支持平台。0.4.2 源码面向 **macOS Apple 芯片（ARM64）**；源码版本号不表示安装包已发布。[Bottega Web](https://app.getbottega.app) 可在电脑和手机浏览器中使用。
+请从[最新稳定 Release](https://github.com/thinkingjimmy/Bottega/releases/latest)确认可用安装包及支持平台。0.4.3 源码面向 **macOS Apple 芯片（ARM64）**；源码版本号不表示安装包已发布。[Bottega Web](https://app.getbottega.app) 可在电脑和手机浏览器中使用。
 
 | 平台 | 下载 | 说明 |
 | --- | --- | --- |

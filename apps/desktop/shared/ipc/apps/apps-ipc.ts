@@ -1,6 +1,6 @@
 /**
  * [INPUT]: type-only AgentBackendId from agent-ipc, placement facts, and Extension identity vocabulary
- * [OUTPUT]: Provides appDisplayName for installed Base names and authored Web names, pending install configuration, shared manifests, versioned Web commands, consent, generation, permissions and lifecycle contracts Includes durable independent update custody and an independent enabled flag and monotonic enabledRevision.
+ * [OUTPUT]: Provides appDisplayName, artifact-quarantine rebuild eligibility, pending install configuration, shared manifests, versioned Web commands, consent, generation, permissions and lifecycle contracts, durable independent update custody and independent enabled state.
  * [POS]: apps/desktop/shared/ipc/apps; Single shared Apps wire truth and the barrel over its sibling buckets; navigation, surface, acquisition (apps-install-ipc), authorization, generation and Agent custody remain explicitly separate contracts
  */
 
@@ -444,6 +444,14 @@ export function repairSite(
   }
   return record.state === "update-failed" ? "copy" : null;
 }
+
+/** Rebuild retained source only after artifact verification failed; security quarantine remains closed. */
+export const canRebuildQuarantinedApp = (record: AppRecord) =>
+  record.state === "quarantined" &&
+  record.lastError?.phase === "manifest" &&
+  record.editableSource === true &&
+  record.generationBinding.active === null &&
+  !record.generationBinding.pending;
 
 /* 两种粒度必须分开：App 整个没进本轮上下文，与 App 进了但某个扩展 component 没
    交付，用户要做的处置完全不同（D20 只要求前者，后者来自 Integration §6）。 */

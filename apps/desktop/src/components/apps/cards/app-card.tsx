@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Shared Dock settings state/client, AppCard/AppCardStatus, localized surface failures, appDisplayName, AppsProvider, lifecycle dialogs, routing and platform actions.
- * [OUTPUT]: Provides native AppCard facts and capabilities to the shared catalog presentation, retaining lifecycle and cloud-management actions. An interrupted update or install reads from the Apps catalog by phase (U06-d). Adds the approved close/reopen menu and retained-data impact dialog. Adds independent Dock pin/unpin actions using catalog-owned Dock state.
+ * [INPUT]: Shared Dock settings state/client, catalog cards, localized failures, appDisplayName, artifact-quarantine recovery eligibility, AppsProvider, lifecycle dialogs, routing and platform actions.
+ * [OUTPUT]: Provides AppCard lifecycle and cloud actions, truthful unavailable copy, explicit artifact-quarantine rebuild, close/reopen impact and catalog-owned Dock pin/unpin actions.
  * [POS]: apps/desktop/src/components/apps/cards; App listing unit; the badge follows generation readiness without exposing internal terminology, and main-owned navigation focuses an existing Studio instead of rendering twice
  */
 
@@ -10,7 +10,7 @@ import {
   AppCard as SharedAppCard,
   AppCardStatus,
 } from "@ai-chat/ui/components/catalog/app-card";
-import { appDisplayName } from "../../../../shared/ipc/apps/apps-ipc";
+import { appDisplayName, canRebuildQuarantinedApp } from "../../../../shared/ipc/apps/apps-ipc";
 import { useState } from "react";
 import {
   AppWindowIcon,
@@ -96,13 +96,13 @@ export function AppCard({ app, dock, onOpenProgress }: AppCardProps) {
   const dockAvailable = dock?.snapshot?.capability.supported && dock.snapshot.state.enabled;
   const enablement = useAppEnablement(record, i18n.language);
   const name = appDisplayName(record);
+  const failed = isFailedState(record.state), interruptedKey = interruptedErrorKey(record);
   const description =
     record.manifest?.description ??
-    (isAwaitingGeneration(record)
+    (failed ? t("apps.card.unavailable") : isAwaitingGeneration(record)
       ? t("apps.card.awaitingAuthorization")
       : t("apps.card.preparing", { name: record.displayName }));
   const icon = record.manifest?.icon ?? "📦";
-  const failed = isFailedState(record.state), interruptedKey = interruptedErrorKey(record);
   const working = isWorkingState(record.state);
   const effectiveOperation = effectiveAppOperation(record, app.operation);
   /* 徽标只在真的成了代时才敢说绿：否则它会和同一张卡上的占位图标、
@@ -265,7 +265,7 @@ export function AppCard({ app, dock, onOpenProgress }: AppCardProps) {
                     {revealLabel}
                   </DropdownMenuItem>
                 )}
-                {record.enabled && isFailedState(record.state) && (
+                {record.enabled && isFailedState(record.state) && (record.state !== "quarantined" || canRebuildQuarantinedApp(record)) && (
                   <DropdownMenuItem
                     className="whitespace-nowrap"
                     onSelect={() => void act(() => retryApp(record.id))}

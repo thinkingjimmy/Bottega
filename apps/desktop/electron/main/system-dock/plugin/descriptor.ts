@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the plugin descriptor/settings contracts Dock local defaults and the Dock macOS product-version policy.
- * [OUTPUT]: Provides the official Dock descriptor and adapter field-to-preference mapping.
+ * [OUTPUT]: Provides the official Dock descriptor without a pre-release designation, its system requirement and adapter field-to-preference mapping.
  * [POS]: Dock's catalog description; all values remain owned by DockLocalStore.
  */
 import type { PluginDescriptor } from "@bottega/contracts/plugins/descriptor";
@@ -25,7 +25,7 @@ const settings: SettingField[] = [
 ];
 export const DOCK_PLUGIN: PluginDescriptor = {
   id: "dock", kind: "feature", source: "builtin", name: dockText("name"), summary: dockText("summary"), description: dockText("description"), icon: "dock",
-  releaseStage: "alpha", systemRequirement: { ...dockText("systemRequirement"), params: { version: DOCK_MACOS_VERSIONS.join(" / ") } },
+  systemRequirement: { ...dockText("systemRequirement"), params: { version: DOCK_MACOS_VERSIONS.join(" / ") } },
   provides: [], requires: [], turnOn: { mode: "setup", setup: "dock-setup" }, turnOff: { allowed: true }, settings,
   capabilities: [{ label: dockText("capabilities.launch"), id: null }, { label: dockText("capabilities.usage"), id: null },
     { label: dockText("capabilities.sync"), id: null }, { label: dockText("capabilities.permissions"), id: null }],

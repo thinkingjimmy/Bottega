@@ -6,7 +6,7 @@
 export const dock = {
   "name": "Bottega Dock",
   "summary": "アプリのショートカットと使用量ウィジェット。システム Dock を維持するか、確認後に置き換えます。",
-  "description": "Bottega Dock は、アプリ、システムのショートカット、使用量ウィジェットを画面の端に表示します。\n\nDock は Alpha 段階で、初期状態ではオフです。レイアウトとモードを選択できます。置き換えには、署名を検証済みのインストールと確認が必要です。Bottega の終了時や Dock をオフにしたときは、システム Dock を復元します。",
+  "description": "Bottega Dock は、アプリ、システムのショートカット、使用量ウィジェットを画面の端に表示します。\n\nDock は初期状態ではオフです。レイアウトとモードを選択できます。置き換えには、署名を検証済みのインストールと確認が必要です。Bottega の終了時や Dock をオフにしたときは、システム Dock を復元します。",
   "systemRequirement": "macOS {{version}} · Apple シリコン",
   "replacementAvailable": "確認後に有効化できます",
   "replacementChecking": "インストールを確認中…",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path and the macOS product version, architecture and packaging facts supplied by the caller.
- * [OUTPUT]: Provides DOCK_MACOS_VERSIONS, the macOS 26/27 Apple silicon Dock Alpha gate, independent recovery availability, pending installation verification and bundled helper paths.
+ * [OUTPUT]: Provides DOCK_MACOS_VERSIONS, the macOS 26/27 Apple silicon Dock gate, independent recovery availability, pending installation verification and bundled helper paths.
  * [POS]: system-dock platform policy (5.6); never raises the whole app's minimum system version and never reads environment overrides.
  */
 

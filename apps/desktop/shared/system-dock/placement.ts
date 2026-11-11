@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared DockLayout model and its category/semantic-key projections.
- * [OUTPUT]: Provides pure group-aware layout edits with anchored Downloads/Trash: default insertion points, singleton-aware add, drop-time move, remove with an undo token that re-adds under a fresh ID, clear, and bounded import append.
+ * [OUTPUT]: Provides pure group-aware layout edits with anchored Downloads/Trash: default insertion points, singleton-aware add, drop-time move, remove/undo, clear, bounded import append, and replaceSystemApps for source-ordered native pins with retained other items and matching IDs.
  * [POS]: shared/system-dock editing kernel used by main (the only Store writer) and by renderer previews; never performs I/O.
  */
 
@@ -91,4 +91,23 @@ export function appendImported(layout: DockLayout, drafts: readonly DockItemDraf
     next = result.layout; added.push(result.itemId);
   }
   return { layout: next, added, skipped };
+}
+
+/** Replacement follows current system pins; Widgets and Bottega shortcuts retain identity and relative order. */
+export function replaceSystemApps(layout: DockLayout, drafts: readonly DockItemDraft[], mint: () => string = newDockItemId): DockLayout {
+  const existing = new Map(layout.items.filter((item) => item.kind === "native-app").map((item) => [semanticKey(item), item]));
+  const seen = new Set<string>();
+  const apps = drafts.flatMap((draft) => {
+    if (draft.kind !== "native-app") return [];
+    const key = semanticKey(draft);
+    if (!key || seen.has(key)) return [];
+    seen.add(key);
+    return [{ ...draft, id: existing.get(key)?.id ?? mint() } as DockItem];
+  });
+  const retained = orderedItems(layout).filter((item) => item.kind !== "native-app");
+  if (retained.length + apps.length > DOCK_LAYOUT_BUDGET.items) throw new Error("DOCK_LAYOUT_BUDGET_EXCEEDED");
+  const order = retained.map((item) => item.id);
+  const finder = retained.findIndex((item) => item.kind === "system" && item.entry === "system.finder");
+  order.splice(finder + 1, 0, ...apps.map((item) => item.id));
+  return commit(layout, [...retained, ...apps], order);
 }

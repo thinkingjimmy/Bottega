@@ -1,11 +1,12 @@
 /**
  * [INPUT]: Depends only on i18next interpolation syntax
- * [OUTPUT]: Provides the Apps English catalog, first-party preset copy, contextual authorization copy, operation-specific progress copy, and the structural reference for translated Apps catalogs; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
+ * [OUTPUT]: Provides the Apps English catalog, App/Widget catalog filters, first-party preset copy, contextual authorization copy, operation-specific progress copy, and the structural reference for translated Apps catalogs; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: English copy for Apps discovery, install, lifecycle, authorization, Studio, sharing, and non-cancellable deletion surfaces; assembled by the matching top-level locale
  */
 
 export const appsEn = {
+  catalog: { filter: "Plugin type", widgets: "Widgets" },
   dock: {
     pin: "Pin to Dock",
     unpin: "Remove from Dock",
@@ -162,6 +163,7 @@ export const appsEn = {
     /* U06-d: an update or install that died with Bottega (a quit or a crash), said by phase; never its recorded line. */
     interrupted: { update: "The update was interrupted before it finished. Try again.", install: "The install was interrupted before it finished. Try again." },
     preparing: "Preparing {{name}}",
+    unavailable: "Open details to review the error.",
     awaitingAuthorization: "Confirm access to continue",
     operationFailed: "Operation failed",
     openProgress: "View {{name}} operation progress",
@@ -186,12 +188,17 @@ export const appsEn = {
       delete: "Cleanup failed",
     },
     aftermath: {
+      quarantined: "This App is isolated. Its data has been kept.",
       install: "This App cannot open yet. What was downloaded stays on disk.",
       update: "This App cannot open right now. The downloaded new version stays on disk.",
       delete: "Some files are already cleaned up; the App record is still in the list. Retrying picks up where it stopped.",
       pendingImport: "The App manifest was never read — only a half-finished download is on disk.",
     },
     choice: {
+      recover: {
+        title: "Rebuild from source",
+        detail: "Rebuild the App files, then review access before opening it.",
+      },
       reinstall: {
         title: "Reinstall",
         detail: "Clear what was downloaded and install again from source. Slowest, but cleanest.",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps French catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
+ * [OUTPUT]: Provides the Apps French catalog with App/Widget filters and exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: French copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,6 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsFr: typeof appsEn = {
+  catalog: { filter: "Type de plugin", widgets: "Widgets" },
   dock: {
     pin: "Épingler au Dock",
     unpin: "Retirer du Dock",
@@ -164,6 +165,7 @@ export const appsFr: typeof appsEn = {
     /* U06-d: an update or install that died with Bottega (a quit or a crash), said by phase; never its recorded line. */
     interrupted: { update: "La mise à jour a été interrompue avant la fin. Réessayez.", install: "L’installation a été interrompue avant la fin. Réessayez." },
     preparing: "Préparation de {{name}}",
+    unavailable: "Ouverture impossible. Consultez les détails de l’erreur.",
     awaitingAuthorization: "Confirmez les autorisations pour continuer",
     operationFailed: "Échec de l’opération",
     openProgress: "Voir la progression de l’opération pour {{name}}",
@@ -188,12 +190,17 @@ export const appsFr: typeof appsEn = {
       delete: "Échec du nettoyage",
     },
     aftermath: {
+      quarantined: "Cette App est isolée. Ses données sont conservées.",
       install: "Cette App ne peut pas encore s’ouvrir. Ce qui a été téléchargé reste sur le disque.",
       update: "Cette App ne peut pas s’ouvrir pour l’instant. La nouvelle version téléchargée reste sur le disque.",
       delete: "Une partie des fichiers est déjà nettoyée ; l’enregistrement de l’App reste dans la liste. Réessayer reprend là où ça s’est arrêté.",
       pendingImport: "Le manifeste de l’App n’a jamais été lu — seul un téléchargement inachevé est sur le disque.",
     },
     choice: {
+      recover: {
+        title: "Reconstruire depuis le code source",
+        detail: "Reconstruisez les fichiers de l’App, puis vérifiez les autorisations avant de l’ouvrir.",
+      },
       reinstall: {
         title: "Réinstaller",
         detail: "Effacer ce qui a été téléchargé et réinstaller depuis les sources. Le plus lent, mais le plus propre.",

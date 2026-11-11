@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the machine-local Dock edge vocabulary.
- * [OUTPUT]: Provides axis-aware bar metrics, face extents, grouped ordering, anchors, overflow and preferred panel dimensions, including the larger Downloads detail.
+ * [OUTPUT]: Provides axis-aware bar metrics, a fixed 2 DIP screen-edge gap independent of icon scale, face extents, grouped ordering, anchors, overflow and preferred panel dimensions, including the larger Downloads detail.
  * [POS]: shared/system-dock geometry kernel; main never measures DOM, the renderer never guesses window bounds, both read these numbers.
  */
 
@@ -13,7 +13,7 @@ export const DOCK_METRICS = {
   widget: { "builtin.ai-limits": 136, "builtin.ai-activity": 116, "builtin.tasks": 128 } as Record<string, number>,
   sidebarWidget: { setup: 64, single: 68, activity: 60, ring: 36, gap: 6, padding: 8, more: 20, maximum: 148 },
   sidebarEmptyCta: 132,
-  barHeight: 68, handleWidth: 132, handleHeight: 10, bottomMargin: 6, sideMargin: 16,
+  barHeight: 68, handleWidth: 132, handleHeight: 10, bottomMargin: 2, sideMargin: 16,
   /* The corner macOS gives a frameless window's native material (measured at 17 pt on macOS 26); the strip's lit
      edge follows it at every scale. The bar window is exactly the strip, so the two must agree. */
   stripRadius: 17,

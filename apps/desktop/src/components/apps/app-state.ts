@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the type of AppRecord/AppOperation shared/apps-ipc
- * [OUTPUT]: Provides lifecycle/progress translation maps, the interrupted-failure key (U06-d), retry choices with titleKey/detailKey fields, effective operation/cancellation predicates, failed/working/pending-import/awaiting-generation predicates, declaresBaseGui, the record-level badge key, and detail redirect rules
+ * [OUTPUT]: Provides lifecycle/progress and quarantine failure maps, source-rebuild retry choices, interruption copy, operation/cancellation predicates, readiness predicates, Base GUI declarations and detail redirect rules.
  * [POS]: Pure Apps lifecycle semantics shared by cards, progress, and failure surfaces; locale copy remains in the Apps catalog
  */
 
@@ -11,7 +11,7 @@ import type {
 } from "../../../shared/ipc/apps/apps-ipc";
 
 type AppState = AppRecord["state"];
-type FailedState = "install-failed" | "update-failed" | "delete-failed";
+type FailedState = "install-failed" | "update-failed" | "delete-failed" | "quarantined";
 
 const stateLabelKey: Record<AppState, string> = {
   creating: "apps.state.creating",
@@ -29,6 +29,7 @@ export const failureTitleKey: Record<FailedState, string> = {
   "install-failed": "apps.state.installFailed",
   "update-failed": "apps.state.updateFailed",
   "delete-failed": "apps.state.deleteFailed",
+  quarantined: "apps.state.quarantined",
 };
 
 /** 重试按钮文案；install-failed 统一为"干净重装"（retryInstall 会清空 manifest 重装）。 */
@@ -36,6 +37,7 @@ export const retryLabelKey: Record<FailedState, string> = {
   "install-failed": "apps.state.retryCleanInstall",
   "update-failed": "apps.state.retryBuild",
   "delete-failed": "apps.state.retryDelete",
+  quarantined: "apps.failure.choice.recover.title",
 };
 
 /* ── 失败面的两句话：哪一步没过，以及你现在的处境 ────────────────────
@@ -63,6 +65,7 @@ export const failureAftermathKey: Record<FailedState, string> = {
   "install-failed": "apps.failure.aftermath.install",
   "update-failed": "apps.failure.aftermath.update",
   "delete-failed": "apps.failure.aftermath.delete",
+  quarantined: "apps.failure.aftermath.quarantined",
 };
 
 /** 连清单都没读到的中断，处境与「装到一半失败」不同：磁盘上只有半份源码。 */
@@ -74,12 +77,16 @@ export const pendingImportAftermathKey = "apps.failure.aftermath.pendingImport";
  * 登记，而不是让调用点现拼 key —— 拼出来的 key grep 不到，也就没人能在
  * 改文案时找到它。
  * ────────────────────────────────────────────────────────────────── */
-type FailureRetryKind = "reinstall" | "rebuild" | "continue";
+type FailureRetryKind = "reinstall" | "rebuild" | "continue" | "recover";
 
 export const failureRetryChoiceKey: Record<
   FailureRetryKind,
   Readonly<{ titleKey: string; detailKey: string }>
 > = {
+  recover: {
+    titleKey: "apps.failure.choice.recover.title",
+    detailKey: "apps.failure.choice.recover.detail",
+  },
   reinstall: {
     titleKey: "apps.failure.choice.reinstall.title",
     detailKey: "apps.failure.choice.reinstall.detail",
@@ -94,12 +101,11 @@ export const failureRetryChoiceKey: Record<
   },
 };
 
-export const failureRetryKind = (record: AppRecord): FailureRetryKind =>
-  isPendingBaseImport(record)
-    ? "continue"
-    : record.state === "update-failed"
-      ? "rebuild"
-      : "reinstall";
+export const failureRetryKind = (record: AppRecord): FailureRetryKind => {
+  if (record.state === "quarantined") return "recover";
+  if (isPendingBaseImport(record)) return "continue";
+  return record.state === "update-failed" ? "rebuild" : "reinstall";
+};
 
 /** 修的是哪一份文件，决定了这个答案的后果句；两个值与 repairSite 一一对应。 */
 export const repairDetailKey: Record<"staging" | "copy", string> = {
@@ -150,7 +156,8 @@ export const isCancelableOperation = (
 export const isFailedState = (state: AppState): state is FailedState =>
   state === "install-failed" ||
   state === "update-failed" ||
-  state === "delete-failed";
+  state === "delete-failed" ||
+  state === "quarantined";
 
 export const isPendingBaseImport = (record: AppRecord) =>
   record.state === "install-failed" &&

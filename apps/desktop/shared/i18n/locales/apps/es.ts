@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Spanish catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
+ * [OUTPUT]: Provides the Apps Spanish catalog with App/Widget filters and exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Spanish copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,6 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsEs: typeof appsEn = {
+  catalog: { filter: "Tipo de plugin", widgets: "Widgets" },
   dock: {
     pin: "Fijar en el Dock",
     unpin: "Quitar del Dock",
@@ -164,6 +165,7 @@ export const appsEs: typeof appsEn = {
     /* U06-d: an update or install that died with Bottega (a quit or a crash), said by phase; never its recorded line. */
     interrupted: { update: "La actualización se interrumpió antes de terminar. Vuelve a intentarlo.", install: "La instalación se interrumpió antes de terminar. Vuelve a intentarlo." },
     preparing: "Preparando {{name}}",
+    unavailable: "No se puede abrir. Consulta el error en los detalles.",
     awaitingAuthorization: "Confirma los permisos para continuar",
     operationFailed: "La operación falló",
     openProgress: "Ver el progreso de la operación de {{name}}",
@@ -188,12 +190,17 @@ export const appsEs: typeof appsEn = {
       delete: "Error al limpiar",
     },
     aftermath: {
+      quarantined: "Esta App está aislada. Sus datos se han conservado.",
       install: "Esta App todavía no puede abrirse. Lo descargado permanece en el disco.",
       update: "Esta App no puede abrirse ahora mismo. La nueva versión descargada permanece en el disco.",
       delete: "Parte de los archivos ya se limpiaron; el registro de la App sigue en la lista. Reintentar continúa donde se detuvo.",
       pendingImport: "El manifiesto de la App nunca se leyó: en el disco solo hay una descarga a medias.",
     },
     choice: {
+      recover: {
+        title: "Reconstruir desde el código fuente",
+        detail: "Reconstruye los archivos de la App y revisa los permisos antes de abrirla.",
+      },
       reinstall: {
         title: "Reinstalar",
         detail: "Borrar lo descargado e instalar de nuevo desde el código fuente. Lo más lento, pero lo más limpio.",

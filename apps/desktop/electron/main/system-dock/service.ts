@@ -494,7 +494,7 @@ export class DockService {
         this.revealTimer = null;
         // The pointer resting in the margin under the strip is still "on the bar"; poll until it really leaves.
         const placement = this.runtime.placement;
-        if (placement && inBarGap(placement, screen.getCursorScreenPoint(), this.ports.local.get().scale)) { this.revealTimer = this.clock.setTimeout(collapse, 250); return; }
+        if (placement && inBarGap(placement, screen.getCursorScreenPoint())) { this.revealTimer = this.clock.setTimeout(collapse, 250); return; }
         const current = this.panel.current();
         if (current.state === "visible" && !current.request?.focus) this.panel.close();
         if (this.panel.current().state !== "visible") { this.runtime.revealed = false; this.schedule(); }

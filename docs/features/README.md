@@ -4,7 +4,7 @@
 
 Bottega treats an Agent conversation as the control surface for a durable local workspace. The following capability areas define the product.
 
-This guide describes **0.4.2/protocol 27** source behavior. Installer availability and actual acceptance scope come from the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest).
+This guide describes **0.4.3/protocol 27** source behavior. Installer availability and actual acceptance scope come from the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest).
 
 ## Multi-agent
 
@@ -67,13 +67,14 @@ Command output stays in the original command details. Background services show t
 - Combine pages, Widgets, composer extensions, tools, services and Chat modes in one package. Ordinary use does not create a source Project. First authoring creates or reuses its Library Project; multiple Chats can work in that source.
 - Install dependencies with bundled Node and pnpm. Dependency scripts stay off by default and need explicit approval when required. Valid builds update local instances automatically; failed builds keep usable code. Recover code versions without reverting current data.
 - Choose a Chat mode before the first message. The mode then stays fixed; Agent and model selection keep their existing behavior.
-- Share explicitly to enable encrypted source/runtime delivery for one plugin and account. Later versions use that consent. Receiving computers review and accept complete packages without installing dependencies or compiling them.
+- Expand a tool in plugin details to read its description, input and output fields, and original JSON schema. Receiving computers review and accept encrypted account packages before use.
 - Backend plugins run trusted local code and can use host credentials. Plugin switches control Bottega contributions; they do not disable a Provider's own native tools. Arbitrary native modules and remote scripts are outside the supported compatibility scope.
 - Turning a plugin off keeps content and settings. Missing dependencies suspend affected contributions and explain why. Code recovery, plugin removal and data deletion retain their separate owners.
 - Third-party Provider modules are not enabled in this release. The four built-in Providers remain the available production choices; no public plugin marketplace or SDK publication is included.
 
 ## App
 
+- Use **Rebuild from source** when an editable App is isolated after build verification. Review access before opening the rebuilt App.
 - Install static, server, or Base-backed Apps from immutable Git revisions.
 - Use React interfaces across the bundled Expense Tracker and Fitness Log, with shared interface conventions.
 - Check each App's minimum Bottega version before installation, rebuilding, authorization, or activation; return to the original candidate after upgrading. Both bundled Apps require Bottega 0.1.3 or newer.
@@ -117,13 +118,11 @@ Controlled-version checks cover macOS 26.4.1 and 27.0.0 on a macOS 27 Apple sili
 
 - Pin an available Bottega App from its menu and open or focus it in a separate window with its session and draft. Dock and sidebar pins are independent. Drag to reorder or drag out to unpin; menus open beside the selected icon.
 
-**Alpha · macOS 26 or 27 · Apple silicon**
-
-Dock remains **Alpha**. Replacement, recovery across logout or restart, and display/fullscreen combinations are still being validated. The plugin requires macOS 26.x or 27.x and Apple silicon; the main application's requirements stay unchanged.
+**macOS 26 or 27 · Apple silicon**
 
 - On macOS 26.x or 27.x with Apple silicon, keep the Apps you build in Bottega, your other Apps, Finder, Downloads, the Trash, and an AI-limits ring per Agent in one Dock. This requirement applies to the entire Dock plugin; the main application's requirements stay unchanged.
 - Enable it from Settings › Plugins › Dock. Choose coexistence, or replacement after the installed app, native helper, recovery executable and bundled background-service configuration pass verification. Development and unsigned builds offer coexistence.
-- Choose a mode and layout, then confirm the impact before replacement registers a background item or changes the system Dock. Existing coexistence settings and layouts are retained.
+- Confirm replacement to align pinned native apps with the system Dock in the same order. This keeps Bottega App shortcuts, Widgets and system entries. Coexistence offers an optional copy action.
 - If background approval is needed, open System Settings from Dock settings. Returning refreshes the status without automatic registration or takeover. If macOS cannot find the recovery registration, it may not have been created yet. After replacement consent, use Continue enabling to retry when installation verification passes and pending recovery is resolved.
 - Replacement becomes active only after the recovery handshake, Dock entry and preference writes are confirmed. During preparation or active replacement, an unexpected native-bridge exit starts system Dock restoration and pauses replacement until explicit Resume. Failed restoration retains its record and Retry action. Independent recovery checks an interrupted restoration again after its short grace period instead of leaving it skipped indefinitely.
 - Choose the primary display, prefer an external display, or select a specific display, then place the Dock on the left, bottom, or right edge. Display and edge preferences stay on this computer.
@@ -136,7 +135,7 @@ Dock remains **Alpha**. Replacement, recovery across logout or restart, and disp
 
 ### Custom Widgets
 
-Create a Widget from Dock settings and continue editing in its plugin source Project. Previewing remains optional. Valid local builds update installed instances automatically; failed builds keep the working version. Each instance has independent settings and Base/API grants. API credentials stay encrypted on this computer. Use standard or isolated details, approved actions and manual refresh. Share explicitly before enabling delivery to your account; receiving a compiled package never grants execution or local data access automatically.
+Create a Widget from Dock settings and continue editing in its plugin source Project. Previewing remains optional. Valid local builds update installed instances automatically; failed builds keep the working version. Each instance has independent settings and Base/API grants. API credentials stay encrypted on this computer. Use standard or isolated details, approved actions and manual refresh. Review a received package before allowing it to run or access local data.
 
 ### Weather
 

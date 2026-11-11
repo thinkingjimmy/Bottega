@@ -5,6 +5,17 @@
 本文件只记录产品里程碑，不记录内部实现的逐次迭代。日期表示对应能力首次形成完整产品形态的时间。
 
 
+## 2026-11-11 — v0.4.3
+
+0.4.3 源码面向搭载 Apple 芯片的 Mac（ARM64），使用 Cloud **协议 27**。安装包可用性与验收范围见[最新稳定 Release](https://github.com/thinkingjimmy/Bottega/releases/latest)。
+
+- **更容易找到和了解插件。** 目录采用统一的卡片布局，简介更清楚。详情显示发布者、版本和状态。展开工具即可查看完整说明、输入输出字段和原始 JSON 定义。
+- **更快设置 Bottega Dock。** Dock 在搭载 Apple 芯片的 macOS 26 或 27 上结束 Alpha 阶段。确认替代后，Bottega Dock 按系统 Dock 的固定 App 列表和顺序调整布局，保留 Bottega App 快捷方式和小组件。共存模式仍可手动复制。
+- **从源码重新构建符合条件的 App。** 卡片和详情显示构建不可用的原因。选择「从源码重新构建」，确认权限后再打开。
+- **打开 Bottega 文件夹时可看到进度。** 设置按钮原位显示进度。打开失败后，可在当前步骤重试。
+
+签名安装包的 Dock 接管与恢复、显示器与全屏组合，以及旧版已安装应用的原地升级，仍需单独验收。
+
 ## 2026-11-09 — v0.4.2
 
 0.4.2 源码面向 macOS Apple 芯片（ARM64）。安装包可用性与实际验收范围见[最新稳定 Release](https://github.com/thinkingjimmy/Bottega/releases/latest)。

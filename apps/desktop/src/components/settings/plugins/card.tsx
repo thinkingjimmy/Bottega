@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on lucide icons, Agent identity, the Settings switch primitive, workbench-copy, shared stage/requirement metadata and the plugin view.
+ * [INPUT]: Depends on lucide icons, Agent identity, the Settings switch, workbench-copy, the shared catalog card frame and plugin metadata.
  * [OUTPUT]: Provides PluginGlyph (built-in icon, Provider mark or package mark) and PluginIcon (that glyph on a md / lg / xl tile), PluginCard (icon, name that opens the plugin's
- *           introduction, publisher, two-line summary, actionable notes and a top-right switch or fixed badge; setup plugins open
+ *           introduction, publisher, two-line summary, actionable notes and a top-right switch or fixed status in equal-height cards; setup plugins open
  *           their existing flow from the switch and reflect the confirmed catalog state), CardState (what the page
  *           knows beyond the catalog: switching now, busy, changed files) and lockedCard.
  * [POS]: One card of the All plugins catalog (redesign 2026-10-02: All plugins introduces, the sidebar entry holds settings). The whole
@@ -16,7 +16,8 @@ import { AgentBackendIcon, backendLabel, isAgentBackendId } from "@/lib/agent/ag
 import { ReportIssueButton } from "@/components/report-issue-button";
 import type { PluginView } from "@ai-chat/cloud-protocol/contracts/plugins/catalog";
 import { pluginPublisher, pluginText } from "./copy";
-import { PluginRequirement, PluginStage } from "./detail/metadata";
+import { PluginRequirement } from "./detail/metadata";
+import { PluginCardFrame } from "./platform/details/card-frame";
 
 const BUILTIN_ICONS: Record<string, typeof Table2> = { base: Table2, memory: Brain, tunnel: Globe, dock: PanelBottom, sketch: PenTool, artifact: PanelsTopLeft };
 
@@ -41,7 +42,7 @@ export const lockedCard = (state: CardState, id: string) => state.locked === id 
 
 /** Packages and Agent-native plugins carry no summary yet; say what kind of plugin it is rather than leave two blank lines. */
 const fallbackSummary = (plugin: PluginView, copy: WorkbenchCopy["plugins"]) =>
-  plugin.source === "package" ? formatWorkbench(copy.badgePackage, { version: plugin.version ?? "—" }) : plugin.source === "agent-native" ? copy.sourceNativeLong : "";
+  plugin.source === "package" ? copy.sourcePackageLong : plugin.source === "agent-native" ? copy.sourceNativeLong : copy.sourceBuiltinLong;
 
 export function PluginCard({ plugin, workbench, state, onOpen, onToggle, onSetup }: {
   plugin: PluginView;
@@ -63,7 +64,7 @@ export function PluginCard({ plugin, workbench, state, onOpen, onToggle, onSetup
   } else if (!plugin.turnOff.allowed) {
     const text = plugin.turnOff.reason === "always-on" ? copy.alwaysOn : plugin.turnOff.reason === "project-scoped" ? copy.projectScopedBadge
       : formatWorkbench(copy.nativeManagedBy, { agent: backendLabel(plugin.managedBy ?? "") });
-    control = <span className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-muted-foreground text-xs"><Lock aria-hidden className="size-3" />{text}</span>;
+    control = <span className="inline-flex items-center gap-1 text-muted-foreground text-xs"><Lock aria-hidden className="size-3" />{text}</span>;
   } else if (note === "reinstall") {
     /* Always shown, not only on hover (touch has none); the one thing to do now is tell us. */
     control = <span className="pointer-events-auto"><ReportIssueButton title={formatWorkbench(copy.reinstallIssueTitle, { name })} body={`Plugin: ${name}\nError: plugin-reinstall-required`} /></span>;
@@ -78,22 +79,13 @@ export function PluginCard({ plugin, workbench, state, onOpen, onToggle, onSetup
     : plugin.availability.state === "unsupported" ? pluginText(plugin.availability.detail, workbench)
     : blocked ? copy.blocked : null;
   return (
-    <div data-plugin={plugin.id} data-plugin-enabled={plugin.enabled ? "true" : "false"}
-      className="group/card relative flex min-w-0 flex-col gap-2.5 rounded-md border bg-card p-3 transition-[border-color,box-shadow] hover:border-foreground/20 hover:shadow-sm has-[[data-card-open]:focus-visible]:ring-2 has-[[data-card-open]:focus-visible]:ring-ring/50">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span className={cn(!plugin.enabled && plugin.source !== "agent-native" && "opacity-60")}><PluginIcon plugin={plugin} size="md" /></span>
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="flex min-w-0 items-center gap-1.5"><button type="button" data-card-open="" onClick={() => onOpen(plugin)}
-            className="min-w-0 cursor-pointer truncate text-left font-semibold text-[13px] leading-5 outline-none after:absolute after:inset-0 after:cursor-pointer after:rounded-md after:content-['']">{name}</button>
-            <PluginStage plugin={plugin} workbench={workbench} /></span>
-          <span className="truncate text-muted-foreground text-xs">{pluginPublisher(plugin, workbench)}</span>
-        </span>
-        {control && <span className="pointer-events-none relative z-10 flex min-h-5 max-w-1/2 shrink-0 items-center self-start" aria-busy={pending ? true : undefined}>{control}</span>}
-      </div>
-      <p className="line-clamp-2 min-h-[2lh] text-pretty text-muted-foreground text-xs leading-[18px]">{pluginText(plugin.summary, workbench) || fallbackSummary(plugin, copy)}</p>
-      <PluginRequirement plugin={plugin} workbench={workbench} />
-      {line && <p className={cn("text-xs leading-[17px]", note === "reinstall" ? "text-destructive" : note === "busy" || blocked ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}
-        data-plugin-note={note ?? (plugin.availability.state === "unsupported" ? "unsupported" : blocked ? "blocked" : "scoped")}>{line}</p>}
-    </div>
+    <PluginCardFrame data-plugin={plugin.id} data-plugin-enabled={plugin.enabled ? "true" : "false"} aria-busy={pending ? true : undefined}
+      name={name} publisher={<>{pluginPublisher(plugin, workbench)}{plugin.releaseStage && ` · ${copy.stageAlpha}`}</>}
+      summary={pluginText(plugin.summary, workbench) || fallbackSummary(plugin, copy)}
+      icon={<span className={cn(!plugin.enabled && plugin.source !== "agent-native" && "opacity-60")}><PluginIcon plugin={plugin} size="md" /></span>}
+      control={control} onOpen={() => onOpen(plugin)}
+      footer={<><div className="line-clamp-1" title={pluginText(plugin.systemRequirement, workbench)}><PluginRequirement plugin={plugin} workbench={workbench} /></div>
+        {line && <p title={line} className={cn("line-clamp-1 text-xs leading-[18px]", note === "reinstall" ? "text-destructive" : note === "busy" || blocked ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}
+          data-plugin-note={note ?? (plugin.availability.state === "unsupported" ? "unsupported" : blocked ? "blocked" : "scoped")}>{line}</p>}</>}/>
   );
 }

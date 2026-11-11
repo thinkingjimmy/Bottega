@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Localized Dock copy and the shared weather translation dictionary.
- * [OUTPUT]: Provides systemDockLazyJa, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; retired manual Widget editor labels are excluded.
+ * [OUTPUT]: Provides systemDockLazyJa, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../ja.ts.
  */
 
@@ -272,7 +272,7 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     loadFailed: "Dock の設定を読み込めませんでした。",
     unsupportedTitle: "Bottega Dock は使用できません",
     unsupportedPlatform: "Bottega Dock は macOS でのみ使用できます。",
-    unsupportedVersion: "Dock Alpha は Apple シリコン搭載 Mac の macOS 26 と 27 に対応しています。他の macOS バージョンには対応していません。",
+    unsupportedVersion: "Dock は Apple シリコン搭載 Mac の macOS 26 と 27 に対応しています。他の macOS バージョンには対応していません。",
     unsupportedArchitecture: "Bottega Dock には Apple シリコン搭載の Mac が必要です。",
     unsupportedHelperMissing: "Bottega Dock に必要なヘルパーがこのインストールにありません。Dock を使うには Bottega を再インストールしてください。",
     registrationUnknown: "確認できません",
@@ -293,15 +293,14 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     reading: "システムの Dock を読み取り中…",
     previewFailed: "システムの Dock を読み取れませんでした。もう一度試すか、あとで App を追加してください。",
     layoutTitle: "Dock のレイアウト",
-    layoutKept: "既存の Dock レイアウトはそのまま保持されます。",
+    replacementLayout: "固定アプリは現在のシステム Dock の順序で自動設定されます。既存のウィジェットは保持されます。",
+    replacementImportFailed: "システム Dock のアプリを読み取れませんでした。置き換える前に再試行してください。",
     previewLabel: "Dock レイアウトのプレビュー",
-    importReplaceLabel: "システムの Dock にある App",
     importCopyLabel: "コピーする App を選択",
     coexistImportHint: "Finder、AI 利用上限、ダウンロード、ゴミ箱から始めるか、システムの Dock から App をコピーします。",
     copyFromSystem: "システムの Dock からコピー",
     noCandidates: "システムの Dock からコピーできる App はありません。",
     addLater: "App はあとで Dock から追加できます。",
-    skipImport: "読み込まない",
     readFailure: {
       unavailable: "システムの Dock を読み取れませんでした。",
       managed: "システムの Dock は組織によって管理されているため、コピーできません。",

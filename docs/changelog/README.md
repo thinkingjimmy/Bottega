@@ -5,6 +5,17 @@
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
 
+## 2026-11-11 — v0.4.3
+
+Version 0.4.3 source targets macOS on Apple silicon (ARM64) and uses Cloud protocol **27**. See the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest) for installer availability and validation scope.
+
+- **Find and inspect plugins more easily.** The catalog shows consistent cards with clear introductions. Plugin details show publisher, version and status. Expand a tool to see its full description, input and output fields, and original JSON schema.
+- **Set up Bottega Dock in fewer steps.** Dock leaves Alpha on Apple silicon with macOS 26 or 27. Confirm replacement to match the system Dock's pinned apps and their order. Bottega App shortcuts and Widgets stay in your layout. Coexistence offers an optional copy action.
+- **Rebuild an eligible App from source.** The App card and detail page explain why a build is unavailable. Choose **Rebuild from source**, then review access before opening the rebuilt App.
+- **See progress while opening your Bottega folder.** The setup button shows progress in place. If opening fails, retry from the same step.
+
+Dock takeover and recovery with the signed installer, display and full-screen combinations, and an installed upgrade from an older version have separate acceptance checks.
+
 ## 2026-11-09 — v0.4.2
 
 Version 0.4.2 source targets macOS on Apple silicon (ARM64). See the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest) for installer availability and actual acceptance scope.

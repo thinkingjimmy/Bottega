@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Settings folder selection, the onboarding folder suggestion and materialization progress, DialogChoice, OnboardingActions and the Settings alert.
- * [OUTPUT]: FolderStep — the suggested folder (Start fresh at the first free home-level name, or Continue where you left off at a found Bottega folder) and Choose a folder… as one radio group with Continue; a configured folder that failed to open retries in place. It advances only after the library finishes opening.
+ * [OUTPUT]: FolderStep — suggested/custom folder selection with disabled choices and fixed-size button loading throughout opening, including early path persistence; configured-folder failures retry in place, and ready advances automatically.
  * [POS]: Onboarding required data-location step body inside OnboardingFrame.
  */
 import { Folder, FolderOpen, FolderPlus } from "lucide-react";
@@ -51,8 +51,7 @@ export function FolderStep({ onSelected }: { onSelected: () => void }) {
   }, [chosen, attempt]);
   const selected: Choice = suggestion ? choice : "choose";
 
-  /* A folder that's already been chosen never shows the choices again — changing folders isn't
-     supported here, and doing so would just trade one failure for another. */
+  // Once a path is committed, recovery retries that path; folder changes belong in Settings.
   const open = async () => {
     const opened = chosen ? await settingsStore.retryLibrary()
       : selected === "suggested" && suggestion ? await settingsStore.openSuggestedChatHomesRoot(suggestion.path)
@@ -64,9 +63,13 @@ export function FolderStep({ onSelected }: { onSelected: () => void }) {
 
   const alert = (error || chatHomesRootError) && <SettingsAlert>{chatHomesRootError || error}</SettingsAlert>;
   const continueButton = (label: string) => (
-    <SettingsButton disabled={chatHomesRootBusy || !settings || suggestion === undefined && !chosen} onClick={() => void open()}>
-      {chatHomesRootBusy && <Spinner className="size-3.5" />}
-      {chatHomesRootBusy ? t("onboarding.opening") : label}
+    <SettingsButton disabled={chatHomesRootBusy || !settings || suggestion === undefined && !chosen}
+      aria-busy={chatHomesRootBusy} aria-label={chatHomesRootBusy ? t("onboarding.opening") : undefined}
+      onClick={() => void open()}>
+      <span className="relative inline-flex items-center justify-center">
+        <span className={chatHomesRootBusy ? "invisible" : undefined}>{label}</span>
+        {chatHomesRootBusy && <Spinner aria-hidden="true" className="absolute size-3.5 motion-reduce:animate-none" />}
+      </span>
     </SettingsButton>
   );
 
@@ -78,7 +81,9 @@ export function FolderStep({ onSelected }: { onSelected: () => void }) {
       </OnboardingActions>
     </>;
   }
-  if (chosen) {
+  // The path can be saved before opening finishes; keep the form for that request.
+  const keepChoices = chatHomesRootBusy && suggestion !== undefined;
+  if (chosen && !keepChoices) {
     return <>
       <p className="break-all font-mono text-[12.5px] text-foreground/80" title={settings?.chatHomesRoot ?? undefined}>{settings?.chatHomesRoot}</p>
       <FolderProgress progress={folderProgress} />
@@ -110,7 +115,6 @@ export function FolderStep({ onSelected }: { onSelected: () => void }) {
         onClick={() => setChoice("choose")}
       />
     </div>
-    <FolderProgress progress={folderProgress} />
     {alert}
     <OnboardingActions><span className="flex-1" />{continueButton(t("onboarding.next"))}</OnboardingActions>
   </>;

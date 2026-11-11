@@ -6,7 +6,7 @@
 export const dock = {
   "name": "Bottega Dock",
   "summary": "应用快捷入口与用量小组件。可保留系统 Dock，也可在确认后替代它。",
-  "description": "Bottega Dock 将应用、系统快捷入口和用量小组件放在屏幕边缘。\n\nDock 目前处于 Alpha 阶段，默认关闭。你可以选择布局和模式。替代模式需要通过签名验证的安装包及你的确认。退出 Bottega 或关闭 Dock 时，会恢复系统 Dock。",
+  "description": "Bottega Dock 将应用、系统快捷入口和用量小组件放在屏幕边缘。\n\nDock 默认关闭。你可以选择布局和模式。替代模式需要通过签名验证的安装包及你的确认。退出 Bottega 或关闭 Dock 时，会恢复系统 Dock。",
   "systemRequirement": "macOS {{version}} · Apple 芯片",
   "replacementAvailable": "确认后可启用",
   "replacementChecking": "正在检查安装包…",

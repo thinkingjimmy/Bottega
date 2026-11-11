@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Japanese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
+ * [OUTPUT]: Provides the Apps Japanese catalog with App/Widget filters and exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Japanese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,6 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsJa: typeof appsEn = {
+  catalog: { filter: "プラグインの種類", widgets: "ウィジェット" },
   dock: {
     pin: "Dock に固定",
     unpin: "Dock から削除",
@@ -164,6 +165,7 @@ export const appsJa: typeof appsEn = {
     /* U06-d: an update or install that died with Bottega (a quit or a crash), said by phase; never its recorded line. */
     interrupted: { update: "更新が完了する前に中断されました。もう一度お試しください。", install: "インストールが完了する前に中断されました。もう一度お試しください。" },
     preparing: "{{name}} を準備中",
+    unavailable: "現在開けません。詳細で原因を確認してください。",
     awaitingAuthorization: "権限を確認すると続行できます",
     operationFailed: "操作に失敗しました",
     openProgress: "{{name}} の操作状況を表示",
@@ -188,12 +190,17 @@ export const appsJa: typeof appsEn = {
       delete: "クリーンアップに失敗しました",
     },
     aftermath: {
+      quarantined: "この App は隔離されています。データは保持されています。",
       install: "この App はまだ開けません。ダウンロード済みの内容はディスクに残っています。",
       update: "この App は現在開けません。ダウンロード済みの新しいバージョンはディスクに残っています。",
       delete: "一部のファイルは削除済みで、App のレコードは一覧に残っています。再試行すると中断した所から続きます。",
       pendingImport: "App マニフェストをまだ読めておらず、ディスクには未完了のダウンロードだけがあります。",
     },
     choice: {
+      recover: {
+        title: "ソースから再ビルド",
+        detail: "App のファイルを再生成し、アクセス権を確認してから開きます。",
+      },
       reinstall: {
         title: "再インストール",
         detail: "ダウンロード済みの内容を消し、ソースから入れ直します。最も遅いですが最もきれいです。",

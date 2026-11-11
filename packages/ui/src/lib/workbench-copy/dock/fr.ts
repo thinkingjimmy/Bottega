@@ -6,7 +6,7 @@
 export const dock = {
   "name": "Bottega Dock",
   "summary": "Raccourcis et widgets d’utilisation. Conservez le Dock système ou remplacez-le après confirmation.",
-  "description": "Bottega Dock place vos Apps, raccourcis système et widgets d’utilisation au bord de l’écran.\n\nDock est en phase Alpha et désactivé par défaut. Choisissez une disposition et un mode. Le remplacement exige une installation signée vérifiée et votre confirmation. Quitter Bottega ou désactiver Dock restaure le Dock système.",
+  "description": "Bottega Dock place vos Apps, raccourcis système et widgets d’utilisation au bord de l’écran.\n\nDock est désactivé par défaut. Choisissez une disposition et un mode. Le remplacement exige une installation signée vérifiée et votre confirmation. Quitter Bottega ou désactiver Dock restaure le Dock système.",
   "systemRequirement": "macOS {{version}} · Puce Apple",
   "replacementAvailable": "Disponible après confirmation",
   "replacementChecking": "Vérification de l’installation…",

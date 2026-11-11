@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on app-state failure title/aftermath maps and retry titleKey/detailKey pairs, Apps i18n, repair eligibility, the shared DialogChoice option row, and UI card/button/tooltip primitives
- * [OUTPUT]: Provides AppFailureCard: the verdict, the answers that carry their own consequences, and a full-bleed machine band holding the raw error, its phase, copy, and the full log
+ * [INPUT]: Depends on app-state failure maps and retry copy, Apps i18n, repair and artifact-quarantine rebuild eligibility, DialogChoice, and UI card/button/tooltip primitives.
+ * [OUTPUT]: Provides AppFailureCard with quarantine diagnostics, source-rebuild choices only for artifact failures, existing recovery choices, and a bounded raw error/log band.
  * [POS]: apps/desktop/src/components/apps/cards; Apps failure surface consumed by AppDetailView; durable Base imports expose only continue or cancel
  */
 
@@ -21,7 +21,7 @@ import {
   TooltipTrigger,
 } from "@ai-chat/ui/components/ui/tooltip";
 import { cn } from "@ai-chat/ui/lib/utils";
-import { repairSite, type AppRecord } from "../../../../shared/ipc/apps/apps-ipc";
+import { canRebuildQuarantinedApp, repairSite, type AppRecord } from "../../../../shared/ipc/apps/apps-ipc";
 import {
   failureAftermathKey,
   failurePhaseTitleKey,
@@ -69,6 +69,7 @@ export function AppFailureCard({
   const pendingImport = isPendingBaseImport(record);
   const site = pendingImport ? null : repairSite(record);
   const retry = failureRetryChoiceKey[failureRetryKind(record)];
+  const canRetry = record.state !== "quarantined" || canRebuildQuarantinedApp(record);
   const soleAnswer = record.state === "delete-failed";
 
   return (
@@ -81,7 +82,7 @@ export function AppFailureCard({
           {/* 标题说哪一步没过；没有 lastError 时才退回状态机的说法。 */}
           <CardTitle>
             {t(
-              record.lastError
+              record.state === "quarantined" ? failureTitleKey[record.state] : record.lastError
                 ? failurePhaseTitleKey[record.lastError.phase]
                 : failureTitleKey[record.state]
             )}
@@ -101,13 +102,15 @@ export function AppFailureCard({
             </div>
           ) : (
             <div className="grid gap-2">
-              <DialogChoice
-                size="sm"
-                badge={t("apps.failure.recommended")}
-                title={t(retry.titleKey)}
-                detail={t(retry.detailKey)}
-                onClick={onRetry}
-              />
+              {canRetry && (
+                <DialogChoice
+                  size="sm"
+                  badge={t("apps.failure.recommended")}
+                  title={t(retry.titleKey)}
+                  detail={t(retry.detailKey)}
+                  onClick={onRetry}
+                />
+              )}
               {pendingImport && (
                 <DialogChoice
                   size="sm"

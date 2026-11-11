@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Localized Dock copy and the shared weather translation dictionary.
- * [OUTPUT]: Provides systemDockLazyEs, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; retired manual Widget editor labels are excluded.
+ * [OUTPUT]: Provides systemDockLazyEs, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../es.ts.
  */
 
@@ -272,7 +272,7 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
     loadFailed: "No se pudieron cargar los ajustes del Dock.",
     unsupportedTitle: "Bottega Dock no está disponible",
     unsupportedPlatform: "Bottega Dock solo está disponible en macOS.",
-    unsupportedVersion: "Dock Alpha admite macOS 26 y 27 en los Mac con chip de Apple. No se admiten otras versiones de macOS.",
+    unsupportedVersion: "Dock admite macOS 26 y 27 en los Mac con chip de Apple. No se admiten otras versiones de macOS.",
     unsupportedArchitecture: "Bottega Dock requiere un Mac con chip de Apple.",
     unsupportedHelperMissing: "Falta un componente necesario para Bottega Dock en esta instalación. Reinstala Bottega para usar el Dock.",
     registrationUnknown: "Sin verificar",
@@ -293,15 +293,14 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
     reading: "Leyendo el Dock del sistema…",
     previewFailed: "No se pudo leer el Dock del sistema. Inténtalo de nuevo o añade apps más tarde.",
     layoutTitle: "Disposición de tu Dock",
-    layoutKept: "Se mantiene tal cual la disposición actual de tu Dock.",
+    replacementLayout: "Tus apps fijadas seguirán el orden actual del Dock del sistema. Se conservarán tus widgets.",
+    replacementImportFailed: "No se pudieron leer las apps del Dock del sistema. Vuelve a intentarlo antes de reemplazarlo.",
     previewLabel: "Vista previa de la disposición del Dock",
-    importReplaceLabel: "Apps del Dock del sistema",
     importCopyLabel: "Elige las apps que quieres copiar",
     coexistImportHint: "Empieza con el Finder, Límites de IA, Descargas y la Papelera, o copia apps del Dock del sistema.",
     copyFromSystem: "Copiar del Dock del sistema",
     noCandidates: "No se pudo copiar ninguna app del Dock del sistema.",
     addLater: "Puedes añadir apps más tarde desde el Dock.",
-    skipImport: "Omitir importación",
     readFailure: {
       unavailable: "No se pudo leer el Dock del sistema.",
       managed: "Tu organización gestiona el Dock del sistema y no se puede copiar.",

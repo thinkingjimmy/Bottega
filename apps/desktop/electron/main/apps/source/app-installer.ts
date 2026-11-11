@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AppStore, task-frozen automatic maintenance selection, no-link manifest reads, source/compatibility receipts, joined commands, publication and generation consent.
- * [OUTPUT]: Executes authorized App install/update/repair work with target-specific maintenance eligibility and independent update custody and the existing source, publication and permission fences. Fences disabled rebuild/repair and auto-start without rolling back enablement.
+ * [OUTPUT]: Executes authorized App install/update/repair and explicit artifact-quarantine rebuilds with target-specific maintenance eligibility, independent update custody, and the existing source, publication and permission fences.
  * [POS]: Apps supply-chain coordinator; it turns mutable source trees into validated runtime generations while AppSourceMonitor owns observation inside the same mutation lane
  */
 
@@ -20,6 +20,7 @@ import {
 import { join } from "node:path";
 import {
   appSourceStateOf,
+  canRebuildQuarantinedApp,
   repairSite,
   servesWebRuntime,
   type AppFailurePhase,
@@ -276,7 +277,7 @@ export class AppInstaller {
     assertAppEnabled(this.store.get(appId));
     assertUpdateIdle(this.store.get(appId));
     const record = this.store.get(appId);
-    if (!record || record.state !== "update-failed") {
+    if (!record || (record.state !== "update-failed" && !canRebuildQuarantinedApp(record))) {
       throw new Error("当前状态不能重试更新");
     }
     await this.rebuildAfterEdit(appId, true);
@@ -308,7 +309,7 @@ export class AppInstaller {
     assertUpdateIdle(this.store.get(appId));
     if (this.maintenanceGate.isLocked(appId)) throw new Error("App 修复中");
     const record = this.store.get(appId);
-    if (!record || !["ready", "update-failed"].includes(record.state)) {
+    if (!record || (!["ready", "update-failed"].includes(record.state) && !canRebuildQuarantinedApp(record))) {
       throw new Error("App 尚未就绪");
     }
     const task = this.localTask();

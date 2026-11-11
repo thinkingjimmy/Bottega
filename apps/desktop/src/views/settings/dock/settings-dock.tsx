@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, the i18n provider, SettingsPage and Settings primitives, the Dock settings store, and the settings/dock sections.
- * [OUTPUT]: Provides DockSettingsView, reusable DockSettingsContent for the plugin detail, and DockPluginSetupDialog; all use the original owner, sections and setup confirmation. Focus return refreshes registration; sync decisions and recovery remain available while off, with routine sync status hidden. Includes localized App shortcut failures.
+ * [OUTPUT]: Provides DockSettingsView, reusable DockSettingsContent for the plugin detail, and DockPluginSetupDialog; all use the original owner, sections and setup confirmation with main-owned layout initialization for visible steps. Focus return refreshes registration; sync decisions and recovery remain available while off, with routine sync status hidden. Includes localized App shortcut failures.
  * [POS]: apps/desktop/src/views/settings/dock; Settings layer's legacy Dock page and the Dock plugin's settings content; main applies every command and reports the authoritative outcome.
  */
 
@@ -70,7 +70,7 @@ export function DockSettingsContent({ plugin = false }: { plugin?: boolean }) {
           <DockBehavior state={state} />
           <DockLayoutSection state={state} />
         </>}
-        <DockSetupDialog capability={snapshot.capability} flow={setup} onExit={() => setSetup(null)} />
+        <DockSetupDialog capability={snapshot.capability} layoutInitialized={snapshot.layoutInitialized} flow={setup} onExit={() => setSetup(null)} />
       </>}
       <DockSync state={state} />
       <DockRecovery snapshot={snapshot} pending={state.pending} />
@@ -88,5 +88,5 @@ export function DockPluginSetupDialog({ onExit }: { onExit(): void }) {
       <SettingsButton variant="outline" onClick={() => dockSettingsStore.load()}>{t("common.retry")}</SettingsButton></span>
   </SettingsAlert> : null;
   if (!snapshot.capability.supported) return <DockUnsupported capability={snapshot.capability} />;
-  return <DockSetupDialog capability={snapshot.capability} flow="full" onExit={onExit} />;
+  return <DockSetupDialog capability={snapshot.capability} layoutInitialized={snapshot.layoutInitialized} flow="full" onExit={onExit} />;
 }

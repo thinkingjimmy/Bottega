@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Localized Dock copy and the shared weather translation dictionary.
- * [OUTPUT]: Provides systemDockLazyZhCN, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; retired manual Widget editor labels are excluded.
+ * [OUTPUT]: Provides systemDockLazyZhCN, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../zh-cn.ts.
  */
 
@@ -272,7 +272,7 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     loadFailed: "无法载入程序坞设置。",
     unsupportedTitle: "Bottega Dock 不可用",
     unsupportedPlatform: "Bottega Dock 仅适用于 macOS。",
-    unsupportedVersion: "Dock Alpha 支持 macOS 26 和 27，且要求 Apple 芯片。不支持其他 macOS 版本。",
+    unsupportedVersion: "Dock 支持 macOS 26 和 27，且要求 Apple 芯片。不支持其他 macOS 版本。",
     unsupportedArchitecture: "Bottega Dock 需要搭载 Apple 芯片的 Mac。",
     unsupportedHelperMissing: "当前安装缺少 Bottega Dock 所需的辅助程序。请重新安装 Bottega 后使用 Dock。",
     registrationUnknown: "无法确认",
@@ -293,15 +293,14 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     reading: "正在读取系统程序坞…",
     previewFailed: "无法读取系统程序坞。请重试，或稍后再添加 App。",
     layoutTitle: "你的程序坞布局",
-    layoutKept: "将保留你现有的程序坞布局。",
+    replacementLayout: "固定应用将按当前系统程序坞的顺序自动配置。已有 Widget 会保留。",
+    replacementImportFailed: "无法读取系统程序坞中的应用。请重试后再替换。",
     previewLabel: "程序坞布局预览",
-    importReplaceLabel: "系统程序坞中的 App",
     importCopyLabel: "选择要复制的 App",
     coexistImportHint: "从访达、AI 额度、下载和废纸篓开始，或从系统程序坞复制 App。",
     copyFromSystem: "从系统程序坞复制",
     noCandidates: "系统程序坞中没有可复制的 App。",
     addLater: "你可以稍后在程序坞中添加 App。",
-    skipImport: "跳过导入",
     readFailure: {
       unavailable: "无法读取系统程序坞。",
       managed: "系统程序坞由你的组织管理，无法复制。",

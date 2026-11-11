@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared axis metrics and logical display facts in DIP, including negative coordinates.
- * [OUTPUT]: Provides deterministic display/edge geometry, inward panels and item-anchored native menu bounds with unscaled menu dimensions and display-safe clamping.
+ * [OUTPUT]: Provides deterministic display/edge geometry with an unscaled 2 DIP edge gap, inward panels and item-anchored native menu bounds with unscaled menu dimensions and display-safe clamping.
  * [POS]: system-dock/window geometry kernel; never measures DOM, multiplies display scale factors or mutates the requested preference.
  */
 
@@ -99,14 +99,14 @@ function onDisplay(input: BarPlacementInput, selected: SelectedDisplay): BarPlac
   const mainSize = vertical ? safeArea.height : safeArea.width, crossSize = vertical ? safeArea.width : safeArea.height;
   const available = (mainSize - DOCK_METRICS.sideMargin * 2) / scale;
   const minimum = barExtent([], [], input.pinned.length + input.running.length > 0, edge);
-  if (available < minimum || crossSize < (DOCK_METRICS.barHeight + DOCK_METRICS.bottomMargin) * scale) return null;
+  if (available < minimum || crossSize < DOCK_METRICS.barHeight * scale + DOCK_METRICS.bottomMargin) return null;
   const fit = fitItems(input.pinned, input.running, available, edge);
   const overflow = fit.pinned < input.pinned.length || fit.running < input.running.length;
   const extent = barExtent(input.pinned.slice(0, fit.pinned), input.running.slice(0, fit.running), overflow, edge) * scale;
   const handleExtent = Math.min(DOCK_METRICS.handleWidth, mainSize);
   const mainExtent = input.revealed ? extent : handleExtent;
   const crossExtent = input.revealed ? DOCK_METRICS.barHeight * scale : input.handle ? DOCK_METRICS.handleHeight + 6 : 2;
-  const margin = input.revealed ? DOCK_METRICS.bottomMargin * scale : 0;
+  const margin = input.revealed ? DOCK_METRICS.bottomMargin : 0;
   const mainStart = (vertical ? safeArea.y : safeArea.x) + (mainSize - mainExtent) / 2;
   const rect = edge === "bottom" ? { x: mainStart, y: safeArea.y + safeArea.height - crossExtent - margin, width: mainExtent, height: crossExtent }
     : { x: edge === "left" ? safeArea.x + margin : safeArea.x + safeArea.width - crossExtent - margin,
@@ -133,10 +133,10 @@ function sharesHandleEdge(display: DisplayFact, safe: Rect, displays: readonly D
 }
 
 /** The uncovered strip between the revealed window and its safe-area edge still counts as hover. */
-export function inBarGap(bar: BarPlacement, point: { x: number; y: number }, scale: number): boolean {
+export function inBarGap(bar: BarPlacement, point: { x: number; y: number }): boolean {
   if (!bar.revealed) return false;
   const { x, y, width, height } = bar.bounds;
-  const gap = DOCK_METRICS.bottomMargin * scale + 1;
+  const gap = DOCK_METRICS.bottomMargin + 1;
   if (bar.edge === "bottom") return point.x >= x && point.x < x + width && point.y >= y + height && point.y <= Math.min(y + height + gap, bar.safeArea.y + bar.safeArea.height);
   const along = point.y >= y && point.y < y + height;
   return along && (bar.edge === "left" ? point.x >= Math.max(x - gap, bar.safeArea.x) && point.x <= x
@@ -152,7 +152,7 @@ export function placePanel(bar: BarPlacement, visible: readonly MetricItem[], pi
     ? (vertical ? bar.bounds.y : bar.bounds.x) + itemCenter(visible, anchorIndex, pinnedCount, bar.edge, overflow) * scale
     : (vertical ? bar.bounds.y + bar.bounds.height / 2 : bar.bounds.x + bar.bounds.width / 2);
   const area = { x: safe.x + 8, y: safe.y + 8, width: safe.width - 16, height: safe.height - 16 };
-  const reserved = bar.revealed ? 0 : (DOCK_METRICS.barHeight + DOCK_METRICS.bottomMargin) * scale;
+  const reserved = bar.revealed ? 0 : DOCK_METRICS.barHeight * scale + DOCK_METRICS.bottomMargin;
   if (bar.edge === "bottom") {
     const top = bar.revealed ? bar.bounds.y : safe.y + safe.height - reserved;
     area.height = top - gap - area.y;

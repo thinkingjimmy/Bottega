@@ -1,15 +1,15 @@
 /**
- * [INPUT]: Depends on DockService, the shared layout/placement/local-state models, the read-only system Dock import adapter, and Electron shell for the Login Items pane.
- * [OUTPUT]: Provides DockSetup: signature-checked Settings → Dock flows — setup preview (mode-dependent preselection, existing layout untouched), revision-checked serialized confirmation that refuses stale previews, keeps failed launches retryable, and commits enabled only after the runtime starts, cancel, manual copy, strictly validated display intents and preferences, mode switch, disable, restore, capability-aware resume with consent-checked explicit registration retry, reset, conflict resolution, and the recovery settings deep link.
+ * [INPUT]: Depends on DockService, shared layout creation and replaceSystemApps/appendImported, local-state validation, the read-only system Dock import adapter, and Electron shell for Login Items.
+ * [OUTPUT]: Provides DockSetup: replacement automatically aligns native pins with a fresh system Dock read after final consent, preserving Widgets and matching IDs; previews stay read-only, stale revisions and unavailable reads refuse writes, and enabled mode switches use the same alignment. Also owns coexistence setup, manual copy, preferences, disable/restore/resume, reset, sync decisions and recovery settings.
  * [POS]: system-dock/Settings flow owner (3.1, INV-01/02/07); default and cancelled paths never write system preferences or register anything.
  */
 
 import { shell } from "electron";
 import { randomUUID } from "node:crypto";
 import type { ConflictChoice, DockSettingsSnapshot, DockSetupPreview, SetupConfirm } from "../../../shared/system-dock/ipc";
-import { buildDefaultLayout, type DockLayout } from "../../../shared/system-dock/layout";
+import { buildDefaultLayout, type DockItemDraft, type DockLayout } from "../../../shared/system-dock/layout";
 import { applyPreferencePatch, dockPreferencePatchSchema, DOCK_CONSENT_VERSION, type DockMode, type DockPreferencePatch } from "../../../shared/system-dock/local-state";
-import { appendImported } from "../../../shared/system-dock/placement";
+import { appendImported, replaceSystemApps } from "../../../shared/system-dock/placement";
 import { confirmedDrafts, readImportCandidates, type ImportSession } from "./native/import";
 import type { DockService } from "./service";
 
@@ -31,16 +31,14 @@ export class DockSetup {
     return session;
   }
   private assertSupported() { this.service.assertOpen(); if (!this.service.capability.supported) throw new Error("DOCK_UNSUPPORTED"); }
-  /** Replacement previews read the system Dock once and preselect; coexistence waits for an explicit copy (P-01, INV-01). */
+  /** Opening impact consent never changes the layout; replacement reads current apps only at final confirmation. */
   async beginSetup(mode: DockMode): Promise<DockSetupPreview> {
     this.assertSupported();
     if (mode === "replace") await this.service.checkCapability();
     if (mode === "replace" && !this.service.capability.replacement) throw new Error("DOCK_REPLACEMENT_UNSUPPORTED");
     const record = this.service.ports.config.snapshot();
     const layoutExists = record.layout.initialized;
-    const imported = !layoutExists && mode === "replace" && this.service.native && this.service.apps
-      ? await readImportCandidates({ native: this.service.native, apps: this.service.apps, mode }) : null;
-    return this.open(mode, imported, record.localRevision, layoutExists ? record.layout : this.defaults(imported ? confirmedDrafts(imported, imported.candidates.filter((candidate) => candidate.preselected).map((candidate) => candidate.key)) : []));
+    return this.open(mode, null, record.localRevision, layoutExists ? record.layout : this.defaults([]));
   }
   /** Manual "Copy from system Dock": never preselected, appended only after confirmation (3.3). */
   async importCandidates(): Promise<DockSetupPreview> {
@@ -60,6 +58,13 @@ export class DockSetup {
   private defaults(apps: Parameters<typeof buildDefaultLayout>[0]["apps"]) {
     return buildDefaultLayout({ apps, limitsBackends: this.service.usage.defaultBackends() });
   }
+  private async replacementApps(): Promise<DockItemDraft[]> {
+    if (!this.service.native || !this.service.apps) throw new Error("DOCK_SYSTEM_IMPORT_UNAVAILABLE");
+    const imported = await readImportCandidates({ native: this.service.native, apps: this.service.apps, mode: "replace" });
+    if (imported.readFailure === "unavailable" || imported.readFailure === "unknown") throw new Error("DOCK_SYSTEM_IMPORT_UNAVAILABLE");
+    // Known unresolved bundles remain repairable pins, as they are in the source Dock.
+    return confirmedDrafts(imported, [...imported.drafts.keys()]);
+  }
   cancelSetup(sessionId: string) { this.sessions.delete(sessionId); }
   confirmSetup(input: SetupConfirm): Promise<DockSettingsSnapshot> { return this.serial(() => this.confirmSetupNow(input)); }
   private async confirmSetupNow(input: SetupConfirm): Promise<DockSettingsSnapshot> {
@@ -69,12 +74,13 @@ export class DockSetup {
     const replace = input.mode === "replace";
     if (replace) await this.service.checkCapability(true);
     if (replace && (!input.acknowledged || !this.service.capability.replacement)) throw new Error("DOCK_CONSENT_REQUIRED");
-    const drafts = session.import ? confirmedDrafts(session.import, input.selected) : [];
+    const drafts = replace ? await this.replacementApps() : session.import ? confirmedDrafts(session.import, input.selected) : [];
     const config = this.service.ports.config;
     /* The preview the user confirmed is only valid for the layout it was built from. Anything since — a local edit,
        or a cloud layout (even a deliberately cleared one) adopted meanwhile — needs a fresh preview, never a merge of
        the old selection into the new layout (3.1, INV-07). Checked inside the store's serialized edit. */
-    await config.edit((layout) => layout.initialized ? appendImported(layout, drafts).layout : this.defaults(drafts), session.layoutRevision);
+    await config.edit((layout) => replace ? replaceSystemApps(layout.initialized ? layout : this.defaults([]), drafts)
+      : layout.initialized ? appendImported(layout, drafts).layout : this.defaults(drafts), session.layoutRevision);
     // A failed launch keeps a retryable preview, but never repeats a committed import.
     session.layoutRevision = config.snapshot().localRevision;
     session.import = null;
@@ -129,6 +135,10 @@ export class DockSetup {
       if (!this.service.capability.replacement) throw new Error("DOCK_REPLACEMENT_UNSUPPORTED");
       if (!state.enabled) throw new Error("DOCK_DISABLED");
       if (state.consentVersion !== DOCK_CONSENT_VERSION) throw new Error("DOCK_CONSENT_REQUIRED");
+      const revision = this.service.ports.config.snapshot().localRevision;
+      const apps = await this.replacementApps();
+      await this.service.ports.config.edit((layout) => replaceSystemApps(layout, apps), revision);
+      await this.service.resolveAll();
       await this.service.ports.local.update((current) => ({ ...current, preferredMode: "replace", replacementEnabled: true }));
       this.service.assertOpen();
       this.service.replacement?.register();

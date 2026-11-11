@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on typed Apps IPC, main-owned services and explicit author-manifest or Agent-analysis install intents
- * [OUTPUT]: Registers strict residence-fenced operations and publishes main-owned Studio, independent update readiness and cloud-management projections; `apps:open` goes through lifecycle/open-runtime.ts. Adds main-window-only impact and enablement operations.
+ * [OUTPUT]: Registers residence-fenced operations, explicit artifact-quarantine retry, and main-owned Studio, independent update readiness, cloud-management and availability projections; apps:open delegates to lifecycle/open-runtime.ts.
  * [POS]: Trusted residence-fenced Apps renderer adapter; Artifact design requests use the separate Artifact IPC owner.
  */
 
@@ -10,6 +10,7 @@ import { customAlphabet } from "nanoid";
 import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
 import {
   APPS_CHANNEL,
+  canRebuildQuarantinedApp,
   repairSite,
   type AddAppResult,
   type AppCapabilitiesSnapshot,
@@ -149,7 +150,7 @@ export async function retryAppOperation(
     await deps.packages.retryPendingImport(appId);
   } else if (record.state === "install-failed") {
     await deps.installer.retryInstall(appId);
-  } else if (record.state === "update-failed") {
+  } else if (record.state === "update-failed" || canRebuildQuarantinedApp(record)) {
     await deps.installer.retryUpdate(appId);
   } else if (record.state === "delete-failed") {
     if (!deletion) throw new Error("App 删除尚未初始化");

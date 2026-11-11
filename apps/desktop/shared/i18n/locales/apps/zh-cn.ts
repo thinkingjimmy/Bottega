@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Simplified Chinese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures.
+ * [OUTPUT]: Provides the Apps Simplified Chinese catalog with App/Widget filters and exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Simplified Chinese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,6 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsZhCN: typeof appsEn = {
+  catalog: { filter: "插件类型", widgets: "Widgets" },
   dock: {
     pin: "固定到 Dock",
     unpin: "从 Dock 移除",
@@ -164,6 +165,7 @@ export const appsZhCN: typeof appsEn = {
     /* U06-d: an update or install that died with Bottega (a quit or a crash), said by phase; never its recorded line. */
     interrupted: { update: "更新在完成前被中断了。请重试。", install: "安装在完成前被中断了。请重试。" },
     preparing: "正在准备 {{name}}",
+    unavailable: "暂时无法打开，查看详情了解原因。",
     awaitingAuthorization: "确认权限后即可继续使用",
     operationFailed: "操作失败",
     openProgress: "查看 {{name}} 的操作进度",
@@ -188,12 +190,17 @@ export const appsZhCN: typeof appsEn = {
       delete: "清理失败",
     },
     aftermath: {
+      quarantined: "这个 App 已隔离，原有数据仍然保留。",
       install: "这个 App 还不能打开。已下载的内容保留在磁盘上。",
       update: "这个 App 暂时无法打开。已下载的新版本文件仍然保留。",
       delete: "部分文件已经清理，App 记录仍留在列表里。重试会从中断处接着清。",
       pendingImport: "还没读到 App 清单，磁盘上只有一份没下完的源码。",
     },
     choice: {
+      recover: {
+        title: "从源码重新构建",
+        detail: "重新生成 App 文件，确认权限后再打开。",
+      },
       reinstall: {
         title: "重新安装",
         detail: "清空已下载的内容，从源码重新装一遍。最慢，但最干净。",
