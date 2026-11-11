@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Japanese catalog with App/Widget filters and exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
+ * [OUTPUT]: Provides the Apps Japanese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Japanese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,7 +8,6 @@
 import type { appsEn } from "./en";
 
 export const appsJa: typeof appsEn = {
-  catalog: { filter: "プラグインの種類", widgets: "ウィジェット" },
   dock: {
     pin: "Dock に固定",
     unpin: "Dock から削除",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Simplified Chinese catalog with App/Widget filters and exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
+ * [OUTPUT]: Provides the Apps Simplified Chinese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Simplified Chinese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,7 +8,6 @@
 import type { appsEn } from "./en";
 
 export const appsZhCN: typeof appsEn = {
-  catalog: { filter: "插件类型", widgets: "Widgets" },
   dock: {
     pin: "固定到 Dock",
     unpin: "从 Dock 移除",
