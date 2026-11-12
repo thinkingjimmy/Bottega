@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical plugin contracts, real filesystem identity, strict durable storage and whole-package activation.
- * [OUTPUT]: Unified catalog, atomic official Widget revision selection and uninstall markers, with exact-owner crash cleanup, guarded native source roots, live activation/effective Slot readiness, bounded summaries/full detail and descriptive mode provenance, readonly official copy admission and guarded recovery.
+ * [OUTPUT]: Scoped paginated plugin catalogs, plugin lifecycle, reserved official Widget activation and immutable version selection.
  * [POS]: Main platform facade used by startup, authoring/build owners, renderer IPC and isolated contribution hosts.
  */
 import { lstat, readFile, realpath } from "node:fs/promises";
@@ -18,7 +18,7 @@ import { UnifiedPluginStore, type UnifiedPluginStoredRecord } from "./store";
 import type { RegisterUnifiedPluginInput, UnifiedPluginPlatformOptions, PluginOperationOptions, PluginActivationOptions, PluginSourceBuild, PluginActivationIdentity, OfficialWidgetOperation } from "./model";
 import { PluginSourceSupersededError } from "./model";
 import { assertUnreservedWidget, canActivateWidget } from "./official-widgets/identity";
-import { isOfficialWidgetId, type OfficialWidgetId } from "../../../../shared/system-dock/widgets/catalog/distribution";
+import { isDistributedWidgetId, isOfficialWidgetId, type OfficialWidgetId } from "../../../../shared/system-dock/widgets/catalog/distribution";
 export type { PreparedPluginRuntime, UnifiedPluginPlatformOptions, RegisterUnifiedPluginInput, PluginOperationOptions } from "./model";
 
 export type UnifiedPluginHostAdapter = Readonly<{
@@ -27,6 +27,14 @@ export type UnifiedPluginHostAdapter = Readonly<{
   remove?(hostImpact?: { revision: number; digest: string }): Promise<void>;
 }>;
 const errorMessage = (cause: unknown) => String(cause instanceof Error ? cause.message : cause).slice(0, 2048);
+function settingsCatalogIncludes(manifest: UnifiedPluginManifest) {
+  const app = ["base-app", "web-app", "server-app"].includes(manifest.source.format);
+  const widget = manifest.contributions.some(value => value.kind === "widget");
+  return (!app && !widget) || manifest.contributions.some(value =>
+    value.kind === "tool" || value.kind === "mode" || value.kind === "composer" ||
+    (value.kind === "page" && !app && !value.hostAppId));
+}
+
 export class UnifiedPluginPlatform {
   readonly registry = new PluginContributionRegistry();
   readonly store: UnifiedPluginStore;
@@ -79,14 +87,17 @@ export class UnifiedPluginPlatform {
     this.listeners.add(listener); return () => this.listeners.delete(listener);
   }
   list(query: UnifiedPluginListQuery = {}): UnifiedPluginCatalogPage {
-    const { cursor, limit, search } = unifiedPluginListQuerySchema.parse(query);
+    const { cursor, limit, search, scope } = unifiedPluginListQuerySchema.parse(query);
     return this.store.read(state => {
       const [cursorRevision, offsetValue] = cursor?.split(":").map(Number) ?? [state.revision, 0];
       if (cursorRevision !== state.revision) throw new Error("Stale plugin catalog cursor; restart pagination");
       const offset = offsetValue ?? 0;
       const normalized = search?.trim().toLocaleLowerCase();
-      const records = state.plugins.filter(record => !normalized || [record.manifest.name, record.manifest.id, record.manifest.description ?? ""]
-        .some(value => value.toLocaleLowerCase().includes(normalized)))
+      const records = state.plugins.filter(({ manifest }) => {
+        if (scope === "settings" && !settingsCatalogIncludes(manifest)) return false;
+        return !normalized || [manifest.name, manifest.id, manifest.description ?? ""]
+          .some(value => value.toLocaleLowerCase().includes(normalized));
+      })
         .sort((a, b) => a.manifest.id < b.manifest.id ? -1 : a.manifest.id > b.manifest.id ? 1 : 0);
       const items: UnifiedPluginCatalogSummary[] = [];
       const pageFor = (count: number): UnifiedPluginCatalogPage => ({ items: [], total: records.length, revision: state.revision,
@@ -164,8 +175,7 @@ export class UnifiedPluginPlatform {
   async register(input: RegisterUnifiedPluginInput): Promise<UnifiedPluginCatalogItem> {
     this.assertOpen();
     const declared = unifiedPluginManifestSchema.parse(input.manifest);
-    if (!(input.legacyWeather && !this.options.developmentWidgetDistribution && declared.id === "bottega-weather" &&
-      declared.version === "1.0.0" && declared.source.kind === "official")) assertUnreservedWidget(declared.id);
+    assertUnreservedWidget(declared.id);
     const registered = this.get(declared.id);
     const manifest = unifiedPluginManifestSchema.parse({ ...declared,
       essential: Boolean(declared.essential && input.trustedEssential && declared.source.kind === "official" && registered?.installation.origin !== "external"),
@@ -392,6 +402,8 @@ export class UnifiedPluginPlatform {
     });
   }
   async remove(input: { pluginId: string; deleteData?: boolean; hostImpact?: { revision: number; digest: string } }): Promise<void> {
+    if (isOfficialWidgetId(input.pluginId) && !(this.options.developmentWidgetDistribution && isDistributedWidgetId(input.pluginId)))
+      throw new Error("Bundled Widgets can be disabled in the Widget catalog");
     await this.setEnabled({ pluginId: input.pluginId, enabled: false, hostImpact: input.hostImpact });
     await this.serialize(input.pluginId, async () => {
       const dependents = this.store.read(state => state.plugins.filter(record => record.manifest.dependencies.some(value => value.pluginId === input.pluginId)));
@@ -403,7 +415,7 @@ export class UnifiedPluginPlatform {
       }
       await this.store.mutate(state => {
         state.plugins = state.plugins.filter(value => value.manifest.id !== input.pluginId);
-        if (this.options.developmentWidgetDistribution && isOfficialWidgetId(input.pluginId) &&
+        if (this.options.developmentWidgetDistribution && isDistributedWidgetId(input.pluginId) &&
           !state.removedOfficialWidgets.includes(input.pluginId)) state.removedOfficialWidgets.push(input.pluginId);
       });
       this.hostAdapters.delete(input.pluginId); this.registry.unregister(input.pluginId);
@@ -425,7 +437,7 @@ export class UnifiedPluginPlatform {
     this.changed();
   }
   wasOfficialWidgetRemoved(pluginId: OfficialWidgetId) {
-    return this.store.read(state => state.removedOfficialWidgets.includes(pluginId));
+    return isDistributedWidgetId(pluginId) && this.store.read(state => state.removedOfficialWidgets.includes(pluginId));
   }
   installOfficialWidget(revision: UnifiedPluginRevision, options: OfficialWidgetOperation) {
     this.assertOpen();
@@ -437,7 +449,8 @@ export class UnifiedPluginPlatform {
       assertCurrent();
       const existing = this.get(pluginId);
       if (existing && existing.installation.origin !== "official") throw new Error("Official Widget identity conflict");
-      if (options.migration && (this.wasOfficialWidgetRemoved(pluginId) || this.activeRevision(pluginId)?.officialWidget)) return existing;
+      const current = this.activeRevision(pluginId)?.officialWidget;
+      if (options.migration && (this.wasOfficialWidgetRemoved(pluginId) || current && "archiveSha256" in current)) return existing;
       const prior = options.priorInstallation;
       if (prior && (prior.installedAt !== (existing?.installation.installedAt ?? null) ||
           prior.removed !== this.wasOfficialWidgetRemoved(pluginId))) throw new Error("Widget installation changed during review");
@@ -448,7 +461,7 @@ export class UnifiedPluginPlatform {
         if (record) return ++record.sourceVersion;
         const now = this.now();
         state.plugins.push({
-          manifest: revision.manifest, installation: { pluginId, installedAt: now, origin: "official", enabled: true },
+          manifest: revision.manifest, installation: { pluginId, installedAt: now, origin: "official", enabled: !("bundleDigest" in revision.officialWidget! && state.removedOfficialWidgets.some(id => id === pluginId)) },
           directory: { pluginId, packageDirectory: revision.rootDirectory, registeredAt: now, missing: false },
           status: "installed", warnings: [], instanceCount: 0, revisions: [], activation: null, sourceVersion: 1,
         });

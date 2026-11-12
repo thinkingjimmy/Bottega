@@ -7,7 +7,7 @@ import { parseStrictJson } from "@bottega/contracts/core/canonical";
 import type { UnifiedPluginPlatform } from "../../../plugins/platform/service";
 import {
   compareWidgetVersions, OFFICIAL_WIDGETS, WIDGET_CATALOG_LIMITS, widgetDirectorySchema,
-  type OfficialWidgetId, type WidgetDirectory, type WidgetDirectoryRow, type WidgetRelease,
+  type DistributedWidgetId, type WidgetDirectory, type WidgetDirectoryRow, type WidgetRelease,
 } from "../../../../../shared/system-dock/widgets/catalog/distribution";
 import { localAssetName, readPreview, readWidgetAsset } from "./assets";
 
@@ -19,7 +19,7 @@ export async function readWidgetDirectory(root: string, signal?: AbortSignal) {
   return directory;
 }
 
-export function chooseWidgetRelease(directory: WidgetDirectory, id: OfficialWidgetId, version: string, supported: boolean) {
+export function chooseWidgetRelease(directory: WidgetDirectory, id: DistributedWidgetId, version: string, supported: boolean) {
   const releases = directory.packages.find(entry => entry.pluginId === id)?.releases ?? [];
   const ordered = releases.toSorted((a, b) => compareWidgetVersions(b.version, a.version));
   const compatibleRuntime = (release: WidgetRelease) => supported && release.target.platform === process.platform &&
@@ -32,7 +32,7 @@ export function chooseWidgetRelease(directory: WidgetDirectory, id: OfficialWidg
 }
 
 export class LocalWidgetDirectory {
-  private cached?: { directory: WidgetDirectory; images: Map<OfficialWidgetId, string | null> };
+  private cached?: { directory: WidgetDirectory; images: Map<DistributedWidgetId, string | null> };
   private flight?: ReturnType<LocalWidgetDirectory["load"]>;
   private available = false;
   private readonly shutdown = new AbortController();
@@ -53,7 +53,7 @@ export class LocalWidgetDirectory {
 
   refresh() { return this.flight ??= this.load().finally(() => { this.flight = undefined; }); }
 
-  selected(directory: WidgetDirectory, pluginId: OfficialWidgetId) {
+  selected(directory: WidgetDirectory, pluginId: DistributedWidgetId) {
     return chooseWidgetRelease(directory, pluginId, this.version, this.supported());
   }
 
@@ -63,7 +63,7 @@ export class LocalWidgetDirectory {
       const { release, reason, minimum } = this.selected(directory, widget.pluginId);
       const installed = this.platform.activeRevision(widget.pluginId);
       const record = this.platform.get(widget.pluginId);
-      const installedVersion = installed?.officialWidget ? installed.manifest.version : null;
+      const installedVersion = installed?.officialWidget && "archiveSha256" in installed.officialWidget ? installed.manifest.version : null;
       const status = !release ? "incompatible" : !installedVersion ? (installed ? "repair" : "install")
         : compareWidgetVersions(release.version, installedVersion) > 0 ? "update"
         : record?.installation.enabled && !record.runtimeReady && release.revisionId === installed?.revisionId ? "repair" : "installed";

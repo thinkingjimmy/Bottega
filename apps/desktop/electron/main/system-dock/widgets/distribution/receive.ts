@@ -13,17 +13,17 @@ import { importVerifiedPluginFiles } from "../../../plugins/integration/distribu
 import { verifyCloudPluginArchive } from "../../../cloud/widgets/plugins/codec";
 import { pluginBytesHash } from "../../../plugins/engineering/snapshot";
 import { validateOfficialWidgetManifest } from "../../../../../shared/system-dock/widgets/catalog/manifest";
-import { OFFICIAL_WIDGETS, officialWidgetId, type OfficialWidgetId, type WidgetRelease } from "../../../../../shared/system-dock/widgets/catalog/distribution";
+import { OFFICIAL_WIDGETS, distributedWidgetId, isDistributedWidgetId, type DistributedWidgetId, type WidgetRelease } from "../../../../../shared/system-dock/widgets/catalog/distribution";
 import { weatherConfigurationSchema } from "../../../../../shared/system-dock/widgets/weather";
-import type { DockWidget } from "../../../../../shared/system-dock/layout";
+import { nativeDockWidget, type DockWidget } from "../../../../../shared/system-dock/layout";
 
-export function packageWidgetId(widget: DockWidget): OfficialWidgetId | null {
+export function packageWidgetId(widget: DockWidget): DistributedWidgetId | null {
   if (widget.type === "builtin.ai-activity") return "bottega-ai-usage";
-  return widget.type === "plugin" && widget.pluginId === "bottega-weather" && widget.contributionId === "current"
-    ? "bottega-weather" : null;
+  return widget.type === "plugin" && isDistributedWidgetId(widget.pluginId) &&
+    widget.contributionId === OFFICIAL_WIDGETS[widget.pluginId].contributionId ? widget.pluginId : null;
 }
 
-export function verifyOfficialArchive(bytes: Buffer, pluginId: OfficialWidgetId, release: WidgetRelease) {
+export function verifyOfficialArchive(bytes: Buffer, pluginId: DistributedWidgetId, release: WidgetRelease) {
   if (bytes.length !== release.archive.bytes || pluginBytesHash(bytes) !== release.archive.sha256) throw new Error("Widget archive bytes differ from its catalog");
   const packet = verifyCloudPluginArchive(bytes, release.packageDigest);
   const { distribution } = packet;
@@ -48,13 +48,14 @@ export function assertCompatibleInstances(verified: Verified, widgets: readonly 
     if (packageWidgetId(item) !== id) continue;
     const configuration = item.type === "plugin" ? item.configuration
       : item.type === "builtin.ai-activity" ? { source: item.source, period: item.period } : null;
-    if (item.type === "plugin" && !weatherConfigurationSchema.safeParse(item.configuration).success) continue;
+    if (id === "bottega-weather" && item.type === "plugin" && !weatherConfigurationSchema.safeParse(item.configuration).success) continue;
+    if (id === "bottega-ai-usage" && !nativeDockWidget(item)) throw new Error("Invalid AI Usage instance configuration");
     if (!schema.safeParse(configuration).success) throw new Error("Widget package cannot read an existing instance configuration");
   }
 }
 
 export async function pruneOfficialWidgetPackages(platform: UnifiedPluginPlatform, userData: string) {
-  for (const id of officialWidgetId.options) {
+  for (const id of distributedWidgetId.options) {
     const root = join(userData, "official-widget-packages", id);
     const retained = new Set(platform.get(id) ? platform.revisions(id).map(value => value.revisionId.slice(7)) : []);
     const entries = await readdir(root, { withFileTypes: true }).catch(error => {

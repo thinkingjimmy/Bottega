@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical plugin Widget form, JSON Schema fields, official Weather city and size fields and exact layout CAS mutation.
- * [OUTPUT]: PluginWidgetFormDialog for independent instance configuration with retained conflict/error drafts.
+ * [OUTPUT]: PluginWidgetFormDialog with independent configuration and optional offline Weather creation before city selection.
  * [POS]: Unified Widget Settings adapter; writes instance settings through main and never edits plugin source.
  */
 import { WeatherCityField } from './location';
@@ -25,12 +25,13 @@ export function PluginWidgetFormDialog({form,edge,onClose,onChanged,onReturnFocu
   const canSave = weather ? Boolean(city) && !editingCity : Boolean(name.trim());
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),lock=useRef(false);
   const close=()=>{if(!busy){onClose();onReturnFocus();}};
-  const save=async()=>{if(lock.current||!canSave)return;lock.current=true;setBusy(true);setError('');try{
-    const configuration=location?.success ? { location: location.data } : Object.fromEntries(Object.entries(properties).flatMap(([key,raw])=>{const schema=record(raw),value=values[key];
+  const canDeferCity=weather&&!form.itemId&&!city;
+  const save=async(withoutCity=false)=>{if(lock.current||!(withoutCity?canDeferCity:canSave))return;lock.current=true;setBusy(true);setError('');try{
+    const configuration=withoutCity ? {} : location?.success ? { location: location.data } : Object.fromEntries(Object.entries(properties).flatMap(([key,raw])=>{const schema=record(raw),value=values[key];
       if(value===undefined||value===''){if(required.has(key))throw new Error(`${String(schema.title??key)}: ${t('systemDock.widgets.failed')}`);return schema.type==='boolean'?[[key,false]]:[];}
       if(schema.type==='number'||schema.type==='integer'){const number=Number(value);if(!Number.isFinite(number)||(schema.type==='integer'&&!Number.isInteger(number)))throw new Error(String(schema.title??key));return[[key,number]];}
       if(schema.type==='object'||schema.type==='array')return[[key,typeof value==='string'?JSON.parse(value):value]];return[[key,value]];}));
-    await window.systemDockSettings!.savePluginWidget({pluginId:form.pluginId,contributionId:form.contributionId,...(form.itemId?{itemId:form.itemId}:{}),...(!weather?{name:name.trim()}:{}),size,configuration:weather?configuration:{...form.configuration,...configuration},expectedLayoutRevision:form.layoutRevision});onChanged();onClose();onReturnFocus();
+    await window.systemDockSettings!.savePluginWidget({pluginId:form.pluginId,contributionId:form.contributionId,...(form.itemId?{itemId:form.itemId}:{}),...(!weather?{name:name.trim()}:{}),size,configuration:weather?configuration:{...form.configuration,...configuration},...(withoutCity?{withoutCity:true as const}:{}),expectedLayoutRevision:form.layoutRevision});onChanged();onClose();onReturnFocus();
   }catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}};
   return <Dialog open onOpenChange={open=>{if(!open)close();}}><AppDialogContent aria-busy={busy} onEscapeKeyDown={event=>{
     if(busy)event.preventDefault();
@@ -52,6 +53,8 @@ export function PluginWidgetFormDialog({form,edge,onClose,onChanged,onReturnFocu
         const shared={id,disabled:busy,required:required.has(key),'aria-describedby':schema.description?`${id}-hint`:undefined,className:'min-h-10 w-full rounded-md border bg-transparent px-3 text-sm'};
         return <div key={key} className="grid gap-2"><label htmlFor={id} className="text-sm font-medium">{label}</label>{enums?<select {...shared} value={String(value??'')} onChange={event=>set(event.target.value)}>{enums.map(option=><option key={String(option)} value={String(option)}>{String(option)}</option>)}</select>:schema.type==='boolean'?<input {...shared} type="checkbox" required={false} className="size-5" checked={value===true} onChange={event=>set(event.target.checked)}/>:schema.type==='object'||schema.type==='array'?<textarea {...shared} className={`${shared.className} min-h-24 py-2 font-mono`} value={typeof value==='string'?value:JSON.stringify(value??(schema.type==='array'?[]:{}),null,2)} onChange={event=>set(event.target.value)}/>:<input {...shared} type="text" inputMode={schema.type==='number'||schema.type==='integer'?'decimal':'text'} value={String(value??'')} onChange={event=>set(event.target.value)} minLength={typeof schema.minLength==='number'?schema.minLength:undefined} maxLength={typeof schema.maxLength==='number'?schema.maxLength:undefined}/>} {typeof schema.description==='string'&&<p id={`${id}-hint`} className="text-xs text-muted-foreground">{schema.description}</p>}</div>;
       })}</>}
-    </AppDialogBody><DialogFooter className={weather?'mt-4':undefined}><SettingsButton type="button" variant="ghost" disabled={busy} onClick={close}>{t('common.cancel')}</SettingsButton><SettingsButton type="submit" disabled={busy||!canSave}>{t('common.save')}</SettingsButton></DialogFooter></form>
+    </AppDialogBody><DialogFooter className={weather?'mt-4':undefined}><SettingsButton type="button" variant="ghost" disabled={busy} onClick={close}>{t('common.cancel')}</SettingsButton>
+      {canDeferCity&&<SettingsButton type="button" variant="outline" disabled={busy} onClick={()=>void save(true)}>{t('systemDock.weather.addWithoutCity')}</SettingsButton>}
+      <SettingsButton type="submit" disabled={busy||!canSave}>{t('common.save')}</SettingsButton></DialogFooter></form>
   </AppDialogContent></Dialog>;
 }

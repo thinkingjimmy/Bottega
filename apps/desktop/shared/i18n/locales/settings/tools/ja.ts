@@ -1,26 +1,21 @@
 /**
  * [INPUT]: Depends on the settingsToolsEn structural type
- * [OUTPUT]: Provides settingsToolsJa, the Japanese Settings Tools catalog including offline Design font access
+ * [OUTPUT]: Provides the ja catalog for global MCP settings, official tool descriptions, and runtime support
  * [POS]: Japanese leaf of shared/i18n/locales/settings/tools; loaded on demand by the matching top-level locale
  */
 
 import type { settingsToolsEn } from "./en";
 
 export const settingsToolsJa: typeof settingsToolsEn = {
-  globalScopeNote: "ここでの設定はグローバルに適用されます。Project はこの既定値を変更せず個別に上書きできます。",
   supportReason: {
     "runtime-unavailable": "ランタイムを利用できません", "builtin-tools-unsupported": "組み込みツールは未対応です", "transport-unsupported": "この転送方式は未対応です",
     "turn-origin-unsupported": "このターンの起点では利用できません", "plan-mode-unsupported": "Plan ターンでは利用できません", "security-policy": "セキュリティポリシーによりブロックされています", unknown: "Backend を利用できません",
     minimumRuntimeVersion: "ランタイム {{minimumVersion}} 以降が必要です（検出: {{detectedVersion}}）", unknownVersion: "不明なバージョン",
   },
   builtin: {
-    title: "組み込みツール", saveFailed: "組み込みツール設定を保存できませんでした", disabledCount: "{{count}} 件オフ",
-    globalDescription: "グローバル既定値は次のターンから反映され、Project ごとに各ツールを上書きできます。",
-    projectDescription: "この Project のツール使用意図を選びます。上書きをリセットするとグローバル既定値に戻ります。",
-    resetAll: "Project のツール上書きをすべてリセット", resetOne: "{{name}} をグローバル既定値に戻す",
-    source: { "global-default": "グローバル既定", "project-override": "Project 上書き" },
+    saveFailed: "組み込みツール設定を保存できませんでした",
+    globalDescription: "変更は次のターンから全体に適用されます。",
     effective: { enabled: "有効", disabled: "無効", unavailable: "使用意図は有効ですが Backend を利用できません" },
-    domain: { sections: "Sections", subagents: "Subagents", projects: "Projects", bases: "Bases", search: "検索", browser: "ブラウザ", design: "デザイン", apps: "アプリ" },
     items: {
       list_sections: { label: "Sections を一覧表示", hint: "すべての永続チャットと Base の概要を表示します。" },
       read_section: { label: "Section を読む", hint: "別のチャットの保存済みトランスクリプトを読みます。" },
@@ -67,17 +62,12 @@ export const settingsToolsJa: typeof settingsToolsEn = {
     },
   },
   mcp: {
+    pageTitle: "MCP",
     title: "MCP Servers",
-    globalDescription: "グローバル MCP server を管理します。Project はこの一覧を変更せず継承または上書きできます。",
-    projectDescription: "Project server はこの Project 専用です。継承したグローバル server はここで上書きできます。",
-    globalEmptyHint: "ここにグローバル server を追加します。Project 所有 server はこのページに表示されません。",
+    globalDescription: "このコンピューター上のすべてのプロジェクトと独立したチャットで使う MCP サーバーを管理します。",
+    globalEmptyHint: "チャットで使うサーバーを追加します。",
     bridgeMissing: "この環境では MCP server 設定を利用できません。",
-    projectGroup: "Project servers", projectGroupEmpty: "Project 所有 server はありません",
-    inheritedGroup: "継承したグローバル servers", inheritedGroupEmpty: "継承できるグローバル server はありません",
-    allInherited: "この Project は現在、継承したグローバル server 設定のみを使用しています。",
-    editGlobally: "Settings でグローバル MCP servers を編集", resetOne: "{{name}} をグローバル既定値に戻す",
     conflict: "server が別の場所で更新されました。最新状態を読み込み、下書きは保持しました。",
-    source: { "global-default": "グローバル既定", "project-override": "Project 上書き", "project-owned": "Project 所有" },
     effective: { enabled: "有効", disabled: "無効", unavailable: "使用意図は有効ですが Backend を利用できません" },
     add: "server を追加", edit: "編集", delete: "{{name}} を削除", emptyTitle: "MCP server はまだありません",
     addTitle: "MCP server を追加", editTitle: "MCP server を編集", dialogDescription: "stdio のみ対応し、command は絶対パスが必要です。保存後、次の人間の非 Plan ターンに server 全体を注入します。",

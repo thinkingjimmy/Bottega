@@ -1,18 +1,22 @@
 /**
  * [INPUT]: Depends on unified plugin identities and public Dock geometry.
- * [OUTPUT]: Provides portable unified plugin widget instances, configuration forms, layout CAS mutations and native card requests.
+ * [OUTPUT]: Portable plugin Widget identities, bounded configurations, layout CAS commands and native card requests.
  * [POS]: Unified Dock contract; it carries separate plugin/contribution/instance identities and no source Project ownership.
  */
 import { z } from "zod";
 import { pluginIdentitySchema } from "@bottega/contracts/plugins/platform";
 import { dockSizeSchema, type DockSummarySize } from "@bottega/contracts/plugins/dock/summary";
+import { nativeWidgetType } from "../catalog/official";
 export const pluginDockWidgetSchema = z.object({ type: z.literal("plugin"), configVersion: z.literal(1), pluginId: pluginIdentitySchema,
   contributionId: pluginIdentitySchema, instanceId: pluginIdentitySchema, size: dockSizeSchema,
-  configuration: z.record(z.string(), z.unknown()).refine(value => new TextEncoder().encode(JSON.stringify(value)).length <= 4096, "Instance configuration exceeds budget") }).strict();
+  configuration: z.record(z.string(), z.unknown()) }).strict().refine(value =>
+    new TextEncoder().encode(JSON.stringify(value.configuration)).length <=
+      (nativeWidgetType(value.pluginId, value.contributionId) ? 8192 : 4096), "Instance configuration exceeds budget");
 export type PluginDockWidget = z.infer<typeof pluginDockWidgetSchema>;
 export const pluginWidgetFormInputSchema = z.object({ pluginId: pluginIdentitySchema, contributionId: pluginIdentitySchema, itemId: pluginIdentitySchema.optional() }).strict();
 export const savePluginWidgetSchema = pluginWidgetFormInputSchema.extend({ name: z.string().min(1).max(80).optional(), size: dockSizeSchema,
-  configuration: z.record(z.string(), z.unknown()), expectedLayoutRevision: z.number().int().nonnegative() }).strict();
+  configuration: z.record(z.string(), z.unknown()), withoutCity: z.literal(true).optional(),
+  expectedLayoutRevision: z.number().int().nonnegative() }).strict();
 export const removePluginWidgetSchema = z.object({ itemId: pluginIdentitySchema, expectedLayoutRevision: z.number().int().nonnegative() }).strict();
 export const pluginDockSurfaceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("open"), itemId: pluginIdentitySchema }).strict(),

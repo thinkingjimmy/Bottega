@@ -9,7 +9,7 @@ import {resolve} from 'node:path';
 import {readdir,readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import type {Plugin} from 'vite';
-import type {buildOfficialWeather} from './official-package';
+import type {buildBundledWidgets} from './official-package';
 export function officialPlugins(desktop:string):Plugin{
  return{name:'bundled-official-plugins',async buildStart(){
   if(process.platform!=='darwin')return;
@@ -17,9 +17,9 @@ export function officialPlugins(desktop:string):Plugin{
    platform:'node',format:'cjs',target:'node24',metafile:true,external:['esbuild','@tailwindcss/node','@tailwindcss/oxide'],
    define:{'import.meta.url':JSON.stringify(pathToFileURL(resolve(desktop,'electron.vite.config.ts')).href)}});
   for(const path of Object.keys(result.metafile!.inputs))this.addWatchFile(resolve(path));
-  const module={exports:{} as {buildOfficialWeather:typeof buildOfficialWeather}};
+  const module={exports:{} as {buildBundledWidgets:typeof buildBundledWidgets}};
   new Function('require','module','exports',result.outputFiles[0]!.text)(createRequire(resolve(desktop,'package.json')),module,module.exports);
-  await module.exports.buildOfficialWeather(desktop,path=>this.addWatchFile(path),(fileName,source)=>this.emitFile({type:'asset',fileName,source}));
+  await module.exports.buildBundledWidgets(desktop,path=>this.addWatchFile(path),(fileName,source)=>this.emitFile({type:'asset',fileName,source}));
   const recovery=process.env.BOTTEGA_WIDGET_DEV_RECOVERY;
   if(recovery){
     const catalog=resolve(recovery,'catalog.json');

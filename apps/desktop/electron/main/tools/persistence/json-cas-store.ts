@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs, persistence/durable-json durableReplaceFile, and a per-store validated state schema, and statusError from main/errors
- * [OUTPUT]: Provides JsonCasStore (serialized mutation lane, main→backup→empty recovery, backup-then-main commit, change watchers, backup rewrite), storeError, serialize, and byteLength
- * [POS]: tools/persistence shared skeleton for the manual MCP secret ledger and the Project Tool Policy store; domain validation, projections, and CAS rules stay in each store
+ * [OUTPUT]: Provides JsonCasStore with serialized mutations, main and backup recovery, durable commits, copy-by-copy migration, and change events
+ * [POS]: tools/persistence; domain validation and CAS rules stay with the manual MCP settings store
  */
 
 import { chmod, readFile } from "node:fs/promises";
@@ -90,10 +90,26 @@ export abstract class JsonCasStore<TState, TEvent> {
     for (const event of events) for (const watcher of this.watchers) watcher(event);
   }
 
-  /* Owner cleanup must scrub both generations. Rewriting backup last, even when
-     active had nothing to remove, keeps a failed rewrite retryable on the next call. */
-  protected rewriteBackup() {
-    return this.writeText(this.backupPath, serialize(this.state));
+  /* Each generation keeps its own validated data. Scrub the backup even if
+     the main file was already migrated in an earlier run. */
+  protected async scrubCopies(scrub: (state: TState) => TState) {
+    const active = scrub(this.state);
+    const backup = await this.readValidated(this.backupPath).catch(async (cause: unknown) => {
+      if (isMissing(cause)) return undefined;
+      if ((cause as NodeJS.ErrnoException).code) throw cause;
+      await this.writeText(this.backupPath, serialize(active));
+      return undefined;
+    });
+    if (backup !== undefined) {
+      const cleanBackup = scrub(backup);
+      if (cleanBackup !== backup) {
+        await this.writeText(this.backupPath, serialize(cleanBackup));
+      }
+    }
+    if (active !== this.state) {
+      await this.writeText(this.filePath, serialize(active));
+      this.accept(active);
+    }
   }
 
   private async readValidated(path: string) {

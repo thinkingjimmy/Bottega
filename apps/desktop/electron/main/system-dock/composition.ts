@@ -7,7 +7,7 @@ import type { PluginDockWidgets } from './widgets/plugins/owner';
 import { WidgetCatalogOwner } from './widgets/catalog/owner';
 import type { OfficialWidgetDistribution } from './widgets/distribution/owner';
 import type { OfficialWidgetMigration } from './widgets/distribution/migration';
-import { officialWidgetId, widgetDirectoryRequestSchema } from '../../../shared/system-dock/widgets/catalog/distribution';
+import { distributedWidgetId, widgetDirectoryRequestSchema } from '../../../shared/system-dock/widgets/catalog/distribution';
 import { app, BrowserWindow, webContents } from 'electron';
 import desktopPackage from '../../../package.json';
 import { installPluginDockWidgets } from './widgets/plugins/runtime';
@@ -23,6 +23,7 @@ import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { installWeatherOwner, weatherOwner } from '../plugins/official/weather/runtime';
 import { WEATHER_PLUGIN_ID } from '../../../shared/system-dock/widgets/weather';
+import { OFFICIAL_WIDGETS } from '../../../shared/system-dock/widgets/catalog/official';
 import type { AppLocale } from '@ai-chat/ui/lib/locale';
 import type { AgentBackendId } from '../../../shared/ipc/agent/agent-ipc';
 import { conflictChoiceSchema, dockPreferencePatchSchema, importConfirmSchema, setupConfirmSchema, SYSTEM_DOCK_SETTINGS_CHANNEL, setAppPinnedSchema } from '../../../shared/system-dock/ipc';
@@ -107,19 +108,20 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
   let distribution: OfficialWidgetDistribution | undefined;
   let migration: OfficialWidgetMigration | undefined;
   const officialDirectory = unifiedPluginIntegration()?.widgetCatalogDirectory;
-  const isDistributedWidget = (widget: WidgetItem["widget"]) =>
-    widget.type === "plugin" || Boolean(officialDirectory && widget.type === "builtin.ai-activity");
+  const isPluginWidget = (widget: WidgetItem["widget"]) => widget.type === "plugin";
   const createPluginWidgets = (WidgetOwner: typeof PluginDockWidgets) => new WidgetOwner({ locale: ports.locale, userData: ports.userData, config, changed: () => { service.schedule(); if (service.initialized) windowRegistry.publish(SYSTEM_DOCK_SETTINGS_CHANNEL.widgetsChanged, undefined, record => record.role === 'main'); }, masked: () => local.get().privacyMask,
-    ...(officialDirectory ? { officialUsage: () => service.usage } : {}),
+    usage: () => service.usage, officialDirectory: () => service.officialConfiguration(),
+    bundled: id => unifiedPluginIntegration()?.hasBundledWidget(id) ?? false,
     integration: () => { const unified = unifiedPluginIntegration(); return unified ? { platform: unified.platform, gateway: unified.gateway,
       invoke: input => { const runtime = pluginProcessRuntime(); if (!runtime) throw new Error('Plugin process runtime is unavailable'); return runtime.invoke(input); } } : null; } });
   const custom: DockCustomWidgetsPort = {
     candidates: () => pluginWidgets?.snapshot().definitions.map(value => ({ id: value.id, name: value.name, available: value.activeGenerationId !== null })) ?? [],
     officialDirectory: Boolean(officialDirectory),
-    activityAllowed: () => pluginWidgets?.activityAllowed() ?? !officialDirectory,
+    officialReady: (id, contribution) => pluginWidgets?.ready(id, contribution) ?? false,
+    activityAllowed: () => pluginWidgets?.ready("bottega-ai-usage", OFFICIAL_WIDGETS["bottega-ai-usage"].contributionId) ?? false,
     liveCards: id => pluginWidgets?.liveCards(id) ?? [],
-    face: (item, edge) => isDistributedWidget(item.widget) ? pluginWidgets.face(item, edge) : feature.peek()?.data.face(item, edge) ?? fallback(item),
-    detail: (item, edge) => isDistributedWidget(item.widget) ? pluginWidgets.detail(item, edge) : feature.peek()?.data.detail(item, edge) ?? { itemId: item.id, name: item.label ?? '', face: fallback(item), data: [], updatedAt: null, surface: null, actions: [] },
+    face: (item, edge) => isPluginWidget(item.widget) ? pluginWidgets.face(item, edge) : feature.peek()?.data.face(item, edge) ?? fallback(item),
+    detail: (item, edge) => isPluginWidget(item.widget) ? pluginWidgets.detail(item, edge) : feature.peek()?.data.detail(item, edge) ?? { itemId: item.id, name: item.label ?? '', face: fallback(item), data: [], updatedAt: null, surface: null, actions: [] },
     setVisible(surface, widgets) {
       const window = surface === "dock-bar" ? service.barWindow() : surface === "dock-panel" ? service.panelContainer() : undefined;
       pluginWidgets?.setVisible(surface, widgets, window && !window.isDestroyed() ? window.webContents.id : undefined);
@@ -130,7 +132,7 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
     source: id => feature.peek()?.data.source(id) ?? null,
     read: (id, sources) => { const owner = feature.peek(); if (!owner)
       throw new Error('DOCK_DATA_UNAVAILABLE'); return owner.data.read(id, sources); },
-    refresh: async (id) => config.layout().items.some(item => item.id === id && item.kind === "widget" && isDistributedWidget(item.widget)) ? pluginWidgets.refresh(id) : (await getWidgets()).data.refresh(id),
+    refresh: async (id) => config.layout().items.some(item => item.id === id && item.kind === "widget" && isPluginWidget(item.widget)) ? pluginWidgets.refresh(id) : (await getWidgets()).data.refresh(id),
     invokeAction: async (id, ref) => { const owner = await getWidgets(); if (!owner.data.invokeAction)
       throw new Error('DOCK_ACTION_UNAVAILABLE'); return owner.data.invokeAction(id, ref); },
   };
@@ -148,11 +150,11 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
     return; feature.peek()?.reconcile(); pluginWidgets.reconcile(); if (hasWidgets() && !feature.peek() && !feature.loading() && !failed)
     void getWidgets().then(() => widgetsChanged(), () => service.schedule()); service.schedule(); windowRegistry.publish(SYSTEM_DOCK_SETTINGS_CHANNEL.widgetsChanged, undefined, record => record.role === 'main'); }
   const syncOfficialDemand = () => {
-    if (!officialDirectory || !service.initialized) return;
+    if (!service.initialized) return;
     for (const [surface, widgets] of surfaces) service.setWidgetDemand(surface, widgets);
     service.usage.forgetUnusedActivity();
   };
-  const stopOfficialChanges = officialDirectory ? unifiedPluginIntegration()?.platform.onChanged(syncOfficialDemand) : undefined;
+  const stopOfficialChanges = unifiedPluginIntegration()?.platform.onChanged(syncOfficialDemand);
   const stopApps = appAdapter.subscribe(() => service.schedule()), releasePlugin = attachDockPlugin(ports.plugins, service, {disable:()=>withSetup(owner=>owner.disable()),setPreference:patch=>withSetup(owner=>owner.setPreference(patch))});
   const mode = (value: unknown): DockMode => { if (!DOCK_MODES.includes(value as DockMode))
     throw new Error('DOCK_MODE_INVALID'); return value as DockMode; };
@@ -163,7 +165,6 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
   const ipc = rendererIpc(rendererUrl, 'Rejected untrusted Dock settings request');
   const catalog = new WidgetCatalogOwner(service, () => pluginWidgets);
   ipc.handleWithContext(SYSTEM_DOCK_SETTINGS_CHANNEL.widgetDirectoryControl, (context, raw) => loaded(() => {
-    if (!distribution) throw new Error("Official Widget catalog is unavailable");
     const assertWindow = () => {
       const contents = webContents.fromId(context.webContentsId);
       const window = contents && BrowserWindow.fromWebContents(contents);
@@ -174,10 +175,21 @@ export function createSystemDockRuntime(ports: SystemDockRuntimePorts) {
     if (input.kind === "repair") {
       assertWindow();
       if (!local.get().enabled) throw new Error("Dock is disabled");
-      return migration!.retry(input.pluginId, assertWindow).then(repaired => ({ kind: "repair" as const, repaired }));
+      const unified = unifiedPluginIntegration();
+      if (unified?.hasBundledWidget(input.pluginId)) {
+        return unified.repairBundledWidget(input.pluginId, assertWindow).then(() => {
+          assertWindow();
+          widgetsChanged();
+          return { kind: "repair" as const, repaired: true };
+        });
+      }
+      const id = distributedWidgetId.parse(input.pluginId);
+      if (!migration) throw new Error("Official Widget repair is unavailable");
+      return migration.retry(id, assertWindow).then(repaired => ({ kind: "repair" as const, repaired }));
     }
+    if (!distribution) throw new Error("Official Widget catalog is unavailable");
     return distribution.control(input, context.webContentsId, assertWindow).then(result => result.kind === "browse"
-      ? { ...result, directory: { ...result.directory, recovery: officialWidgetId.options.filter(id => migration?.needs(id)) } } : result);
+      ? { ...result, directory: { ...result.directory, recovery: distributedWidgetId.options.filter(id => migration?.needs(id)) } } : result);
   }));
   ipc.handleWithContext(SYSTEM_DOCK_SETTINGS_CHANNEL.widgetCatalogSnapshot, context => loaded(() => catalog.snapshot(context.webContentsId)))
     .handleWithContext(SYSTEM_DOCK_SETTINGS_CHANNEL.setWidgetCatalogVisible, (context, value) => loaded(() => catalog.setVisible(value, context.webContentsId)))

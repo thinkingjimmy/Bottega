@@ -345,7 +345,6 @@ type ManualPrepareDependencies = {
   /** Main composition freezes canonical Project/global policy before any staging. */
   resolveProjectTools?: (input: Readonly<{
     projectId: string | null;
-    workspace: string;
     /** Built-ins only: a package Provider's turn carries no Project tools. */
     backend: import("../../../../shared/ipc/agent/agent-ipc").AgentBackendId;
     builtinTools: "none" | "read" | "mutate";
@@ -432,7 +431,6 @@ export function createManualTurnPreparer({
     const toolsBackend = builtinAgent(submission.turn.turnOptions.backend);
     const resolvedTools = !toolsBackend ? undefined : await resolveProjectTools?.({
       projectId: lifecycleProjectId,
-      workspace,
       backend: toolsBackend,
       builtinTools: runtime.capabilities.builtinTools,
       planMode: Boolean(submission.turn.planMode),

@@ -1,13 +1,13 @@
 /**
  * [INPUT]: Depends on zod, the DurableJson persistence primitive, and the shared DockLayout model.
- * [OUTPUT]: Provides DockConfigStore: the main-owned layout/revision/sync record, serialized durable mutations and last-acknowledged read projections retained across a failed write.
+ * [OUTPUT]: Persists normalized Dock layouts, local revision and sync state with serialized durable writes.
  * [POS]: system-dock/store truth for everything portable; DockService edits the working layout, AccountConfigSyncCoordinator edits only `sync` and adopts merged snapshots through `adopt`. Renderer localStorage is never truth (4.1).
  */
 
 import { join } from "node:path";
 import { z } from "zod";
 import { DurableJson } from "../../persistence/durable-json";
-import { dockLayoutSchema, UNINITIALIZED_LAYOUT, type DockLayout } from "../../../../shared/system-dock/layout";
+import { dockLayoutSchema, normalizeOfficialWidgets, UNINITIALIZED_LAYOUT, type DockLayout } from "../../../../shared/system-dock/layout";
 
 const candidateSchema = z.object({ operationId: z.string().min(8).max(64), expectedRevision: z.number().int().nonnegative(), snapshot: dockLayoutSchema,
   /** Exact ciphertext bytes (base64) and hash so an unknown outcome is re-sent unchanged or looked up by receipt (INV-15). */
@@ -45,7 +45,17 @@ export class DockConfigStore {
   private committed:DockConfigRecord|null=null;
   private readonly listeners = new Set<(change: DockConfigChange) => void>();
   constructor(directory: string) { this.file = new DurableJson(join(directory, "system-dock-config.json"), dockConfigRecordSchema, empty); }
-  async initialize() { await this.file.initialize();this.committed=this.file.snapshot(); }
+  async initialize() {
+    await this.file.initialize();
+    this.committed = this.file.snapshot();
+    if (normalizeOfficialWidgets(this.committed.layout) !== this.committed.layout) {
+      this.committed = await this.file.mutate(state => {
+        state.layout = dockLayoutSchema.parse(normalizeOfficialWidgets(state.layout));
+        state.sync.pending = true;
+        return structuredClone(state);
+      });
+    }
+  }
   snapshot(): DockConfigRecord { return this.committed===null?this.file.snapshot():structuredClone(this.committed); }
   layout(): DockLayout { return this.snapshot().layout; }
   onChanged(listener: (change: DockConfigChange) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
@@ -56,7 +66,7 @@ export class DockConfigStore {
   async edit(change: (layout: DockLayout) => DockLayout, expectedRevision?: number,beforeCommit?:()=>Promise<void>): Promise<DockConfigRecord> {
     const record = await this.file.mutate(async (state) => {
       if (expectedRevision !== undefined && state.localRevision !== expectedRevision) throw new Error("DOCK_LAYOUT_REVISION_CHANGED");
-      const next = dockLayoutSchema.parse(change(structuredClone(state.layout)));
+      const next = dockLayoutSchema.parse(normalizeOfficialWidgets(change(structuredClone(state.layout))));
       // A caller journal owns recovery if its other-owner effect commits before this file does.
       await beforeCommit?.();
       if (JSON.stringify(next) === JSON.stringify(state.layout)) return structuredClone(state);

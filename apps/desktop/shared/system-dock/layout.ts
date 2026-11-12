@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, the canonical Agent backend schema, and the local usage source identities.
- * [OUTPUT]: Provides the portable DockLayout schema (native/Bottega App, system entry, three built-in Widget kinds), budgets, identity helpers, the item category projection, anchored Downloads/Trash ordering, and the first-run default layout builder.
+ * [OUTPUT]: Portable Dock schema, legacy official Widget normalization, native configuration adapters, and the default layout.
  * [POS]: shared/system-dock data model; the only shape that may enter the account-config dock-layout ciphertext. Machine facts (paths, PIDs, permissions, mode, displays) never live here.
  */
 
@@ -10,6 +10,7 @@ import { USAGE_QUERY_TARGETS } from "../ipc/settings/usage-ipc";
 import {widgetNameSchema} from '@bottega/contracts/plugins/dock/settings';
 import {pluginDockWidgetSchema, type PluginDockWidget} from './widgets/plugin';
 import {customDockWidgetSchema,type CustomDockWidget} from './widgets/instance';
+import { NATIVE_WIDGET_PLUGINS, OFFICIAL_WIDGETS, nativeWidgetType } from "./widgets/catalog/official";
 
 export const DOCK_LAYOUT_SCHEMA_VERSION = 1;
 export const DOCK_LAYOUT_BUDGET = { items: 100, itemBytes: 8 * 1024, labelChars: 256 } as const;
@@ -45,8 +46,12 @@ export const dockLayoutSchema = z.object({ schemaVersion: z.literal(DOCK_LAYOUT_
       context.addIssue({ code: "custom", message: "order must be a permutation of item ids" });
     const entries = layout.items.flatMap((item) => item.kind === "system" ? [item.entry] : []);
     if (new Set(entries).size !== entries.length) context.addIssue({ code: "custom", message: "system entries are singletons" });
-    for (const item of layout.items) if (new TextEncoder().encode(JSON.stringify(item)).length > DOCK_LAYOUT_BUDGET.itemBytes)
-      context.addIssue({ code: "custom", message: "item exceeds the per-item budget" });
+    for (const item of layout.items) {
+      const native = item.kind === "widget" && item.widget.type === "plugin" ? nativeDockWidget(item.widget) : null;
+      const payload = native ? { ...item, widget: native } : item;
+      if (new TextEncoder().encode(JSON.stringify(payload)).length > DOCK_LAYOUT_BUDGET.itemBytes)
+        context.addIssue({ code: "custom", message: "item exceeds the per-item budget" });
+    }
     if (!layout.initialized && layout.items.length) context.addIssue({ code: "custom", message: "an uninitialized layout is empty" });
   });
 
@@ -55,7 +60,8 @@ export type DockLayout = z.infer<typeof dockLayoutSchema>;
 export type AiLimitsWidget = z.infer<typeof aiLimitsWidgetSchema>;
 export type AiActivityWidget = z.infer<typeof aiActivityWidgetSchema>;
 export type TasksWidget = z.infer<typeof tasksWidgetSchema>;
-export type DockWidget = AiLimitsWidget | AiActivityWidget | TasksWidget | CustomDockWidget | PluginDockWidget;
+export type NativeDockWidget = AiLimitsWidget | AiActivityWidget | TasksWidget;
+export type DockWidget = NativeDockWidget | CustomDockWidget | PluginDockWidget;
 export type DockItemCategory = "finder" | "app" | "trailing";
 /** Draft item before an identity is minted. */
 export type DockItemDraft = DockItem extends infer T ? T extends { id: string } ? Omit<T, "id"> : never : never;
@@ -90,6 +96,36 @@ export function defaultTasksWidget(): TasksWidget {
 export function defaultActivityWidget(): AiActivityWidget {
   return { type: "builtin.ai-activity", configVersion: 1, standard: "compact", source: "all", period: "today" };
 }
+export function toPluginDockWidget(instanceId: string, widget: NativeDockWidget): PluginDockWidget {
+  const pluginId = NATIVE_WIDGET_PLUGINS[widget.type];
+  const { type: _type, standard: _standard, configVersion, ...configuration } = widget;
+  return { type: "plugin", configVersion, pluginId, contributionId: OFFICIAL_WIDGETS[pluginId].contributionId,
+    instanceId, size: "small", configuration };
+}
+
+/** Host presentation settings are derived from the installed plugin instance. */
+export function nativeDockWidget(widget: DockWidget): NativeDockWidget | null {
+  if (widget.type !== "plugin") return widget.type === "custom" ? null : widget;
+  const type = nativeWidgetType(widget.pluginId, widget.contributionId);
+  const config = { ...widget.configuration, type, configVersion: 1, standard: "compact" };
+  switch (type) {
+    case "builtin.ai-limits": return aiLimitsWidgetSchema.safeParse(config).data ?? null;
+    case "builtin.ai-activity": return aiActivityWidgetSchema.safeParse(config).data ?? null;
+    case "builtin.tasks": return tasksWidgetSchema.safeParse(config).data ?? null;
+    default: return null;
+  }
+}
+
+export function normalizeOfficialWidgets(layout: DockLayout): DockLayout {
+  if (!layout.items.some(item => item.kind === "widget" && item.widget.type in NATIVE_WIDGET_PLUGINS)) return layout;
+  return { ...layout, items: layout.items.map(item => item.kind === "widget" ? normalizeOfficialItem(item) : item) };
+}
+
+export function normalizeOfficialItem(item: Extract<DockItem, { kind: "widget" }>) {
+  if (item.widget.type === "plugin" || item.widget.type === "custom") return item;
+  return { ...item, widget: toPluginDockWidget(item.id, item.widget) };
+}
+
 /**
  * First initialization only (INV-07): Finder, imported Apps in their system order, then AI limits, Downloads and Trash.
  * Callers never apply this to an existing or deliberately cleared layout.
@@ -104,7 +140,7 @@ export function buildDefaultLayout(input: { apps: readonly DockItemDraft[]; limi
     if (key) { if (seen.has(key)) return []; seen.add(key); }
     return [{ ...draft, id: mint() } as DockItem];
   });
-  return dockLayoutSchema.parse({ schemaVersion: 1, initialized: true, items, order: items.map((item) => item.id) });
+  return dockLayoutSchema.parse(normalizeOfficialWidgets({ schemaVersion: 1, initialized: true, items, order: items.map(item => item.id) }));
 }
 export function parseDockLayout(value: unknown): { ok: true; layout: DockLayout } | { ok: false } {
   const result = dockLayoutSchema.safeParse(value);

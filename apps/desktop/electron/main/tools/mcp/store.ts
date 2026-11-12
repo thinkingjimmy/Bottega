@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node path, zod, the shared locale-independent canonical digest, the JsonCasStore persistence kernel, neutral resource scope, and shared masked MCP contracts
- * [OUTPUT]: Provides scope-aware ManualMcpServersStore v2 with exact projections, per-scope CAS tombstones, owner fences, retryable active+backup secret cleanup, budgets, and resolved main-only configs
- * [POS]: Main-only secret source of truth for manual MCP; global and exact-Project ownership is enforced before renderer projection or runtime resolution
+ * [INPUT]: Depends on Node path, Zod, the canonical digest, JsonCasStore, and the global masked MCP contract
+ * [OUTPUT]: Provides ManualMcpServersStore with global CAS, masked snapshots, resolved configs, and retryable migration of both v2 copies
+ * [POS]: Main-owned manual MCP settings. Project entries are accepted only when reading old persisted files for cleanup
  */
 
 import { canonicalSha256Hex } from "../../persistence/canonical-digest";
@@ -9,6 +9,7 @@ import { isAbsolute, join } from "node:path";
 import { z } from "zod";
 import type {
   ManualMcpEligibility,
+  ManualMcpScope,
   ManualMcpServerView,
   McpSecretEdit,
   McpServersChangedEvent,
@@ -70,10 +71,12 @@ const fileSchema = z.object({
 }).strict();
 
 type StoredServer = z.infer<typeof serverSchema>;
+type GlobalServer = StoredServer & { scope: ManualMcpScope };
 type StoreFile = z.infer<typeof fileSchema>;
 type ServerConfig = StoredServer["config"];
 
-export type ResolvedManualMcpServer = Readonly<StoredServer & {
+export type ResolvedManualMcpServer = Readonly<GlobalServer & {
+  serverId: `manual:${string}`;
   configDigest: `sha256:${string}`;
   eligibility: ManualMcpEligibility;
 }>;
@@ -100,55 +103,40 @@ export class ManualMcpServersStore extends JsonCasStore<StoreFile, McpServersCha
   initialize() {
     return this.mutate(async () => {
       await this.recover();
-      return this.project({ kind: "global" });
+      await this.scrubCopies(scrubProjectSettings);
+      return this.snapshot();
     });
   }
 
-  project(
-    queryScope: ProductResourceScope = { kind: "global" },
-    projectLifecycleRevision: number | null = null
-  ): McpServersSnapshot {
-    const scope = parseScope(queryScope);
+  snapshot(): McpServersSnapshot {
     return {
-      queryScope: scope,
+      queryScope: { kind: "global" },
       storeRevision: this.state.revision,
-      globalScopeRevision: this.scopeRevision({ kind: "global" }),
-      projectScopeRevision: scope.kind === "project" ? this.scopeRevision(scope) : null,
-      projectLifecycleRevision: scope.kind === "project" ? projectLifecycleRevision : null,
-      servers: this.visibleServers(scope).map(projectServer),
+      globalScopeRevision: this.scopeRevision(),
+      servers: this.state.servers.filter(isGlobalServer).map(projectServer),
     };
   }
 
-  resolved(scope: ProductResourceScope = { kind: "global" }): readonly ResolvedManualMcpServer[] {
-    return this.visibleServers(parseScope(scope)).map(resolveServer);
+  resolved(): readonly ResolvedManualMcpServer[] {
+    return this.state.servers.filter(isGlobalServer).map(resolveServer);
   }
 
-  owned(scope: ProductResourceScope): readonly ResolvedManualMcpServer[] {
-    const parsed = parseScope(scope);
-    return this.state.servers.filter((server) => sameScope(server.scope, parsed)).map(resolveServer);
-  }
-
-  scopeRevision(scope: ProductResourceScope) {
-    return this.state.scopeRevisions[scopeKey(parseScope(scope))] ?? 0;
+  scopeRevision() {
+    return this.state.scopeRevisions.global!;
   }
 
   save(raw: SaveManualMcpServerInput) {
     return this.mutate(async () => {
       const input = parseSave(raw);
-      this.assertScopeRevision(input.scope, input.expectedScopeRevision);
+      this.assertScopeRevision(input.expectedScopeRevision);
       const existing = input.serverId
         ? this.state.servers.find((server) => server.serverId === input.serverId)
         : undefined;
-      if (input.serverId && !existing) throw storeError("owner-mismatch", "MCP server 不存在");
-      if (existing && !sameScope(existing.scope, input.scope)) {
-        throw storeError("owner-mismatch", "MCP server owner 与 mutation scope 不一致");
+      if (input.serverId && (!existing || !isGlobalServer(existing))) {
+        throw storeError("owner-mismatch", "MCP server 不存在");
       }
-      const ownedCount = this.state.servers.filter((server) => sameScope(server.scope, input.scope)).length;
-      if (!existing && ownedCount >= MAX_SERVERS_PER_SCOPE) {
-        throw new Error(`每个 scope 最多 ${MAX_SERVERS_PER_SCOPE} 个 MCP server`);
-      }
-      if (!existing && this.state.servers.length >= MAX_TOTAL_SERVERS) {
-        throw new Error(`MCP server 总数最多 ${MAX_TOTAL_SERVERS} 个`);
+      if (!existing && this.state.servers.length >= MAX_SERVERS_PER_SCOPE) {
+        throw new Error(`最多 ${MAX_SERVERS_PER_SCOPE} 个 MCP server`);
       }
       const next: StoredServer = {
         serverId: existing?.serverId ?? this.nextId(input.draft.displayName),
@@ -160,50 +148,27 @@ export class ManualMcpServersStore extends JsonCasStore<StoreFile, McpServersCha
       const servers = existing
         ? this.state.servers.map((server) => server.serverId === existing.serverId ? next : server)
         : [...this.state.servers, next];
-      await this.commit(input.scope, servers);
-      return this.project(input.scope, input.expectedProjectLifecycleRevision);
+      await this.commit(servers);
+      return this.snapshot();
     });
   }
 
   remove(raw: RemoveManualMcpServerInput) {
     return this.mutate(async () => {
       const input = parseRemove(raw);
-      this.assertScopeRevision(input.scope, input.expectedScopeRevision);
+      this.assertScopeRevision(input.expectedScopeRevision);
       const existing = this.state.servers.find((server) => server.serverId === input.serverId);
-      if (!existing || !sameScope(existing.scope, input.scope)) {
-        throw storeError("owner-mismatch", "MCP server owner 与 mutation scope 不一致");
+      if (!existing || !isGlobalServer(existing)) {
+        throw storeError("owner-mismatch", "MCP server 不存在");
       }
-      await this.commit(input.scope, this.state.servers.filter((server) => server.serverId !== input.serverId));
-      return this.project(input.scope, input.expectedProjectLifecycleRevision);
+      await this.commit(this.state.servers.filter((server) => server.serverId !== input.serverId));
+      return this.snapshot();
     });
   }
 
-  cleanupProject(projectId: string) {
-    const scope = parseScope({ kind: "project", projectId });
-    return this.mutate(async () => {
-      const key = scopeKey(scope);
-      const servers = this.state.servers.filter((server) => !sameScope(server.scope, scope));
-      const hadServers = servers.length !== this.state.servers.length;
-      const hadRevision = Object.hasOwn(this.state.scopeRevisions, key);
-      if (hadServers || hadRevision) {
-        const scopeRevisions = { ...this.state.scopeRevisions };
-        delete scopeRevisions[key];
-        await this.commitFile({ servers, scopeRevisions }, undefined);
-      }
-      await this.rewriteBackup();
-      return hadServers || hadRevision;
-    });
-  }
-
-  private visibleServers(scope: ProductResourceScope) {
-    return this.state.servers.filter((server) =>
-      server.scope.kind === "global" || sameScope(server.scope, scope)
-    );
-  }
-
-  private assertScopeRevision(scope: ProductResourceScope, expected: number) {
+  private assertScopeRevision(expected: number) {
     if (!Number.isInteger(expected) || expected < 0) throw new Error("MCP scope revision 无效");
-    if (this.scopeRevision(scope) !== expected) {
+    if (this.scopeRevision() !== expected) {
       throw storeError("scope-revision-conflict", "MCP scope 已变化，请刷新后重试");
     }
   }
@@ -216,73 +181,73 @@ export class ManualMcpServersStore extends JsonCasStore<StoreFile, McpServersCha
     return candidate;
   }
 
-  private async commit(scope: ProductResourceScope, servers: StoredServer[]) {
-    const key = scopeKey(scope);
-    const scopeRevisions = {
-      ...this.state.scopeRevisions,
-      [key]: (this.state.scopeRevisions[key] ?? 0) + 1,
-    };
-    await this.commitFile({ servers, scopeRevisions }, {
-      version: {
-        scope: structuredClone(scope),
-        projectLifecycleRevision: null,
-        scopeRevision: scopeRevisions[key]!,
-      },
-      storeRevision: this.state.revision + 1,
-    });
-  }
-
-  private commitFile(
-    changed: Pick<StoreFile, "servers" | "scopeRevisions">,
-    event: McpServersChangedEvent | undefined
-  ) {
+  private async commit(servers: StoredServer[]) {
+    const global = this.scopeRevision() + 1;
+    const revision = this.state.revision + 1;
     const next = validateState({
       schemaVersion: SCHEMA_VERSION,
-      revision: this.state.revision + 1,
-      ...changed,
+      revision,
+      scopeRevisions: { global },
+      servers,
     });
-    return this.commitState(next, event ? [event] : []);
+    await this.commitState(next, [{
+      version: {
+        scope: { kind: "global" },
+        projectLifecycleRevision: null,
+        scopeRevision: global,
+      },
+      storeRevision: revision,
+    }]);
   }
+}
+
+function scrubProjectSettings(state: StoreFile): StoreFile {
+  const servers = state.servers.filter(isGlobalServer);
+  if (servers.length === state.servers.length && Object.keys(state.scopeRevisions).length === 1) {
+    return state;
+  }
+  return { ...state, servers, scopeRevisions: { global: state.scopeRevisions.global! } };
+}
+
+function isGlobalServer(server: StoredServer): server is GlobalServer {
+  return server.scope.kind === "global";
 }
 
 function parseSave(raw: SaveManualMcpServerInput): SaveManualMcpServerInput {
   if (!raw || typeof raw !== "object") throw new Error("MCP server 参数无效");
-  const scope = parseScope(raw.scope);
-  assertLifecycleFence(scope, raw.expectedProjectLifecycleRevision);
+  assertManualMcpScope(raw.scope);
+  assertGlobalFence(raw.expectedProjectLifecycleRevision);
   if (!Number.isInteger(raw.expectedScopeRevision) || raw.expectedScopeRevision < 0) throw new Error("MCP scope revision 无效");
   if (raw.serverId !== undefined && !MANUAL_ID.test(raw.serverId)) throw new Error("MCP serverId 无效");
   if (!raw.draft || typeof raw.draft !== "object") throw new Error("MCP server draft 无效");
   if (typeof raw.draft.displayName !== "string" || !raw.draft.displayName.trim()) throw new Error("MCP server 显示名称不能为空");
   if (typeof raw.draft.enabled !== "boolean") throw new Error("MCP server enabled 无效");
-  return { ...raw, scope } as SaveManualMcpServerInput;
+  return raw;
 }
 
 function parseRemove(raw: RemoveManualMcpServerInput): RemoveManualMcpServerInput {
   if (!raw || typeof raw !== "object") throw new Error("MCP server 删除参数无效");
-  const scope = parseScope(raw.scope);
-  assertLifecycleFence(scope, raw.expectedProjectLifecycleRevision);
+  assertManualMcpScope(raw.scope);
+  assertGlobalFence(raw.expectedProjectLifecycleRevision);
   if (!Number.isInteger(raw.expectedScopeRevision) || raw.expectedScopeRevision < 0) throw new Error("MCP scope revision 无效");
   if (!MANUAL_ID.test(raw.serverId)) throw new Error("MCP serverId 无效");
-  return { ...raw, scope } as RemoveManualMcpServerInput;
+  return raw;
 }
 
-function assertLifecycleFence(scope: ProductResourceScope, revision: number | null) {
-  if (scope.kind === "global" && revision !== null) throw new Error("global mutation 不接受 Project lifecycle revision");
-  if (scope.kind === "project" && (!Number.isInteger(revision) || (revision ?? 0) <= 0)) {
-    throw new Error("Project lifecycle revision 无效");
+function assertGlobalFence(revision: unknown) {
+  if (revision !== null) throw new Error("Manual MCP settings are global");
+}
+
+const globalScopeSchema = z.object({ kind: z.literal("global") }).strict();
+
+export function assertManualMcpScope(scope: unknown) {
+  if (!globalScopeSchema.safeParse(scope).success) {
+    throw new Error("Manual MCP settings are global");
   }
-}
-
-function parseScope(scope: ProductResourceScope): ProductResourceScope {
-  return scopeSchema.parse(scope);
 }
 
 function scopeKey(scope: ProductResourceScope) {
   return scope.kind === "global" ? "global" : `project:${scope.projectId}`;
-}
-
-function sameScope(left: ProductResourceScope, right: ProductResourceScope) {
-  return scopeKey(left) === scopeKey(right);
 }
 
 function resolveConfig(draft: SaveManualMcpServerInput["draft"]["config"], existing: ServerConfig | undefined): ServerConfig {
@@ -364,18 +329,15 @@ function validateConfig(config: ServerConfig) {
     : { ...config, headers: Object.entries(secrets).map(([name, value]) => ({ name, action: "replace" as const, value })) }, undefined);
 }
 
-function projectServer(server: StoredServer): ManualMcpServerView {
+function projectServer(server: GlobalServer): ManualMcpServerView {
   const eligibility = eligibilityOf(server);
   const base = {
     serverId: server.serverId as `manual:${string}`,
     source: "manual" as const,
     owner: structuredClone(server.scope),
     displayName: server.displayName,
-    configuredEnabled: server.enabled,
     enabled: server.enabled,
-    override: null,
     effectiveState: eligibility !== "eligible" ? "unavailable" as const : server.enabled ? "enabled" as const : "disabled" as const,
-    effectiveSource: server.scope.kind === "global" ? "global-default" as const : "project-owned" as const,
     backendSupport: [],
     eligibility,
     configDigest: digest(server.config),
@@ -386,8 +348,13 @@ function projectServer(server: StoredServer): ManualMcpServerView {
     : { ...base, transport: server.config.transport, url: server.config.url, headers: maskedSecrets(server.config.headers) };
 }
 
-function resolveServer(server: StoredServer): ResolvedManualMcpServer {
-  return { ...structuredClone(server), configDigest: digest(server.config), eligibility: eligibilityOf(server) };
+function resolveServer(server: GlobalServer): ResolvedManualMcpServer {
+  return {
+    ...structuredClone(server),
+    serverId: server.serverId as `manual:${string}`,
+    configDigest: digest(server.config),
+    eligibility: eligibilityOf(server),
+  };
 }
 
 function maskedSecrets(values: Record<string, string>) {

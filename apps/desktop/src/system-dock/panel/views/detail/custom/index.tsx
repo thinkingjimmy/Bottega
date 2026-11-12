@@ -51,6 +51,8 @@ export function CustomDetail({ itemId }: { itemId: string }) {
           <ArrowUpRight aria-hidden="true" />{t('systemDock.panel.openUsage')}
         </button>}
         <WidgetDetailActions key={itemId} itemId={itemId} actions={detail.actions} />
+        {face.officialWidget && face.state === 'paused' && <button type="button" className="text-button"
+          onClick={() => send({ kind: 'widget-entry', entry: { kind: 'versions', itemId } })}>{t('systemDock.widgets.versions')}</button>}
         {face.state !== 'paused' && <button type="button" className="text-button" onClick={() => send({ kind: 'widget-entry', entry: { kind: 'configure', itemId } })}>
           <SlidersHorizontal aria-hidden="true" />{t('systemDock.widgets.configure')}
         </button>}

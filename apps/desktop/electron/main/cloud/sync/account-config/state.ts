@@ -5,14 +5,17 @@
  */
 import { canonicalJson } from "@ai-chat/cloud-protocol";
 import { DOCK_LAYOUT_CONFIG_ID, type EncryptedAccountConfig } from "@ai-chat/cloud-protocol/account-config/model";
-import type { DockLayout } from "../../../../../shared/system-dock/layout";
+import { normalizeOfficialWidgets, type DockLayout } from "../../../../../shared/system-dock/layout";
 import { mergeLayouts, unionPreview, type MergeConflict } from "../../../../../shared/system-dock/merge";
 import type { ConflictChoice } from "../../../../../shared/system-dock/ipc";
 import type { DockCandidate, DockConfigRecord } from "../../../system-dock/store/config-store";
 import { detachSync } from "./cleanup";
 
 export const SEALED_LIMIT = 8;
-export const sameLayout = (a: DockLayout | null, b: DockLayout | null) => canonicalJson(a) === canonicalJson(b);
+const normalizeLayout = (layout: DockLayout | null) => layout ? normalizeOfficialWidgets(layout) : null;
+export const sameLayout = (a: DockLayout | null, b: DockLayout | null) => canonicalJson(normalizeLayout(a)) === canonicalJson(normalizeLayout(b));
+const mergeWidgetLayouts = (base: DockLayout, local: DockLayout, remote: DockLayout) =>
+  mergeLayouts(normalizeOfficialWidgets(base), normalizeOfficialWidgets(local), normalizeOfficialWidgets(remote));
 /** What the server currently holds, as far as this client may interpret it. */
 export type RemoteView =
   | { kind: "absent"; revision: 0 }
@@ -26,7 +29,7 @@ export type Integration = "absent" | "unchanged" | "adopted" | "equal" | "fast-f
 /** Replaces the working layout from sync; the local revision moves so a stale preview confirmation is refused (3.1). */
 function adopt(record: DockConfigRecord, layout: DockLayout) {
   if (sameLayout(record.layout, layout)) return;
-  record.layout = structuredClone(layout); record.localRevision += 1;
+  record.layout = structuredClone(normalizeOfficialWidgets(layout)); record.localRevision += 1;
 }
 function acknowledge(record: DockConfigRecord, remote: DockLayout, revision: number) {
   record.sync.base = structuredClone(remote); record.sync.acknowledgedRevision = revision;
@@ -90,7 +93,7 @@ export function integrate(record: DockConfigRecord, remote: RemoteView, now: num
   if (!sync.pending && sameLayout(record.layout, sync.base)) {
     adopt(record, remote.layout); acknowledge(record, remote.layout, remote.revision); return "fast-forward";
   }
-  const result = mergeLayouts(sync.base, record.layout, remote.layout);
+  const result = mergeWidgetLayouts(sync.base, record.layout, remote.layout);
   if (result.status === "merged") { adopt(record, result.layout); acknowledge(record, remote.layout, remote.revision); return "merged"; }
   sync.conflict = { kind: "three-way", remote: structuredClone(remote.layout), remoteRevision: remote.revision, detectedAt: since(record, "three-way", remote.revision, now) };
   return "conflict";
@@ -121,7 +124,7 @@ export function settleApplied(record: DockConfigRecord, candidate: DockCandidate
 export function conflictList(record: DockConfigRecord): MergeConflict[] {
   const conflict = record.sync.conflict;
   if (conflict?.kind !== "three-way" || !conflict.remote || !record.sync.base) return [];
-  const result = mergeLayouts(record.sync.base, record.layout, conflict.remote);
+  const result = mergeWidgetLayouts(record.sync.base, record.layout, conflict.remote);
   return result.status === "conflict" ? result.conflicts : [];
 }
 /**
@@ -137,9 +140,9 @@ export function resolveConflict(record: DockConfigRecord, choice: ConflictChoice
   let next = record.layout;
   if (choice.strategy === "remote") next = remote;
   else if (choice.strategy === "merge") {
-    if (conflict.kind === "first-sync" || !record.sync.base) next = unionPreview(record.layout, remote);
+    if (conflict.kind === "first-sync" || !record.sync.base) next = unionPreview(record.layout, normalizeOfficialWidgets(remote));
     else {
-      const result = mergeLayouts(record.sync.base, record.layout, remote);
+      const result = mergeWidgetLayouts(record.sync.base, record.layout, remote);
       next = result.status === "merged" ? result.layout : result.resolve(choice.choices);
     }
   }

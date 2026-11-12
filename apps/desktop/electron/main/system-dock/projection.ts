@@ -1,16 +1,20 @@
 /**
- * [INPUT]: Depends on the shared layout/IPC/metrics models, the official Weather identity and caller-supplied branded host, resolution, running, entry and Widget facts.
- * [OUTPUT]: Provides pure pinned/running item projections with bundle-identity de-duplication and one always-reachable branded host, shared face-dependent metric items for fitting, and privacy-safe labels. Projects live App emoji without adding them to persisted layout.
+ * [INPUT]: Shared Dock projections, official Widget identities, local paths and main-owned Dock facts.
+ * [OUTPUT]: Builds Dock projection facts and produces privacy-safe pinned and running items, labels and metric inputs.
  * [POS]: system-dock projection kernel; DockService owns facts, this file only shapes them for renderers (INV-06/08/12).
  */
 
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { translate } from "../../../shared/i18n/runtime";
 import type { DockBarItem, TrashState, WidgetFace } from "../../../shared/system-dock/ipc";
 import { orderedItems, type DockItem, type DockLayout } from "../../../shared/system-dock/layout";
 import { metricItem, type MetricItem } from "../../../shared/system-dock/metrics";
-import { WEATHER_PLUGIN_ID } from "../../../shared/system-dock/widgets/weather";
+import { isOfficialWidgetId, OFFICIAL_WIDGETS } from "../../../shared/system-dock/widgets/catalog/official";
 import { weatherDefinitionCopy } from "../../../shared/system-dock/widgets/weather/labels";
 import type { RunningApp } from "./native/protocol";
+import type { DockService } from "./service";
+import { taskFace } from "./widgets/tasks";
 
 export type NativeResolution = { path: string; bundleIdentifier: string | null; name: string } | null;
 export type BottegaAppFact = { appIcon?: string | null; label: string; state: "ready" | "unavailable" | "missing"; running: boolean };
@@ -29,6 +33,35 @@ export type ProjectionFacts = {
   label(key: DockEntryLabel): string;
   showRunning: boolean;
 };
+export function dockProjectionFacts(service: DockService): ProjectionFacts {
+  const state = service.ports.local.get();
+  const locale = service.ports.locale();
+  const mode = service.actualMode() ?? state.preferredMode;
+  return {
+    resolution: (item: DockItem) => service.resolution.has(item.id) ? service.resolution.get(item.id)! : undefined,
+    bottega: (appId: string | null) => service.ports.apps.fact(appId),
+    running: service.apps?.runningRegular() ?? [],
+    host: service.ports.host ? { ...(service.apps?.hostApp() ?? { pid: process.pid, bundleIdentifier: service.ports.ownBundleId, path: null,
+      activationPolicy: "regular" as const, finishedLaunching: true, active: false, hidden: false }), name: "Bottega" } : undefined,
+    isRunning: (target: { bundleIdentifier: string | null; path: string | null }) => service.apps?.isRunning(target) ?? false,
+    iconKey: (path: string | null) => service.apps?.iconKey(path) ?? null,
+    finderPath: "/System/Library/CoreServices/Finder.app",
+    downloadsPath: join(homedir(), "Downloads"),
+    trash: service.trash?.face() ?? "unknown",
+    widgetFace: (item: Extract<DockItem, { kind: "widget" }>) => {
+      const native = service.nativeWidget(item.widget);
+      const face: WidgetFace = native?.type === "builtin.tasks" ? taskFace(service.ports.tasks)
+        : native?.type === "builtin.ai-limits" ? service.usage.limitsFace(native)
+        : native?.type === "builtin.ai-activity" ? service.usage.activityFace(native)
+        : service.ports.custom?.face(item, state.edge) ?? { type: "custom", size: "size" in item.widget ? item.widget.size : "small",
+          state: "definition-missing", summary: null, description: null, readings: {} };
+      return state.privacyMask ? maskFace(face) : face;
+    },
+    label: key => entryLabel(locale, key),
+    showRunning: state.showRunningByMode[mode],
+  };
+}
+
 function isHost(facts: ProjectionFacts, target: { bundleIdentifier: string | null; path: string | null }): boolean {
   return Boolean(facts.host && ((target.bundleIdentifier && target.bundleIdentifier === facts.host.bundleIdentifier)
     || (target.path && target.path === facts.host.path)));
@@ -43,11 +76,13 @@ export function projectPinned(layout: DockLayout, facts: ProjectionFacts, privac
       return { id: item.id, kind: "system", entry: item.entry, pinned: true, label: facts.label("trash"), iconKey: null, running: false, status: "ok", trash: facts.trash };
     }
     if (item.kind === "widget") {
-      const maskedWeather = privacyMask && item.widget.type === "plugin" && item.widget.pluginId === WEATHER_PLUGIN_ID;
-      const maskedActivity = privacyMask && item.widget.type === "builtin.ai-activity";
+      const widget = item.widget;
+      const official = widget.type === "plugin" && isOfficialWidgetId(widget.pluginId) &&
+        widget.contributionId === OFFICIAL_WIDGETS[widget.pluginId].contributionId ? OFFICIAL_WIDGETS[widget.pluginId] : null;
+      const fallback = facts.label(official?.label ?? (widget.type === "builtin.tasks" ? "tasks" : widget.type === "builtin.ai-limits" ? "limits" : "activity"));
+      const masked = privacyMask && (official?.label === "weather" || official?.label === "activity" || widget.type === "builtin.ai-activity");
       return { id: item.id, kind: "widget", pinned: true, running: false, status: "ok", iconKey: null,
-        label: maskedWeather ? facts.label("weather") : maskedActivity ? facts.label("activity") : item.label ?? facts.label(item.widget.type === "builtin.tasks" ? "tasks" : item.widget.type === "builtin.ai-limits" ? "limits" : "activity"),
-        widget: facts.widgetFace(item) };
+        label: masked ? fallback : item.label ?? fallback, widget: facts.widgetFace(item) };
     }
     if (item.kind === "bottega-app") {
       const fact = facts.bottega(item.appId);

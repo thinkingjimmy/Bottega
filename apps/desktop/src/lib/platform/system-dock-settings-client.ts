@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the guarded `window.systemDockSettings` bridge and revisioned Settings → Dock snapshots.
- * [OUTPUT]: Provides `dockSettingsStore` (revision-ordered snapshot, one pending command, the failed command for retry, optimistic preference patch), `effectivePreferences`, and the setup/import session calls the page drives. Serializes App pin commands and publishes authoritative pin state.
+ * [OUTPUT]: Provides `dockSettingsStore` for revision-ordered snapshots, mode, preferences, activation and layout commands, and setup/import sessions. Exposes `effectivePreferences` for optimistic preference previews. Serializes App pin commands and publishes authoritative pin state.
  * [POS]: apps/desktop/src/lib/platform; Renderer owner of Settings → Dock state; main applies every command and answers with the authoritative snapshot, so the renderer never claims a result main has not reported.
  */
 
@@ -9,7 +9,7 @@ import type { DockLocalState, DockMode, DockPreferencePatch } from "../../../sha
 
 declare global { interface Window { systemDockSettings?: SystemDockSettingsBridge } }
 
-export type DockSettingsCommand = "setup" | "preference" | "mode" | "disable" | "restore" | "resume" | "reset" | "resolve" | "import" | "app-pin";
+export type DockSettingsCommand = "setup" | "preference" | "mode" | "disable" | "resume" | "reset" | "resolve" | "import" | "app-pin";
 export type DockSettingsState = Readonly<{
   snapshot: DockSettingsSnapshot | null;
   loadFailed: boolean;
@@ -82,7 +82,6 @@ export const dockSettingsStore = {
   setPreference: (patch: DockPreferencePatch) => run("preference", (api) => api.setPreference(patch), patch),
   setMode: (mode: DockMode) => run("mode", (api) => api.setMode(mode)),
   disable: () => run("disable", (api) => api.disable()),
-  restoreSystemDock: () => run("restore", (api) => api.restoreSystemDock()),
   resume: () => run("resume", (api) => api.resume()),
   resetLayout: () => run("reset", (api) => api.resetLayout()),
   resolveConflict: (choice: ConflictChoice) => run("resolve", (api) => api.resolveConflict(choice)),

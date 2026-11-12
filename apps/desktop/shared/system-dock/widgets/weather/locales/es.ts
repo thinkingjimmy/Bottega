@@ -9,6 +9,7 @@ export const weatherEs={
   "city": "Ciudad",
   "search": "Buscar una ciudad",
   "searching": "Buscando…",
+  "addWithoutCity": "Añadir sin ciudad",
   "changeCity": "Cambiar de ciudad",
   "cancelCityChange": "Cancelar el cambio",
   "noCities": "No se encontraron ciudades.",

@@ -33,7 +33,7 @@ type ProjectCleanupRecoveryFailure = Readonly<{
 const PROJECT_RUNTIME_CLEANUP_PARTICIPANT = "project-runtime";
 export const PROJECT_CLEANUP_PLAN = {
   version: 1,
-  requiredParticipants: ["extensions", "tools"],
+  requiredParticipants: ["extensions"],
 } as const;
 type CleanupPlanVersion = typeof PROJECT_CLEANUP_PLAN.version;
 

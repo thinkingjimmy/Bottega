@@ -1,5 +1,5 @@
 /* [INPUT]: Common Dock tokens, the strip's inline metrics (zoom, gap, padding, height) and item data attributes (area, status, open, dragging, shifted).
- * [OUTPUT]: Three-edge handle and strip; fixed-axis slots, hover/highlight, status/busy/running indicators, drag placeholder shifts and faded drag-out removal preview, shared-face slots, separator, overflow and empty CTA.
+ * [OUTPUT]: Three-edge handle and tinted glass strip, fixed-axis slots, hover/highlight, status/busy/running indicators, drag previews, a shared 40 px divider length, overflow and empty CTA.
  * [POS]: system-dock/bar stylesheet; widths come from shared metrics inline, so this file only draws — it never changes a slot's footprint.
  */
 .dock { display: flex; align-items: flex-end; justify-content: center; width: 100vw; height: 100vh; }
@@ -7,8 +7,8 @@
   /* The hit zone is the whole window; the visible pill stays thin so it reads as a handle, not a bar. */
   transform: scaleY(0.6); }
 .strip { position: relative; display: flex; align-items: center; gap: var(--gap); padding: 0 var(--pad);
-  /* The window is exactly the strip and carries the native material with the system's corner radius (set inline);
-     CSS blur cannot see the desktop behind a transparent window, so the page only draws the lit edge. */
+  --divider-length: 40px;
+  /* The strip fills the native material's window. The page supplies the appearance tint and lit edge. */
   background: var(--strip-fill); box-shadow: var(--strip-edge); }
 .item { position: relative; flex: none; height: 48px; border-radius: 12px; transform: translate(var(--offset, 0px), 0);
   transition: transform 150ms cubic-bezier(0.2, 0, 0, 1), background-color 120ms ease-out; }
@@ -36,8 +36,8 @@
 .item:active { background: var(--pressed); }
 .item[data-dragging] { z-index: 2; background: var(--pressed); transition: background-color 120ms ease-out; }
 .item[data-removing] { opacity: 0.35; cursor: no-drop; }
-.separator { flex: none; align-self: stretch; margin: 14px 0; position: relative; }
-.separator::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.separator { flex: none; display: grid; place-items: center; }
+.separator::after { content: ""; width: 1px; height: var(--divider-length); background: var(--line); }
 .overflow { display: grid; place-items: center; flex: none; height: 36px; border-radius: 10px; color: var(--muted); }
 .overflow svg { width: 20px; height: 20px; }
 .empty-cta { display: flex; align-items: center; justify-content: center; gap: 6px; height: 40px; border-radius: 10px; font-weight: 500; }

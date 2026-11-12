@@ -1,6 +1,6 @@
 /*
- * [INPUT]: Fixed Dock face dimensions, edge and size attributes, normalized weather presentation and the inherited color scheme.
- * [OUTPUT]: Compact current readings and forecast columns or rows with bounded typography.
+ * [INPUT]: Fixed Dock face dimensions, edge and size attributes, the Dock divider length, normalized weather presentation and the inherited color scheme.
+ * [OUTPUT]: Compact current readings and forecast columns or rows with bounded typography and a centered divider matching the Dock group dividers.
  * [POS]: Scoped Weather skin shared by live Dock faces and in-form size previews.
  */
 .weather-face {
@@ -55,6 +55,7 @@
 .weather-condition-icon:is([data-condition="rain"], [data-condition="drizzle"], [data-condition="showers"], [data-condition="snow"]) { color: light-dark(#245c91, #9bcafa); }
 
 .weather-forecast {
+  position: relative;
   align-self: stretch;
   display: grid;
   grid-auto-flow: column;
@@ -62,9 +63,19 @@
   align-items: center;
   width: 100%;
   min-width: 0;
-  border-inline-start: 1px solid var(--weather-divider);
-  padding-inline-start: 3px;
+  padding-inline-start: 4px;
   box-sizing: border-box;
+}
+
+.weather-forecast::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  margin: auto 0;
+  width: 1px;
+  height: var(--divider-length, 40px);
+  background: var(--weather-divider);
 }
 
 .weather-day { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; align-items: center; gap: 3px; min-width: 0; }
@@ -77,9 +88,16 @@
 .weather-face:not([data-edge="bottom"]) .weather-forecast {
   grid-auto-flow: row;
   grid-auto-rows: 1fr;
-  border-inline-start: 0;
-  border-block-start: 1px solid var(--weather-divider);
   padding-inline-start: 0;
+  padding-block-start: 1px;
+}
+
+.weather-face:not([data-edge="bottom"]) .weather-forecast::before {
+  inset-block-end: auto;
+  inset-inline: 0;
+  margin: 0 auto;
+  width: var(--divider-length, 40px);
+  height: 1px;
 }
 
 @media (forced-colors: active) {

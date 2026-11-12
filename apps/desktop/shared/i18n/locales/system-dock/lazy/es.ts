@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Localized Dock copy and the shared weather translation dictionary.
- * [OUTPUT]: Provides systemDockLazyEs, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded.
+ * [OUTPUT]: Provides systemDockLazyEs, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded. Includes the Display group and replacement setup guidance.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../es.ts.
  */
 
@@ -46,7 +46,7 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
   },
   placement: {
     panelSpaceHint: "No hay espacio suficiente para abrir el panel. Elige otra pantalla o reduce el tamaño del Dock.",
-    title: "Ubicación",
+    title: "Pantalla",
     displayHint: "Elige dónde aparece Bottega Dock.",
     primary: "Seguir la pantalla principal",
     external: "Preferir una pantalla externa",
@@ -261,12 +261,8 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
     enabledLabel: "Usar Bottega Dock",
     offNote: "No cambia nada en tu Mac hasta que lo confirmes.",
     phaseOff: "Desactivado",
-    restoreDescription: "Restaura el Dock del sistema ahora.",
-    restoreFailedDescription: "Bottega no pudo devolver el Dock del sistema. Vuelve a intentarlo o desactiva el Dock.",
     appearanceTitle: "Apariencia",
     behaviorTitle: "Comportamiento",
-    recoveryTitle: "Recuperación",
-    recoveryDescription: "Mantiene siempre una forma de volver al Dock del sistema, aunque Bottega se cierre inesperadamente.",
     shortcutChange: "Cambiar…",
     shortcutRecording: "Escribe el atajo",
     shortcutRecordingHint: "Pulsa el nuevo atajo. Suprimir lo elimina; Esc cancela.",
@@ -277,8 +273,6 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
     unsupportedVersion: "Dock admite macOS 26 y 27 en los Mac con chip de Apple. No se admiten otras versiones de macOS.",
     unsupportedArchitecture: "Bottega Dock requiere un Mac con chip de Apple.",
     unsupportedHelperMissing: "Falta un componente necesario para Bottega Dock en esta instalación. Reinstala Bottega para usar el Dock.",
-    registrationUnknown: "Sin verificar",
-    registrationUnknownDescription: "No se pudo comprobar el registro del elemento de recuperación en segundo plano. Reintenta la recuperación antes de activar el Dock.",
     unsupportedOther: "El resto de Bottega funciona con normalidad.",
     replacementDevelopment: "La versión de desarrollo puede coexistir con el Dock del sistema. Instala una copia firmada de Bottega para sustituirlo.",
     replacementHelperMissing: "Falta el asistente de recuperación o su configuración de servicio. Reinstala Bottega para usar la sustitución.",
@@ -322,7 +316,7 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
     impactAutohide: "El Dock del sistema se configura para ocultarse automáticamente y se alarga su retardo de aparición, para que Bottega Dock ocupe su lugar.",
     impactRecoveryItem: "Se añade un pequeño elemento de recuperación a tus elementos en segundo plano. Mientras la sustitución siga activada, permanece registrado incluso después de salir de Bottega, para que el Dock del sistema siempre se pueda restaurar.",
     impactNoApp: "El elemento de recuperación nunca abre la app completa de Bottega.",
-    impactRestore: "Restaura el Dock del sistema cuando quieras: haz clic derecho en Bottega Dock, abre los ajustes del plugin Dock o usa Dock en el menú de Bottega en la barra de menús.",
+    impactRestore: "Desactiva Bottega Dock en los ajustes para restaurar el Dock del sistema. También puedes restaurarlo desde el menú contextual del Dock o el menú de Bottega en la barra de menús.",
     impactShortcuts: "Los atajos del sistema siguen funcionando como respaldo: Opción-Comando-D activa o desactiva la ocultación del Dock y Fn-A muestra el Dock en los Mac compatibles. No son la única forma de volver.",
     impactLogin: "Abrir Bottega al iniciar sesión es una opción aparte en los ajustes Generales.",
     acknowledge: "Entiendo qué cambia",
@@ -346,15 +340,8 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
     recoveryKeptExternal: "Los ajustes del Dock del sistema se cambiaron fuera de Bottega, así que se dejaron como estaban.",
     recoveryFailed: "No se pudo restaurar por completo el Dock del sistema. Pulsa Opción-Comando-D para mostrarlo.",
     resume: "Reanudar",
-    restore: "Restaurar el Dock del sistema",
-    registrationLabel: "Elemento de recuperación",
-    registrationEnabled: "Registrado. Sigue registrado después de salir de Bottega mientras la sustitución esté activada.",
     registrationApproval: "Necesita tu aprobación en Ajustes del Sistema › General › Ítems de inicio y extensiones.",
     registrationMissing: "macOS no encuentra el registro de este servicio de recuperación. Es posible que aún no se haya creado.",
-    registrationNone: "Aún no está registrado.",
-    needsApproval: "Requiere aprobación",
-    notFound: "No encontrado",
-    notRegistered: "No registrado",
     openLoginItems: "Abrir ítems de inicio",
     accessibilityLabel: "Restaurar ventanas minimizadas",
     accessibilityOff: "No permitido",
@@ -406,7 +393,6 @@ export const systemDockLazyEs: typeof systemDockLazyEn = {
     failedPreference: "No se pudo guardar la preferencia.",
     failedMode: "No se pudo cambiar el modo.",
     failedDisable: "No se pudo desactivar Bottega Dock.",
-    failedRestore: "No se pudo restaurar el Dock del sistema.",
     failedResume: "No se pudo reanudar Bottega Dock.",
     failedReset: "No se pudo restablecer la disposición.",
     failedResolve: "No se pudo aplicar tu elección de sincronización.",

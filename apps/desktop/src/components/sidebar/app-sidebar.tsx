@@ -1,7 +1,7 @@
 "use client";
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, i18n, Sidebar UI, product providers, shared WorkspaceNavigation/SettingsNavigation and ComputerSwitcher, active App targets, footer affordances, cloud projections and the Sidebar notice dialog.
- * [OUTPUT]: Provides AppSidebar.
+ * [OUTPUT]: Provides AppSidebar, including the MCP entry in Settings Integrations.
  * [POS]: App and Widget card catalog entry plus declared ready page navigation; sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  * Memory status follows its plugin item when the workbench UI is enabled; the footer uses the same destination.
  */
@@ -15,7 +15,7 @@ import {
 } from "react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
-import { Archive, ChartNoAxesColumnIncreasing, Database, Download, PanelBottom, RefreshCw, Keyboard, Loader2, PackagePlus, Plus, Settings, Puzzle, Server, SlidersHorizontal, BrainCircuit, Globe, TriangleAlert, UserPen, Users, Wrench } from "lucide-react";
+import { Archive, ChartNoAxesColumnIncreasing, Database, Download, PanelBottom, Plug, RefreshCw, Keyboard, Loader2, PackagePlus, Plus, Settings, Puzzle, Server, SlidersHorizontal, BrainCircuit, Globe, TriangleAlert, UserPen, Users } from "lucide-react";
 
 import type { ChatSummary } from "../../../shared/ipc/content/chats-ipc";
 import type { ChatStorageFailure } from "../../../shared/product/product-failure";
@@ -444,7 +444,7 @@ function AppSidebarContent({
         ...(!workbenchLabels
           ? [settingItem("plugins", pluginContextCopy(i18n.language).plugins, <Puzzle />)]
           : []),
-        settingItem("tools", t("common.tools"), <Wrench />),
+        settingItem("tools", t("settings.tools.mcp.pageTitle"), <Plug />),
         {
           id: "skills",
           label: t("common.skills"),

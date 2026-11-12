@@ -6,13 +6,17 @@
 import { z } from "zod";
 import { pluginDigestSchema, unifiedPluginTargetSchema } from "@bottega/contracts/plugins/platform";
 
-export const OFFICIAL_WIDGETS = {
-  "bottega-weather": { contributionId: "current", dataContract: "weather-v1", recoveryVersion: "1.0.1" },
-  "bottega-ai-usage": { contributionId: "today", dataContract: "usage-v1", recoveryVersion: "1.0.0" },
-} as const;
-export type OfficialWidgetId = keyof typeof OFFICIAL_WIDGETS;
-export const officialWidgetId = z.enum(["bottega-weather", "bottega-ai-usage"]);
-export const isOfficialWidgetId = (id: string): id is OfficialWidgetId => officialWidgetId.safeParse(id).success;
+import { OFFICIAL_WIDGETS, officialWidgetIds } from "./official";
+export { OFFICIAL_WIDGETS, isOfficialWidgetId, type OfficialWidgetId } from "./official";
+
+export const officialWidgetId = z.enum(officialWidgetIds);
+export const distributedWidgetId = z.enum(["bottega-weather", "bottega-ai-usage"]);
+export type DistributedWidgetId = z.infer<typeof distributedWidgetId>;
+export const isDistributedWidgetId = (id: string): id is DistributedWidgetId => distributedWidgetId.safeParse(id).success;
+export const widgetRecoveryVersions: Record<DistributedWidgetId, string> = {
+  "bottega-weather": "1.0.1",
+  "bottega-ai-usage": "1.0.0",
+};
 
 export const WIDGET_CATALOG_LIMITS = {
   catalog: 1024 * 1024,
@@ -46,11 +50,11 @@ export const widgetDirectorySchema = z.object({
   format: z.literal("bottega-widget-catalog/v1"),
   version: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   packages: z.array(z.object({
-    pluginId: officialWidgetId, publisherId: z.literal("bottega"),
+    pluginId: distributedWidgetId, publisherId: z.literal("bottega"),
     releases: z.array(widgetReleaseSchema).min(1).max(32),
   }).strict()).max(2),
   widgets: z.array(z.object({
-    pluginId: officialWidgetId, contributionId: z.enum(["current", "today"]),
+    pluginId: distributedWidgetId, contributionId: z.enum(["current", "today"]),
     name: localized(160), description: localized(512),
     preview: asset(WIDGET_CATALOG_LIMITS.preview).extend({ format: z.enum(["png", "webp"]) }),
   }).strict()).max(2),
@@ -71,7 +75,7 @@ export const widgetDirectorySchema = z.object({
 export type WidgetDirectory = z.infer<typeof widgetDirectorySchema>;
 
 export type WidgetDirectoryRow = Readonly<{
-  pluginId: OfficialWidgetId;
+  pluginId: DistributedWidgetId;
   name: string;
   description: string;
   preview: string | null;
@@ -84,7 +88,7 @@ export type WidgetDirectoryRow = Readonly<{
 export type WidgetDirectorySnapshot = Readonly<{
   state: "ready" | "unavailable";
   version: number | null;
-  recovery?: readonly OfficialWidgetId[];
+  recovery?: readonly DistributedWidgetId[];
   rows: readonly WidgetDirectoryRow[];
 }>;
 export type WidgetInstallProgress = Readonly<{
@@ -96,7 +100,7 @@ export type WidgetInstallProgress = Readonly<{
 const operationId = z.string().uuid();
 export const widgetDirectoryRequestSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("browse"), cached: z.boolean().optional() }).strict(),
-  z.object({ kind: z.literal("review"), pluginId: officialWidgetId, itemId: z.string().min(8).max(128).optional() }).strict(),
+  z.object({ kind: z.literal("review"), pluginId: distributedWidgetId, itemId: z.string().min(8).max(128).optional() }).strict(),
   z.object({ kind: z.literal("accept"), reviewId: operationId }).strict(),
   z.object({ kind: z.literal("progress"), reviewId: operationId }).strict(),
   z.object({ kind: z.literal("cancel"), reviewId: operationId }).strict(),

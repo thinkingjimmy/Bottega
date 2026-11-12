@@ -4,7 +4,7 @@
 
 Bottega treats an Agent conversation as the control surface for a durable local workspace. The following capability areas define the product.
 
-This guide describes **0.4.4/protocol 27** source behavior. Installer availability and actual acceptance scope come from the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest).
+This guide describes **0.4.5/protocol 27** source behavior. Installer availability and actual acceptance scope come from the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest).
 
 ## Multi-agent
 
@@ -63,7 +63,7 @@ Command output stays in the original command details. Background services show t
 
 ## Plugins
 
-- Browse official features, existing Apps, personal plugins and external Host Packages in one catalog. Read capabilities, dependencies, source and runtime status; external adapters keep their original settings and data owners.
+- Manage Apps and Widgets in their own tabs. In Settings › Plugins, find plugins that provide tools, modes or other capabilities. Read their capabilities, dependencies, source and runtime status.
 - Combine pages, Widgets, composer extensions, tools, services and Chat modes in one package. Ordinary use does not create a source Project. First authoring creates or reuses its Library Project; multiple Chats can work in that source.
 - Install dependencies with bundled Node and pnpm. Dependency scripts stay off by default and need explicit approval when required. Valid builds update local instances automatically; failed builds keep usable code. Recover code versions without reverting current data.
 - Choose a Chat mode before the first message. The mode then stays fixed; Agent and model selection keep their existing behavior.
@@ -88,7 +88,8 @@ Command output stays in the original command details. Background services show t
 
 ## Tools and Extensions
 
-- Treat Settings › Tools as the global default, then override built-in tools and manual MCP servers for one exact Project.
+- Manage global servers in Settings › MCP. To configure built-in tools, open Contributions in the plugin that provides them. These settings apply across Projects and standalone Chats.
+- Open Project Settings › Skills to search and refresh Skills for that Project.
 - Freeze the effective tool and MCP plan before a turn starts so retries and resumed sessions cannot silently adopt newer permissions.
 - Install Extensions globally or for one exact Project; Skills, App requirements, sessions, retained data, and deletion cleanup follow the same scoped owner.
 - Keep MCP secrets in main-process-only sealed storage and fail closed when durable ownership evidence is incomplete.
@@ -139,7 +140,7 @@ With Dock enabled, open Apps › Widgets to add, configure or create a Widget. C
 
 ### Weather
 
-Weather is preinstalled. Add it from Apps › Widgets or the Dock Add menu. Search for a city and choose the result by region or country. Each Widget stores its own city. Small shows current conditions, Medium adds today's high and low, and Large adds the next three days. Previously automatic-location Widgets ask you to select a city. No Agent, account or API key is required. Refresh manually or every 15 minutes while visible. When a request fails, the Widget marks the last successful reading for that city as out of date.
+Weather, AI Limits, AI Usage and Tasks are bundled with Bottega. Add Weather from Apps › Widgets or the Dock Add menu. Set its city when you add it or later in its settings. Search by city and choose the result by region or country. Each Widget stores its own city. Small shows current conditions, Medium adds today's high and low, and Large adds the next three days. Previously automatic-location Widgets ask you to select a city. No Agent, account or API key is required. Refresh manually or every 15 minutes while visible. When a request fails, the Widget marks the last successful reading for that city as out of date.
 
 ## Cloud Sync
 

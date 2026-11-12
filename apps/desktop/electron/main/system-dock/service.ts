@@ -1,16 +1,17 @@
 /**
- * [INPUT]: Depends on Electron screen/power/shortcut/menu/shell, the Dock stores, native bridge adapters, entries, Usage and Tasks adapters, replacement controller, read-only signed-installation verification, window surfaces/geometry/panel lifecycle, projections, and caller ports (Bottega Apps, main-window destinations, tray refresh, background retention).
+ * [INPUT]: Electron, native Dock ports, durable stores, portable Widget instances, source readiness, and the Dock projection and Usage owners.
  * [OUTPUT]: Provides DockService: the single main-owned Dock runtime — enable/start/stop, actual mode, three-edge display directory/placement, grouped overflow-aware panel anchors and revision-fenced hover, takeover-gated presentation with synchronous surface retirement before restoration, bounded transparent-frame transitions, the revealed bar's native glass, lazy panel orchestration, bar/panel/settings snapshots with an always-reachable local host, independent Tasks activity and coalesced publication, consumer demand per ready visible surface, serialized startup cleanup, generation-fenced startup, renderer recovery, native-failure replacement suspension, placement-fenced drag-removal admission, item-anchored native menus with display-safe bounds, reference-only download visuals and resolution, disabled recovery responsibility, truthful recovery/permission health, keyboard entry, temporary hide, and the replacement admission facts. Settings snapshots include pinned Bottega App IDs.
  * [POS]: system-dock orchestrator; intents live in intents.ts and Settings flows in setup.ts, both acting through this service. It is the only writer of DockConfigStore's working layout and DockLocalStore.
  */
 import { BrowserWindow, globalShortcut, powerMonitor, screen, systemPreferences } from "electron";
 import { type AgentAccounts, watchAgentAccounts } from "./widgets/account-watch";
-import { homedir, release } from "node:os";
-import { join } from "node:path";
+import { release } from "node:os";
 import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import type { AgentBackendId } from "../../../shared/ipc/agent/agent-ipc";
-import type { DockBarItem, DockBarSnapshot, DockSettingsSnapshot, DockSyncStatus, PanelSnapshot,WidgetFace } from "../../../shared/system-dock/ipc";
-import { UNINITIALIZED_LAYOUT, type DockItem, type DockWidget } from "../../../shared/system-dock/layout";
+import type { DockBarItem, DockBarSnapshot, DockSettingsSnapshot, DockSyncStatus, PanelSnapshot } from "../../../shared/system-dock/ipc";
+import { nativeDockWidget, UNINITIALIZED_LAYOUT, type DockItem, type DockWidget } from "../../../shared/system-dock/layout";
+import { NATIVE_WIDGET_PLUGINS, OFFICIAL_WIDGETS } from "../../../shared/system-dock/widgets/catalog/official";
+import type { OfficialWidgetDirectory } from "./store/custom/official";
 import { DEFAULT_DOCK_LOCAL_STATE, DOCK_CONSENT_VERSION, type DockMode, type DockDisplaySelection, type DockDisplayPreference } from "../../../shared/system-dock/local-state";
 import type { DockPlacementStatus, DockPresentation } from "../../../shared/system-dock/displays";
 import type { DockPlatform } from "./capability";
@@ -19,7 +20,7 @@ import { DownloadsEntry } from "./entries/downloads";
 import { TrashEntry } from "./entries/trash";
 import { NativeApps } from "./native/apps";
 import { DockNativeBridge } from "./native/bridge";
-import { entryLabel, isDockEmpty, maskFace, metricItems, projectPinned, projectRunning, type BottegaAppFact, type NativeResolution, type ProjectionFacts } from "./projection";
+import { dockProjectionFacts, isDockEmpty, metricItems, projectPinned, projectRunning, type BottegaAppFact, type NativeResolution } from "./projection";
 import { ReplacementController, type ReplacementAdmission } from "./replacement/controller";
 import { RecoveryFiles } from "./replacement/journal";
 import { createRegistration, type LoginItemApi } from "./replacement/registration";
@@ -35,7 +36,7 @@ import { applyDockGlass, clearDockGlass, measureDockMenu } from "./window/glass"
 import { createDockSurface, DockIpc, dockEntryUrl, type DockRole } from "./window/surface";
 import { barGroups, DOCK_METRICS } from "../../../shared/system-dock/metrics";
 
-import { taskFace, type DockTasksPort } from "./widgets/tasks";
+import type { DockTasksPort } from "./widgets/tasks";
 import type {DockCustomWidgetsPort} from './widgets/custom/ports';
 
 export type BottegaAppsPort = { list(): { id: string; label: string; appIcon?: string | null; ready: boolean }[]; fact(appId: string | null): BottegaAppFact; open(appId: string): Promise<void> };
@@ -556,44 +557,40 @@ export class DockService {
     }
     this.schedule();
   }
-  private facts(): ProjectionFacts {
-    const state = this.ports.local.get();
-    const locale = this.ports.locale();
-    const mode = this.actualMode() ?? state.preferredMode;
-    return {
-      resolution: (item: DockItem) => this.resolution.has(item.id) ? this.resolution.get(item.id)! : undefined,
-      bottega: (appId: string | null) => this.ports.apps.fact(appId),
-      running: this.apps?.runningRegular() ?? [],
-      host: this.ports.host ? { ...(this.apps?.hostApp() ?? { pid: process.pid, bundleIdentifier: this.ports.ownBundleId, path: null,
-        activationPolicy: "regular" as const, finishedLaunching: true, active: false, hidden: false }), name: "Bottega" } : undefined,
-      isRunning: (target: { bundleIdentifier: string | null; path: string | null }) => this.apps?.isRunning(target) ?? false,
-      iconKey: (path: string | null) => this.apps?.iconKey(path) ?? null,
-      finderPath: "/System/Library/CoreServices/Finder.app",
-      downloadsPath: join(homedir(), "Downloads"),
-      trash: this.trash?.face() ?? "unknown",
-      widgetFace: (item: Extract<DockItem, { kind: "widget" }>) => {
-        const widget = item.widget;
-        const face:WidgetFace = (widget.type==='custom'||widget.type==='plugin'||widget.type==='builtin.ai-activity'&&this.ports.custom?.officialDirectory)?(this.ports.custom?.face(item,state.edge)??{type:'custom',size:'size'in widget?widget.size:'small',state:'definition-missing',summary:null,description:null,readings:{}}):widget.type === "builtin.tasks" ? taskFace(this.ports.tasks)
-          : widget.type === "builtin.ai-limits" ? this.usage.limitsFace(widget) : this.usage.activityFace(widget);
-        return state.privacyMask ? maskFace(face) : face;
-      },
-      label: key => entryLabel(locale, key),
-      showRunning: state.showRunningByMode[mode],
-    };
-  }
   visibleItems(): { pinned: DockBarItem[]; running: DockBarItem[]; overflow: number } {
     const layout = this.ports.config.layout();
-    const facts = this.facts();
+    const facts = dockProjectionFacts(this);
     const pinned = projectPinned(layout, facts, this.ports.local.get().privacyMask);
     const running = projectRunning(layout, facts);
     const fit = this.runtime.placement?.fit ?? { pinned: pinned.length, running: running.length };
     return { pinned: pinned.slice(0, fit.pinned), running: running.slice(0, fit.running), overflow: pinned.length - Math.min(fit.pinned, pinned.length) + running.length - Math.min(fit.running, running.length) };
   }
-  isEmpty(): boolean { return isDockEmpty(this.ports.config.layout(), this.facts()); }
-  allItems(): DockBarItem[] { const layout = this.ports.config.layout(); const facts = this.facts(); return barGroups(projectPinned(layout, facts, this.ports.local.get().privacyMask), projectRunning(layout, facts)).flatMap((group) => group.items); }
+  isEmpty(): boolean { return isDockEmpty(this.ports.config.layout(), dockProjectionFacts(this)); }
+  allItems(): DockBarItem[] { const layout = this.ports.config.layout(); const facts = dockProjectionFacts(this); return barGroups(projectPinned(layout, facts, this.ports.local.get().privacyMask), projectRunning(layout, facts)).flatMap((group) => group.items); }
   activityAllowed() { return this.ports.custom?.activityAllowed?.() ?? true; }
+  officialConfiguration(): OfficialWidgetDirectory {
+    return {
+      ready: type => {
+        const id = NATIVE_WIDGET_PLUGINS[type];
+        return this.ports.custom?.officialReady?.(id, OFFICIAL_WIDGETS[id].contributionId) ?? true;
+      },
+      agents: this.ports.limits?.snapshot().agents ?? [],
+      configurable: this.usage.configurable(),
+      sources: this.ports.history?.sources() ?? [],
+    };
+  }
+  nativeWidget(widget: DockWidget, forData = false) {
+    const native = nativeDockWidget(widget);
+    if (!native) return null;
+    if (widget.type === "plugin" && this.ports.custom?.officialReady && !this.ports.custom.officialReady(widget.pluginId, widget.contributionId))
+      return null;
+    return native.type === "builtin.ai-activity" && this.ports.custom?.officialDirectory && !forData ? null : native;
+  }
   setWidgetDemand(surface: DockSurface, widgets: readonly { itemId: string; widget: DockWidget }[]) {
-    this.usage.setVisible(surface, widgets);
+    this.usage.setVisible(surface, this.ports.local.get().privacyMask ? [] : widgets.flatMap(({ itemId, widget }) => {
+      const native = this.nativeWidget(widget, true);
+      return native ? [{ itemId, widget: native }] : [];
+    }));
     this.ports.custom?.setVisible(surface, widgets);
   }
   private refreshAccessibility() {
@@ -711,7 +708,7 @@ export class DockService {
     this.runtime.revision++;
     this.bindShortcut();
     const bar = this.runtime.bar, state = this.ports.local.get();
-    const layout = this.ports.config.layout(), facts = this.facts();
+    const layout = this.ports.config.layout(), facts = dockProjectionFacts(this);
     const pinned = projectPinned(layout, facts, this.ports.local.get().privacyMask), running = projectRunning(layout, facts);
     const previous = this.runtime.placement;
     const calculate = () => resolveBarPlacement({ displays: this.directory(), state, mode: this.actualMode() ?? "coexist",

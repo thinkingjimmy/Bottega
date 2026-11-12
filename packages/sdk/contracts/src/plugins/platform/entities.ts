@@ -37,7 +37,10 @@ export const unifiedPluginRevisionSchema = z.object({
   createdAt: time, rootDirectory: absolutePath, manifest: unifiedPluginManifestSchema,
   packageDigest: pluginDigestSchema, dataContract: z.string().min(1).max(160), valid: z.boolean(),
   incompatibleReason: z.string().max(2048).optional(),
-  officialWidget: z.object({ publisherId: z.literal("bottega"), archiveSha256: pluginDigestSchema }).strict().optional(),
+  officialWidget: z.union([
+    z.object({ publisherId: z.literal("bottega"), archiveSha256: pluginDigestSchema }).strict(),
+    z.object({ publisherId: z.literal("bottega"), bundleDigest: pluginDigestSchema }).strict(),
+  ]).optional(),
 }).strict().superRefine((value, context) => {
   if (value.manifest.id !== value.pluginId) context.addIssue({ code: "custom", message: "Revision plugin identity differs from manifest" });
 });
@@ -86,6 +89,7 @@ export const unifiedPluginCatalogSummarySchema = unifiedPluginCatalogItemSchema.
 export const unifiedPluginListQuerySchema = z.object({
   cursor: z.string().regex(/^\d+:\d+$/).max(64).optional(),
   limit: z.number().int().min(1).max(100).default(50), search: z.string().max(256).optional(),
+  scope: z.literal("settings").optional(),
 }).strict();
 export const unifiedPluginCatalogPageSchema = z.object({
   items: z.array(unifiedPluginCatalogSummarySchema).max(100), total: z.number().int().nonnegative(),

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, the desktop i18n provider, Settings primitives, the shared Select control and a native range, the Dock settings store with optimistic preferences, and the Dock local-state defaults.
- * [OUTPUT]: Provides `DockPlacement` (main-owned display directory, three edges and exception-only status), `DockAppearance` (visibility, handle, size 75–150 %, coexistence fallback), `DockBehavior` (keyboard shortcut recorder with key caps, open Apps for the current mode, privacy mask, Accessibility for restoring minimized windows) plus the pure `acceleratorProblem` / `acceleratorGlyphs` / `acceleratorFromEvent` helpers.
+ * [OUTPUT]: Provides `DockDisplaySettings` (mode selection, main-owned display directory, three edges and exception-only status), `DockAppearance` (visibility, handle, size 75–150 %, coexistence fallback), `DockBehavior` (keyboard shortcut recorder with key caps, open Apps for the current mode, privacy mask, Accessibility for restoring minimized windows) plus the pure `acceleratorProblem` / `acceleratorGlyphs` / `acceleratorFromEvent` helpers.
  * [POS]: settings/dock preference sections; pending requests lock controls while edge radios retain keyboard focus; display selections keep the last main-confirmed value.
  */
 
@@ -161,10 +161,15 @@ const EDGES = ["left", "bottom", "right"] as const;
 const EDGE_ICONS = { left: PanelLeft, bottom: PanelBottom, right: PanelRight };
 const displayKey = (id: number, label: string | null) => JSON.stringify([id, label]);
 
-export function DockPlacement({ state }: { state: DockSettingsState }) {
+export function DockDisplaySettings({ state, onSwitchToReplace }: { state: DockSettingsState; onSwitchToReplace(): void }) {
   const { t } = useAppTranslation();
-  const { prefs, snapshot, disabled, set } = usePreferences(state);
+  const { prefs, snapshot, mode, disabled, set } = usePreferences(state);
   if (!prefs) return null;
+  const selectMode = (next: string) => {
+    if (next === mode) return;
+    if (next === "replace") onSwitchToReplace();
+    else void dockSettingsStore.setMode("coexist");
+  };
   const saved = snapshot.state.displayPreference;
   const displays = snapshot.displays.filter((display) => display.selectable);
   const name = (display: DockDisplay) => display.label || t(display.internal ? "systemDock.placement.builtIn" : "systemDock.placement.externalName");
@@ -176,7 +181,7 @@ export function DockPlacement({ state }: { state: DockSettingsState }) {
   };
   const value = saved.displayId !== null ? displayKey(saved.displayId, saved.label) : saved.preferExternal ? "external" : "primary";
   const unavailable = saved.displayId !== null && !displays.some((display) => display.id === saved.displayId && display.label === saved.label);
-  const select = (next: string) => {
+  const selectDisplay = (next: string) => {
     if (next === "primary" || next === "external") { void set({ displaySelection: { kind: next } }); return; }
     const display = displays.find((item) => displayKey(item.id, item.label) === next);
     if (display) void set({ displaySelection: { kind: "display", displayId: display.id, label: display.label } });
@@ -208,8 +213,17 @@ export function DockPlacement({ state }: { state: DockSettingsState }) {
   const offerHandle = placement.sharedEdge || (placement.presentation === "hidden" && placement.hiddenBy === "autohide");
   return <SettingsSection title={t("systemDock.placement.title")}>
     <SettingsList>
+      {snapshot.state.enabled && <SettingsRow label={t("systemDock.settings.modeLabel")} htmlFor="dock-mode"
+        description={t(mode === "replace" ? "systemDock.settings.modeReplaceDescription" : snapshot.capability.replacement ? "systemDock.settings.modeCoexistDescription" : "systemDock.settings.modeCoexistOnly")}
+        control={<Select value={mode} disabled={disabled} onValueChange={selectMode}>
+          <SelectTrigger id="dock-mode" size="lg" aria-describedby="dock-mode-description"><SelectValue /></SelectTrigger>
+          <SelectContent align="end" className="text-sm">
+            <SelectItem value="replace" disabled={!snapshot.capability.replacement}>{t("systemDock.settings.modeReplace")}</SelectItem>
+            <SelectItem value="coexist">{t("systemDock.settings.modeCoexist")}</SelectItem>
+          </SelectContent>
+        </Select>} />}
       <SettingsRow label={t("systemDock.settings.display")} htmlFor="dock-display" description={t("systemDock.placement.displayHint")}
-        control={<Select value={value} disabled={disabled} onValueChange={select}>
+        control={<Select value={value} disabled={disabled} onValueChange={selectDisplay}>
           <SelectTrigger id="dock-display" size="lg" className="max-w-80" aria-describedby="dock-display-description"><SelectValue /></SelectTrigger>
           <SelectContent align="end" className="max-w-[min(34rem,90vw)] text-sm">
             <SelectItem value="primary">{t("systemDock.placement.primary")}</SelectItem>

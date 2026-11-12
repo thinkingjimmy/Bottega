@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Localized Dock copy and the shared weather translation dictionary.
- * [OUTPUT]: Provides systemDockLazyFr, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded.
+ * [OUTPUT]: Provides systemDockLazyFr, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded. Includes the Display group and replacement setup guidance.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../fr.ts.
  */
 
@@ -46,7 +46,7 @@ export const systemDockLazyFr: typeof systemDockLazyEn = {
   },
   placement: {
     panelSpaceHint: "L’espace est insuffisant pour ouvrir le panneau. Choisissez un autre écran ou réduisez la taille du Dock.",
-    title: "Emplacement",
+    title: "Affichage",
     displayHint: "Choisissez où afficher Bottega Dock.",
     primary: "Suivre l’écran principal",
     external: "Privilégier un écran externe",
@@ -261,12 +261,8 @@ export const systemDockLazyFr: typeof systemDockLazyEn = {
     enabledLabel: "Utiliser Bottega Dock",
     offNote: "Rien ne change sur votre Mac tant que vous n’avez pas confirmé.",
     phaseOff: "Désactivé",
-    restoreDescription: "Rétablit le Dock système maintenant.",
-    restoreFailedDescription: "Bottega n’a pas pu rendre le Dock du système. Réessayez, ou désactivez le Dock.",
     appearanceTitle: "Apparence",
     behaviorTitle: "Comportement",
-    recoveryTitle: "Récupération",
-    recoveryDescription: "Garde toujours un moyen de revenir au Dock système, même si Bottega quitte de manière inattendue.",
     shortcutChange: "Modifier…",
     shortcutRecording: "Saisissez le raccourci",
     shortcutRecordingHint: "Appuyez sur le nouveau raccourci. Supprimer le retire, Échap annule.",
@@ -277,8 +273,6 @@ export const systemDockLazyFr: typeof systemDockLazyEn = {
     unsupportedVersion: "Dock prend en charge macOS 26 et 27 sur les Mac avec puce Apple. Les autres versions de macOS ne sont pas prises en charge.",
     unsupportedArchitecture: "Bottega Dock nécessite un Mac avec puce Apple.",
     unsupportedHelperMissing: "Un composant nécessaire à Bottega Dock manque dans cette installation. Réinstallez Bottega pour utiliser le Dock.",
-    registrationUnknown: "Non vérifié",
-    registrationUnknownDescription: "L’enregistrement de l’élément de récupération en arrière-plan n’a pas pu être vérifié. Réessayez la récupération avant d’activer le Dock.",
     unsupportedOther: "Tout le reste de Bottega fonctionne normalement.",
     replacementDevelopment: "La version de développement peut coexister avec le Dock système. Installez une copie signée de Bottega pour le remplacer.",
     replacementHelperMissing: "L’assistant de restauration ou sa configuration de service est absent. Réinstallez Bottega pour utiliser le remplacement.",
@@ -322,7 +316,7 @@ export const systemDockLazyFr: typeof systemDockLazyEn = {
     impactAutohide: "Le Dock système est réglé pour se masquer automatiquement et son délai d’affichage est allongé, afin que Bottega Dock prenne sa place.",
     impactRecoveryItem: "Un petit élément de récupération est ajouté à vos éléments en arrière-plan. Tant que le remplacement reste activé, il reste enregistré même après avoir quitté Bottega, pour que le Dock système puisse toujours être rétabli.",
     impactNoApp: "L’élément de récupération n’ouvre jamais l’app Bottega complète.",
-    impactRestore: "Restaurez le Dock système à tout moment : faites un clic droit sur Bottega Dock, ouvrez les réglages du plugin Dock ou utilisez le menu Dock dans la barre des menus de Bottega.",
+    impactRestore: "Désactivez Bottega Dock dans les réglages pour restaurer le Dock système. Vous pouvez aussi le restaurer depuis le menu contextuel du Dock ou le menu de Bottega dans la barre des menus.",
     impactShortcuts: "Les raccourcis système restent disponibles en secours : Option-Commande-D active ou désactive le masquage du Dock, et Fn-A affiche le Dock sur les Mac compatibles. Ce ne sont pas les seuls moyens de revenir en arrière.",
     impactLogin: "Ouvrir Bottega à la connexion est un choix distinct dans les réglages Général.",
     acknowledge: "J’ai compris ce qui change",
@@ -346,15 +340,8 @@ export const systemDockLazyFr: typeof systemDockLazyEn = {
     recoveryKeptExternal: "Les réglages du Dock système ont été modifiés en dehors de Bottega ; ils ont été laissés tels quels.",
     recoveryFailed: "Le Dock système n’a pas pu être entièrement rétabli. Appuyez sur Option-Commande-D pour l’afficher.",
     resume: "Reprendre",
-    restore: "Rétablir le Dock système",
-    registrationLabel: "Élément de récupération",
-    registrationEnabled: "Enregistré. Il reste enregistré après avoir quitté Bottega tant que le remplacement est activé.",
     registrationApproval: "Nécessite votre autorisation dans Réglages Système › Général › Éléments de connexion et extensions.",
     registrationMissing: "macOS ne trouve pas l’enregistrement de ce service de rétablissement. Il n’a peut-être pas encore été créé.",
-    registrationNone: "Pas encore enregistré.",
-    needsApproval: "Autorisation requise",
-    notFound: "Introuvable",
-    notRegistered: "Non enregistré",
     openLoginItems: "Ouvrir Éléments de connexion",
     accessibilityLabel: "Restaurer les fenêtres réduites",
     accessibilityOff: "Non autorisé",
@@ -406,7 +393,6 @@ export const systemDockLazyFr: typeof systemDockLazyEn = {
     failedPreference: "Impossible d’enregistrer la préférence.",
     failedMode: "Impossible de changer de mode.",
     failedDisable: "Impossible de désactiver Bottega Dock.",
-    failedRestore: "Impossible de rétablir le Dock système.",
     failedResume: "Impossible de reprendre Bottega Dock.",
     failedReset: "Impossible de rétablir la disposition.",
     failedResolve: "Impossible d’appliquer votre choix de synchronisation.",

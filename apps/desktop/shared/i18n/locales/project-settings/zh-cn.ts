@@ -8,7 +8,7 @@ import { workspaceCopy } from "@ai-chat/ui/workspace-copy/zh-cn";
 
 export const projectSettingsZhCN = {
   entry: workspaceCopy.project.settings, open: "打开 Project 设置", title: workspaceCopy.project.settingsTitle,
-  tabs: { general: "通用", personalization: "个性化", skills: "Skills", extensions: "扩展", tools: "工具" },
+  tabs: { general: "通用", personalization: "个性化", skills: "Skills" },
   general: {
     sectionBasics: workspaceCopy.project.basics, name: workspaceCopy.project.identity, renameAction: "重命名", appearanceAria: workspaceCopy.project.appearanceLabel,
     memory: "记忆", memoryDisabled: "记忆服务未启用", memoryPaused: "记忆已暂停", memoryUnavailable: "服务不可用", memoryScoped: "本 Project 拥有独立记忆域", memoryShared: "记忆按会话或个人域共享，Project 不单独分域", memoryDelivering: "导入记忆交付中…", memoryManage: "管理记忆",
@@ -22,11 +22,11 @@ export const projectSettingsZhCN = {
     section: "Project 指令", description: "编辑各 Agent 在此 Project 工作目录读取的指令文件。", pointerHint: "此文件指向 AGENTS.md，通常无需直接编辑。", noWorkspace: "请先在侧栏 Project 行菜单中选择工作目录。", bridgeMissing: "当前环境无法使用 Project 个性化桥。", appReadOnly: "App Project 指令由 App generation 管理，因此只读。", appEditGuide: "请打开 App 页面，在 App Edit 会话中继续。", workspaceChanged: "Project 工作目录已更换。磁盘基线已刷新，你的草稿仍保留。", loading: "正在加载 Project 指令", saveFailed: "Project 指令保存失败", outsideWorkspace: "此指令文件的真身位于 Project 工作目录之外，无法读取或修改。", appManaged: "App Project 指令由 App generation 管理。"
   },
   skills: {
-    section: "Project 可调用 Skills", scopeNote: "Project Skills 随工作目录走；继承的全局库请在设置 › Skills 管理。", runtimeNote: "本清单仅表示产品内可通过 `$` 调用的 Skills；各 Agent 终端的原生发现口径可能不同。", inheritedGroup: "继承的全局 Skills（{{count}}）", empty: "没有可调用的 Project Skill", emptyHint: "把技能放进 {{dir}}/.agents/skills/<名称>/SKILL.md，然后点击刷新。",   noWorkspace: "尚未选择 Project 工作目录", noWorkspaceHint: "选择工作目录后可添加 Project Skills；全局与扩展 Skills 仍显示在下方。", loadFailed: "Project Skills 加载失败。", badge: { repo: "Project", user: "用户", system: "系统", admin: "管理员", extension: "扩展" }
+    empty: "暂无项目 Skills",
+    emptyHint: "把技能放进 {{dir}}/.agents/skills/<名称>/SKILL.md，然后点击刷新。",
+    noWorkspace: "尚未选择 Project 工作目录",
+    noWorkspaceHint: "从项目菜单选择工作目录，即可添加项目 Skills。",
+    loadFailed: "Project Skills 加载失败。",
+    badge: { repo: "Project", user: "用户", system: "系统", admin: "管理员", extension: "扩展" },
   },
-  extensions: { scopeNote: "把扩展装到本 Project 后，它的 Skills 只对本 Project 会话生效，不影响其它 Project。" },
-  tools: {
-    scopeNote: "此处改动仅影响“{{name}}”；未覆盖的项目继续继承全局默认值。",
-    bridgeMissing: "当前环境无法使用 Project 工具设置。",
-  }
 };

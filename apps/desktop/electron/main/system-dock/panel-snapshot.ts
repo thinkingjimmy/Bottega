@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on DockService facts (layout, drafts, entries, Usage adapter, Bottega Apps, native resolution) the shared panel DTOs and unified plugin Widget candidates.
+ * [INPUT]: DockService facts, native package presentation adapters and the unified Widget candidate directory.
  * [OUTPUT]: Provides buildPanel (the single panel projection per view: detail for Downloads/Trash/Widgets/Tasks, add candidates with four groups and search, edit/navigate item lists, undo and draft) and addCandidates (the key→draft table the add intent resolves against). Bottega App candidates carry live emoji.
  * [POS]: system-dock panel projection; no side effects, privacy mask applied to values and file names (INV-06).
  */
@@ -42,12 +42,14 @@ export function addCandidates(service: DockService): CandidateTable {
     const name = entry === "system.finder" ? "finder" : entry === "system.downloads" ? "downloads" : "trash";
     push(entry, { kind: "system", entry }, { kind: "system", label: entryLabel(locale, name), iconKey: null, group: "system" });
   }
-  push("builtin.ai-limits", { kind: "widget", widget: defaultLimitsWidget(service.usage.defaultBackends()) },
-    { kind: "widget", label: entryLabel(locale, "limits"), iconKey: null, group: "widget" });
-  if (service.activityAllowed()) push("builtin.ai-activity", { kind: "widget", widget: defaultActivityWidget() },
-    { kind: "widget", label: entryLabel(locale, "activity"), iconKey: null, group: "widget" });
-  push("builtin.tasks", { kind: "widget", widget: defaultTasksWidget() },
-    { kind: "widget", label: entryLabel(locale, "tasks"), iconKey: null, group: "widget" });
+  if (!service.ports.custom?.candidates) {
+    push("builtin.ai-limits", { kind: "widget", widget: defaultLimitsWidget(service.usage.defaultBackends()) },
+      { kind: "widget", label: entryLabel(locale, "limits"), iconKey: null, group: "widget" });
+    push("builtin.ai-activity", { kind: "widget", widget: defaultActivityWidget() },
+      { kind: "widget", label: entryLabel(locale, "activity"), iconKey: null, group: "widget" });
+    push("builtin.tasks", { kind: "widget", widget: defaultTasksWidget() },
+      { kind: "widget", label: entryLabel(locale, "tasks"), iconKey: null, group: "widget" });
+  }
   for (const definition of service.ports.custom?.candidates?.() ?? []) {
     if (query && !definition.name.toLocaleLowerCase().includes(query)) continue;
     table.candidates.push({key:definition.id,kind:'widget',label:definition.name,iconKey:null,group:'widget',
@@ -80,14 +82,15 @@ export function buildPanel(service: DockService): PanelSnapshot {
   }
   if (item.kind === "system" && item.entry === "system.trash") return { ...base, trash: service.trash?.snapshot() ?? { state: "unknown", emptying: false, automation: "unavailable", lastResult: "none" } };
   if (item.kind !== "widget") return base;
-  if(item.widget.type==='custom'||item.widget.type==='plugin'||item.widget.type==='builtin.ai-activity'&&service.ports.custom?.officialDirectory){
+  const native = service.nativeWidget(item.widget);
+  if (!native) {
     const detail=service.ports.custom?.detail(item,state.edge);if(!detail)return base;
     const panel = service.panelContainer();
     return {...base, liveCards: service.ports.custom?.liveCards?.(panel && !panel.isDestroyed() ? panel.webContents.id : undefined),
       customWidget: state.privacyMask ? {...detail,name:items.find(value => value.id === item.id)?.label ?? '••••',data:[],updatedAt:null,face:maskFace(detail.face) as typeof detail.face} : detail};
   }
-  if (item.widget.type === "builtin.tasks") return { ...base, tasks: taskDetail(service.ports.tasks, state.privacyMask) };
-  const draft: DockWidget = service.drafts.get(item.id) ?? item.widget;
+  if (native.type === "builtin.tasks") return { ...base, tasks: taskDetail(service.ports.tasks, state.privacyMask) };
+  const draft = service.nativeWidget(service.drafts.get(item.id) ?? item.widget) ?? native;
   const withDraft = { ...base, draft: service.drafts.has(item.id) ? { itemId: item.id, widget: draft, stale: service.staleDrafts.has(item.id) } : null };
   if (draft.type === "builtin.ai-limits") {
     const detail = service.usage.limitsDetail(item.id, draft);

@@ -1,4 +1,4 @@
-/* [INPUT]: Shared Dock tokens, edge-aware slot metrics and the sidebar data attributes.
+/* [INPUT]: Shared Dock tokens and divider length, edge-aware slot metrics and the sidebar data attributes.
  * [OUTPUT]: Side handle/strip geometry, inward hover motion, outward running dots and compact Widget readings.
  * [POS]: On-demand bar stylesheet; DockBar waits for this CSS before exposing any side snapshot or acknowledging its layout.
  */
@@ -12,8 +12,7 @@
 .dock[data-edge="right"] .handle { margin-right: 2px; }
 .dock:not([data-edge="bottom"]) .strip { flex-direction: column; padding: var(--pad); }
 .dock:not([data-edge="bottom"]) .item { transform: translate(0, var(--offset, 0px)); }
-.dock:not([data-edge="bottom"]) .separator { margin: 0 4px; width: auto; }
-.dock:not([data-edge="bottom"]) .separator::after { top: 50%; right: 0; bottom: auto; left: 0; width: auto; height: 1px; }
+.dock:not([data-edge="bottom"]) .separator::after { width: var(--divider-length); height: 1px; }
 .dock[data-edge="left"] .running-dot { top: calc(50% - 2px); bottom: auto; left: -7px; margin-left: 0; }
 .dock[data-edge="right"] .running-dot { top: calc(50% - 2px); bottom: auto; left: auto; right: -7px; margin-left: 0; }
 .dock:not([data-edge="bottom"]) .empty-cta { flex-direction: column; font-size: 11px; white-space: normal; overflow-wrap: anywhere; text-align: center; }

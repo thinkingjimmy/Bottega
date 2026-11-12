@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on parent-owned surface visibility, the shared Dock settings store, lazy Widget management and localized Dock section, React/router navigation/progress and rejected-destination state, i18n, AppsProvider, shared App catalog/card presentation, compact header Tabs and a Widget action portal, Add AppDialog, PresetShelf/PresetInstallDialog, Sheet and PageShell.
- * [OUTPUT]: Provides AppsListView, the Sidebar plugin card catalog with an enabled-only Widget management tab, Cloud Dev portable catalog, loading cards, explicit local installation and rejected App navigation evidence; preset authorization leads directly to canonical App detail while Web installs retain progress UI. Owns one Dock subscription for tab availability and independent App shortcuts.
+ * [INPUT]: Depends on parent-owned surface visibility, the shared Dock settings store, lazy Widget management and localized Dock section, React/router navigation/progress and rejected-destination state, i18n, AppsProvider, shared App catalog/card presentation, Tabs, a Widget action portal, AddAppDialog, PresetShelf/PresetInstallDialog, Sheet and PageShell.
+ * [OUTPUT]: Provides AppsListView with localized category tabs and add actions below the page header, an enabled-only Widget catalog, Cloud Dev portable entries, loading cards, explicit local installation and rejected App navigation evidence. Preset authorization leads to canonical App detail while Web installs show progress. Owns one Dock subscription for tab availability and independent App shortcuts.
  * [POS]: apps/desktop/src/views/apps; Apps route composition; local installations, portable cloud entries and first-party acquisition retain their existing domain owners
  */
 
@@ -267,47 +267,71 @@ export function AppsListView({ surfaceVisible = true }: { surfaceVisible?: boole
   return (
     <>
       <Tabs value={selectedTab} onValueChange={selectTab} className="h-full min-h-0 gap-0">
-      <PageShell
-        title={pluginContextCopy(i18n.language).plugins}
-        icon={<LayoutGrid />}
-        titleAdornment={dockEnabled && <TabsList aria-label={t("apps.catalog.filter")} className="relative isolate min-h-11 bg-transparent p-0 before:absolute before:inset-x-0 before:inset-y-2 before:-z-10 before:rounded-lg before:bg-muted/70">
-          {([['apps', t('common.apps')], ['widgets', t('apps.catalog.widgets')]] as const).map(([value, label]) => <TabsTrigger key={value} value={value} className="relative isolate min-h-11 border-0 px-3 text-xs font-medium transition-colors before:absolute before:inset-x-1 before:inset-y-2.5 before:-z-10 before:rounded-md data-active:bg-transparent data-active:before:bg-background data-active:before:shadow-sm dark:data-active:bg-transparent">{label}</TabsTrigger>)}
-        </TabsList>}
-        actions={
-          selectedTab === "widgets" ? <div ref={setWidgetActionsContainer} data-widget-header-actions="" /> : <AddAppDialog
-            onInstallStarted={openProgress}
-            resumeRequestId={repoResumeId}
-            onResumeClosed={() => setRepoResumeId(undefined)}
-          />
-        }
-      >
-        <AppCatalogBody>
-          {navigationError && (
-            <p
-              role="alert"
-              className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm"
-            >
-              {navigationError}
-            </p>
-          )}
-          {/* 横幅只承接与「有哪些 App」无关的运行时降级；列表自身的问题
-              归列表位置去说，预设包的问题归安装弹窗去说。 */}
-          {runtimeWarning && (
-            <p
-              role="alert"
-              className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm"
-            >
-              {runtimeWarning}
-            </p>
-          )}
-          {dockEnabled ? <>
-            <TabsContent value="apps" className="min-h-0 data-[state=active]:flex data-[state=active]:flex-col">{appCatalog}</TabsContent>
-            <TabsContent value="widgets">
-              <Suspense fallback={<AppCatalogSkeleton label={t("common.loading")} />}><DockWidgetsSection active={surfaceVisible} actionsContainer={widgetActionsContainer} /></Suspense>
-            </TabsContent>
-          </> : appCatalog}
-        </AppCatalogBody>
-      </PageShell>
+        <PageShell title={pluginContextCopy(i18n.language).plugins} icon={<LayoutGrid />}>
+          <div className="flex h-full min-h-0 flex-col">
+            <div data-app-catalog-toolbar="" className="mx-4 mt-2 flex min-h-11 shrink-0 items-center gap-2">
+              {dockEnabled && (
+                <TabsList
+                  aria-label={t("apps.catalog.filter")}
+                  className="relative isolate min-h-11 bg-transparent p-0 before:absolute before:inset-x-0 before:inset-y-2 before:-z-10 before:rounded-lg before:bg-muted/70"
+                >
+                  {([['apps', t('common.apps')], ['widgets', t('apps.catalog.widgets')]] as const).map(([value, label]) => (
+                    <TabsTrigger
+                      key={value}
+                      value={value}
+                      className="relative isolate min-h-11 border-0 px-3 text-xs font-medium transition-colors before:absolute before:inset-x-1 before:inset-y-2.5 before:-z-10 before:rounded-md data-active:bg-transparent data-active:before:bg-background data-active:before:shadow-sm dark:data-active:bg-transparent"
+                    >
+                      {label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              )}
+              <div
+                ref={selectedTab === "widgets" ? setWidgetActionsContainer : undefined}
+                className="ml-auto flex shrink-0 items-center"
+              >
+                {selectedTab === "apps" && (
+                  <AddAppDialog
+                    onInstallStarted={openProgress}
+                    resumeRequestId={repoResumeId}
+                    onResumeClosed={() => setRepoResumeId(undefined)}
+                  />
+                )}
+              </div>
+            </div>
+            <AppCatalogBody>
+              {navigationError && (
+                <p
+                  role="alert"
+                  className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm"
+                >
+                  {navigationError}
+                </p>
+              )}
+              {/* Runtime warnings are independent of the App list and installer. */}
+              {runtimeWarning && (
+                <p
+                  role="alert"
+                  className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm"
+                >
+                  {runtimeWarning}
+                </p>
+              )}
+              {dockEnabled ? (
+                <>
+                  <TabsContent value="apps" className="min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
+                    {appCatalog}
+                  </TabsContent>
+                  <TabsContent value="widgets">
+                    <Suspense fallback={<AppCatalogSkeleton label={t("common.loading")} />}>
+                      <DockWidgetsSection active={surfaceVisible} actionsContainer={widgetActionsContainer} />
+                    </Suspense>
+                  </TabsContent>
+                </>
+              ) : appCatalog}
+            </AppCatalogBody>
+          </div>
+        </PageShell>
       </Tabs>
       {presetFlow && (
         <PresetInstallDialog

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Immutable unified package descriptors, canonical/byte digests and the existing opaque Surface gateway.
- * [OUTPUT]: Verified exact-activation UI leases and caller authorization, explicit whole-plugin release, fenced async issuance and non-replayed process calls.
+ * [OUTPUT]: Verifies bundled Widget readiness and manages activation-bound isolated Surface leases for plugin contributions.
  * [POS]: Unified UI adapter over the shared isolated transport; local registry capacity does not set runtime budgets.
  */
 import { createHash } from "node:crypto";
@@ -33,6 +33,15 @@ export class UnifiedPluginSurfaceGateway {
   async prepare(input: PluginCandidateContext): Promise<PluginReadiness[]> {
     const ui = input.revision.manifest.contributions.filter(value => (value.kind === "page" || value.kind === "widget" || value.kind === "composer") &&
       !("hostAppId" in value && value.hostAppId) && !("hostViewId" in value && value.hostViewId));
+    const receipt = input.revision.officialWidget;
+    if (receipt && "bundleDigest" in receipt) {
+      const { verifyUnifiedPluginDistribution } = await import("../distribution/verify");
+      const checked = await verifyUnifiedPluginDistribution(input.revision.rootDirectory);
+      input.signal.throwIfAborted();
+      if (checked.packageDigest !== receipt.bundleDigest || checked.distribution.revisionId !== input.revision.revisionId)
+        throw new Error("Bundled Widget revision bytes changed");
+      return ui.map(contribution => ({ contributionId: contribution.id, kind: contribution.kind, ready: true }));
+    }
     const results: PluginReadiness[] = [];
     for (const contribution of ui) {
       input.signal.throwIfAborted();
@@ -49,6 +58,7 @@ export class UnifiedPluginSurfaceGateway {
     const revision = this.ports.activeRevision(input.pluginId);
     const activationId = revision && this.ports.activationId(input.pluginId, revision.revisionId);
     if (!revision || !activationId) throw new Error("Plugin is not active");
+    if (revision.officialWidget && "bundleDigest" in revision.officialWidget) throw new Error("Bundled Widget uses native presentation");
     const isValid = () => this.ports.activationId(input.pluginId, revision.revisionId) === activationId;
     const issued = await this.issue(revision, input.contributionId, windowId, isValid);
     if (!isValid()) { this.ports.transport.release(issued.id, windowId); throw new Error("Plugin activation changed while opening its Surface"); }

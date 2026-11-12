@@ -56,7 +56,6 @@ export type RegisterUnifiedPluginInput = Readonly<{
   projectId?: string; chatIds?: string[]; enabled?: boolean; trust?: true; replace?: boolean; hostAdapter?: true;
   /** Only main may grant essential status to a verified official registration; manifests cannot grant it. */
   trustedEssential?: true;
-  legacyWeather?: true;
 }>;
 export type ActivePluginRuntime = {
   runtime: PreparedPluginRuntime; context: PluginServiceContext; controller: AbortController;

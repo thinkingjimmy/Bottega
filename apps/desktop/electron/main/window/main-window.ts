@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, history/quota services, Apps, Update, MCP, and window security, and the build-gated cloud account lifecycle.
+ * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Skills receipts, global manual MCP settings, history/quota services, Apps, Update, window security, and the build-gated cloud account lifecycle.
  * [OUTPUT]: Creates the main window with a bounded listener budget for its fixed domain registrars, derives canonical turn authority, wires scoped background result persistence, records actual session prompt hashes, admits saved-history fresh-session recovery before the original user boundary and registers Project/Extension/App IPC plus any injected trusted-renderer registrars; a package Provider's turn gets no built-in tool policy, projection, App tools, Skills access or restored session.
  * Main-owned Skill receipts retain canonical backend, Plan and Project checks; Provider settings remain frozen per turn.
  * Window closure releases only its observed Artifact workspace leases; it does not recreate a closed workspace owner.
@@ -38,7 +38,6 @@ import type { MemoryService } from "../memory/service/memory-service";
 import type { ManagedRuntimeRegistry } from "../memory/runtime/managed-registry";
 import type { MemorySettingsOwner } from "../memory/service/settings-owner";
 import type { ProjectsService } from "../projects/projects-service";
-import type { ProjectStore } from "../projects/store/project-store";
 import { registerCoordinatorIpc } from "../sections/coordinator/coordinator-ipc";
 import type { ConversationCoordinator } from "../sections/coordinator/conversation-coordinator";
 import type { SettingsStore } from "../settings/settings-store";
@@ -65,9 +64,6 @@ import type { HistoryImportService } from "../history-import/service";
 import type { GlobalSearchService } from "../search/job-service";
 import { registerManualMcpServers } from "../tools/mcp/registrar";
 import { buildManualMcpPlan } from "../tools/mcp/planner";
-import { registerProjectTools } from "../tools/project/registrar";
-import { projectBuiltinInventory } from "../tools/project/resolver";
-import type { ProjectToolPolicyStore } from "../tools/project/store";
 import { projectManualMcpServerViews } from "../extensions/component-health";
 import { digestCanonical } from "../extensions/registry/registry-canonical";
 import { resolveAppIconPath } from "./app-icon";
@@ -77,10 +73,7 @@ import { WINDOW_ID_ARGUMENT, WINDOW_ROLE_ARGUMENT } from "../../../shared/ipc/se
 import { configureWindowSurfaces } from "./surfaces/bootstrap";
 import { registerAppBridge } from "./surfaces/app-bridge";
 import { finalizeSkillsTurnProjection } from "./agent/skills-turn-projection";
-import {
-  projectBuiltinBackendSupport,
-  projectManualMcpBackendSupport,
-} from "./agent/project-tools-runtime";
+import { projectManualMcpBackendSupport } from "./agent/project-tools-runtime";
 import { historyLookupAvailability } from "../agent/history/availability";
 import { buildHandoff } from "../agent/history/builder";
 import { createExtensionSessionHandoff } from "./agent/extension-session-handoff";
@@ -103,8 +96,6 @@ type MainWindowDependencies = {
   extensions: AppExtensionIntegration;
   setup: BackendSetupService;
   projects: ProjectsService;
-  projectStore: ProjectStore;
-  projectToolPolicies: ProjectToolPolicyStore;
   chats: ChatsService;
   bases: BasesService;
   settings: SettingsStore;
@@ -144,8 +135,6 @@ export function createMainWindow({
   extensions,
   setup,
   projects,
-  projectStore,
-  projectToolPolicies,
   chats,
   bases,
   settings,
@@ -241,17 +230,6 @@ export function createMainWindow({
   apps.register(window, rendererUrl);
   setup.register(window, rendererUrl);
   projects.register(window, rendererUrl);
-  registerProjectTools(
-    window,
-    rendererUrl,
-    projectStore,
-    projectToolPolicies,
-    (policy) => projectBuiltinInventory({
-      globalDisabledTools: settings.get().disabledBuiltinTools,
-      policy,
-      backendSupport: projectBuiltinBackendSupport,
-    })
-  );
   chats.register(window, rendererUrl);
   bases.register(window, rendererUrl);
   historyImport.register(window, rendererUrl);
@@ -272,8 +250,7 @@ export function createMainWindow({
       projectManualMcpServerViews(
         servers.map(projectManualMcpBackendSupport),
         extensions.health.snapshot()
-      ),
-    { projects: projectStore, policies: projectToolPolicies }
+      )
   );
   const agentPluginInventory = new AgentPluginInventory(app.getPath("userData"));
   registerExtensions(window, rendererUrl, {

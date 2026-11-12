@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "bottega-tasks",
+  "name": "Tasks",
+  "description": "Show and open current Bottega tasks.",
+  "version": "1.0.0",
+  "source": {
+    "kind": "official",
+    "format": "bottega",
+    "editable": false
+  },
+  "dataContract": "tasks-v1",
+  "slots": {
+    "declares": [],
+    "injects": [
+      {
+        "slot": "dock.widgets",
+        "ownerPluginId": "host"
+      }
+    ]
+  },
+  "contributions": [
+    {
+      "kind": "widget",
+      "id": "status",
+      "name": "Tasks",
+      "entry": "host-card.js",
+      "slot": "dock.widgets",
+      "customCard": false,
+      "settingsSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "requirements": {
+    "runtimes": [
+      "desktop"
+    ],
+    "platforms": [
+      "darwin"
+    ]
+  }
+}

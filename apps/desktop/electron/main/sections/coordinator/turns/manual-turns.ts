@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on hash-verified prepared Project/Tools/Skill receipts, durable ManualTurnIntent, ChatsService, SettingsStore, session-plan rebuild, and Agent start ports
+ * [INPUT]: Depends on hash-verified prepared turn receipts, the retired tool settings guard, durable ManualTurnIntent, ChatsService, SettingsStore, session plan rebuild, and Agent start ports
  * [OUTPUT]: Provides preparedSkillSelections, manualConversationId, manualUserMessage, bindAdoptedSessionPlan, manualSubmission, userMessagePersisted, assertManualPrecondition, allocateManualSequences, ensureManualSequences, resolvedInputForFinalPayload, runManualTurn.
  * [POS]: apps/desktop/electron/main/sections/coordinator/turns; The durable manual-intent executor of sections/coordinator
  */
@@ -40,6 +40,7 @@ import {
   type PreparedManualTurn,
 } from "../admission/prepared-manual-turn";
 import { hydratePreparedTurn } from "../admission/prepared/hydration";
+import { assertTurnToolSettingsCurrent } from "../admission/prepared-project-tools";
 import type { CoordinatorDependencies } from "../coordinator-runtime";
 import { ATTACHMENT_ID_PATTERN } from "../../../chats/schema/chat-schema";
 import {
@@ -77,7 +78,9 @@ export function manualConversationId(persistence: ManualTurnPersistence) {
     : persistence.input.id;
 }
 
-export function manualUserMessage(persistence: ManualTurnPersistence) {
+export function manualUserMessage(
+  persistence: ManualTurnPersistence | PreparedManualTurn["persistence"]
+) {
   return persistence.kind === "append"
     ? persistence.input.message
     : persistence.input.firstMessage;
@@ -419,6 +422,7 @@ export async function runManualTurn(
     ? dependencies.ledger.remote.transferredAuthority(remoteContext, intent.id) ?? dependencies.ledger.remote.authority(remoteContext) : undefined;
   await trustedAuthority?.validate(); trustedAuthority?.current();
   const hydrated = await manualSubmission(intent, dependencies.resolveProjectToolsRuntimeIdentity);
+  assertTurnToolSettingsCurrent(hydrated.projectTools.receipt);
   let submission = bindAdoptedSessionPlan(hydrated.submission, {
     planDigest: hydrated.projectTools.sessionPlanDigest,
     projectId: hydrated.projectTools.receipt.projectContext.projectId,

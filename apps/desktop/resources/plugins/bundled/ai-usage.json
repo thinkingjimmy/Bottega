@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "id": "bottega-ai-usage",
+  "name": "AI Usage",
+  "description": "Show today's tokens and estimated cost.",
+  "version": "1.1.0",
+  "source": {
+    "kind": "official",
+    "format": "bottega",
+    "editable": false
+  },
+  "dataContract": "usage-v1",
+  "slots": {
+    "declares": [],
+    "injects": [
+      {
+        "slot": "dock.widgets",
+        "ownerPluginId": "host"
+      }
+    ]
+  },
+  "contributions": [
+    {
+      "kind": "widget",
+      "id": "today",
+      "name": "AI Usage",
+      "entry": "host-card.js",
+      "slot": "dock.widgets",
+      "customCard": false,
+      "settingsSchema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "period": {
+            "const": "today"
+          }
+        },
+        "required": [
+          "source",
+          "period"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "requirements": {
+    "runtimes": [
+      "desktop"
+    ],
+    "platforms": [
+      "darwin"
+    ]
+  }
+}

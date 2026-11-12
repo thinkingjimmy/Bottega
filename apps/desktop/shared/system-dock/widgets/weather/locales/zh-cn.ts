@@ -9,6 +9,7 @@ export const weatherZhCN={
   "city": "城市",
   "search": "搜索城市",
   "searching": "正在搜索…",
+  "addWithoutCity": "稍后选城市",
   "changeCity": "更换城市",
   "cancelCityChange": "取消更换",
   "noCities": "未找到城市。",

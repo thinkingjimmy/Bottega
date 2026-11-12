@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { SettingsAlert, SettingsButton } from "@/components/settings/settings-layout";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import type {
-  OfficialWidgetId, WidgetDirectoryRow, WidgetDirectorySnapshot, WidgetInstallProgress,
+  DistributedWidgetId, WidgetDirectoryRow, WidgetDirectorySnapshot, WidgetInstallProgress,
 } from "../../../../../../shared/system-dock/widgets/catalog/distribution";
 
 type Transfer = { id?: string; cancelled: boolean };
@@ -19,16 +19,16 @@ const errorKeys = { download: "downloadFailed", verification: "verificationFaile
 const phaseKeys = { downloading: "downloading", verifying: "verifying", installing: "registering" } as const;
 
 export function WidgetDirectoryDialog({ subject, onClose, onAdd, onChanged, onReturnFocus }: {
-  subject: { pluginId: OfficialWidgetId; itemId: string } | null;
-  onClose(): void; onAdd(id: OfficialWidgetId): Promise<void>; onChanged(): void; onReturnFocus(): void;
+  subject: { pluginId: DistributedWidgetId; itemId: string } | null;
+  onClose(): void; onAdd(id: DistributedWidgetId): Promise<void>; onChanged(): void; onReturnFocus(): void;
 }) {
   const { t, i18n } = useAppTranslation();
   const copy = widgetDirectoryCopy(i18n.language);
   const [directory, setDirectory] = useState<WidgetDirectorySnapshot | null>(null);
   const [loading, setLoading] = useState(true);
-  const [active, setActive] = useState<OfficialWidgetId | null>(null);
+  const [active, setActive] = useState<DistributedWidgetId | null>(null);
   const [progress, setProgress] = useState<WidgetInstallProgress | null>(null);
-  const [failure, setFailure] = useState<OfficialWidgetId | null>(null);
+  const [failure, setFailure] = useState<DistributedWidgetId | null>(null);
   const transfer = useRef<Transfer | null>(null);
   const handoff = useRef(false);
   const pendingRead = useRef<AbortController | null>(null);
@@ -102,7 +102,7 @@ export function WidgetDirectoryDialog({ subject, onClose, onAdd, onChanged, onRe
     }
   };
 
-  const recover = async (pluginId: OfficialWidgetId) => {
+  const recover = async (pluginId: DistributedWidgetId) => {
     if (active) return;
     setActive(pluginId); setFailure(null); setProgress(null);
     try {

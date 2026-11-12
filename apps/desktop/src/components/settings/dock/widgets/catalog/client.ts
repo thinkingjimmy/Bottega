@@ -57,5 +57,6 @@ export function useWidgetCatalog(active: boolean) {
     return () => { alive = false; };
   }, [ids]);
   useEffect(() => () => { void window.systemDockSettings?.setWidgetCatalogVisible({ itemIds: [] }).catch(() => {}); }, []);
-  return { snapshot, failed, ready, observe, refresh: () => setRevision(value => value + 1) };
+  const refresh = useCallback(() => setRevision(value => value + 1), []);
+  return { snapshot, failed, ready, observe, refresh };
 }

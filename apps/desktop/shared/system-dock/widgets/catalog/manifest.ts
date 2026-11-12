@@ -1,12 +1,12 @@
 /**
  * [INPUT]: The unified plugin manifest and known official Widget identities.
- * [OUTPUT]: Validates the one-contribution, UI-only declaration used by the builder and local package receiver.
+ * [OUTPUT]: Validates bundled native and locally distributed isolated Widget declarations.
  * [POS]: Static contract validation. The Main receiver also verifies every artifact and its selected catalog identity.
  */
 import type { UnifiedPluginManifest } from "@bottega/contracts/plugins/platform";
 import { isOfficialWidgetId, OFFICIAL_WIDGETS } from "./distribution";
 
-export function validateOfficialWidgetManifest(manifest: UnifiedPluginManifest) {
+export function validateOfficialWidgetManifest(manifest: UnifiedPluginManifest, bundled = false) {
   const widget = manifest.contributions[0];
   const requirements = manifest.requirements;
   if (!isOfficialWidgetId(manifest.id) || manifest.source.kind !== "official" ||
@@ -19,7 +19,7 @@ export function validateOfficialWidgetManifest(manifest: UnifiedPluginManifest) 
       manifest.slots.injects[0]?.slot !== "dock.widgets" || manifest.slots.injects[0]?.ownerPluginId !== "host" ||
       manifest.contributions.length !== 1 || widget?.kind !== "widget" ||
       widget.id !== OFFICIAL_WIDGETS[manifest.id].contributionId || widget.slot !== "dock.widgets" ||
-      !widget.customCard || widget.summary || manifest.dataContract !== OFFICIAL_WIDGETS[manifest.id].dataContract ||
+      Boolean(widget.customCard) === bundled || widget.summary || manifest.dataContract !== OFFICIAL_WIDGETS[manifest.id].dataContract ||
       (requirements.hostContract && requirements.hostContract !== manifest.dataContract)) {
     throw new Error("Invalid official Widget declaration");
   }

@@ -5,6 +5,16 @@
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
 
+## 2026-11-13 — v0.4.5
+
+Version 0.4.5 supports macOS on Apple silicon (ARM64) and uses Cloud protocol **27**. [Release and installer](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.5)
+
+- **Use the four built-in Dock Widgets.** Weather, AI Limits, AI Usage and Tasks come with Bottega. Existing Dock items keep their order and settings.
+- **Find the right settings faster.** Manage Apps and Widgets from their own tabs. Settings › Plugins focuses on plugins with tools, modes or other capabilities. Dock settings use a simpler layout.
+- **Manage tools across Projects.** Add global servers in Settings › MCP. Find the built-in tool switches under Contributions in the plugin that provides them.
+- **Open Project Skills directly.** The list shows the current Project's Skills. Search, refresh or open Add Skills from the same page.
+- **Read Weather and update status more easily.** Weather has clearer contrast in the Dock. The sidebar shows the desktop update status.
+
 ## 2026-11-12 — v0.4.4
 
 Version 0.4.4 supports macOS on Apple silicon (ARM64) and uses Cloud protocol **27**. [Release and installer](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.4)

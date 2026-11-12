@@ -1,12 +1,13 @@
 /**
  * [INPUT]: Source-action availability from the canonical Widget catalog; Depends on the Dock management bridge, normal Chat routes, existing confirmation primitives, the shared actual Dock renderer, bounded visible preview transport and localized Widget copy/ready-only retarget state.
- * [OUTPUT]: Provides the catalog's Dock Add/New destinations, native actual-renderer preview grid, header Browse/Add/New dropdown, package recovery and lazy Create-mode source editing and visible ready-only copy retarget feedback, versions and local instance actions; shortcuts close Settings before opening their form.
+ * [OUTPUT]: Dock Widget instance grid, toolbar Add/New destinations and configuration forms, package management and local repair, with native shortcut routing.
  * [POS]: Enabled Dock's Widget management tab; its source operations only set a durable authoring intent; first send allocates the source Project.
  */
 import {lazy,Suspense,useCallback,useEffect,useRef,useState} from 'react';
 import {useNavigate} from 'react-router';
 import {createPortal} from 'react-dom';
-import type {OfficialWidgetId} from '../../../../../shared/system-dock/widgets/catalog/distribution';
+import {isDistributedWidgetId,type DistributedWidgetId} from '../../../../../shared/system-dock/widgets/catalog/distribution';
+import {nativeWidgetType,OFFICIAL_WIDGETS,type OfficialWidgetId} from '../../../../../shared/system-dock/widgets/catalog/official';
 import {WidgetAddMenu} from './catalog/add-menu';
 import {WidgetInstanceCard} from './catalog/card';
 import {WidgetCatalogPreview} from './catalog/preview';
@@ -29,7 +30,7 @@ import type {WidgetRetirementReview} from '../../../../../shared/system-dock/wid
 import {WidgetDeliveryStatus} from './install/delivery';
 import type {WidgetUninstallReview} from '../../../../../shared/system-dock/widgets/install/lifecycle';
 import type {WidgetInstallReview} from '../../../../../shared/system-dock/widgets/install/types';
-import {WidgetPicker,OFFICIAL_WIDGETS} from './picker';
+import {WidgetPicker} from './picker';
 import {WidgetInstanceFormDialog} from './instance-form';
 import type {WidgetInstanceForm,WidgetInstanceReceipt} from '../../../../../shared/system-dock/widgets/management';
 import type {WidgetManagementSnapshot} from '../../../../../shared/system-dock/widgets/authoring';
@@ -42,7 +43,7 @@ const OfficialWidgetDialog=lazy(()=>import('./official').then(module=>({default:
 export function DockWidgetsSection({active=true,actionsContainer}:{active?:boolean;actionsContainer?:HTMLElement|null}){
   const {t,i18n}=useAppTranslation(),navigate=useNavigate(),state=useDockWidgets(),navigation=useSettingsNavigation();
   const {snapshot,refresh}=state,presentation=useWidgetCatalog(active),now=useNow();
-  const [directory,setDirectory]=useState<{pluginId:OfficialWidgetId;itemId:string}|true|null>(null);
+  const [directory,setDirectory]=useState<{pluginId:DistributedWidgetId;itemId:string}|true|null>(null);
   const [picker,setPicker]=useState(false),[busy,setBusy]=useState(false),[failed,setFailed]=useState(false);
   const [retirementReview,setRetirementReview]=useState<WidgetRetirementReview|null>(null),[pendingAdd,setPendingAdd]=useState<WidgetAccountDefinition|null>(null);
   const [uninstallReview,setUninstallReview]=useState<WidgetUninstallReview|null>(null);
@@ -52,15 +53,24 @@ export function DockWidgetsSection({active=true,actionsContainer}:{active?:boole
   const [initialChoice,setInitialChoice]=useState<string|undefined>();
   const [pluginForm,setPluginForm]=useState<PluginWidgetForm|null>(null);
   const [form,setForm]=useState<WidgetInstanceForm|null>(null),[instanceResult,setInstanceResult]=useState<'pending'|'conflict'|null>(null),returnTarget=useRef<HTMLButtonElement|null>(null),returnItem=useRef<string|null>(null),requests=useRef(new Map<string,{operationId:string;expectedRevision:number;paused:boolean;expectedLayoutRevision:number}>());
-  const restoreFocus=()=>requestAnimationFrame(()=>{if(returnTarget.current?.isConnected){returnTarget.current.focus();return;}const id=returnItem.current;const target=id?document.querySelector<HTMLButtonElement>(`[data-widget-instance="${CSS.escape(id)}"] [data-widget-configure]`):null;(target??document.querySelector<HTMLButtonElement>('[data-widget-add]'))?.focus();});
-  const browse=(subject:true|{pluginId:OfficialWidgetId;itemId:string},button?:HTMLButtonElement)=>{
+  const restoreFocus=useCallback(()=>{
+    requestAnimationFrame(()=>{
+      if(returnTarget.current?.isConnected){returnTarget.current.focus();return;}
+      const id=returnItem.current;
+      const configure=id?document.querySelector<HTMLButtonElement>('[data-widget-instance="'+CSS.escape(id)+'"] [data-widget-configure]'):null;
+      (configure??document.querySelector<HTMLButtonElement>('[data-widget-add]'))?.focus();
+    });
+  },[]);
+  const browse=useCallback((subject:true|{pluginId:DistributedWidgetId;itemId:string},button?:HTMLButtonElement)=>{
     returnTarget.current=button??null;returnItem.current=subject===true?null:subject.itemId;setDirectory(subject);
-  };
-  const configureInstalled=async(id:OfficialWidgetId)=>{
+  },[]);
+  const configureInstalled=async(id:DistributedWidgetId)=>{
     if(!window.systemDockSettings)return;
     try {
-      if(id==='bottega-ai-usage')setOfficialForm(await window.systemDockSettings.officialWidgetPreview({definitionId:'builtin.ai-activity'}));
-      else setPluginForm(await window.systemDockSettings.pluginWidgetForm({pluginId:id,contributionId:'current'}));
+      const {contributionId}=OFFICIAL_WIDGETS[id];
+      const definitionId=nativeWidgetType(id,contributionId);
+      if(definitionId)setOfficialForm(await window.systemDockSettings.officialWidgetPreview({definitionId}));
+      else setPluginForm(await window.systemDockSettings.pluginWidgetForm({pluginId:id,contributionId}));
       setDirectory(null);
     }catch{setFailed(true);setDirectory(null);restoreFocus();}
   };
@@ -76,16 +86,41 @@ export function DockWidgetsSection({active=true,actionsContainer}:{active?:boole
     if(snapshot?.instances.find(value=>value.id===id)?.installation==='source-review'){void open(snapshot.instances.find(value=>value.id===id)!.definitionId);return;}
     if(lock.current||!window.systemDockSettings)return;lock.current=true;setBusy(true);setFailed(false);returnTarget.current=button??null;returnItem.current=id;
     try{const instance=snapshot?.instances.find(value=>value.id===id);if(!instance)throw new Error('Widget unavailable');
-      if(instance.pluginId&&instance.contributionId){setPluginForm(await window.systemDockSettings.pluginWidgetForm({pluginId:instance.pluginId,contributionId:instance.contributionId,itemId:id}));return;}
+      if(instance.pluginId&&instance.contributionId){
+        if(nativeWidgetType(instance.pluginId,instance.contributionId))setOfficialForm(await window.systemDockSettings.officialWidgetPreview({itemId:id}));
+        else setPluginForm(await window.systemDockSettings.pluginWidgetForm({pluginId:instance.pluginId,contributionId:instance.contributionId,itemId:id}));
+        return;
+      }
       if(instance.installation==='install'||instance.installation==='update'||instance.installation==='preparing'||instance.installation==='repair'){setInstallReview(await window.systemDockSettings.widgetInstallReview({itemId:id}));return;}
       if(instance.definitionId.startsWith('builtin.'))setOfficialForm(await window.systemDockSettings.officialWidgetPreview({itemId:id}));else setForm(await window.systemDockSettings.instancePreview({itemId:id}));
     }catch(error){setFailed(!(error instanceof Error&&error.message.includes('WIDGET_PACKAGE_NOT_READY')));}finally{lock.current=false;setBusy(false);}
   },[snapshot,open]);
-  const install=async(itemId:string,button:HTMLButtonElement)=>{
+  const directoryAvailable=presentation.snapshot?.officialDirectory,refreshPresentation=presentation.refresh;
+  const repair=useCallback(async(pluginId:OfficialWidgetId,button?:HTMLButtonElement)=>{
+    if(lock.current||!window.systemDockSettings)return;
+    lock.current=true;setBusy(true);setFailed(false);
+    try{
+      const result=await window.systemDockSettings.widgetDirectoryControl({kind:'repair',pluginId});
+      if(result.kind!=='repair'||!result.repaired)throw new Error('Widget repair did not complete');
+      refresh();
+      refreshPresentation();
+    }catch{setFailed(true);}finally{
+      lock.current=false;setBusy(false);
+      if(button)requestAnimationFrame(()=>{if(button.isConnected)button.focus();else restoreFocus();});
+    }
+  },[refresh,refreshPresentation,restoreFocus]);
+  const install=useCallback(async(itemId:string,button?:HTMLButtonElement)=>{
     const official=snapshot?.instances.find(value=>value.id===itemId)?.officialWidget;
-    if(official){browse({pluginId:official,itemId},button);return;}
-    if(lock.current||!window.systemDockSettings)return;lock.current=true;setBusy(true);setFailed(false);returnTarget.current=button;returnItem.current=itemId;
-    try{setInstallReview(await window.systemDockSettings.widgetInstallReview({itemId}));}catch(error){setFailed(!(error instanceof Error&&error.message.includes('WIDGET_PACKAGE_NOT_READY')));}finally{lock.current=false;setBusy(false);}};
+    if(official){
+      if(directoryAvailable&&isDistributedWidgetId(official))browse({pluginId:official,itemId},button);
+      else {returnItem.current=itemId;returnTarget.current=button??null;await repair(official,button);}
+      return;
+    }
+    if(lock.current||!window.systemDockSettings)return;lock.current=true;setBusy(true);setFailed(false);returnTarget.current=button??null;returnItem.current=itemId;
+    try{setInstallReview(await window.systemDockSettings.widgetInstallReview({itemId}));}
+    catch(error){setFailed(!(error instanceof Error&&error.message.includes('WIDGET_PACKAGE_NOT_READY')));}
+    finally{lock.current=false;setBusy(false);}
+  },[snapshot,directoryAvailable,browse,repair]);
   const uninstall=async(subject:{definitionId:string;sourceInstallationId:string},button:HTMLButtonElement)=>{if(lock.current||!window.systemDockSettings)return;lock.current=true;setBusy(true);setFailed(false);returnTarget.current=button;returnItem.current=null;
     setPicker(false);
     try{const value=await window.systemDockSettings.widgetLifecycleControl({kind:'uninstall-review',definitionId:subject.definitionId,sourceInstallationId:subject.sourceInstallationId});if(value.kind==='uninstall-review')setUninstallReview(value.review);}catch{setFailed(true);}finally{lock.current=false;setBusy(false);}};
@@ -119,15 +154,22 @@ export function DockWidgetsSection({active=true,actionsContainer}:{active?:boole
     if(request.kind==='new'){void open();return;}
     if(request.kind==='add'){refresh();setInitialChoice(request.definitionId);setPicker(true);return;}
     const instance=snapshot.instances.find(value=>value.id===request.itemId);if(!instance){setFailed(true);return;}
-    if(request.kind==='install'&&instance.officialWidget){browse({pluginId:instance.officialWidget,itemId:instance.id});return;}
+    if(request.kind==='install'){void install(instance.id);return;}
     if(request.kind==='configure')void configure(instance.id);
     else if(request.kind==='edit')void open(instance.definitionId);
     else if(request.kind==='fork')void customize(instance.id);
-    else if(request.kind==='versions')setVersionId(instance.definitionId);
+    else if(request.kind==='versions'){
+      if(instance.pluginId)requestSettingsSection({section:'plugins',plugin:instance.pluginId});
+      else setVersionId(instance.definitionId);
+    }
     else if(request.kind==='remove')void change(instance,true);
     else if(instance.mappingRevision!==undefined)void change(instance);
-  }),[snapshot,busy,open,configure,customize,change,navigation,refresh]);
-  const definitionName=(id:string,sourceInstallationId?:string)=>{const installed=state.snapshot?.installedDefinitions?.find(value=>value.definitionId===id&&value.sourceInstallationId===sourceInstallationId);if(installed)return installed.name;const official=OFFICIAL_WIDGETS.find(([key])=>key===id);return official?t(official[1]):state.snapshot?.definitions.find(definition=>definition.id===id&&(!sourceInstallationId||definition.sourceInstallationId===sourceInstallationId))?.name??t('systemDock.widgets.states.definition-missing');};
+  }),[snapshot,busy,open,configure,customize,change,navigation,refresh,install]);
+  const definitionName=(id:string,sourceInstallationId?:string)=>
+    snapshot?.installedDefinitions?.find(value=>value.definitionId===id&&value.sourceInstallationId===sourceInstallationId)?.name
+    ?? snapshot?.definitions.find(value=>value.id===id&&(!sourceInstallationId||value.sourceInstallationId===sourceInstallationId))?.name
+    ?? t('systemDock.widgets.states.definition-missing');
+  const managedDefinitions=snapshot?.definitions.filter(definition=>definition.pluginId||definition.customizable!==false)??[];
   const order=new Map(presentation.snapshot?.items.map((item,index)=>[item.id,index]));
   const instances=[...(snapshot?.instances??[])].sort((a,b)=>(order.get(a.id)??Infinity)-(order.get(b.id)??Infinity));
   const addMenu=<WidgetAddMenu busy={busy||!snapshot} onBrowse={presentation.snapshot?.officialDirectory?()=>browse(true):undefined} onAdd={()=>{refresh();setInitialChoice(undefined);setPicker(true);}} onNew={()=>void open()}/>;
@@ -140,7 +182,8 @@ export function DockWidgetsSection({active=true,actionsContainer}:{active?:boole
     {snapshot?.retirements?.map(value=><SettingsAlert key={value.operationId}><p>{value.name}: {t('systemDock.widgets.definitionDelete.pending')}</p><SettingsButton disabled={busy} variant="outline" onClick={()=>void retryDeletion(value.operationId)}>{t('common.retry')}</SettingsButton></SettingsAlert>)}
     {instances.length?<div className="widget-catalog-grid">{instances.map(instance=>{
       const item=presentation.snapshot?.items.find(value=>value.id===instance.id);
-      return <WidgetInstanceCard key={instance.id} instance={instance} definitionName={definitionName(instance.definitionId,instance.sourceInstallationId)} busy={busy} wide={item?.widget?.type==='custom'&&item.widget.size!=='small'&&presentation.snapshot?.edge==='bottom'}
+      return <WidgetInstanceCard key={instance.id} instance={instance} definitionName={definitionName(instance.definitionId,instance.sourceInstallationId)} busy={busy}
+        bundled={Boolean(instance.officialWidget&&!(directoryAvailable&&isDistributedWidgetId(instance.officialWidget)))} wide={item?.widget?.type==='custom'&&item.widget.size!=='small'&&presentation.snapshot?.edge==='bottom'}
         preview={item&&presentation.snapshot?<WidgetCatalogPreview item={item} presentation={presentation.snapshot} active={active&&!picker&&!directory} ready={presentation.ready.has(item.id)} observe={presentation.observe} now={now} t={t}/>:<div className="widget-catalog-preview"><span className="text-xs text-muted-foreground">{t(presentation.failed?'systemDock.item.unavailable':'common.loading')}</span></div>}
         onConfigure={button=>void configure(instance.id,button)} onInstall={button=>void install(instance.id,button)} onEdit={()=>void open(instance.definitionId)} onCopy={()=>void customize(instance.id)}
         onVersions={()=>{if(instance.pluginId||instance.officialWidget)requestSettingsSection({section:'plugins',plugin:instance.pluginId??instance.officialWidget});else setVersionId(instance.definitionId);}} onChange={remove=>void change(instance,remove)}>
@@ -154,8 +197,23 @@ export function DockWidgetsSection({active=true,actionsContainer}:{active?:boole
     {retirementReview&&<Suspense fallback={null}><WidgetUninstallDialog mode="definition" review={retirementReview} onClose={()=>setRetirementReview(null)} onChanged={refresh} onReturnFocus={restoreFocus}/></Suspense>}
     {uninstallReview&&<Suspense fallback={null}><WidgetUninstallDialog review={uninstallReview} onClose={()=>setUninstallReview(null)} onChanged={refresh} onReturnFocus={restoreFocus}/></Suspense>}
     {installReview&&<Suspense fallback={null}><WidgetInstallDialog review={installReview} onClose={()=>{setInstallReview(null);setPendingAdd(null);}} onInstalled={pendingAdd?()=>void addInstalled():undefined} onChanged={refresh} onConfigure={itemId=>{setInstallReview(null);void configure(itemId);}} onReturnFocus={restoreFocus}/></Suspense>}
-    {picker&&state.snapshot&&<WidgetPicker snapshot={state.snapshot} presentation={{...presentation,now,active}} initialChoice={initialChoice} onClose={()=>{setPicker(false);restoreFocus();}} onOfficial={value=>{setPicker(false);setOfficialForm(value);}} onPersonal={value=>{setPicker(false);setForm(value);}} onPlugin={value=>{setPicker(false);setPluginForm(value);}} onInstall={value=>void accountInstall(value)} management={snapshot?.definitions.some(definition=>definition.customizable!==false)||snapshot?.installedDefinitions?.length||snapshot?.accountDefinitions?.length?<>
-      {snapshot?.definitions.filter(definition=>definition.customizable!==false).map(definition=><div key={definition.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"><span>{definition.name}</span><div className="flex gap-2"><SettingsButton variant="ghost" disabled={busy} onClick={()=>{setPicker(false);if(definition.pluginId)requestSettingsSection({section:'plugins',plugin:definition.pluginId});else setVersionId(definition.id);}}>{t('systemDock.widgets.versions')}</SettingsButton>{definition.pluginId&&definition.contributionId?<SettingsButton variant="ghost" disabled={busy} onClick={()=>void open(definition.id)}>{t('systemDock.widgets.edit')}</SettingsButton>:<SettingsButton variant="ghost" disabled={busy||!definition.sourceInstallationId} onClick={event=>void deleteDefinition({definitionId:definition.id,sourceInstallationId:definition.sourceInstallationId},event.currentTarget)}>{t('systemDock.widgets.definitionDelete.confirm')}</SettingsButton>}</div></div>)}
+    {picker&&state.snapshot&&<WidgetPicker snapshot={state.snapshot} presentation={{...presentation,now,active}} initialChoice={initialChoice} onClose={()=>{setPicker(false);restoreFocus();}} onOfficial={value=>{setPicker(false);setOfficialForm(value);}} onPersonal={value=>{setPicker(false);setForm(value);}} onPlugin={value=>{setPicker(false);setPluginForm(value);}} onInstall={value=>void accountInstall(value)} management={managedDefinitions.length||snapshot?.installedDefinitions?.length||snapshot?.accountDefinitions?.length?<>
+      {managedDefinitions.map(definition=><div key={definition.id} data-widget-definition={definition.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm">
+        <span>{definition.name}{definition.installation==='disabled'&&<> · {t('systemDock.widgets.states.paused')}</>}</span>
+        <div className="flex flex-wrap gap-2">
+          {definition.installation==='needs-install'&&definition.officialWidget&&!(directoryAvailable&&isDistributedWidgetId(definition.officialWidget))
+            ? <SettingsButton variant="outline" disabled={busy} onClick={event=>void repair(definition.officialWidget!,event.currentTarget)}>{t('systemDock.widgets.install.repair')}</SettingsButton>
+            : <SettingsButton variant="ghost" disabled={busy} onClick={()=>{
+              setPicker(false);
+              if(definition.pluginId)requestSettingsSection({section:'plugins',plugin:definition.pluginId});
+              else setVersionId(definition.id);
+            }}>{t('systemDock.widgets.versions')}</SettingsButton>}
+          {definition.customizable!==false&&(definition.pluginId
+            ? <SettingsButton variant="ghost" disabled={busy} onClick={()=>void open(definition.id)}>{t('systemDock.widgets.edit')}</SettingsButton>
+            : <SettingsButton variant="ghost" disabled={busy||!definition.sourceInstallationId} onClick={event=>void deleteDefinition({definitionId:definition.id,sourceInstallationId:definition.sourceInstallationId},event.currentTarget)}>{t('systemDock.widgets.definitionDelete.confirm')}</SettingsButton>)}
+        </div>
+      </div>)}
+      {failed&&<SettingsAlert><span role="alert">{t('systemDock.widgets.failed')}</span></SettingsAlert>}
       <WidgetAccountDefinitions installed={snapshot?.installedDefinitions??[]} available={(snapshot?.accountDefinitions??[]).filter(value=>!snapshot?.installedDefinitions?.some(other=>other.definitionId===value.definitionId&&other.sourceInstallationId===value.sourceInstallationId)&&!snapshot?.definitions.some(other=>other.id===value.definitionId&&other.sourceInstallationId===value.sourceInstallationId))} busy={busy} onAdd={key=>{refresh();setInitialChoice(key);setPicker(true);}} onInstall={(value,button)=>void accountInstall(value,button)} onUninstall={(value,button)=>void uninstall(value,button)} onDelete={(value,button)=>void deleteDefinition(value,button)}/>
     </>:undefined} />}
     {officialForm&&<Suspense fallback={null}><OfficialWidgetDialog key={officialForm.previewId} form={officialForm} onClose={()=>setOfficialForm(null)} onChanged={state.refresh} onReturnFocus={restoreFocus}/></Suspense>}

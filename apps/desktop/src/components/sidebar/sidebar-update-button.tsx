@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React store hooks, i18n, Sidebar update verdicts, update-client commands, external-link IPC, shared UpdateProgress and lucide glyphs.
- * [OUTPUT]: Provides SidebarUpdateButton with labeled confirmed-update/restart actions and noninteractive download/install status; failures remain in Settings.
+ * [INPUT]: Depends on React store hooks, i18n, Sidebar update verdicts, update-client commands, external-link IPC and lucide glyphs.
+ * [OUTPUT]: Provides SidebarUpdateButton with labeled confirmed-update/restart actions and noninteractive status with an icon and localized text; failures remain in Settings.
  * [POS]: Sidebar footer presentation; downloading starts in place and restart requires an explicit action.
  */
 
@@ -8,7 +8,6 @@ import { useEffect, useSyncExternalStore } from "react";
 import { CircleAlert, Download, ExternalLink, Loader2, RotateCw } from "lucide-react";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { UpdateProgress } from "@/components/updates/update-progress";
 import { openExternal } from "@/lib/agent/agent-client";
 import { RELEASE_URL, updateStore } from "@/lib/platform/update-client";
 import {
@@ -30,7 +29,7 @@ const TONES: Record<SidebarUpdateTone, string> = {
   quiet: "text-muted-foreground",
 };
 
-const SHELL = "relative ml-auto flex h-8 min-w-0 max-w-40 flex-[0_1_10rem] items-center justify-center gap-1.5 rounded-lg px-2 text-xs outline-none transition-colors motion-reduce:transition-none";
+const SHELL = "ml-auto flex h-8 min-w-0 max-w-40 flex-[0_1_10rem] items-center justify-center gap-1.5 rounded-lg px-2 text-xs outline-none transition-colors motion-reduce:transition-none";
 const FOCUS = "touch-manipulation cursor-pointer bg-sidebar-accent hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar";
 
 export function SidebarUpdateButton({ onOpenUpdates }: { onOpenUpdates: () => void }) {
@@ -56,7 +55,6 @@ export function SidebarUpdateButton({ onOpenUpdates }: { onOpenUpdates: () => vo
     return (
       <div role="status" aria-label={label} title={title} className={cn(SHELL, TONES[view.tone])}>
         {body}
-        {view.percent !== null && <UpdateProgress percent={view.percent} label={label} className="absolute right-2 bottom-0 left-2" />}
       </div>
     );
   }

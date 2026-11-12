@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on React, i18n, the Setup provider, the scoped MCP controller, shared tool-support projection, an explicit global/Project MCP scope port, Settings primitives, AppDialog, the shared BackendSupportNote from plugin-tools-section, and shared masked MCP DTOs
- * [OUTPUT]: Provides one MCP renderer for global defaults and exact Projects, including owner grouping, inherited overrides, masked-secret editing, and conflict-safe drafts, plus useMcpServersPort — the scope-agnostic half of the port both Tools views assemble
- * [POS]: apps/desktop/src/components/settings/tools; Scope-agnostic manual MCP controls for Settings › Tools; controllers own IPC/CAS/fencing, the hook wires one controller into the base port, and the component only renders snapshots and mutations
+ * [INPUT]: Depends on React, i18n, the global MCP controller, backend diagnostics, Settings primitives, AppDialog, and masked MCP DTOs
+ * [OUTPUT]: Provides McpServersSection and useMcpServersPort with masked-secret editing and conflict-safe drafts
+ * [POS]: Global manual MCP settings surface
  */
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { Plus, RotateCcw, Server, Trash2 } from "lucide-react";
+import { Plus, Server, Trash2 } from "lucide-react";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { Textarea } from "@ai-chat/ui/components/ui/textarea";
 import {
@@ -26,11 +26,7 @@ import type {
   SaveManualMcpServerInput,
 } from "../../../../shared/ipc/settings/mcp-servers-ipc";
 import { MCP_SERVERS_BRIDGE_UNAVAILABLE } from "../../../../shared/ipc/settings/mcp-servers-ipc";
-import type { ProductResourceScope } from "../../../../shared/product/resource-scope";
-import {
-  projectManualMcpServerSupport,
-  toolBackendFacts,
-} from "../../../../shared/tools/tool-support";
+import { projectManualMcpServerSupport } from "../../../../shared/tools/tool-support";
 import {
   SettingsAlert,
   SettingsButton,
@@ -41,62 +37,34 @@ import {
   SettingsSection,
   SettingsSwitch,
 } from "@/components/settings/settings-layout";
-import { BackendSupportNote } from "@/components/settings/tools/plugin-tools-section";
+import { BackendSupportNote, useToolBackendFacts } from "./backend-support";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { createMcpServersController } from "@/lib/clients/mcp-servers-client";
-import { isBuiltinBackendInfo } from "@/lib/agent/agent-backends";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { useSetup } from "@/components/providers/setup-provider";
 import type { TFunction } from "i18next";
-import { Link } from "react-router";
 
 type McpMutationResult = Readonly<{ ok: boolean; error: string }>;
 
 export type McpServersSectionPort = Readonly<{
-  kind: "global" | "project";
   snapshot: McpServersSnapshot | null;
   loading: boolean;
   error: string;
   bridgeAvailable: boolean;
   pending: ReadonlySet<string>;
-  hasPolicyOverrides: boolean;
   load(): Promise<unknown>;
   save(
     draft: SaveManualMcpServerInput["draft"],
     server?: ManualMcpServerView
   ): Promise<McpMutationResult>;
   remove(server: ManualMcpServerView): Promise<unknown>;
-  setInheritedEnabled?(
-    serverId: `manual:${string}`,
-    enabled: boolean
-  ): Promise<unknown>;
-  resetInherited?(serverId: `manual:${string}`): Promise<unknown>;
 }>;
 
-export type McpServersPortBase = Omit<
-  McpServersSectionPort,
-  "kind" | "hasPolicyOverrides" | "setInheritedEnabled" | "resetInherited"
->;
-
-/* ============================================================
- * Both Tools views (global Settings › Tools and a Project's Tools tab) build
- * the same base port from one scoped controller: subscribe, re-project every
- * server against the live Setup backends, translate the bridge-missing code,
- * and turn `save`'s boolean into the dialog's `{ ok, error }`. The scope-
- * specific half — policy overrides and inherited controls — stays with each
- * view. `scope` must be referentially stable; it keys the controller identity,
- * and the controller's bridge watch lives exactly as long as its subscribers.
- * ============================================================ */
-export function useMcpServersPort(scope: ProductResourceScope) {
+export function useMcpServersPort(): McpServersSectionPort {
   const { t } = useAppTranslation();
-  const setup = useSetup();
-  const controller = useMemo(() => createMcpServersController(scope), [scope]);
+  const controller = useMemo(() => createMcpServersController(), []);
   const mcp = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-  const backendFacts = useMemo(
-    () => (setup.status?.backends ?? []).filter(isBuiltinBackendInfo).map(toolBackendFacts),
-    [setup.status?.backends]
-  );
-  const port = useMemo<McpServersPortBase>(() => ({
+  const backendFacts = useToolBackendFacts();
+  return useMemo<McpServersSectionPort>(() => ({
     snapshot: mcp.value
       ? {
           ...mcp.value,
@@ -119,7 +87,6 @@ export function useMcpServersPort(scope: ProductResourceScope) {
     },
     remove: controller.remove,
   }), [backendFacts, controller, mcp, t]);
-  return { controller, backendFacts, port };
 }
 
 type EnvRow = {
@@ -157,42 +124,12 @@ export function McpServersSection({ port }: { port: McpServersSectionPort }) {
     void load();
   }, [load]);
 
-  const snapshot = port.snapshot;
-  const servers = snapshot?.servers ?? [];
-  const projectServers = servers.filter(
-    (server) => server.owner.kind === "project"
-  );
-  const inheritedServers = servers.filter(
-    (server) => server.owner.kind === "global"
-  );
-  const toggle = (server: ManualMcpServerView, enabled: boolean) => {
-    if (port.kind === "project" && server.owner.kind === "global") {
-      return port.setInheritedEnabled?.(server.serverId, enabled);
-    }
-    return port.save(viewDraft(server, enabled), server);
-  };
-  const rows = (items: readonly ManualMcpServerView[]) => (
-    <SettingsList>
-      {items.map((server) => (
-        <McpServerRow
-          key={`${server.owner.kind}:${server.serverId}`}
-          port={port}
-          server={server}
-          setDraft={setDraft}
-          toggle={toggle}
-        />
-      ))}
-    </SettingsList>
-  );
+  const servers = port.snapshot?.servers ?? [];
 
   return (
     <SettingsSection
       title={t("settings.tools.mcp.title")}
-      description={t(
-        port.kind === "global"
-          ? "settings.tools.mcp.globalDescription"
-          : "settings.tools.mcp.projectDescription"
-      )}
+      description={t("settings.tools.mcp.globalDescription")}
       action={
         /* 表单搬进弹窗后，「已经在填一张表」不再需要在这里防守：
            模态遮罩替这颗按钮挡住了那次点击，一个分支就此消失。 */
@@ -207,27 +144,13 @@ export function McpServersSection({ port }: { port: McpServersSectionPort }) {
       }
       alert={port.error || undefined}
     >
-      {port.kind === "project" ? (
-        <div className="space-y-5">
-          <McpGroup
-            label={t("settings.tools.mcp.projectGroup")}
-            empty={t("settings.tools.mcp.projectGroupEmpty")}
-          >
-            {projectServers.length ? rows(projectServers) : null}
-          </McpGroup>
-          <McpGroup
-            label={t("settings.tools.mcp.inheritedGroup")}
-            empty={t("settings.tools.mcp.inheritedGroupEmpty")}
-          >
-            {inheritedServers.length ? rows(inheritedServers) : null}
-          </McpGroup>
-          {!projectServers.length && !port.hasPolicyOverrides && (
-            <p className="text-muted-foreground text-xs" role="status">
-              {t("settings.tools.mcp.allInherited")}
-            </p>
-          )}
-        </div>
-      ) : servers.length ? rows(servers) : (
+      {servers.length ? (
+        <SettingsList>
+          {servers.map((server) => (
+            <McpServerRow key={server.serverId} port={port} server={server} setDraft={setDraft} />
+          ))}
+        </SettingsList>
+      ) : (
         <SettingsEmpty
           hint={t("settings.tools.mcp.globalEmptyHint")}
           icon={<Server />}
@@ -245,54 +168,22 @@ export function McpServersSection({ port }: { port: McpServersSectionPort }) {
   );
 }
 
-function McpGroup({
-  label,
-  empty,
-  children,
-}: {
-  label: string;
-  empty: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-2">
-      <h3 className="font-medium text-xs">{label}</h3>
-      {children ?? (
-        <p className="rounded-lg bg-muted/40 px-4 py-3 text-muted-foreground text-xs">
-          {empty}
-        </p>
-      )}
-    </div>
-  );
-}
-
 function McpServerRow({
   port,
   server,
   setDraft,
-  toggle,
 }: {
   port: McpServersSectionPort;
   server: ManualMcpServerView;
   setDraft: (value: FormState) => void;
-  toggle: (server: ManualMcpServerView, enabled: boolean) => unknown;
 }) {
   const { t } = useAppTranslation();
-  const inherited = port.kind === "project" && server.owner.kind === "global";
-  const editable = !inherited;
-  const pending =
-    port.pending.has(`server:${server.serverId}`) ||
-    port.pending.has(`mcp:${server.serverId}`);
+  const pending = port.pending.has(`server:${server.serverId}`);
   return (
     <SettingsRow
-      badge={
-        <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground text-[11px]">
-          {t(`settings.tools.mcp.source.${server.effectiveSource}`)}
-        </span>
-      }
       control={
         <div className="flex items-center gap-1">
-          {editable && server.transport === "stdio" && (
+          {server.transport === "stdio" && (
             <SettingsButton
               disabled={pending}
               onClick={() => setDraft(formFrom(server))}
@@ -301,44 +192,20 @@ function McpServerRow({
               {t("settings.tools.mcp.edit")}
             </SettingsButton>
           )}
-          {editable && (
-            <SettingsIconButton
-              disabled={pending}
-              label={t("settings.tools.mcp.delete", {
-                name: server.displayName,
-              })}
-              onClick={() => void port.remove(server)}
-              variant="ghost"
-            >
-              <Trash2 className="size-4" />
-            </SettingsIconButton>
-          )}
-          {inherited && (
-            <Link
-              className="inline-flex min-h-11 items-center rounded-md px-3 text-xs ring-1 ring-foreground/10 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              to="/settings/tools"
-            >
-              {t("settings.tools.mcp.editGlobally")}
-            </Link>
-          )}
-          {inherited && server.override && port.resetInherited && (
-            <SettingsIconButton
-              disabled={pending}
-              label={t("settings.tools.mcp.resetOne", {
-                name: server.displayName,
-              })}
-              onClick={() => void port.resetInherited?.(server.serverId)}
-              variant="ghost"
-            >
-              <RotateCcw className="size-4" />
-            </SettingsIconButton>
-          )}
+          <SettingsIconButton
+            disabled={pending}
+            label={t("settings.tools.mcp.delete", { name: server.displayName })}
+            onClick={() => void port.remove(server)}
+            variant="ghost"
+          >
+            <Trash2 className="size-4" />
+          </SettingsIconButton>
           <SettingsSwitch
             checked={server.enabled}
             disabled={pending || !port.bridgeAvailable}
             id={`mcp-server-${server.serverId}`}
             label={server.displayName}
-            onToggle={(enabled) => void toggle(server, enabled)}
+            onToggle={(enabled) => void port.save(viewDraft(server, enabled), server)}
           />
         </div>
       }

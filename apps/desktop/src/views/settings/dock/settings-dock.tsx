@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, the i18n provider, SettingsPage and Settings primitives, the Dock settings store, and the settings/dock sections.
- * [OUTPUT]: Provides DockSettingsView, reusable DockSettingsContent without Widget management for the plugin detail, and DockPluginSetupDialog; all use the original owner, sections and setup confirmation with main-owned layout initialization for visible steps. Focus return refreshes registration; sync decisions and recovery remain available while off, with routine sync status hidden. Includes localized App shortcut failures.
+ * [OUTPUT]: Provides DockSettingsView, reusable DockSettingsContent for the plugin detail, and DockPluginSetupDialog. The Display section groups mode and placement. Focus return refreshes background approval. The page includes setup, sync decisions and localized command failures.
  * [POS]: apps/desktop/src/views/settings/dock; Settings layer's legacy Dock page and the Dock plugin's settings content; main applies every command and reports the authoritative outcome.
  */
 
@@ -12,16 +12,16 @@ import { SettingsPage } from "@/components/page-shell";
 import { SettingsAlert, SettingsButton, SettingsCanvas } from "@/components/settings/settings-layout";
 import { dockSettingsStore, type DockSettingsCommand } from "@/lib/platform/system-dock-settings-client";
 import { DockLayoutSection } from "@/components/settings/dock/layout-section";
-import { DockAppearance, DockBehavior, DockPlacement } from "@/components/settings/dock/preferences";
+import { DockAppearance, DockBehavior, DockDisplaySettings } from "@/components/settings/dock/preferences";
 import { DockSetupDialog, type DockSetupFlow } from "@/components/settings/dock/setup";
-import { DockMaster, DockRecovery, DockUnsupported } from "@/components/settings/dock/status";
+import { DockMaster, DockUnsupported } from "@/components/settings/dock/status";
 import { DockSync } from "@/components/settings/dock/sync";
 import { DOCK_CONSENT_VERSION } from "../../../../shared/system-dock/local-state";
 
 const FAILURE_KEYS: Record<DockSettingsCommand, string> = {
   "app-pin": "apps.dock.pinFailed",
   setup: "systemDock.settings.confirmFailed", preference: "systemDock.settings.failedPreference", mode: "systemDock.settings.failedMode",
-  disable: "systemDock.settings.failedDisable", restore: "systemDock.settings.failedRestore", resume: "systemDock.settings.failedResume",
+  disable: "systemDock.settings.failedDisable", resume: "systemDock.settings.failedResume",
   reset: "systemDock.settings.failedReset", resolve: "systemDock.settings.failedResolve", import: "systemDock.settings.failedImport",
 };
 
@@ -59,10 +59,10 @@ export function DockSettingsContent({ plugin = false }: { plugin?: boolean }) {
         <SettingsButton variant="outline" onClick={() => dockSettingsStore.load()}>{t("common.retry")}</SettingsButton></span>
     </SettingsAlert> : <Skeleton data-testid="dock-settings-loading" className="h-40 w-full rounded-lg" /> : <>
       {!snapshot.capability.supported ? <DockUnsupported capability={snapshot.capability} /> : <>
-        <DockMaster snapshot={snapshot} pending={state.pending} showToggle={!plugin} onTurnOn={() => setSetup("full")} onSwitchToReplace={() => {
+        <DockMaster snapshot={snapshot} pending={state.pending} showToggle={!plugin} onTurnOn={() => setSetup("full")} />
+        <DockDisplaySettings state={state} onSwitchToReplace={() => {
           if (snapshot.state.consentVersion === DOCK_CONSENT_VERSION) void dockSettingsStore.setMode("replace"); else setSetup("consent");
         }} />
-        <DockPlacement state={state} />
         {snapshot.state.enabled && <>
           <DockAppearance state={state} />
           <DockBehavior state={state} />
@@ -71,7 +71,6 @@ export function DockSettingsContent({ plugin = false }: { plugin?: boolean }) {
         <DockSetupDialog capability={snapshot.capability} layoutInitialized={snapshot.layoutInitialized} flow={setup} onExit={() => setSetup(null)} />
       </>}
       <DockSync state={state} />
-      <DockRecovery snapshot={snapshot} pending={state.pending} />
     </>}
   </div>;
 }

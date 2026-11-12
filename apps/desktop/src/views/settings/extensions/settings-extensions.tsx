@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React state, an optional stable toolbar action host, i18n, scope-aware Extension client commands, package cards/dialog, and Settings primitives
- * [OUTPUT]: Provides the standalone global ExtensionsSettingsView and the scoped ExtensionsContent with optional canonical-adapter row exclusions and either a portal-mounted or section-level acquisition action
+ * [INPUT]: Depends on React state, i18n, scope-aware Extension client commands, package cards/dialog, and Settings primitives
+ * [OUTPUT]: Provides the standalone global ExtensionsSettingsView and the scoped ExtensionsContent with optional canonical-adapter row exclusions
  * [POS]: apps/desktop/src/views/settings/extensions; Canonical Extension UI; CLI Agent-plugin diagnostics stay main-only and invalidations trigger qualified refetches
  */
 
@@ -10,7 +10,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import { Blocks, Plus } from "lucide-react";
 import { SettingsPage } from "@/components/page-shell";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
@@ -50,7 +49,6 @@ import {
   resolveUninstallExtension,
 } from "@/lib/clients/extensions-client";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
-import { Button } from "@ai-chat/ui/components/ui/button";
 
 export function ExtensionsSettingsView() {
   const { t } = useAppTranslation();
@@ -66,17 +64,11 @@ export function ExtensionsSettingsView() {
 export function ExtensionsContent({
   scope = GLOBAL_PRODUCT_RESOURCE_SCOPE,
   projectLifecycleRevision = null,
-  description,
-  packageIdentity = null,
-  toolbarActionHost,
   excludeInstallIdentities = [],
   excludeAdapterIds = [],
 }: {
   scope?: ProductResourceScope;
   projectLifecycleRevision?: number | null;
-  description?: string;
-  packageIdentity?: string | null;
-  toolbarActionHost?: HTMLElement | null;
   /** Canonical plugin adapters own these rows; lifecycle commands still use their original install authority. */
   excludeInstallIdentities?: readonly string[];
   excludeAdapterIds?: readonly string[];
@@ -210,6 +202,9 @@ export function ExtensionsContent({
   const alert = bridgeMissing
     ? t("settings.extensions.page.bridgeMissing")
     : error;
+  const packages = snapshot?.packages.filter((record) =>
+    !excludeInstallIdentities.includes(record.installIdentity) && !excludeAdapterIds.includes(record.adapterId)
+  ) ?? [];
   const beginInstall = () => {
     const epoch = nextEpoch();
     setInstallState({ authorityKey, epoch, source: { repoUrl: "" } });
@@ -217,18 +212,6 @@ export function ExtensionsContent({
 
   return (
     <>
-      {toolbarActionHost &&
-        createPortal(
-          <Button
-            disabled={busy || bridgeMissing || !authorityReady}
-            onClick={beginInstall}
-            size="lg"
-          >
-            <Plus />
-            {t("settings.extensions.page.installGithub")}
-          </Button>,
-          toolbarActionHost
-        )}
       <div className="space-y-8">
         {snapshot?.productSessionAdmissionClosed && (
           <SettingsAlert tone="warn">
@@ -236,7 +219,7 @@ export function ExtensionsContent({
           </SettingsAlert>
         )}
         <SettingsSection
-          action={toolbarActionHost === undefined ? (
+          action={(
             <SettingsButton
               disabled={busy || bridgeMissing || !authorityReady}
               onClick={beginInstall}
@@ -245,9 +228,9 @@ export function ExtensionsContent({
               <Plus className="size-4" />
               {t("settings.extensions.page.installGithub")}
             </SettingsButton>
-          ) : undefined}
+          )}
           alert={alert || undefined}
-          description={description ?? t("settings.extensions.page.installedDescription")}
+          description={t("settings.extensions.page.installedDescription")}
           title={t("settings.extensions.page.installedTitle")}
         >
           {!authorityReady ? (
@@ -261,15 +244,9 @@ export function ExtensionsContent({
                 {t("settings.extensions.page.installedTitle")}
               </span>
             </div>
-          ) : snapshot!.packages.filter(
-              (record) => (!packageIdentity || record.installIdentity === packageIdentity) && !excludeInstallIdentities.includes(record.installIdentity) && !excludeAdapterIds.includes(record.adapterId)
-            ).length ? (
+          ) : packages.length ? (
             <div className="space-y-3">
-              {snapshot!.packages
-                .filter((record) =>
-                  (!packageIdentity || record.installIdentity === packageIdentity) && !excludeInstallIdentities.includes(record.installIdentity) && !excludeAdapterIds.includes(record.adapterId)
-                )
-                .map((record) => (
+              {packages.map((record) => (
                 <ExtensionPackageCard
                   busy={busy || Boolean(install)}
                   key={record.installIdentity}
@@ -315,7 +292,7 @@ export function ExtensionsContent({
                   }
                   record={record}
                 />
-                ))}
+              ))}
             </div>
           ) : (
             <SettingsEmpty

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { DurableJson } from "../../../persistence/durable-json";
 import type { UnifiedPluginPlatform } from "../../../plugins/platform/service";
-import { OFFICIAL_WIDGETS, WIDGET_CATALOG_LIMITS, officialWidgetId, type OfficialWidgetId } from "../../../../../shared/system-dock/widgets/catalog/distribution";
+import { WIDGET_CATALOG_LIMITS, distributedWidgetId, widgetRecoveryVersions, type DistributedWidgetId } from "../../../../../shared/system-dock/widgets/catalog/distribution";
 import type { DockConfigStore } from "../../store/config-store";
 import type { OfficialWidgetDistribution } from "./owner";
 import { readWidgetAsset } from "./assets";
@@ -16,7 +16,7 @@ import { installVerifiedWidget, packageWidgetId, verifyOfficialArchive } from ".
 
 const captureSchema = z.object({
   version: z.literal(1),
-  instances: z.record(officialWidgetId, z.array(z.string()).max(100)).nullable(),
+  instances: z.record(distributedWidgetId, z.array(z.string()).max(100)).nullable(),
 }).strict();
 
 export class OfficialWidgetMigration {
@@ -36,7 +36,7 @@ export class OfficialWidgetMigration {
     await this.file.mutate(state => {
       this.stop.signal.throwIfAborted();
       if (state.instances !== null) return;
-      const instances: Record<OfficialWidgetId, string[]> = { "bottega-weather": [], "bottega-ai-usage": [] };
+      const instances: Record<DistributedWidgetId, string[]> = { "bottega-weather": [], "bottega-ai-usage": [] };
       for (const item of this.ports.config.layout().items) {
         const id = item.kind === "widget" && packageWidgetId(item.widget);
         if (id) instances[id].push(item.id);
@@ -45,16 +45,17 @@ export class OfficialWidgetMigration {
     });
   }
 
-  needs(id: OfficialWidgetId) {
+  needs(id: DistributedWidgetId) {
     const { platform, config } = this.ports;
     const active = platform.activeRevision(id), record = platform.get(id);
-    if (!this.opened || active?.officialWidget || platform.wasOfficialWidgetRemoved(id)) return false;
-    if (id === "bottega-weather" && record?.installation.origin === "official" && record.manifest.version === "1.0.0") return true;
+    const receipt = active?.officialWidget;
+    if (!this.opened || receipt && "archiveSha256" in receipt || platform.wasOfficialWidgetRemoved(id)) return false;
+    if (id === "bottega-weather" && record?.installation.origin === "official") return true;
     const captured = this.file.read(state => state.instances?.[id] ?? []);
     return config.layout().items.some(item => item.kind === "widget" && captured.includes(item.id) && packageWidgetId(item.widget) === id);
   }
 
-  retry(id: OfficialWidgetId, assertWindow = () => {}) {
+  retry(id: DistributedWidgetId, assertWindow = () => {}) {
     return this.ports.distribution.serialize(id, async () => {
       if (!this.needs(id)) return false;
       const { root, platform, config } = this.ports, signal = this.stop.signal;
@@ -63,12 +64,12 @@ export class OfficialWidgetMigration {
       signal.throwIfAborted(); assertWindow();
       const directory = await readWidgetDirectory(root, signal);
       const release = directory.packages.find(value => value.pluginId === id)?.releases.find(value =>
-        value.version === OFFICIAL_WIDGETS[id].recoveryVersion && value.target.platform === "darwin" && value.target.arch === "arm64");
+        value.version === widgetRecoveryVersions[id] && value.target.platform === "darwin" && value.target.arch === "arm64");
       if (!release) throw new Error("Bundled Widget recovery package is missing");
       const assertCurrent = () => {
         signal.throwIfAborted(); assertWindow();
         const active = platform.activeRevision(id);
-        if (platform.wasOfficialWidgetRemoved(id) || (active?.officialWidget && active.revisionId !== release.revisionId) ||
+        if (platform.wasOfficialWidgetRemoved(id) || (active?.officialWidget && "archiveSha256" in active.officialWidget && active.revisionId !== release.revisionId) ||
             (!legacyWeather && !config.layout().items.some(item => item.kind === "widget" &&
               captured.includes(item.id) && packageWidgetId(item.widget) === id))) throw new Error("Widget migration scope changed");
       };
@@ -82,7 +83,7 @@ export class OfficialWidgetMigration {
   }
 
   start() {
-    for (const id of officialWidgetId.options) void this.retry(id).catch(error => {
+    for (const id of distributedWidgetId.options) void this.retry(id).catch(error => {
       if (!this.stop.signal.aborted) console.warn("[official-widgets] local migration pending", error);
     });
   }

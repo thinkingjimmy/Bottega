@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Agent/Chat/Settings/Relay ledger narrow ports, Project Tools runtime-identity resolution, Notice outbox, and stable ID/expectation pure functions
- * [OUTPUT]: Defines coordinator runtime ports, including shared manual availability admission and runtime-only queue dispatch qualification and its eligibility-change subscription.
+ * [OUTPUT]: Defines coordinator runtime ports, dispatch eligibility, and manual staging cleanup with optional preservation of an already-persisted Chat.
  * [POS]: Composition-root port surface for sections/coordinator; keeps ConversationCoordinator's dependency wiring and derived side effects (cleanup, relay finish, availability) out of its scheduling core
  */
 
@@ -175,7 +175,8 @@ export function conversationAvailability(
 
 export async function cleanupManualCreation(
   dependencies: CoordinatorDependencies,
-  intent: Pick<ManualTurnIntent, "id" | "conversationId" | "payload">
+  intent: Pick<ManualTurnIntent, "id" | "conversationId" | "payload">,
+  { preserveChat = false }: { preserveChat?: boolean } = {}
 ) {
   if (intent.payload === undefined) return;
   const prepared = intent.payload as PreparedManualTurn;
@@ -190,7 +191,7 @@ export async function cleanupManualCreation(
     )
   );
   if (!retainedBySteer) await releasePreparedStaging(prepared);
-  if (prepared.persistence.kind !== "append") {
+  if (!preserveChat && prepared.persistence.kind !== "append") {
     await dependencies.chats.rollbackCreationById(intent.conversationId);
   }
 }

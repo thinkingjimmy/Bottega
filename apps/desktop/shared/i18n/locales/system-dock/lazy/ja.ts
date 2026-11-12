@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Localized Dock copy and the shared weather translation dictionary.
- * [OUTPUT]: Provides systemDockLazyJa, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded.
+ * [OUTPUT]: Provides systemDockLazyJa, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded. Includes the Display group and replacement setup guidance.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../ja.ts.
  */
 
@@ -46,7 +46,7 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
   },
   placement: {
     panelSpaceHint: "パネルを開くスペースが足りません。別のディスプレイを選ぶか、Dock のサイズを小さくしてください。",
-    title: "表示位置",
+    title: "表示",
     displayHint: "Bottega Dock を表示する画面を選びます。",
     primary: "メインディスプレイに追従",
     external: "外部ディスプレイを優先",
@@ -261,12 +261,8 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     enabledLabel: "Bottega Dock を使用",
     offNote: "確定するまで Mac には何も変更されません。",
     phaseOff: "オフ",
-    restoreDescription: "今すぐシステムの Dock に戻します。",
-    restoreFailedDescription: "Bottega はシステムの Dock を元に戻せませんでした。もう一度試すか、Dock をオフにしてください。",
     appearanceTitle: "外観",
     behaviorTitle: "動作",
-    recoveryTitle: "復元",
-    recoveryDescription: "Bottega が予期せず終了しても、システムの Dock に戻す手段を残します。",
     shortcutChange: "変更…",
     shortcutRecording: "ショートカットを入力",
     shortcutRecordingHint: "新しいショートカットを押してください。Delete で削除、Esc でキャンセルします。",
@@ -277,8 +273,6 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     unsupportedVersion: "Dock は Apple シリコン搭載 Mac の macOS 26 と 27 に対応しています。他の macOS バージョンには対応していません。",
     unsupportedArchitecture: "Bottega Dock には Apple シリコン搭載の Mac が必要です。",
     unsupportedHelperMissing: "Bottega Dock に必要なヘルパーがこのインストールにありません。Dock を使うには Bottega を再インストールしてください。",
-    registrationUnknown: "確認できません",
-    registrationUnknownDescription: "復元用バックグラウンド項目の登録状態を確認できませんでした。Dock を有効にする前に復元を再試行してください。",
     unsupportedOther: "Bottega のそのほかの機能は通常どおり使用できます。",
     replacementDevelopment: "開発版はシステム Dock と併用できます。置き換えるには署名済みの Bottega をインストールしてください。",
     replacementHelperMissing: "復元ヘルパーまたはサービス設定がありません。置き換えるには Bottega を再インストールしてください。",
@@ -322,7 +316,7 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     impactAutohide: "Bottega Dock が代わりを務められるよう、システムの Dock は自動的に隠れる設定になり、表示までの待ち時間が長くなります。",
     impactRecoveryItem: "小さな復元項目がバックグラウンド項目に追加されます。置き換えがオンの間は、Bottega を終了しても登録されたままになり、いつでもシステムの Dock に戻せます。",
     impactNoApp: "復元項目が Bottega の App 本体を開くことはありません。",
-    impactRestore: "システム Dock はいつでも復元できます。Bottega Dock を右クリックするか、Dock プラグインの設定、または Bottega のメニューバーの Dock メニューを使用してください。",
+    impactRestore: "設定で Bottega Dock をオフにすると、システムの Dock が元に戻ります。Dock の右クリックメニューや Bottega のメニューバーメニューからも復元できます。",
     impactShortcuts: "システムのショートカットも予備として使えます。Option-Command-D で Dock を自動的に隠す設定を切り替え、対応する Mac では Fn-A で Dock を表示できます。戻す方法はこれだけではありません。",
     impactLogin: "ログイン時に Bottega を開くかどうかは、「一般」設定で別に選べます。",
     acknowledge: "変更内容を理解しました",
@@ -346,15 +340,8 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     recoveryKeptExternal: "システムの Dock 設定が Bottega 以外で変更されたため、そのままにしました。",
     recoveryFailed: "システムの Dock を完全には戻せませんでした。Option-Command-D を押すと表示できます。",
     resume: "再開",
-    restore: "システムの Dock に戻す",
-    registrationLabel: "復元項目",
-    registrationEnabled: "登録済みです。置き換えがオンの間は、Bottega を終了しても登録されたままです。",
     registrationApproval: "「システム設定」›「一般」›「ログイン項目と機能拡張」で許可が必要です。",
     registrationMissing: "macOS でこの復元サービスの登録が見つかりません。まだ登録されていない可能性があります。",
-    registrationNone: "まだ登録されていません。",
-    needsApproval: "許可が必要",
-    notFound: "見つかりません",
-    notRegistered: "未登録",
     openLoginItems: "ログイン項目を開く",
     accessibilityLabel: "しまったウインドウを戻す",
     accessibilityOff: "未許可",
@@ -406,7 +393,6 @@ export const systemDockLazyJa: typeof systemDockLazyEn = {
     failedPreference: "設定を保存できませんでした。",
     failedMode: "モードを変更できませんでした。",
     failedDisable: "Bottega Dock をオフにできませんでした。",
-    failedRestore: "システムの Dock に戻せませんでした。",
     failedResume: "Bottega Dock を再開できませんでした。",
     failedReset: "レイアウトをリセットできませんでした。",
     failedResolve: "同期の選択を適用できませんでした。",

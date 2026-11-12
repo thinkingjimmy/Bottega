@@ -24,7 +24,7 @@ import { PluginAboutPage, PluginControl } from "@/components/settings/plugins/de
 import { PluginSettingsPage } from "@/components/settings/plugins/detail/settings-page";
 import { PluginStage } from "@/components/settings/plugins/detail/metadata";
 import { usePluginSwitch } from "@/components/settings/plugins/turn-off";
-import { hostPackageIdentity,isHostedAppPlugin,isNativeDockPlugin } from "@/lib/plugin-platform/client";
+import { hostPackageIdentity,isNativeDockPlugin } from "@/lib/plugin-platform/client";
 import {useUnifiedPlugins} from '@/lib/plugin-platform/projection/catalog';
 import {useUnifiedPluginIndex} from '@/lib/plugin-platform/projection/runtime';
 import {usePluginDetail} from '@/lib/plugin-platform/projection/detail';
@@ -163,7 +163,7 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
           <p className="text-pretty text-muted-foreground text-sm">{copy.description}</p>
           {unified.page?.safeMode && <SettingsAlert tone="warn">{platformCopy.safeMode}<SettingsButton variant="ghost" onClick={()=>openAbout(unified.page!.safeMode!.pluginId)}>{platformCopy.details}</SettingsButton></SettingsAlert>}
           {unified.error && <SettingsAlert>{platformCopy.loadFailed}<SettingsButton variant="ghost" onClick={()=>void unified.reload()}>{platformCopy.retry}</SettingsButton></SettingsAlert>}
-          <UnifiedPluginCards items={unified.items.filter(item=>!isHostedAppPlugin(item))} locale={locale} workbench={workbench} onOpen={openAbout} dock={{plugin:plugins?.find(item=>item.id==="dock"),switching,onSetup:setup}}/>
+          <UnifiedPluginCards items={unified.items} locale={locale} workbench={workbench} onOpen={openAbout} dock={{plugin:plugins?.find(item=>item.id==="dock"),switching,onSetup:setup}}/>
           {unified.page?.nextCursor && <SettingsButton variant="outline" disabled={unified.busy} onClick={()=>void unified.reload(true)}>{platformCopy.more}</SettingsButton>}
           {plugins && <PluginGrid plugins={plugins.filter(item=>!/^sha256:[a-f0-9]{64}$/.test(item.id)&&!index.items.some(native=>native.manifest.id===item.id||native.manifest.id===`bottega.${item.id}`))} workbench={workbench} state={switching.state}
             onOpen={item => openAbout(item.id)} onToggle={switching.toggle} onSetup={setup} />}

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the renderer error projection only
  * [OUTPUT]: Provides SnapshotControllerSnapshot, SnapshotControllerPorts and createSnapshotController — the subscribe/load/mutate core of every scoped bridge controller
- * [POS]: Generic revision-fenced controller skeleton under lib; mcp-servers-client and project-tools-client add scope checks, fences and commands on top instead of each owning a copy of the machine
+ * [POS]: Generic revision-fenced controller under lib. Clients such as mcp-servers-client supply domain revisions and commands
  */
 
 import { errorMessage } from "@ai-chat/ui/lib/errors";

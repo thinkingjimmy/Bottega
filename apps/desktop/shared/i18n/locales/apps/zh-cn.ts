@@ -8,7 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsZhCN: typeof appsEn = {
-  catalog: { filter: "插件类型", widgets: "Widgets" },
+  catalog: { filter: "插件类型", widgets: "小组件" },
   dock: {
     pin: "固定到 Dock",
     unpin: "从 Dock 移除",

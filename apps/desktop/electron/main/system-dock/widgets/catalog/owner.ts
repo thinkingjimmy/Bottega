@@ -1,12 +1,13 @@
 /**
  * [INPUT]: Trusted renderer identities, Electron window lifetime, DockService, accepted plugin cards and bounded visible-instance controls.
- * [OUTPUT]: WidgetCatalogOwner with actual Dock projections, real builtin default readings and window-bound presentation leases.
+ * [OUTPUT]: Projects existing Dock instances and ready native package defaults with window-bound demand and card leases.
  * [POS]: Main-window catalog adapter; it shares data owners with the Dock and never edits layout or grants source access.
  */
 import { BrowserWindow, webContents } from "electron";
 import type { DockService } from "../../service";
 import type { PluginDockWidgets } from "../plugins/owner";
-import type { DockWidget } from '../../../../../shared/system-dock/layout';
+import { defaultActivityWidget, defaultLimitsWidget, defaultTasksWidget, toPluginDockWidget, type DockWidget } from "../../../../../shared/system-dock/layout";
+import { officialDefinitionId } from "../../../../../shared/system-dock/widgets/catalog/official";
 import type { DockBarItem, WidgetFace } from '../../../../../shared/system-dock/ipc';
 import { taskFace } from '../tasks';
 import { maskFace } from '../../projection';
@@ -24,12 +25,18 @@ export class WidgetCatalogOwner {
   }
   private available() { return !this.closed && this.service.capability.supported && this.service.ports.local.get().enabled; }
   private defaults(): { definitionId: string; id: string; widget: DockWidget; face: WidgetFace }[] {
-    const limits = { type: 'builtin.ai-limits' as const, configVersion: 1 as const, standard: 'compact' as const, selectedBackends: this.service.usage.defaultBackends(), selectionByBackend: {} };
-    const activity = { type: 'builtin.ai-activity' as const, configVersion: 1 as const, standard: 'compact' as const, source: 'all' as const, period: 'today' as const };
-    const tasks = { type: 'builtin.tasks' as const, configVersion: 1 as const, standard: 'compact' as const };
-    return [{ definitionId: limits.type, id: 'catalog_preview_limits', widget: limits, face: this.service.usage.limitsFace(limits) },
-      ...(this.service.activityAllowed() ? [{ definitionId: activity.type, id: 'catalog_preview_activity', widget: activity, face: this.service.usage.activityFace(activity) }] : []),
-      { definitionId: tasks.type, id: 'catalog_preview_tasks', widget: tasks, face: taskFace(this.service.ports.tasks) }];
+    const limits = defaultLimitsWidget(this.service.usage.defaultBackends());
+    const activity = defaultActivityWidget();
+    const tasks = defaultTasksWidget();
+    return [
+      { id: "catalog_preview_limits", widget: limits, face: this.service.usage.limitsFace(limits) },
+      { id: "catalog_preview_activity", widget: activity, face: this.service.usage.activityFace(activity) },
+      { id: "catalog_preview_tasks", widget: tasks, face: taskFace(this.service.ports.tasks) },
+    ].flatMap(({ id, widget, face }) => {
+      const instance = toPluginDockWidget(id, widget);
+      const pluginId = instance.pluginId as Parameters<typeof officialDefinitionId>[0];
+      return this.service.nativeWidget(instance, true) ? [{ id, widget: instance, face, definitionId: officialDefinitionId(pluginId) }] : [];
+    });
   }
   snapshot(windowId?: number): WidgetCatalogSnapshot {
     const state = this.service.ports.local.get();

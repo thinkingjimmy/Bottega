@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React context, the lucide Info icon, shared scrolling/feedback/tooltip primitives and class-name utilities.
- * [OUTPUT]: SettingsPage and SettingsCanvas with inherited width, wrapping canvas or persistent page headings, optional grouped title descriptions, trailing page actions, section headers with optional hover/focus info, and alerts.
+ * [OUTPUT]: SettingsPage and SettingsCanvas with inherited width, wrapping canvas or persistent page headings, optional grouped title descriptions, trailing page actions, section headers with optional title adornments and hover/focus info, and alerts.
  * [POS]: Platform-independent settings presentation.
  */
 
@@ -91,6 +91,7 @@ export function SettingsCanvas({
 
 export function SettingsSection({
   title,
+  titleAdornment,
   description,
   info,
   action,
@@ -98,6 +99,7 @@ export function SettingsSection({
   children,
 }: {
   title: string;
+  titleAdornment?: ReactNode;
   description?: ReactNode;
   info?: string;
   action?: ReactNode;
@@ -110,7 +112,7 @@ export function SettingsSection({
     <section aria-labelledby={titleId} className="flex flex-col gap-3">
       <div className="space-y-1">
         <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className={cn("flex min-w-0 items-center", titleAdornment ? "gap-2" : "gap-1.5")}>
             <h2 id={titleId} className="min-w-0 font-heading font-semibold text-sm">
               {title}
             </h2>
@@ -130,6 +132,7 @@ export function SettingsSection({
                 </TooltipContent>
               </Tooltip>
             )}
+            {titleAdornment}
           </div>
           {action}
         </div>

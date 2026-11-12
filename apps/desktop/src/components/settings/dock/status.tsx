@@ -1,17 +1,16 @@
 /**
- * [INPUT]: Depends on React, the desktop i18n provider, Settings primitives, the shared Select and confirmation dialog, the Dock settings store, and the Settings → Dock snapshot.
- * [OUTPUT]: Provides `DockUnsupported` (why this Mac cannot run the Dock), `DockMaster` (the one on/off switch with the phase badge, pause reason and recovery results, the mode select, Restore/Resume; turning on asks for setup, turning off asks for confirmation) and `DockRecovery` (the recovery result, retry while off, and raw background registration with explicit continuation for an absent registration or approved item).
- * [POS]: settings/dock status and recovery surface (3.1, INV-02~05); it only states what main reports — a replace-mode Dock that is not active is never shown as working.
+ * [INPUT]: Depends on React, the desktop i18n provider, Settings primitives, the shared confirmation dialog, the Dock settings store, and the Settings → Dock snapshot.
+ * [OUTPUT]: Provides `DockUnsupported` and `DockMaster` for capability and activation status, Login Items approval, explicit continuation, and the legacy switch with setup and disable confirmation.
+ * [POS]: settings/dock activation status reads the phase and background approval state from main.
  */
 
 import { useState } from "react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@ai-chat/ui/components/ui/select";
 import { SettingsAlert, SettingsBadge, SettingsButton, SettingsList, SettingsRow, SettingsSection, SettingsSwitch } from "../settings-layout";
 import { dockSettingsStore, type DockSettingsCommand } from "@/lib/platform/system-dock-settings-client";
 import type { DockCapability, DockSettingsSnapshot } from "../../../../shared/system-dock/ipc";
-import type { DockMode, ReplacementPhase, SuspendReason } from "../../../../shared/system-dock/local-state";
+import type { ReplacementPhase, SuspendReason } from "../../../../shared/system-dock/local-state";
 
 /* Also the vocabulary main uses for native notices; one literal map keeps every reason readable in five languages. */
 export const REASON_KEYS: Record<SuspendReason, string> = {
@@ -54,8 +53,8 @@ function DockPreview() {
   </div>;
 }
 
-export function DockMaster({ snapshot, pending, onTurnOn, onSwitchToReplace, showToggle = true }: {
-  snapshot: DockSettingsSnapshot; pending: DockSettingsCommand | null; onTurnOn(): void; onSwitchToReplace(): void; showToggle?: boolean;
+export function DockMaster({ snapshot, pending, onTurnOn, showToggle = true }: {
+  snapshot: DockSettingsSnapshot; pending: DockSettingsCommand | null; onTurnOn(): void; showToggle?: boolean;
 }) {
   const { t } = useAppTranslation();
   const [confirmOff, setConfirmOff] = useState(false);
@@ -74,51 +73,42 @@ export function DockMaster({ snapshot, pending, onTurnOn, onSwitchToReplace, sho
     </SettingsList>
   </SettingsSection>;
 
-  const mode: DockMode = snapshot.actualMode ?? snapshot.state.preferredMode;
-  const replace = mode === "replace";
+  const replace = (snapshot.actualMode ?? snapshot.state.preferredMode) === "replace";
   const phase = snapshot.phase;
-  const paused = snapshot.phase === "suspended";
+  const paused = phase === "suspended";
   const registration = snapshot.registration;
-  const why = replace && phase !== "active" && registration === "requires-approval" ? t("systemDock.settings.registrationApproval")
+  const approvalRequired = replace && phase !== "active" && registration === "requires-approval";
+  const why = approvalRequired ? t("systemDock.settings.registrationApproval")
     : replace && phase !== "active" && registration === "not-found" ? t("systemDock.settings.registrationMissing")
     : paused && snapshot.suspendReason ? t(REASON_KEYS[snapshot.suspendReason]) : null;
-  const resumeDisabled = busy || snapshot.recovery.pending || replace && (!snapshot.capability.replacement || registration === "requires-approval");
+  const resumeDisabled = busy || snapshot.recovery.pending || replace && !snapshot.capability.replacement;
   const resumeLabel = t(snapshot.suspendReason === "registration-disabled" ? "systemDock.settings.continueEnabling" : "systemDock.settings.resume");
+  const continueAction = approvalRequired
+    ? <SettingsButton variant="outline" onClick={() => void store.openRecoverySettings()}>{t("systemDock.settings.openLoginItems")}</SettingsButton>
+    : paused ? <SettingsButton disabled={resumeDisabled} onClick={() => void store.resume()}>{resumeLabel}</SettingsButton> : null;
+  const inactiveAlert = replace && phase !== "active" && phase !== "preparing" && !paused ? t("systemDock.settings.notReplacingYet") : undefined;
+  const recoveryPending = snapshot.recovery.pending ? t("systemDock.settings.recoveryPending") : null;
+  if (!showToggle) {
+    if (!paused && !approvalRequired) return inactiveAlert ? <SettingsAlert>{inactiveAlert}</SettingsAlert> : null;
+    return <SettingsList>
+      <SettingsRow label={t(PHASE_KEYS[phase])} description={approvalRequired ? why : recoveryPending ?? why} control={continueAction} />
+    </SettingsList>;
+  }
+
   const recovery = snapshot.recovery.lastResult;
-  const notes = [why, snapshot.recovery.pending ? t("systemDock.settings.recoveryPending") : null, recovery !== "none" ? t(RECOVERY_KEYS[recovery]) : null]
+  const notes = [why, recoveryPending, recovery !== "none" ? t(RECOVERY_KEYS[recovery]) : null]
     .filter((note): note is string => note !== null);
-  const pickMode = (next: string) => {
-    if (next === mode) return;
-    if (next === "replace") onSwitchToReplace(); else void store.setMode("coexist");
-  };
-  return <SettingsSection title={title}
-    alert={replace && phase !== "active" && phase !== "preparing" && !paused ? t("systemDock.settings.notReplacingYet") : undefined}>
+  return <SettingsSection title={title} alert={inactiveAlert}>
     <SettingsList>
-      {showToggle && <SettingsRow label={t("systemDock.settings.enabledLabel")} htmlFor="dock-enabled"
+      <SettingsRow label={t("systemDock.settings.enabledLabel")} htmlFor="dock-enabled"
         badge={<SettingsBadge tone={phase === "active" ? "neutral" : paused ? "warn" : "muted"}>
           {!replace && phase === "active" ? t("systemDock.settings.phaseCoexist") : t(PHASE_KEYS[phase])}</SettingsBadge>}
         description={notes.length ? <>{notes.map((note) => <span key={note} className="block" role="status">{note}</span>)}</> : t("systemDock.settings.preamble")}
         control={<span className="flex items-center gap-3">
-          {paused && <SettingsButton disabled={resumeDisabled} onClick={() => void store.resume()}>{resumeLabel}</SettingsButton>}
+          {continueAction}
           <SettingsSwitch id="dock-enabled" label={t("systemDock.settings.enabledLabel")} describedBy="dock-enabled-description" checked
             disabled={busy} onToggle={(next) => { if (!next) setConfirmOff(true); }} />
-        </span>} />}
-      {!showToggle && paused && <SettingsRow label={t(PHASE_KEYS[phase])} description={why}
-        control={<SettingsButton disabled={resumeDisabled} onClick={() => void store.resume()}>{resumeLabel}</SettingsButton>} />}
-      <SettingsRow label={t("systemDock.settings.modeLabel")} htmlFor="dock-mode"
-        description={t(replace ? "systemDock.settings.modeReplaceDescription" : snapshot.capability.replacement ? "systemDock.settings.modeCoexistDescription" : "systemDock.settings.modeCoexistOnly")}
-        control={<Select value={mode} disabled={busy} onValueChange={pickMode}>
-          <SelectTrigger id="dock-mode" size="lg" aria-describedby="dock-mode-description"><SelectValue /></SelectTrigger>
-          <SelectContent align="end" className="text-sm">
-            <SelectItem value="replace" disabled={!snapshot.capability.replacement}>{t("systemDock.settings.modeReplace")}</SelectItem>
-            <SelectItem value="coexist">{t("systemDock.settings.modeCoexist")}</SelectItem>
-          </SelectContent>
-        </Select>} />
-      {/* A restore that failed is retried from here; Resume would take the Dock over again instead (F-22). */}
-      {replace && (phase === "active" || phase === "preparing" || snapshot.recovery.lastResult === "failed") && <SettingsRow label={t("systemDock.settings.restore")}
-        description={t(snapshot.recovery.lastResult === "failed" && phase !== "active" ? "systemDock.settings.restoreFailedDescription" : "systemDock.settings.restoreDescription")}
-        control={<SettingsButton variant="outline" disabled={busy} onClick={() => void store.restoreSystemDock()}>
-          {t("systemDock.settings.restore")}</SettingsButton>} />}
+        </span>} />
     </SettingsList>
     <ConfirmationDialog open={confirmOff} onOpenChange={setConfirmOff} busy={pending === "disable"}
       title={t("systemDock.settings.turnOffTitle")} description={<>
@@ -127,32 +117,5 @@ export function DockMaster({ snapshot, pending, onTurnOn, onSwitchToReplace, sho
       </>}
       confirmLabel={t("systemDock.settings.turnOffAction")} confirmTone="destructive"
       onConfirm={() => void store.disable().then(result => { if (result) setConfirmOff(false); })} />
-  </SettingsSection>;
-}
-
-/** Recovery outlives the switch: an old failed restoration must remain visible and retryable while off. */
-export function DockRecovery({ snapshot, pending = null }: { snapshot: DockSettingsSnapshot; pending?: DockSettingsCommand | null }) {
-  const { t } = useAppTranslation();
-  const registration = snapshot.registration;
-  const recovery = snapshot.recovery;
-  const hasRegistration = registration !== "unsupported" && registration !== "not-registered" && registration !== "not-found";
-  const replacing = snapshot.state.enabled && (snapshot.actualMode ?? snapshot.state.preferredMode) === "replace";
-  if (!replacing && !hasRegistration && !recovery.pending && recovery.lastResult === "none") return null;
-  return <SettingsSection title={t("systemDock.settings.recoveryTitle")} description={t("systemDock.settings.recoveryDescription")}>
-    <SettingsList>
-      {(recovery.pending || recovery.lastResult !== "none") && <SettingsRow label={t("systemDock.settings.restore")}
-        description={<span role="status">{recovery.lastResult === "failed" ? t(RECOVERY_KEYS.failed)
-          : recovery.pending ? t("systemDock.settings.recoveryPending") : recovery.lastResult !== "none" ? t(RECOVERY_KEYS[recovery.lastResult]) : null}</span>}
-        control={!snapshot.state.enabled && (recovery.pending || recovery.lastResult === "failed") ? <SettingsButton variant="outline" disabled={pending !== null}
-          onClick={() => void dockSettingsStore.disable()}>{t("common.retry")}</SettingsButton> : null} />}
-      {registration !== "unsupported" && <SettingsRow label={t("systemDock.settings.registrationLabel")}
-        badge={registration === "enabled" ? undefined : <SettingsBadge tone={registration === "not-registered" ? "muted" : "warn"}>{t(registration === "requires-approval" ? "systemDock.settings.needsApproval"
-          : registration === "not-found" ? "systemDock.settings.notFound" : registration === "unknown" ? "systemDock.settings.registrationUnknown" : "systemDock.settings.notRegistered")}</SettingsBadge>}
-        description={t(registration === "enabled" ? "systemDock.settings.registrationEnabled" : registration === "requires-approval" ? "systemDock.settings.registrationApproval"
-          : registration === "not-found" ? "systemDock.settings.registrationMissing" : registration === "unknown" ? "systemDock.settings.registrationUnknownDescription" : "systemDock.settings.registrationNone")}
-        control={registration === "requires-approval" ? <SettingsButton variant="outline" onClick={() => void dockSettingsStore.openRecoverySettings()}>
-          {t("systemDock.settings.openLoginItems")}</SettingsButton> : !snapshot.state.enabled && hasRegistration && !recovery.pending && recovery.lastResult !== "failed"
-          ? <SettingsButton variant="outline" disabled={pending !== null} onClick={() => void dockSettingsStore.disable()}>{t("common.retry")}</SettingsButton> : null} />}
-    </SettingsList>
   </SettingsSection>;
 }

@@ -133,20 +133,11 @@ export function projectManualMcpServerViews(
     health: aggregateHealth(records.filter((record) =>
       record.subject.kind === "manual" &&
       record.subject.serverId === server.serverId &&
-      sameScope(record.subject.scope, server.owner) &&
+      record.subject.scope.kind === server.owner.kind &&
       record.subject.configDigest === server.configDigest &&
       record.subject.transport === server.transport
     )),
   }));
-}
-
-function sameScope(
-  left: ManualMcpServerView["owner"],
-  right: ManualMcpServerView["owner"]
-) {
-  return left.kind === right.kind &&
-    (left.kind === "global" ||
-      (right.kind === "project" && left.projectId === right.projectId));
 }
 
 function aggregateHealth(

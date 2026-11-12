@@ -5,7 +5,6 @@
  */
 
 import { useEffect, useState } from "react";
-import { Plus, RefreshCw } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { SettingsPage } from "@/components/page-shell";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
@@ -19,6 +18,7 @@ import { SkillEmptyState } from "@/components/settings/skills/skill-empty-state"
 import { SkillImportDialog } from "@/components/settings/skills/skill-import-dialog";
 import { SkillLibraryRow } from "@/components/settings/skills/skill-library-row";
 import { SkillSearch } from "@/components/settings/skills/skill-search";
+import { SkillAddButton, SkillRefreshButton } from "@/components/settings/skills/controls/buttons";
 import { useSkillImport } from "@/components/settings/skills/controls/use-skill-import";
 import {
   skillBytesText,
@@ -33,7 +33,6 @@ import {
   previewUnifiedSkillIntents,
 } from "@/lib/skills/unified-skills-client";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
-import { Button } from "@ai-chat/ui/components/ui/button";
 import type {
   ManagedSkillIntentInput,
   ManagedSkillLibraryItem,
@@ -150,22 +149,13 @@ export function SkillsSettingsView() {
     <SettingsPage
       title={t("common.skills")}
       titleAdornment={
-        <Button
-          aria-label={t("settings.skills.refresh")}
-          className="relative touch-target-44 [--touch-target-inset:-6px]"
-          disabled={busy}
-          onClick={() => void run(async () => setSnapshot(await listUnifiedSkills(true)))}
-          size="icon-lg"
-          type="button"
-          variant="ghost"
-        >
-          <RefreshCw aria-hidden="true" className={busy ? "animate-spin motion-reduce:animate-none" : ""} />
-        </Button>
+        <SkillRefreshButton
+          busy={busy}
+          onRefresh={() => void run(async () => setSnapshot(await listUnifiedSkills(true)))}
+        />
       }
       actions={
-        <Button disabled={busy || readOnly} onClick={() => void skillImport.openDialog()} size="lg">
-          <Plus />{t("settings.skills.importTitle")}
-        </Button>
+        <SkillAddButton disabled={busy || readOnly} onAdd={() => void skillImport.openDialog()} />
       }
     >
       <SettingsCanvas>

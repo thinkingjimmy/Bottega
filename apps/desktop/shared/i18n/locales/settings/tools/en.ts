@@ -1,11 +1,10 @@
 /**
  * [INPUT]: No runtime dependencies
- * [OUTPUT]: Provides settingsToolsEn — global-default/Project scope, offline Design font access, source/effective/support, localizable runtime constraints, owner group, reset, conflict, form, and bridge-unavailable copy — and the structural shape its translated leaves derive from
+ * [OUTPUT]: Provides the en catalog for global MCP settings, official tool descriptions, and runtime support
  * [POS]: English leaf of shared/i18n/locales/settings/tools; Tool/MCP identifiers, commands, transports, and external runtime diagnostics remain untranslated
  */
 
 export const settingsToolsEn = {
-  globalScopeNote: "These settings apply globally. Project settings may override them without changing this page.",
   supportReason: {
     "runtime-unavailable": "Runtime unavailable",
     "builtin-tools-unsupported": "Built-in tools unsupported",
@@ -18,25 +17,9 @@ export const settingsToolsEn = {
     unknownVersion: "unknown version",
   },
   builtin: {
-    title: "Built-in tools",
-    globalDescription: "Global defaults take effect on the next turn. Projects can override each tool independently.",
-    projectDescription: "Choose this Project's intent for each tool. Resetting an override restores the global default.",
+    globalDescription: "Changes apply globally on the next turn.",
     saveFailed: "Failed to save the built-in tool setting",
-    disabledCount: "{{count}} disabled",
-    resetAll: "Reset all Project tool overrides",
-    resetOne: "Reset {{name}} to the global default",
-    source: { "global-default": "Global default", "project-override": "Project override" },
     effective: { enabled: "Enabled", disabled: "Disabled", unavailable: "Intent enabled; backend unavailable" },
-    domain: {
-      sections: "Sections",
-      subagents: "Subagents",
-      projects: "Projects",
-      bases: "Bases",
-      search: "Search",
-      browser: "Browser",
-      design: "Design",
-      apps: "Apps",
-    },
     items: {
       list_sections: { label: "List Sections", hint: "View every persistent chat and its Base summary." },
       read_section: { label: "Read Section", hint: "Read another chat's persisted transcript." },
@@ -83,20 +66,12 @@ export const settingsToolsEn = {
     },
   },
   mcp: {
+    pageTitle: "MCP",
     title: "MCP Servers",
-    globalDescription: "Manage global MCP servers. Projects may inherit or override them without changing this list.",
-    projectDescription: "Project servers are private to this Project. Inherited global servers can be overridden here.",
-    globalEmptyHint: "Add a global server here. Project-owned servers never appear on this page.",
+    globalDescription: "Manage MCP servers for every project and independent chat on this computer.",
+    globalEmptyHint: "Add a server to use it in chats.",
     bridgeMissing: "MCP server settings are unavailable in this environment.",
-    projectGroup: "Project servers",
-    projectGroupEmpty: "No Project-owned servers",
-    inheritedGroup: "Inherited global servers",
-    inheritedGroupEmpty: "No global servers are available to inherit",
-    allInherited: "This Project currently uses only inherited global server settings.",
-    editGlobally: "Edit global MCP servers in Settings",
-    resetOne: "Reset {{name}} to the global default",
     conflict: "The server changed elsewhere. The latest state was loaded and your draft was preserved.",
-    source: { "global-default": "Global default", "project-override": "Project override", "project-owned": "Project owned" },
     effective: { enabled: "Enabled", disabled: "Disabled", unavailable: "Intent enabled; backend unavailable" },
     add: "Add server",
     edit: "Edit",

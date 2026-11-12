@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on unified bounded plugin catalog summaries with selected full Widget details, accepted revisions/live activation identities, city configuration and forecast validation, the Dock layout CAS store, bounded summaries/native details and isolated Surface leases.
- * [OUTPUT]: Provides independent plugin Widget forms/instances, host-only official reads and prioritized per-window frame reservations, lazy durable copy retargeting, automatic revision projection, visible-only native/catalog summary demand and window-local lease cleanup, upstream-first shutdown guards, activation-bound last-good summary/card refreshes and trusted card calls.
+ * [OUTPUT]: Manages plugin Widget definitions and instances, package readiness, native Weather summaries and scoped isolated cards.
  * [POS]: Unified Dock plugin owner; runtime code, configuration and business data have separate identities and lifetimes.
  */
 import { pluginWidgetDetailSchema, type PluginWidgetDetail } from '../../../../../shared/system-dock/widgets/plugin/detail';
@@ -8,7 +8,9 @@ import { WEATHER_PLUGIN_ID, weatherConfigurationSchema, weatherFaceSchema } from
 import { weatherDefinitionCopy } from '../../../../../shared/system-dock/widgets/weather/labels';
 import { describeWeather } from '../../../../../shared/system-dock/widgets/weather/copy';
 import { readyOfficialWidget } from "../../../plugins/platform/official-widgets/identity";
-import { isOfficialWidgetId, type OfficialWidgetId } from "../../../../../shared/system-dock/widgets/catalog/distribution";
+import { isOfficialWidgetId, nativeWidgetType, officialDefinitionId, officialWidgetIds, OFFICIAL_WIDGETS, type OfficialWidgetId } from "../../../../../shared/system-dock/widgets/catalog/official";
+import { entryLabel } from "../../projection";
+import { officialDefault, validateOfficial, type OfficialWidgetDirectory } from "../../store/custom/official";
 import { weatherOwner } from "../../../plugins/official/weather/runtime";
 import { DockCardSlots, DOCK_WIDGET_FRAMES, type WidgetCardRole } from "./cards/slots";
 import { readOfficialWidget } from "./cards/data";
@@ -23,7 +25,7 @@ import type { UnifiedPluginPlatform } from "../../../plugins/platform/service";
 import type { UnifiedPluginSurfaceGateway } from "../../../plugins/platform/gateway";
 import type { DockConfigStore } from "../../store/config-store";
 import type { DockSurface } from "../usage";
-import type { DockWidget } from "../../../../../shared/system-dock/layout";
+import { nativeDockWidget, toPluginDockWidget, type DockWidget } from "../../../../../shared/system-dock/layout";
 import type { CustomWidgetFace, CustomWidgetDetail } from "../../../../../shared/system-dock/widgets/runtime";
 import { pluginDockWidgetSchema, pluginWidgetFormInputSchema, savePluginWidgetSchema, removePluginWidgetSchema, pluginDockSurfaceSchema,
   type PluginWidgetForm, type PluginDockWidget } from "../../../../../shared/system-dock/widgets/plugin";
@@ -32,10 +34,13 @@ import type { WidgetItem } from "../custom/ports";
 type Integration = { platform: Pick<UnifiedPluginPlatform, "get" | "list" | "activeRevision" | "activationId" | "isActive" | "setInstanceCount" | "onChanged">;
   gateway: Pick<UnifiedPluginSurfaceGateway, "open" | "call" | "authorize" | "release">;
   invoke?(input: { pluginId: string; revision: string; activationId: string; method: string; input: unknown; signal: AbortSignal }): Promise<unknown> };
-type Ports = { userData: string; config: DockConfigStore; integration(): Integration | null; changed(): void; masked(): boolean; locale?(): string; officialUsage?(): DockUsage };
+type Ports = { userData: string; config: DockConfigStore; integration(): Integration | null; changed(): void; masked(): boolean; locale?(): Parameters<typeof entryLabel>[0];
+  usage?(): DockUsage; officialDirectory?(): OfficialWidgetDirectory; bundled?(id: OfficialWidgetId): boolean };
 type Summary = { detail?: PluginWidgetDetail; key: string; face: CustomWidgetFace; at: number; updatedAt: number | null; flight?: Promise<void>; controller: AbortController };
-const weatherNeedsSetup = (widget: PluginDockWidget) =>
-  widget.pluginId === WEATHER_PLUGIN_ID && !weatherConfigurationSchema.safeParse(widget.configuration).success;
+function needsSetup(widget: PluginDockWidget) {
+  if (widget.pluginId === WEATHER_PLUGIN_ID) return !weatherConfigurationSchema.safeParse(widget.configuration).success;
+  return Boolean(nativeWidgetType(widget.pluginId, widget.contributionId) && !nativeDockWidget(widget));
+}
 export class PluginDockWidgets {
   private readonly visible = new Map<DockSurface, Set<string>>();
   private readonly summaries = new Map<string, Summary>();
@@ -63,10 +68,7 @@ export class PluginDockWidgets {
   constructor(private readonly ports: Ports) { this.release = ports.integration()?.platform.onChanged(() => { try { this.reconcile(); this.ports.changed(); } catch { /* Dock configuration may still be opening. */ } }) ?? (() => {}); }
   private integration() { const value = this.ports.integration(); if (!value) throw new Error("Unified plugins are unavailable"); return value; }
   private widget(item: WidgetItem): PluginDockWidget | null {
-    if (item.widget.type === "plugin") return item.widget;
-    if (item.widget.type !== "builtin.ai-activity" || !this.ports.officialUsage) return null;
-    return { type: "plugin", configVersion: 1, pluginId: "bottega-ai-usage", contributionId: "today",
-      instanceId: item.id, size: "small", configuration: { source: item.widget.source, period: item.widget.period } };
+    return item.widget.type === "plugin" ? item.widget : null;
   }
   private item(id: string) {
     const item = this.ports.config.layout().items.find(value => value.id === id);
@@ -75,11 +77,14 @@ export class PluginDockWidgets {
     return widget ? { ...item, widget } : null;
   }
   private official(pluginId: string): OfficialWidgetId | undefined {
-    return this.ports.officialUsage && isOfficialWidgetId(pluginId) ? pluginId : undefined;
+    return isOfficialWidgetId(pluginId) ? pluginId : undefined;
   }
-  activityAllowed() {
-    const platform = this.ports.integration()?.platform;
-    return !this.ports.officialUsage || Boolean(platform && readyOfficialWidget(platform, "bottega-ai-usage"));
+  ready(pluginId: string, contributionId: string) {
+    try { return this.definition(pluginId, contributionId).ready; }
+    catch { return false; }
+  }
+  private name(id: OfficialWidgetId) {
+    return entryLabel(this.ports.locale?.() ?? "en", OFFICIAL_WIDGETS[id].label);
   }
   private definition(pluginId: string, contributionId: string) {
     const integration = this.integration(), record = integration.platform.get(pluginId);
@@ -91,23 +96,31 @@ export class PluginDockWidgets {
   }
   form(raw: unknown): PluginWidgetForm {
     const input = pluginWidgetFormInputSchema.parse(raw), { contribution, ready } = this.definition(input.pluginId, input.contributionId);
-    if (this.official(input.pluginId) && (!ready || input.pluginId === "bottega-ai-usage")) throw new Error("Official Widget is unavailable");
+    if (this.official(input.pluginId) && !ready && !input.itemId) throw new Error("Official Widget is unavailable");
     const item = input.itemId ? this.item(input.itemId) : null;
     if (input.itemId && (!item || item.widget.pluginId !== input.pluginId || item.widget.contributionId !== input.contributionId)) throw new Error("Plugin Widget instance changed");
     const schema = contribution.settingsSchema ?? { type: "object", additionalProperties: true };
     const properties = schema.properties && typeof schema.properties === "object" ? schema.properties as Record<string, { default?: unknown }> : {};
     const defaults = Object.fromEntries(Object.entries(properties).filter(([, value]) => value.default !== undefined).map(([key, value]) => [key, value.default]));
-    return { ...input, itemId: item?.id ?? null, name: item?.label ?? (input.pluginId === WEATHER_PLUGIN_ID ? weatherDefinitionCopy(this.ports.locale?.() ?? "en").name : contribution.name), settingsSchema: schema,
-      configuration: structuredClone(item?.widget.configuration ?? defaults), size: item?.widget.size ?? "small",
+    const native = nativeWidgetType(input.pluginId, input.contributionId);
+    const directory = native ? this.ports.officialDirectory?.() : undefined;
+    const official = this.official(input.pluginId);
+    const initial = native && directory ? toPluginDockWidget("preview", officialDefault(native, directory)).configuration : defaults;
+    return { ...input, itemId: item?.id ?? null, name: item?.label ?? (official ? this.name(official) : contribution.name), settingsSchema: schema,
+      configuration: structuredClone(item?.widget.configuration ?? initial), size: item?.widget.size ?? "small",
       layoutRevision: this.ports.config.snapshot().localRevision, customCard: Boolean(contribution.customCard) };
   }
   async save(raw: unknown) {
     const input = savePluginWidgetSchema.parse(raw), definition = this.definition(input.pluginId, input.contributionId);
-    if (!definition.ready || input.pluginId === "bottega-ai-usage") throw new Error("Plugin Widget is not ready");
-    const cityName = input.pluginId === WEATHER_PLUGIN_ID
+    if (!definition.ready) throw new Error("Plugin Widget is not ready");
+    if (input.withoutCity && (input.pluginId !== WEATHER_PLUGIN_ID || input.itemId || Object.keys(input.configuration).length))
+      throw new Error("Only a new Weather Widget can defer city selection");
+    const cityName = input.pluginId === WEATHER_PLUGIN_ID && !input.withoutCity
       ? weatherConfigurationSchema.parse(input.configuration).location.city.name
       : undefined;
-    const parsed = z.fromJSONSchema((definition.contribution.settingsSchema ?? { type: "object", additionalProperties: true }) as Parameters<typeof z.fromJSONSchema>[0]).safeParse(input.configuration);
+    const schema = definition.contribution.settingsSchema ?? { type: "object", additionalProperties: true };
+    const parsed = input.withoutCity ? z.strictObject({}).safeParse(input.configuration)
+      : z.fromJSONSchema(schema as Parameters<typeof z.fromJSONSchema>[0]).safeParse(input.configuration);
     if (!parsed.success) throw new Error(`Invalid Widget configuration schema: ${parsed.error.message}`);
     const current = input.itemId ? this.item(input.itemId) : null;
     if (input.itemId && (!current || current.widget.pluginId !== input.pluginId || current.widget.contributionId !== input.contributionId)) throw new Error("Plugin Widget instance changed");
@@ -116,7 +129,13 @@ export class PluginDockWidgets {
       instanceId: itemId, size: input.size, configuration: parsed.data });
     const record = await this.ports.config.edit(layout => {
       if (!this.definition(input.pluginId, input.contributionId).ready) throw new Error("Plugin Widget is not ready");
-      const item = { id: itemId, kind: "widget" as const, label: cityName ?? input.name ?? current?.label ?? definition.contribution.name, widget };
+      if (nativeWidgetType(input.pluginId, input.contributionId)) {
+        const native = nativeDockWidget(widget), directory = this.ports.officialDirectory?.();
+        if (!native || !directory) throw new Error("Official Widget configuration is unavailable");
+        validateOfficial(native, directory, current ? nativeDockWidget(current.widget) ?? undefined : undefined);
+      }
+      const official = this.official(input.pluginId);
+      const item = { id: itemId, kind: "widget" as const, label: cityName ?? input.name ?? current?.label ?? (official ? this.name(official) : definition.contribution.name), widget };
       return { ...layout, initialized: true, items: current ? layout.items.map(value => value.id === itemId ? item : value) : [...layout.items, item], order: current ? layout.order : [...layout.order, itemId] };
     }, input.expectedLayoutRevision);
     this.reconcile(); this.ports.changed();
@@ -128,44 +147,70 @@ export class PluginDockWidgets {
     const record = await this.ports.config.edit(layout => ({ ...layout, items: layout.items.filter(item => item.id !== input.itemId), order: layout.order.filter(id => id !== input.itemId) }), input.expectedLayoutRevision);
     this.reconcile(); this.ports.changed(); return { itemId: input.itemId, layoutRevision: record.localRevision };
   }
-  private customizable(pluginId:string){const source=this.integration().platform.get(pluginId)?.manifest.source;return Boolean(source&&(source.kind!=='official'||source.editable));}
+  private customizable(pluginId:string){const source=this.ports.integration()?.platform.get(pluginId)?.manifest.source;return Boolean(source&&(source.kind!=='official'||source.editable));}
+  private packageStatus(id: OfficialWidgetId, ready: boolean) {
+    if (ready) return "ready";
+    const platform = this.ports.integration()?.platform;
+    const record = platform?.get(id), revision = platform?.activeRevision(id);
+    const receipt = revision?.officialWidget;
+    if (record?.installation.enabled === false && revision && (this.ports.bundled?.(id) || receipt && "archiveSha256" in receipt)) return "disabled";
+    return "needs-install";
+  }
   snapshot(): Pick<WidgetManagementSnapshot, "definitions" | "instances"> {
+    const integration = this.ports.integration();
+    if (!integration) return { definitions: [], instances: [] };
     const instances: WidgetManagementSnapshot["instances"][number][] = [];
     for (const item of this.ports.config.layout().items) {
       if (item.kind !== "widget") continue;
       const widget = this.widget(item);
       if (!widget) continue;
       const official = this.official(widget.pluginId);
-      const platform = this.ports.integration()?.platform;
-      const record = platform?.get(widget.pluginId);
-      const ready = (() => { try { return this.definition(widget.pluginId, widget.contributionId).ready; } catch { return false; } })();
-      const status = official && !platform?.activeRevision(widget.pluginId)?.officialWidget ? "needs-install"
-        : official && !record?.installation.enabled ? "disabled"
-        : ready && !weatherNeedsSetup(widget) ? "ready" : "needs-setup";
-      const name = this.ports.masked() && widget.pluginId === WEATHER_PLUGIN_ID
-        ? weatherDefinitionCopy(this.ports.locale?.() ?? "en").name : item.label ?? "";
-      instances.push({ id: item.id, definitionId: widget.pluginId === "bottega-ai-usage" ? "builtin.ai-activity" : `${widget.pluginId}.${widget.contributionId}`,
-        ...(item.widget.type === "plugin" ? { pluginId: widget.pluginId, contributionId: widget.contributionId } : {}),
+      const ready = this.ready(widget.pluginId, widget.contributionId);
+      const status = official && !ready ? this.packageStatus(official, ready)
+        : ready && !needsSetup(widget) ? "ready" : "needs-setup";
+      const name = official && (this.ports.masked() && [WEATHER_PLUGIN_ID, "bottega-ai-usage"].includes(official) || !item.label)
+        ? this.name(official) : item.label ?? "";
+      instances.push({ id: item.id, definitionId: widget.pluginId + "." + widget.contributionId,
+        pluginId: widget.pluginId, contributionId: widget.contributionId,
         ...(official ? { officialWidget: official } : {}), customizable: this.customizable(widget.pluginId), name,
         ...(this.copyOwner?.status(item.id) ? { copyTarget: this.copyOwner.status(item.id) } : {}), installation: status });
     }
     const definitions: WidgetManagementSnapshot["definitions"][number][] = [];
     let cursor: string | undefined;
     do {
-      const page = this.integration().platform.list({ limit: 100, ...(cursor ? { cursor } : {}) });
+      const page = integration.platform.list({ limit: 100, ...(cursor ? { cursor } : {}) });
       for (const summary of page.items) {
         if (!summary.manifest.contributionKinds.includes("widget")) continue;
-        const item = this.integration().platform.get(summary.manifest.id);
-        if (!item || item.manifest.id === "bottega-ai-usage" ||
-          (this.official(item.manifest.id) && !this.integration().platform.activeRevision(item.manifest.id)?.officialWidget)) continue;
-        for (const contribution of item.manifest.contributions) if (contribution.kind === "widget") definitions.push({
-        id: `${item.manifest.id}.${contribution.id}`, pluginId: item.manifest.id, contributionId: contribution.id, name: item.manifest.id === WEATHER_PLUGIN_ID ? weatherDefinitionCopy(this.ports.locale?.() ?? "en").name : contribution.name,
-        description: item.manifest.id===WEATHER_PLUGIN_ID?weatherDefinitionCopy(this.ports.locale?.()??"en").description:contribution.description ?? item.manifest.description ?? "", customizable:this.customizable(item.manifest.id), chatId: "", settingsSchema: contribution.settingsSchema, customCard: contribution.customCard,
-        activeGenerationId: item.installation.enabled ? item.activeRevision ?? null : null, candidateGenerationId: null, instanceCount: instances.filter(instance => instance.pluginId === item.manifest.id && instance.contributionId === contribution.id).length, error: item.error ?? null,
-        });
+        const item = integration.platform.get(summary.manifest.id);
+        if (!item) continue;
+        const official = this.official(item.manifest.id);
+        if (official && !this.ports.bundled?.(official) && !integration.platform.activeRevision(official)?.officialWidget) continue;
+        for (const contribution of item.manifest.contributions) {
+          if (contribution.kind !== "widget") continue;
+          const pluginId = item.manifest.id, contributionId = contribution.id;
+          const ready = this.ready(pluginId, contributionId);
+          definitions.push({
+            id: pluginId + "." + contributionId, pluginId, contributionId,
+            name: official ? this.name(official) : contribution.name,
+            description: pluginId === WEATHER_PLUGIN_ID ? weatherDefinitionCopy(this.ports.locale?.() ?? "en").description
+              : official ? "" : contribution.description ?? item.manifest.description ?? "",
+            customizable: this.customizable(pluginId), chatId: "", settingsSchema: contribution.settingsSchema, customCard: contribution.customCard,
+            activeGenerationId: ready ? item.activeRevision ?? null : null,
+            ...(official ? { officialWidget: official, installation: this.packageStatus(official, ready) } : {}),
+            candidateGenerationId: null, instanceCount: instances.filter(value => value.pluginId === pluginId && value.contributionId === contributionId).length,
+            error: item.error ?? null,
+          });
+        }
       }
       cursor = page.nextCursor;
     } while (cursor);
+    for (const id of officialWidgetIds) {
+      if (!this.ports.bundled?.(id) || definitions.some(value => value.pluginId === id)) continue;
+      definitions.push({ id: officialDefinitionId(id), pluginId: id, contributionId: OFFICIAL_WIDGETS[id].contributionId,
+        officialWidget: id, name: this.name(id), description: "", chatId: "", customizable: false,
+        activeGenerationId: null, candidateGenerationId: null, installation: "needs-install", error: null,
+        instanceCount: instances.filter(instance => instance.pluginId === id).length });
+    }
     return { definitions, instances };
   }
   face(item: WidgetItem, edge: "bottom" | "left" | "right"): CustomWidgetFace {
@@ -177,11 +222,11 @@ export class PluginDockWidgets {
     });
     let definition: ReturnType<PluginDockWidgets["definition"]>;
     try { definition = this.definition(widget.pluginId, widget.contributionId); } catch { return empty(official ? "needs-install" : "definition-missing"); }
-    if (official && !definition.revision?.officialWidget) return empty("needs-install");
-    if (!definition.ready) return empty("paused");
-    if (weatherNeedsSetup(widget)) return empty("needs-setup");
+    if (!definition.ready) return empty(official && this.packageStatus(official, false) === "needs-install" ? "needs-install" : "paused");
+    if (needsSetup(widget)) return empty("needs-setup");
     const entry = this.summaries.get(item.id), cached = entry?.key === this.key(widget) && !masked ? entry : undefined;
-    const usage = item.widget.type === "builtin.ai-activity" && !masked ? this.ports.officialUsage?.().activityDetail(item.id, item.widget) : undefined;
+    const native = nativeDockWidget(widget);
+    const usage = native?.type === "builtin.ai-activity" && !masked ? this.ports.usage?.().activityDetail(item.id, native) : undefined;
     const idle = empty("ready");
     const face = cached?.face ?? (!official ? { ...idle, summary: { type: "label" as const, text: { kind: "literal" as const, value: definition.contribution.name.slice(0, 80) } },
       description: definition.contribution.name } : idle);
@@ -199,8 +244,7 @@ export class PluginDockWidgets {
   }
   setVisible(surface: DockSurface, widgets: readonly { itemId: string; widget: DockWidget }[], windowId?: number) {
     if (this.closed) return;
-    const ids = widgets.filter(value => value.widget.type === "plugin" ||
-      Boolean(this.ports.officialUsage && value.widget.type === "builtin.ai-activity")).map(value => value.itemId);
+    const ids = widgets.filter(value => value.widget.type === "plugin").map(value => value.itemId);
     this.visible.set(surface, new Set(ids));
     if (surface !== "dock-catalog") {
       const role = surface === "dock-bar" ? "bar" : "panel", previous = this.nativeWindows.get(surface);
@@ -233,7 +277,7 @@ export class PluginDockWidgets {
     const capacityChanged = this.slots.plan(id => {
       if (this.ports.masked()) return false;
       const item = this.item(id);
-      if (!item || weatherNeedsSetup(item.widget)) return false;
+      if (!item || needsSetup(item.widget)) return false;
       try {
         const definition = this.definition(item.widget.pluginId, item.widget.contributionId);
         return definition.ready && Boolean(definition.contribution.customCard);
@@ -257,7 +301,7 @@ export class PluginDockWidgets {
   private key(widget: PluginDockWidget) { const platform = this.ports.integration()?.platform, revision = platform?.activeRevision(widget.pluginId); return JSON.stringify([revision?.revisionId, platform?.activationId(widget.pluginId, revision?.revisionId), widget.contributionId, widget.configuration, widget.size]); }
   private async refreshSummary(itemId: string, force = false) {
     if (this.closed || this.ports.masked() || ![...this.visible.values()].some(items => items.has(itemId))) return;
-    const item = this.item(itemId); if (!item || weatherNeedsSetup(item.widget)) return;
+    const item = this.item(itemId); if (!item || needsSetup(item.widget)) return;
     const definition = this.definition(item.widget.pluginId, item.widget.contributionId), summary = definition.contribution.summary;
     const hostWeather = this.official(item.widget.pluginId) === WEATHER_PLUGIN_ID;
     if (!definition.ready || !definition.revision || !definition.activationId || (!hostWeather && (!summary || !this.integration().invoke))) return;
@@ -281,7 +325,7 @@ export class PluginDockWidgets {
         const weather = item.widget.pluginId === WEATHER_PLUGIN_ID && value && typeof value === 'object' && 'weather' in value
           ? weatherFaceSchema.parse(value.weather) : undefined;
         const description = weather ? describeWeather(weather, item.widget.size, this.ports.locale?.() ?? 'en') : null;
-        if (!controller.signal.aborted && this.summaries.get(itemId) === entry) { entry.detail=detail; entry.updatedAt = Date.now(); entry.face = { ...entry.face, state: "ready", summary: parsed, weather: hostWeather ? undefined : weather, description, refreshing: false, summaryError: undefined, summaryErrorCode: undefined }; }
+        if (!controller.signal.aborted && this.summaries.get(itemId) === entry) { entry.detail=detail; entry.updatedAt = Date.now(); entry.face = { ...entry.face, state: "ready", summary: parsed, weather, description, refreshing: false, summaryError: undefined, summaryErrorCode: undefined }; }
       } catch (cause) { if (!controller.signal.aborted) {
         const code=/WEATHER_(?:RATE_LIMITED|NETWORK_FAILED|RESPONSE_INVALID)/.exec(cause instanceof Error ? cause.message : '')?.[0];
         entry.face={...entry.face,state:retained?'ready':'failed',refreshing:false,summaryError:retained?true:undefined,summaryErrorCode:code};
@@ -309,7 +353,7 @@ export class PluginDockWidgets {
         throw new Error("Plugin Widget is not visible in this Dock window");
     };
     assertVisible();
-    if (!item || weatherNeedsSetup(item.widget)) throw new Error("Plugin Widget configuration is unavailable");
+    if (!item || needsSetup(item.widget)) throw new Error("Plugin Widget configuration is unavailable");
     const definition = this.definition(item.widget.pluginId, item.widget.contributionId);
     if (!definition.ready || !definition.contribution.customCard) throw new Error("Plugin Widget card is unavailable");
     const key = this.key(item.widget);
@@ -345,7 +389,7 @@ export class PluginDockWidgets {
       const gateway = this.integration().gateway;
       const authority = await gateway.authorize(input.leaseId, windowId);
       assertLease();
-      const data = await readOfficialWidget(this.ports.officialUsage!(), item.id, item.widget, role === "panel" ? "detail" : "card", authority.controller.signal);
+      const data = await readOfficialWidget(this.ports.usage!(), item.id, item.widget, role === "panel" ? "detail" : "card", authority.controller.signal);
       await gateway.authorize(input.leaseId, windowId);
       assertLease();
       return data;

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node crypto/filesystem, neutral Project resource scope, builtin tool names, manual MCP eligibility, and shared backend/runtime transport support
- * [OUTPUT]: Provides durable FrozenProjectToolsReceipt construction, hash-sealed MCP candidate staging/hydration, receipt verification, runtime-filtered candidates, and stable session-plan digests; a package Provider's turn gets no MCP candidates
- * [POS]: Main-only Project Tools custody boundary; secrets live in the staged blob while the durable relay payload keeps only identities, scopes, revisions, and digests
+ * [OUTPUT]: Provides sealed tool receipts, a dispatch guard for retired settings, runtime-filtered global MCP candidates, and session plan digests
+ * [POS]: Main-only custody for tool settings bound to the turn's Project context
  */
 
 import { builtinAgent } from "../../../../../shared/chat-agent/options";
@@ -103,6 +103,21 @@ export type HydratedProjectTools = Readonly<{
   candidates: readonly FrozenManualMcpCandidate[];
   sessionPlanDigest: string;
 }>;
+
+export class RetiredProjectToolSettingsError extends Error {
+  constructor() {
+    super("Project tool settings were removed. Send again to use global settings.");
+  }
+}
+
+export function assertTurnToolSettingsCurrent(receipt: FrozenProjectToolsReceipt) {
+  if (
+    (receipt.policyRevisions.project ?? 0) > 0 ||
+    receipt.manualMcpDecisions.some((candidate) => candidate.scope.kind === "project")
+  ) {
+    throw new RetiredProjectToolSettingsError();
+  }
+}
 
 type Quota = Readonly<{
   reserve(bytes: number): Promise<void>;
@@ -298,6 +313,7 @@ export function supportedManualMcpCandidates(input: Readonly<{
     input.backendRuntimeIdentity
   );
   return canonicalCandidates(input.candidates).filter((candidate) =>
+    candidate.scope.kind === "global" &&
     candidate.enabled &&
     candidate.eligibility === "eligible" &&
     resolveManualMcpBackendSupport(candidate.config.transport, backend).supported
@@ -378,8 +394,8 @@ export function emptyProjectToolsSnapshot(
       projectLifecycleRevision: projectContext.projectLifecycleRevision,
       scopeRevision: 0,
     },
-    policyRevisions: { global: 0, project: projectId === null ? null : 0 },
-    mcpScopeRevisions: { global: 0, project: projectId === null ? null : 0 },
+    policyRevisions: { global: 0, project: null },
+    mcpScopeRevisions: { global: 0, project: null },
     builtinIntent: { disabledTools: [] },
     allowedTools: [],
     mcpCandidates: [],

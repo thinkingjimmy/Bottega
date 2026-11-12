@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Shipped immutable weather packages and lazy canonical source admission, dependency/opt-in trace owners; shared HostRuntime/tool processes, Project/Chat services, optional live Library identity and isolated Surface transport. Forwards the active interface locale getter only to the lazy dependency owner.
+ * [INPUT]: Shipped immutable Widget packages and lazy canonical source admission, dependency/opt-in trace owners; shared HostRuntime/tool processes, Project/Chat services, optional live Library identity and isolated Surface transport. Forwards the active interface locale getter only to the lazy dependency owner.
  * [OUTPUT]: Retryable official-source mounting after real Library admission, source Projects/builds bound to exact installed-input receipts, activation-bound Surface/failure/revocation, digest-fenced repairs and guarded recovery.
  * [POS]: Production unified plugin owner; startup and shutdown retain this owner independently of resident windows.
  */
@@ -7,7 +7,8 @@ import {realpath,lstat,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {shell} from 'electron';
 import {developmentWidgetCatalogDirectory} from '../official/widget-mode';
-import {isOfficialWidgetId} from '../../../../shared/system-dock/widgets/catalog/distribution';
+import {isDistributedWidgetId} from '../../../../shared/system-dock/widgets/catalog/distribution';
+import {isOfficialWidgetId, officialWidgetIds, type OfficialWidgetId} from '../../../../shared/system-dock/widgets/catalog/official';
 import type {UnifiedPluginRevision} from '@bottega/contracts/plugins/platform';
 import {officialToolPlugins,setPluginToolAvailabilityResolver} from '../../../../shared/plugin-tools';
 import {UnifiedPluginPlatform} from '../platform/service';
@@ -63,7 +64,6 @@ export class UnifiedPluginIntegration{
   private readonly publications=new Set<string>();
   private publicationFlight:Promise<void>|null=null;
   private releaseChanges?:()=>void;
-  private releaseBundled?:()=>void;
   private releaseLeaseChanges?:()=>void;
   private featureAdapters?:Awaited<ReturnType<typeof composeOfficialFeatureAdapters>>;
   readonly registrar={register:(window:BrowserWindow,url:string)=>registerUnifiedPluginPlatform(this.platform,window,url,{gateway:this.gateway,packages:()=>this.packages.get()})};
@@ -122,21 +122,26 @@ export class UnifiedPluginIntegration{
       catch(error){await owner.close().catch(()=>{});this.sources=undefined;throw error;}
     })();
   }
+  hasBundledWidget(id: OfficialWidgetId) {
+    return process.platform === 'darwin' && !(this.widgetCatalogDirectory && isDistributedWidgetId(id));
+  }
+  repairBundledWidget(id: OfficialWidgetId, assertCurrent?: () => void) {
+    if (!this.hasBundledWidget(id)) throw new Error('Bundled Widget is unavailable');
+    const key = 'bundled-widget:' + id, existing = this.flights.get(key);
+    if (existing) return existing;
+    const operation = import('../official/bundled').then(({ installBundledWidget }) =>
+      installBundledWidget(this.platform, id, this.ports.userData, this.stop.signal, assertCurrent));
+    this.flights.set(key, operation);
+    return operation.finally(() => this.flights.delete(key));
+  }
   async initialize(){
     if(process.env.BOTTEGA_PLUGIN_SURFACE_TRACE==='1'){const {instrumentPluginSurfaces}=await import('../platform/diagnostics');instrumentPluginSurfaces(this.gateway,this.platform);}
     this.releaseFailures=this.ports.tools.processes.onFailure(input=>{void this.platform.runtimeFailed(input.pluginId,input.revision,input.activationId,input.reason).catch(error=>console.warn('[plugins] process failure',error));});
     await this.leases.initialize();await this.platform.initialize();
     setPluginToolAvailabilityResolver(id=>this.platform.get(id)?this.platform.isActive(id):id.startsWith('host_'));
-    if(!this.widgetCatalogDirectory){
-      const {installBundledWeather}=await import('../official/bundled');
-      await installBundledWeather(this.platform,this.ports.userData);
-      let weatherEnabled=this.platform.get('bottega-weather')?.installation.enabled??false;
-      this.releaseBundled=this.platform.onChanged(()=>{
-        const enabled=this.platform.get('bottega-weather')?.installation.enabled??false,previous=weatherEnabled;weatherEnabled=enabled;
-        if(!enabled||previous||this.stop.signal.aborted)return;
-        const operation=installBundledWeather(this.platform,this.ports.userData);this.flights.set('bundled-weather',operation);
-        void operation.catch(error=>console.warn('[plugins] bundled weather update',error)).finally(()=>{if(this.flights.get('bundled-weather')===operation)this.flights.delete('bundled-weather');});
-      });
+    for (const id of officialWidgetIds) {
+      if (!this.hasBundledWidget(id)) continue;
+      await this.repairBundledWidget(id).catch(error => console.warn('[plugins] bundled Widget unavailable', id, error));
     }
     const {composeOfficialFeatureAdapters}=await import('./adapters/features');
     this.featureAdapters=await composeOfficialFeatureAdapters({platform:this.platform,catalog:this.ports.catalog,
@@ -191,7 +196,7 @@ export class UnifiedPluginIntegration{
     if(this.ports.libraryRoot()!==root)throw new Error('PLUGIN_LIBRARY_CHANGED');
     this.mountedLibrary=root;
   }
-  private nativeFeature(id:string){return Boolean(this.widgetCatalogDirectory&&isOfficialWidgetId(id)||officialToolPlugins.find(value=>value.id===id)?.nativeFeature);}
+  private nativeFeature(id:string){return Boolean(isOfficialWidgetId(id)||officialToolPlugins.find(value=>value.id===id)?.nativeFeature);}
   configureCloud(cloud:PluginCloudRuntime){
     this.releaseCloudIdentity?.();this.releaseCloudCatalog?.();this.cloud=cloud;
     let previous='';
@@ -314,7 +319,7 @@ export class UnifiedPluginIntegration{
     finally{await lease.release();const count=Math.max(0,(this.writers.get(revision.pluginId)??1)-1);this.writers.set(revision.pluginId,count);if(!count&&!this.stop.signal.aborted)this.schedule(revision.pluginId);}
   }
   async close(){
-    this.stop.abort();this.releaseBundled?.();this.releaseLeaseChanges?.();this.releaseChanges?.();this.releaseFailures?.();this.releaseCloudIdentity?.();this.releaseCloudCatalog?.();for(const timer of this.timers.values())clearTimeout(timer);
+    this.stop.abort();this.releaseLeaseChanges?.();this.releaseChanges?.();this.releaseFailures?.();this.releaseCloudIdentity?.();this.releaseCloudCatalog?.();for(const timer of this.timers.values())clearTimeout(timer);
     await this.libraryMount?.flight.catch(()=>{});
     await this.sourceObserver?.then(observer=>observer.close(),()=>{});
     await this.dependencies?.then(owner=>owner.close(),()=>{});

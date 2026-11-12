@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Localized Dock copy and the shared weather translation dictionary.
- * [OUTPUT]: Provides systemDockLazyZhCN, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded.
+ * [OUTPUT]: Provides systemDockLazyZhCN, localized deferred Dock copy including API consent, credential controls, structured request failures and ready-only personal-copy feedback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded. Includes the Display group and replacement setup guidance.
  * [POS]: Lazy half of locales/system-dock: shared/i18n/sections loads it before the pages that use it render; the always-needed half stays in ../zh-cn.ts.
  */
 
@@ -46,7 +46,7 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
   },
   placement: {
     panelSpaceHint: "没有足够空间打开面板。请选择其他显示器或缩小 Dock。",
-    title: "显示位置",
+    title: "显示",
     displayHint: "选择 Bottega Dock 显示在哪个屏幕。",
     primary: "跟随主显示器",
     external: "优先外接显示器",
@@ -261,12 +261,8 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     enabledLabel: "使用 Bottega Dock",
     offNote: "确认之前，你的 Mac 不会有任何更改。",
     phaseOff: "已关闭",
-    restoreDescription: "立即恢复系统程序坞。",
-    restoreFailedDescription: "Bottega 没能把系统 Dock 恢复回去。可以再试一次，或关闭 Dock。",
     appearanceTitle: "外观",
     behaviorTitle: "行为",
-    recoveryTitle: "恢复",
-    recoveryDescription: "即使 Bottega 意外退出，也始终保留恢复系统程序坞的途径。",
     shortcutChange: "更改…",
     shortcutRecording: "输入快捷键",
     shortcutRecordingHint: "按下新的快捷键。按 Delete 移除，按 Esc 取消。",
@@ -277,8 +273,6 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     unsupportedVersion: "Dock 支持 macOS 26 和 27，且要求 Apple 芯片。不支持其他 macOS 版本。",
     unsupportedArchitecture: "Bottega Dock 需要搭载 Apple 芯片的 Mac。",
     unsupportedHelperMissing: "当前安装缺少 Bottega Dock 所需的辅助程序。请重新安装 Bottega 后使用 Dock。",
-    registrationUnknown: "无法确认",
-    registrationUnknownDescription: "无法确认恢复后台项目的注册状态。请先重试恢复，再开启 Dock。",
     unsupportedOther: "Bottega 的其他功能不受影响。",
     replacementDevelopment: "开发版可与系统 Dock 共存。请安装已签名的 Bottega 以使用替代模式。",
     replacementHelperMissing: "缺少恢复辅助程序或服务配置。请重新安装 Bottega 以使用替代模式。",
@@ -322,7 +316,7 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     impactAutohide: "系统程序坞将设为自动隐藏，并延长显示延迟，以便 Bottega Dock 取而代之。",
     impactRecoveryItem: "会在后台项目中添加一个小型恢复项。只要替代功能保持开启，即使退出 Bottega，它也会保持注册，确保系统程序坞始终可以恢复。",
     impactNoApp: "恢复项永远不会打开完整的 Bottega App。",
-    impactRestore: "你可以随时恢复系统 Dock：右键点击 Bottega Dock、打开 Dock 插件设置，或使用 Bottega 菜单栏中的 Dock 菜单。",
+    impactRestore: "在设置里关闭 Bottega Dock，即可恢复系统程序坞。也可以从程序坞右键菜单或 Bottega 菜单栏菜单恢复。",
     impactShortcuts: "系统快捷键仍可作为后备：Option-Command-D 可切换程序坞自动隐藏，受支持的 Mac 上按 Fn-A 可显示程序坞。它们不是唯一的恢复方式。",
     impactLogin: "登录时打开 Bottega 是「通用」设置中的独立选项。",
     acknowledge: "我已了解这些更改",
@@ -346,15 +340,8 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     recoveryKeptExternal: "系统程序坞设置在 Bottega 之外被修改，因此保持原样。",
     recoveryFailed: "系统程序坞未能完全恢复。按 Option-Command-D 可显示它。",
     resume: "继续使用",
-    restore: "恢复系统程序坞",
-    registrationLabel: "恢复项",
-    registrationEnabled: "已注册。替代功能开启期间，退出 Bottega 后它仍保持注册。",
     registrationApproval: "需要你在「系统设置」›「通用」›「登录项与扩展」中批准。",
     registrationMissing: "macOS 找不到此恢复服务的注册记录。该记录可能尚未创建。",
-    registrationNone: "尚未注册。",
-    needsApproval: "需要批准",
-    notFound: "找不到",
-    notRegistered: "未注册",
     openLoginItems: "打开登录项",
     accessibilityLabel: "还原最小化的窗口",
     accessibilityOff: "未允许",
@@ -406,7 +393,6 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
     failedPreference: "无法保存此偏好设置。",
     failedMode: "无法更改模式。",
     failedDisable: "无法关闭 Bottega Dock。",
-    failedRestore: "无法恢复系统程序坞。",
     failedResume: "无法继续使用 Bottega Dock。",
     failedReset: "无法恢复默认布局。",
     failedResolve: "无法应用你的同步选择。",

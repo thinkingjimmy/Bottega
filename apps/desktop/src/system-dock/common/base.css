@@ -1,5 +1,5 @@
 /* [INPUT]: System appearance media queries (color scheme, contrast, forced colors, reduced transparency/motion) and the root `data-reduced-motion` flag set from the bar snapshot.
- * [OUTPUT]: Shared Dock tokens (translucent and solid surfaces, the bar's glass edge and solid fallback, text, hover, focus, caution/danger), resets, glyph sizing with native artwork proportions for the host, and the high-contrast / solid / no-motion treatments for both Dock renderers.
+ * [OUTPUT]: Shared Dock tokens (translucent and solid surfaces, the bar's appearance-matched tint and glass edge, text, hover, focus, caution/danger), resets, glyph sizing with native artwork proportions for the host, and the high-contrast / solid / no-motion treatments for both Dock renderers.
  * [POS]: system-dock/common stylesheet imported first by bar and panel entries; surface-specific layout lives in bar.css and panel.css.
  */
 :root {
@@ -21,8 +21,8 @@
   --positive: #1f7a3a;
   --focus: #0a64d6;
   --shadow: 0 10px 30px rgb(0 0 0 / 0.16), 0 0 0 0.5px rgb(0 0 0 / 0.1);
-  /* The bar's glass is the window's native material; the page only adds the lit edge, like the system Dock. */
-  --strip-fill: transparent;
+  /* Bound the brightness of the native glass so small readings keep contrast over the desktop. */
+  --strip-fill: light-dark(#fffe, #111d);
   --strip-edge: inset 0 0 0 0.5px rgb(255 255 255 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.35);
   --ring-track: rgb(0 0 0 / 0.12);
   color: var(--text);

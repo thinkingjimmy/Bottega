@@ -5,6 +5,7 @@
  * Native Stop carries exact Chat/incarnation/owner/item identities; native process IDs remain private.
  * Artifact workspace requests and revocable lifecycle events remain restricted to the trusted main frame.
  * Workspace file links expose scoped resolution and enumerated native actions, never a general path opener.
+ * Manual MCP commands carry global settings requests and masked snapshots.
  * [POS]: All-frame preload security boundary; OOPIF/srcdoc frames receive RTC denial but no Electron, Node, IPC, path, secret, or product bridge. Memory and Extensions single-input methods share a fixed-arity invoke factory.
  */
 
@@ -108,11 +109,6 @@ import {
   type McpServersBridgeApi,
   type McpServersChangedEvent,
 } from "../../shared/ipc/settings/mcp-servers-ipc";
-import {
-  PROJECT_TOOLS_CHANNEL,
-  type ProjectToolsBridgeApi,
-  type ProjectToolsChangedEvent,
-} from "../../shared/ipc/workspace/project-tools-ipc";
 import {
   HISTORY_IMPORT_CHANNEL,
   type HistoryImportBridgeApi,
@@ -639,21 +635,6 @@ installPluginSurfacesBridge(subscribe);
 if (windowRole === "main") { installPluginsBridge(subscribe); installProviderCatalogBridge(subscribe); }
 /* Bottega Dock is macOS-only; elsewhere the Settings page simply does not exist. */
 if (windowRole === "main" && process.platform === "darwin") installSystemDockSettingsBridge(subscribe);
-
-contextBridge.exposeInMainWorld("projectTools", {
-  get: (input) => ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.get, input),
-  setBuiltinOverride: (input) =>
-    ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.setBuiltinOverride, input),
-  resetBuiltinOverride: (input) =>
-    ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.resetBuiltinOverride, input),
-  setGlobalMcpOverride: (input) =>
-    ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.setGlobalMcpOverride, input),
-  resetGlobalMcpOverride: (input) =>
-    ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.resetGlobalMcpOverride, input),
-  resetAll: (input) =>
-    ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.resetAll, input),
-  onChanged: subscribe<ProjectToolsChangedEvent>(PROJECT_TOOLS_CHANNEL.changed),
-} satisfies ProjectToolsBridgeApi);
 
 contextBridge.exposeInMainWorld("mcpServers", {
   list: (input) => ipcRenderer.invoke(MCP_SERVERS_CHANNEL.list, input),

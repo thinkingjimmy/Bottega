@@ -1,29 +1,21 @@
 /**
  * [INPUT]: Depends on the settingsToolsEn structural type
- * [OUTPUT]: Provides settingsToolsZhCN, the Simplified Chinese Settings Tools catalog including offline Design font access
+ * [OUTPUT]: Provides the zh-cn catalog for global MCP settings, official tool descriptions, and runtime support
  * [POS]: Simplified Chinese leaf of shared/i18n/locales/settings/tools; loaded on demand by the matching top-level locale
  */
 
 import type { settingsToolsEn } from "./en";
 
 export const settingsToolsZhCN: typeof settingsToolsEn = {
-  globalScopeNote: "这里的设置全局生效；Project 可单独覆盖，且不会改写本页默认值。",
   supportReason: {
     "runtime-unavailable": "运行时不可用", "builtin-tools-unsupported": "不支持内置工具", "transport-unsupported": "不支持此传输方式",
     "turn-origin-unsupported": "当前回合来源不可用", "plan-mode-unsupported": "Plan 回合不可用", "security-policy": "被安全策略阻止", unknown: "Backend 不可用",
     minimumRuntimeVersion: "需要运行时 {{minimumVersion}} 或更高版本（检测到 {{detectedVersion}}）", unknownVersion: "未知版本",
   },
   builtin: {
-    title: "内置工具",
-    globalDescription: "全局默认值从下一轮生效；各 Project 可独立覆盖每项工具。",
-    projectDescription: "为本 Project 选择各工具的使用意图；重置覆盖后恢复全局默认值。",
+    globalDescription: "更改全局生效，从下一轮开始。",
     saveFailed: "内置工具设置保存失败",
-    disabledCount: "{{count}} 项已关闭",
-    resetAll: "重置全部 Project 工具覆盖",
-    resetOne: "将 {{name}} 重置为全局默认值",
-    source: { "global-default": "全局默认", "project-override": "Project 覆盖" },
     effective: { enabled: "已启用", disabled: "已停用", unavailable: "意图已启用；Backend 不可用" },
-    domain: { sections: "Sections", subagents: "Subagents", projects: "Projects", bases: "Bases", search: "搜索", browser: "浏览器", design: "设计", apps: "应用" },
     items: {
       list_sections: { label: "列出 Sections", hint: "查看全部持久聊天及其 Base 摘要。" },
       read_section: { label: "读取 Section", hint: "读取另一条聊天已落盘的转录。" },
@@ -70,18 +62,12 @@ export const settingsToolsZhCN: typeof settingsToolsEn = {
     },
   },
   mcp: {
+    pageTitle: "MCP",
     title: "MCP Servers",
-    globalDescription: "管理全局 MCP server；Project 可继承或覆盖，且不会改写本清单。",
-    projectDescription: "Project server 仅归本 Project 所有；继承的全局 server 可在此覆盖。",
-    globalEmptyHint: "在此添加全局 server。Project 自有 server 永远不会出现在本页。",
+    globalDescription: "为此电脑上的所有项目和独立 Chat 管理 MCP 服务器。",
+    globalEmptyHint: "添加服务器后可在聊天中使用。",
     bridgeMissing: "当前环境无法使用 MCP server 设置。",
-    projectGroup: "Project servers", projectGroupEmpty: "没有 Project 自有 server",
-    inheritedGroup: "继承的全局 servers", inheritedGroupEmpty: "没有可继承的全局 server",
-    allInherited: "此 Project 当前仅使用继承的全局 server 设置。",
-    editGlobally: "前往 Settings 编辑全局 MCP servers",
-    resetOne: "将 {{name}} 重置为全局默认值",
     conflict: "该 server 已在别处更新。已加载最新状态，并保留你的草稿。",
-    source: { "global-default": "全局默认", "project-override": "Project 覆盖", "project-owned": "Project 自有" },
     effective: { enabled: "已启用", disabled: "已停用", unavailable: "意图已启用；Backend 不可用" },
     add: "添加 server", edit: "编辑", delete: "删除 {{name}}",
     emptyTitle: "还没有 MCP server",

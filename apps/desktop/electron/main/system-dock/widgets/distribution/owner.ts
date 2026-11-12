@@ -9,14 +9,14 @@ import type { UnifiedPluginPlatform } from "../../../plugins/platform/service";
 import type { DockConfigStore } from "../../store/config-store";
 import {
   compareWidgetVersions, widgetDirectoryRequestSchema, WIDGET_CATALOG_LIMITS,
-  type OfficialWidgetId, type WidgetDirectoryResponse, type WidgetInstallProgress, type WidgetRelease,
+  type DistributedWidgetId, type WidgetDirectoryResponse, type WidgetInstallProgress, type WidgetRelease,
 } from "../../../../../shared/system-dock/widgets/catalog/distribution";
 import { readWidgetAsset } from "./assets";
 import { LocalWidgetDirectory } from "./directory";
 import { assertCompatibleInstances, installVerifiedWidget, packageWidgetId, pruneOfficialWidgetPackages, verifyOfficialArchive } from "./receive";
 
 type Review = {
-  id: string; windowId: number; pluginId: OfficialWidgetId; itemId?: string; expires: number;
+  id: string; windowId: number; pluginId: DistributedWidgetId; itemId?: string; expires: number;
   release: WidgetRelease; installedAt: number | null; wasRemoved: boolean; assertWindow(): void; controller: AbortController; progress: WidgetInstallProgress;
   flight?: Promise<WidgetInstallProgress>;
 };
@@ -27,7 +27,7 @@ type Ports = {
 export class OfficialWidgetDistribution {
   private readonly directory: LocalWidgetDirectory;
   private readonly reviews = new Map<string, Review>();
-  private readonly writes = new Map<OfficialWidgetId, Promise<unknown>>();
+  private readonly writes = new Map<DistributedWidgetId, Promise<unknown>>();
   private closed = false;
 
   constructor(private readonly ports: Ports) {
@@ -131,7 +131,7 @@ export class OfficialWidgetDistribution {
     return review.progress;
   }
 
-  serialize<T>(id: OfficialWidgetId, run: () => Promise<T>) {
+  serialize<T>(id: DistributedWidgetId, run: () => Promise<T>) {
     const task = (this.writes.get(id) ?? Promise.resolve()).catch(() => undefined).then(run);
     this.writes.set(id, task);
     void task.finally(() => { if (this.writes.get(id) === task) this.writes.delete(id); }).catch(() => undefined);

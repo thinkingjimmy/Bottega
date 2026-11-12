@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on portable Widget items, bounded runtime projections and Dock surface identities.
- * [OUTPUT]: Provides the custom Widget projection/demand and unified add-candidate port for Dock composition.
+ * [OUTPUT]: Provides custom Widget projections, active official package readiness and the unified candidate and demand ports.
  * [POS]: Main-only seam that keeps application and data ownership outside DockService.
  */
 import type {DockItem,DockWidget} from '../../../../../shared/system-dock/layout';
@@ -12,6 +12,7 @@ import type {WidgetDetailSource} from '../detail/ports';
 export type WidgetItem=Extract<DockItem,{kind:'widget'}>;
 export interface DockCustomWidgetsPort{
  officialDirectory?:boolean;
+ officialReady?(pluginId:string,contributionId:string):boolean;
  activityAllowed?():boolean;
  liveCards?(windowId:number|undefined):readonly string[];
  candidates?():readonly {id:string;name:string;available:boolean}[];

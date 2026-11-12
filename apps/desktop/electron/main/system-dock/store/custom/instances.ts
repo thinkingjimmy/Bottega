@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on verified package custody, the shared accepted-runtime mutation queue, serialized layout edits and strict host forms.
- * [OUTPUT]: Provides receipt-backed official/personal configuration, independent Base consent/revocation, local pause/removal/account cleanup, exact accepted mappings and the strict instance ledger schema and original-operation API credential/grant hooks.
+ * [OUTPUT]: Receipted personal and official configuration, native plugin instance commits, local instance journals and exact accepted mappings.
  * [POS]: Instance management coordinator; it never builds source, selects a source generation or copies credentials/grants.
  */
 import {randomUUID} from 'node:crypto';
@@ -13,7 +13,7 @@ import {applyDockWidgetSchema,type WidgetApplyInput} from '../../../../../shared
 import {widgetInstanceFormSchema,widgetInstancePauseSchema,widgetInstanceRemoveSchema,widgetInstanceReceiptSchema,widgetBaseRevokeSchema,type WidgetInstanceForm,type WidgetInstanceReceipt} from '../../../../../shared/system-dock/widgets/management';
 import {customDockWidgetSchema,type CustomDockWidget} from '../../../../../shared/system-dock/widgets/instance';
 import {addItem,removeItem} from '../../../../../shared/system-dock/placement';
-import {dockWidgetItemSchema} from '../../../../../shared/system-dock/layout';
+import {dockWidgetItemSchema,nativeDockWidget,normalizeOfficialItem,toPluginDockWidget} from '../../../../../shared/system-dock/layout';
 import {dockPluginManifestSchema} from '../../../apps/gui-build/source/manifest';
 import type {WidgetPackageStore} from '../../../plugins/surface-runtime/packages/store';
 import {DurableJson} from '../../../persistence/durable-json';
@@ -21,6 +21,7 @@ import type {DockConfigStore} from '../config-store';
 import type {DockWidgetApplications,WidgetMappingMutation} from './applications';
 import {officialWidgetFormSchema,officialWidgetQuerySchema,submitOfficialWidgetSchema,type OfficialWidgetForm,type OfficialWidget,type SubmitOfficialWidget} from '../../../../../shared/system-dock/widgets/official';
 import {officialChoices,officialDefault,validateOfficial,type OfficialWidgetDirectory} from './official';
+import {nativeWidgetType} from '../../../../../shared/system-dock/widgets/catalog/official';
 import {customWidgetItemSchema,localWidgetScopeSchema,type LocalWidgetScope,type WidgetApiHooks} from './model';
 import {basePermissionFor,basePermissionSchema} from './base-access';
 const intentSchema=z.object({kind:z.enum(['add','configure','pause','remove','revoke-base']),before:dockWidgetItemSchema.nullable(),target:dockWidgetItemSchema.nullable(),
@@ -60,9 +61,12 @@ export class DockWidgetInstances{
  }
  previewOfficial(raw:ReturnType<typeof officialWidgetQuerySchema.parse>):OfficialWidgetForm{
   const input=officialWidgetQuerySchema.parse(raw),scope=this.liveScope(),before='itemId'in input?dockWidgetItemSchema.parse(this.ports.config.layout().items.find(item=>item.id===input.itemId)):null;
-  if((before?.widget.type==='custom'||before?.widget.type==='plugin'))throw new Error('DOCK_OFFICIAL_WIDGET_REQUIRED');const directory=this.ports.officialDirectory();
-  const widget=before?before.widget:officialDefault('definitionId'in input?input.definitionId:'builtin.tasks',directory);
-  if(widget.type==='builtin.ai-activity'&&directory.activityAllowed===false)throw new Error('DOCK_OFFICIAL_WIDGET_UNAVAILABLE');
+  const directory=this.ports.officialDirectory();
+  const type='definitionId'in input?input.definitionId:before?.widget.type==='plugin'
+    ?nativeWidgetType(before.widget.pluginId,before.widget.contributionId):undefined;
+  const widget=(before?nativeDockWidget(before.widget):null)??(type?officialDefault(type,directory):null);
+  if(!widget||directory.ready?.(widget.type)===false||widget.type==='builtin.ai-activity'&&directory.activityAllowed===false)
+   throw new Error('DOCK_OFFICIAL_WIDGET_UNAVAILABLE');
   const value=officialWidgetFormSchema.parse({previewId:this.id(),itemId:before?.id??null,name:before?.label??this.ports.officialName(widget.type),widget,layoutRevision:this.ports.config.snapshot().localRevision,...officialChoices(directory)});
   for(const [id,entry]of this.officialForms)if(entry.expiresAt<=Date.now())this.officialForms.delete(id);while(this.officialForms.size>=16)this.officialForms.delete(this.officialForms.keys().next().value!);
   this.officialForms.set(value.previewId,{scope,value,before,expiresAt:Date.now()+600_000});return value;
@@ -70,9 +74,12 @@ export class DockWidgetInstances{
  submitOfficial(raw:SubmitOfficialWidget){const input=submitOfficialWidgetSchema.parse(raw);return this.mutate(input.operationId,input,async scope=>{
   const entry=this.officialForms.get(input.previewId);if(!entry||entry.expiresAt<=Date.now()||canonicalJson(entry.scope)!==canonicalJson(scope))throw new Error('DOCK_PREVIEW_EXPIRED');
   if(input.widget.type!==entry.value.widget.type||this.ports.config.snapshot().localRevision!==entry.value.layoutRevision||entry.before&&canonicalJson(this.ports.config.layout().items.find(item=>item.id===entry.before!.id)??null)!==canonicalJson(entry.before))throw new Error('DOCK_INSTANCE_CONFLICT');
-  validateOfficial(input.widget,this.ports.officialDirectory(),entry.before?.widget);
+  validateOfficial(input.widget,this.ports.officialDirectory(),entry.before?nativeDockWidget(entry.before.widget)??undefined:undefined);
   const name=entry.before?input.name:allocateWidgetName(input.name,this.ports.config.layout().items.flatMap(item=>item.kind==='widget'?[item.label??'']:[]),this.ports.locale());
-  return{kind:entry.before?'configure':'add',before:entry.before,target:{id:entry.before?.id??this.id(),kind:'widget',label:name,widget:input.widget},mappingRevision:null,layoutRevision:entry.value.layoutRevision,paused:null,permission:null,api:null};
+  const id=entry.before?.id??this.id();
+  const widget=toPluginDockWidget(id,input.widget);
+  if(entry.before?.widget.type==='plugin')widget.size=entry.before.widget.size;
+  return{kind:entry.before?'configure':'add',before:entry.before,target:{id,kind:'widget',label:name,widget},mappingRevision:null,layoutRevision:entry.value.layoutRevision,paused:null,permission:null,api:null};
  });}
  submit(raw:WidgetApplyInput){const input=applyDockWidgetSchema.parse(raw);return this.mutate(input.operationId,input,async scope=>{
   const entry=this.forms.get(input.previewId);if(!entry||entry.expiresAt<=Date.now()||canonicalJson(entry.scope)!==canonicalJson(scope))throw new Error('DOCK_PREVIEW_EXPIRED');
@@ -111,7 +118,10 @@ export class DockWidgetInstances{
   });
  }
  private async finish(entry:Operation,owner:WidgetMappingMutation):Promise<WidgetInstanceReceipt>{
-  const intent=entry.intent;if(!intent)throw new Error('DOCK_INSTANCE_OPERATION_INVALID');const itemId=intent.before?.id??intent.target!.id,receipt=(status:WidgetInstanceReceipt['status'])=>({operationId:entry.operationId,itemId,status});
+  if(!entry.intent)throw new Error('DOCK_INSTANCE_OPERATION_INVALID');
+  const {before,target}=entry.intent;
+  const intent={...entry.intent,before:before?normalizeOfficialItem(before):null,target:target?normalizeOfficialItem(target):null};
+  const itemId=intent.before?.id??intent.target!.id,receipt=(status:WidgetInstanceReceipt['status'])=>({operationId:entry.operationId,itemId,status});
   try{
    this.assertScope(entry.scope);const mapping=intent.before?this.ports.applications.accepted(intent.before):null;
    if(mapping?.lastOperationId==='instance:'+entry.operationId)return this.complete(entry,receipt('applied'));
@@ -125,12 +135,13 @@ export class DockWidgetInstances{
     await owner.put({...mapping,...intent.permission,revision:mapping.revision+1,lastOperationId:'instance:'+entry.operationId});return this.complete(entry,receipt('applied'));
    }
    if(intent.kind==='add'&&intent.target?.widget.type==='custom'&&!this.ports.stillSaved(intent.target.widget))throw new Error('DOCK_INSTANCE_CONFLICT');
-   if(intent.target&&intent.target.widget.type!=='custom'&&intent.target.widget.type!=='plugin')validateOfficial(intent.target.widget,this.ports.officialDirectory(),intent.before?.widget);
    if(intent.target?.widget.type==='custom'&&intent.api)await this.ports.api?.prepare({operationId:entry.operationId,scope:entry.scope,target:customWidgetItemSchema.parse(intent.target),consent:intent.api.consent,draftOwnerId:intent.api.draftOwnerId});
    const config=this.ports.config.snapshot(),actual=config.layout.items.find(item=>item.id===itemId)??null,alreadyWritten=canonicalJson(actual)===canonicalJson(intent.target)&&(intent.kind==='remove'||config.localRevision===intent.layoutRevision+1);
    if(!alreadyWritten){
     await this.ports.config.edit(layout=>{
-     this.assertScope(entry.scope);if(intent.target&&intent.target.widget.type!=='custom'&&intent.target.widget.type!=='plugin')validateOfficial(intent.target.widget,this.ports.officialDirectory(),intent.before?.widget);
+     this.assertScope(entry.scope);
+     const native=intent.target?nativeDockWidget(intent.target.widget):null;
+     if(native)validateOfficial(native,this.ports.officialDirectory(),intent.before?nativeDockWidget(intent.before.widget)??undefined:undefined);
      const current=layout.items.find(item=>item.id===itemId)??null;if(canonicalJson(current)!==canonicalJson(intent.before))throw new Error('DOCK_INSTANCE_CONFLICT');
      if(intent.kind==='add'){const {id,...draft}=intent.target!,added=addItem(layout,draft,{mint:()=>id});if('failure'in added)throw new Error('DOCK_WIDGET_ADD_FAILED');return added.layout;}
      if(intent.kind==='remove'){const removed=removeItem(layout,itemId);if('failure'in removed)throw new Error('DOCK_INSTANCE_CONFLICT');return removed.layout;}

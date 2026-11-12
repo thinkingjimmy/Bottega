@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Original English Dock literals excluding only the Weather UI namespace.
- * [OUTPUT]: systemDockBaseEn for synchronous native menus and renderer fallback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded.
+ * [OUTPUT]: systemDockBaseEn for synchronous native menus and renderer fallback; automatic replacement layout and read-failure copy; retired manual Widget editor labels are excluded. Includes the Display group and replacement setup guidance.
  * [POS]: Shared native base; the complete renderer wrapper adds English Weather data.
  */
 export const systemDockBaseEn={
@@ -261,7 +261,7 @@ export const systemDockBaseEn={
   },
   "placement": {
     "panelSpaceHint": "Not enough room to open the panel. Choose another display or reduce Dock size.",
-    "title": "Placement",
+    "title": "Display",
     "displayHint": "Choose where Bottega Dock appears.",
     "primary": "Follow Main Display",
     "external": "Prefer External Display",
@@ -476,12 +476,8 @@ export const systemDockBaseEn={
     "enabledLabel": "Use Bottega Dock",
     "offNote": "Nothing on your Mac changes until you confirm.",
     "phaseOff": "Off",
-    "restoreDescription": "Brings the system Dock back now.",
-    "restoreFailedDescription": "Bottega couldn't give the system Dock back. Try again, or turn the Dock off.",
     "appearanceTitle": "Appearance",
     "behaviorTitle": "Behavior",
-    "recoveryTitle": "Recovery",
-    "recoveryDescription": "Keeps a way back to the system Dock, even if Bottega quits unexpectedly.",
     "shortcutChange": "Change…",
     "shortcutRecording": "Type Shortcut",
     "shortcutRecordingHint": "Press the new shortcut. Delete removes it; Esc cancels.",
@@ -492,8 +488,6 @@ export const systemDockBaseEn={
     "unsupportedVersion": "Dock supports macOS 26 and 27 on Apple silicon. Other macOS versions are not supported.",
     "unsupportedArchitecture": "Bottega Dock requires a Mac with Apple silicon.",
     "unsupportedHelperMissing": "Bottega Dock needs a helper that is missing from this installation. Reinstall Bottega to use the Dock.",
-    "registrationUnknown": "Could not verify",
-    "registrationUnknownDescription": "The recovery background item’s registration could not be checked. Retry recovery before turning the Dock on.",
     "unsupportedOther": "Everything else in Bottega works as usual.",
     "replacementDevelopment": "Development builds can run alongside the system Dock. Install a signed copy of Bottega to use replacement.",
     "replacementHelperMissing": "The recovery helper or its service configuration is missing. Reinstall Bottega to use replacement.",
@@ -537,7 +531,7 @@ export const systemDockBaseEn={
     "impactAutohide": "The system Dock is set to hide automatically and its show delay is lengthened, so Bottega Dock can take its place.",
     "impactRecoveryItem": "A small recovery item is added to your background items. While replacement stays on, it stays registered even after you quit Bottega, so the system Dock can always be restored.",
     "impactNoApp": "The recovery item never opens the full Bottega app.",
-    "impactRestore": "Restore the system Dock at any time: right-click Bottega Dock, open the Dock plugin settings, or use Dock in Bottega’s menu bar menu.",
+    "impactRestore": "Turn off Bottega Dock in settings to restore the system Dock. You can also restore it from the Dock’s context menu or Bottega’s menu bar menu.",
     "impactShortcuts": "System shortcuts still work as a backup: Option-Command-D turns Dock hiding on or off, and Fn-A shows the Dock on supported Macs. They aren’t the only way back.",
     "impactLogin": "Opening Bottega at login is a separate choice in General settings.",
     "acknowledge": "I understand what changes",
@@ -561,15 +555,8 @@ export const systemDockBaseEn={
     "recoveryKeptExternal": "The system Dock settings were changed outside Bottega, so they were left as they are.",
     "recoveryFailed": "The system Dock couldn’t be fully restored. Press Option-Command-D to show it.",
     "resume": "Resume",
-    "restore": "Restore System Dock",
-    "registrationLabel": "Recovery item",
-    "registrationEnabled": "Registered. It stays registered after you quit Bottega while replacement is on.",
     "registrationApproval": "Needs your approval in System Settings › General › Login Items & Extensions.",
     "registrationMissing": "macOS cannot find this recovery registration. It may not have been created yet.",
-    "registrationNone": "Not registered yet.",
-    "needsApproval": "Needs approval",
-    "notFound": "Not found",
-    "notRegistered": "Not registered",
     "openLoginItems": "Open Login Items",
     "accessibilityLabel": "Restore minimized windows",
     "accessibilityOff": "Not allowed",
@@ -621,7 +608,6 @@ export const systemDockBaseEn={
     "failedPreference": "Couldn’t save the preference.",
     "failedMode": "Couldn’t change the mode.",
     "failedDisable": "Couldn’t turn off Bottega Dock.",
-    "failedRestore": "Couldn’t restore the system Dock.",
     "failedResume": "Couldn’t resume Bottega Dock.",
     "failedReset": "Couldn’t reset the layout.",
     "failedResolve": "Couldn’t apply your sync choice.",

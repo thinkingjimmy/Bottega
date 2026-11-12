@@ -9,6 +9,7 @@ export const weatherEn={
   "city": "City",
   "search": "Search for a city",
   "searching": "Searching…",
+  "addWithoutCity": "Add without a city",
   "changeCity": "Change city",
   "cancelCityChange": "Cancel city change",
   "noCities": "No cities found.",

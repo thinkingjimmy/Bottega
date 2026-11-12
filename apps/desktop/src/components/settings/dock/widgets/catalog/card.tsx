@@ -11,8 +11,8 @@ import { usePointerOpenedMenu } from '@ai-chat/ui/hooks/use-pointer-opened-menu'
 import { useAppTranslation } from '@/components/providers/preferences/i18n-provider';
 import type { WidgetManagementSnapshot } from '../../../../../../shared/system-dock/widgets/authoring';
 type Instance = WidgetManagementSnapshot['instances'][number];
-export function WidgetInstanceCard({ instance, definitionName, busy, preview, children, wide, onConfigure, onInstall, onEdit, onCopy, onVersions, onChange }: {
-  instance: Instance; definitionName: string; busy: boolean; preview: ReactNode; children?: ReactNode; wide: boolean;
+export function WidgetInstanceCard({ instance, definitionName, busy, preview, children, wide, bundled, onConfigure, onInstall, onEdit, onCopy, onVersions, onChange }: {
+  instance: Instance; definitionName: string; busy: boolean; preview: ReactNode; children?: ReactNode; wide: boolean; bundled: boolean;
   onConfigure(button: HTMLButtonElement): void; onInstall(button: HTMLButtonElement): void;
   onEdit(): void; onCopy(): void; onVersions(): void; onChange(remove: boolean): void;
 }) {
@@ -20,7 +20,7 @@ export function WidgetInstanceCard({ instance, definitionName, busy, preview, ch
   const needsInstall = ['needs-install', 'install', 'update', 'preparing', 'repair'].includes(instance.installation ?? '');
   const needsSource = instance.installation === 'source-review';
   const canVersion = Boolean(instance.officialWidget && instance.installation!=='needs-install') || instance.customizable !== false && !instance.definitionId.startsWith('builtin.');
-  const installLabel = instance.installation === 'needs-install' ? 'systemDock.widgets.directory.install'
+  const installLabel = instance.installation === 'needs-install' ? bundled ? 'systemDock.widgets.install.repair' : 'systemDock.widgets.directory.install'
     : instance.installation === 'repair' ? 'systemDock.widgets.install.repair'
     : instance.installation === 'preparing' ? 'common.retry'
     : instance.installation === 'update' ? 'systemDock.widgets.install.reviewUpdate' : 'systemDock.widgets.install.confirm';

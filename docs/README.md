@@ -2,7 +2,7 @@
 
 [简体中文](./README.zh-CN.md) · [Repository home](../README.md)
 
-Source version: **0.4.4/protocol 27**, targeting macOS on Apple silicon (ARM64). Installer availability, accepted platforms and actual validation scope come from the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest) and its evidence. A source version does not certify publication. Read the [native command permissions](./features/README.md#codex-command-permissions) and [installation and upgrade notes](./getting-started/README.md#upgrading-to-044). The 0.2.5 personal build needs a manual stable installation.
+Source version: **0.4.5/protocol 27**, targeting macOS on Apple silicon (ARM64). Installer availability, accepted platforms and actual validation scope come from the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest) and its evidence. A source version does not certify publication. Read the [native command permissions](./features/README.md#codex-command-permissions) and [installation and upgrade notes](./getting-started/README.md#upgrading-to-045). The 0.2.5 personal build needs a manual stable installation.
 
 Documentation is organized by responsibility so the repository root remains focused on source and build configuration.
 

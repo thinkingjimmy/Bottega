@@ -1,24 +1,49 @@
 /**
- * [INPUT]: The unpacked immutable official distribution, Electron package identity and unified platform.
- * [OUTPUT]: Idempotent offline weather registration and revision activation.
- * [POS]: Official seed loader; preserves user enablement and instance configuration.
+ * [INPUT]: First-party Widget inventory, installed Electron resources and the verified plugin receiver.
+ * [OUTPUT]: Offline per-package installation and repair with immutable revision custody.
+ * [POS]: Shared seed and repair path for bundled native Widgets.
  */
-import {join} from 'node:path';
-import {app} from 'electron';
-import {WEATHER_PLUGIN_ID} from '../../../../shared/system-dock/widgets/weather';
-import type {UnifiedPluginPlatform} from '../platform/service';
-import {verifyUnifiedPluginDistribution} from '../distribution/verify';
-import {importPluginDistribution} from '../integration/distribution';
-export async function installBundledWeather(platform:UnifiedPluginPlatform,userData:string){
- if(process.platform!=='darwin')return;
- const directory=app.isPackaged?join(process.resourcesPath,'app.asar.unpacked/out/main/official-plugins/weather'):join(__dirname,'official-plugins/weather');
- const checked=await verifyUnifiedPluginDistribution(directory);
- const existing=platform.get(WEATHER_PLUGIN_ID);
- if(platform.activeRevision(WEATHER_PLUGIN_ID)?.officialWidget)return;
- if(existing&&existing.installation.origin!=='official')throw new Error('Official weather identity is already owned by another source');
- await platform.register({manifest:checked.distribution.manifest,packageDirectory:directory,replace:true,legacyWeather:true});
- if(existing?.activeRevision===checked.distribution.revisionId||!platform.get(WEATHER_PLUGIN_ID)?.installation.enabled)return;
- const sourceVersion=await platform.sourceChanged(WEATHER_PLUGIN_ID);
- const revision=await importPluginDistribution({directory,buildsRoot:join(userData,'plugin-builds'),sourceVersion});
- await platform.activateCandidate(revision);
+import { randomUUID } from "node:crypto";
+import { lstat, rename } from "node:fs/promises";
+import { join, relative } from "node:path";
+import { app } from "electron";
+import { OFFICIAL_WIDGETS, type OfficialWidgetId } from "../../../../shared/system-dock/widgets/catalog/official";
+import { validateOfficialWidgetManifest } from "../../../../shared/system-dock/widgets/catalog/manifest";
+import type { UnifiedPluginPlatform } from "../platform/service";
+import { verifyUnifiedPluginDistribution } from "../distribution/verify";
+import { importVerifiedPluginFiles } from "../integration/distribution";
+
+export async function installBundledWidget(platform: UnifiedPluginPlatform, pluginId: OfficialWidgetId,
+  userData: string, signal: AbortSignal, assertCurrent = () => {}) {
+  signal.throwIfAborted();
+  assertCurrent();
+  const mainDirectory = app.isPackaged
+    ? join(process.resourcesPath, "app.asar.unpacked", relative(app.getAppPath(), __dirname))
+    : __dirname;
+  const directory = join(mainDirectory, "official-plugins", OFFICIAL_WIDGETS[pluginId].directory);
+  const checked = await verifyUnifiedPluginDistribution(directory);
+  const { distribution, packageDigest } = checked;
+  if (distribution.pluginId !== pluginId) throw new Error("Bundled Widget identity differs from its resource directory");
+  validateOfficialWidgetManifest(distribution.manifest, true);
+  const existing = platform.get(pluginId);
+  if (existing && existing.installation.origin !== "official") throw new Error("Official Widget identity is already owned");
+  if (existing?.acceptedRevision === distribution.revisionId && platform.isActive(pluginId, distribution.revisionId)) return;
+
+  const buildsRoot = join(userData, "official-widget-packages");
+  const destination = join(buildsRoot, pluginId, distribution.revisionId.slice(7));
+  const hasCache = await lstat(destination).then(() => true, error => {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  });
+  const intact = hasCache && await verifyUnifiedPluginDistribution(destination).then(value => value.packageDigest === packageDigest, () => false);
+  signal.throwIfAborted();
+  assertCurrent();
+  if (hasCache && !intact) {
+    // Leave the damaged bytes beside the cache for diagnosis. Only the exact verified revision can replace them.
+    await rename(destination, destination + ".damaged-" + randomUUID());
+  }
+  const revision = await importVerifiedPluginFiles(checked, buildsRoot, 0);
+  await platform.installOfficialWidget({
+    ...revision, officialWidget: { publisherId: "bottega", bundleDigest: packageDigest },
+  }, { signal, assertCurrent });
 }

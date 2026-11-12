@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, window context, surface migration, shared feedback toasts, ArchiveCelebrationHost, SketchHost, lazy unified plugin update/page hosts, startup marks, and the build-gated cloud account lifecycle.
- * [OUTPUT]: Provides the module entry, registered side effects, route visibility for Chat and catalog background navigation, and independent Skills and Extensions settings routes.
+ * [OUTPUT]: Provides the module entry, registered side effects, route visibility for Chat and catalog navigation, and independent Skills, Extensions and MCP settings destinations.
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
 import { SettingsNavigationContext } from "@/components/providers/navigation/context";
@@ -175,9 +175,9 @@ const BrowserSettingsView = lazy(() =>
     default: module.BrowserSettingsView,
   }))
 );
-const ToolsSettingsView = lazy(() =>
+const McpSettingsView = lazy(() =>
   import("@/views/settings/tools/settings-tools").then((module) => ({
-    default: module.ToolsPanel,
+    default: module.McpSettingsView,
   }))
 );
 const SkillsSettingsView = lazy(() =>
@@ -528,7 +528,7 @@ function ProductApp() {
                               />
                               <Route
                                 path="/settings/tools"
-                                element={<ToolsSettingsView />}
+                                element={<McpSettingsView />}
                               />
                               <Route
                                 path={SKILLS_SETTINGS_PATH}
@@ -554,7 +554,7 @@ function ProductApp() {
                           {settingsSection === "plugins" && <PluginsSettingsView target={pluginTarget} onOpenPlugin={setPluginTarget} />}
                           {settingsSection === "personalization" && <PersonalizationSettingsView />}
                           {settingsSection === "browser" && <BrowserSettingsView />}
-                          {settingsSection === "tools" && <ToolsSettingsView />}
+                          {settingsSection === "tools" && <McpSettingsView />}
                           {settingsSection === "usage" && <UsageSettingsView focusAgent={usageAgent} />}
                           {settingsSection === "dock" && <DockSettingsView />}
                           {settingsSection === "archive" && <ArchiveSettingsView />}

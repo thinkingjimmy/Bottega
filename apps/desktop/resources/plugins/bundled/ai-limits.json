@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "id": "bottega-ai-limits",
+  "name": "AI Limits",
+  "description": "Show remaining AI quota and reset times.",
+  "version": "1.0.0",
+  "source": {
+    "kind": "official",
+    "format": "bottega",
+    "editable": false
+  },
+  "dataContract": "limits-v1",
+  "slots": {
+    "declares": [],
+    "injects": [
+      {
+        "slot": "dock.widgets",
+        "ownerPluginId": "host"
+      }
+    ]
+  },
+  "contributions": [
+    {
+      "kind": "widget",
+      "id": "remaining",
+      "name": "AI Limits",
+      "entry": "host-card.js",
+      "slot": "dock.widgets",
+      "customCard": false,
+      "settingsSchema": {
+        "type": "object",
+        "properties": {
+          "selectedBackends": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "string"
+            }
+          },
+          "selectionByBackend": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "poolId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "windowId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "minLength": 1,
+                  "maxLength": 256
+                }
+              },
+              "required": [
+                "poolId",
+                "windowId"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "selectedBackends",
+          "selectionByBackend"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "requirements": {
+    "runtimes": [
+      "desktop"
+    ],
+    "platforms": [
+      "darwin"
+    ]
+  }
+}

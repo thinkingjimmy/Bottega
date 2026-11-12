@@ -9,6 +9,7 @@ export const weatherJa={
   "city": "都市",
   "search": "都市を検索",
   "searching": "検索中…",
+  "addWithoutCity": "都市を選ばずに追加",
   "changeCity": "都市を変更",
   "cancelCityChange": "変更をキャンセル",
   "noCities": "都市が見つかりません。",

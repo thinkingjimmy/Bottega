@@ -1,26 +1,21 @@
 /**
  * [INPUT]: Depends on the settingsToolsEn structural type
- * [OUTPUT]: Provides settingsToolsFr, the French Settings Tools catalog including offline Design font access
+ * [OUTPUT]: Provides the fr catalog for global MCP settings, official tool descriptions, and runtime support
  * [POS]: French leaf of shared/i18n/locales/settings/tools; loaded on demand by the matching top-level locale
  */
 
 import type { settingsToolsEn } from "./en";
 
 export const settingsToolsFr: typeof settingsToolsEn = {
-  globalScopeNote: "Ces réglages sont globaux. Chaque Project peut les remplacer sans modifier cette page.",
   supportReason: {
     "runtime-unavailable": "Runtime indisponible", "builtin-tools-unsupported": "Outils intégrés non pris en charge", "transport-unsupported": "Transport non pris en charge",
     "turn-origin-unsupported": "Indisponible pour cette origine de tour", "plan-mode-unsupported": "Indisponible dans les tours Plan", "security-policy": "Bloqué par la politique de sécurité", unknown: "Backend indisponible",
     minimumRuntimeVersion: "Nécessite le runtime {{minimumVersion}} ou ultérieur (détecté : {{detectedVersion}})", unknownVersion: "version inconnue",
   },
   builtin: {
-    title: "Outils intégrés", saveFailed: "Impossible d’enregistrer le réglage de l’outil intégré", disabledCount: "{{count}} désactivés",
-    globalDescription: "Les valeurs globales s’appliquent au prochain tour ; chaque Project peut remplacer chaque outil.",
-    projectDescription: "Choisissez l’intention de ce Project pour chaque outil. Réinitialiser restaure la valeur globale.",
-    resetAll: "Réinitialiser tous les remplacements du Project", resetOne: "Réinitialiser {{name}} à la valeur globale",
-    source: { "global-default": "Valeur globale", "project-override": "Remplacement du Project" },
+    saveFailed: "Impossible d’enregistrer le réglage de l’outil intégré",
+    globalDescription: "Les changements s’appliquent à tous les chats à partir du prochain tour.",
     effective: { enabled: "Activé", disabled: "Désactivé", unavailable: "Intention activée ; Backend indisponible" },
-    domain: { sections: "Sections", subagents: "Sous-agents", projects: "Projects", bases: "Bases", search: "Recherche", browser: "Browser", design: "Design", apps: "Apps" },
     items: {
       list_sections: { label: "Lister les Sections", hint: "Afficher tous les Chats persistants et leur résumé Base." },
       read_section: { label: "Lire une Section", hint: "Lire la transcription enregistrée d’un autre Chat." },
@@ -67,17 +62,12 @@ export const settingsToolsFr: typeof settingsToolsEn = {
     },
   },
   mcp: {
+    pageTitle: "MCP",
     title: "Serveurs MCP", add: "Ajouter un serveur", edit: "Modifier", delete: "Supprimer {{name}}", emptyTitle: "Aucun serveur MCP", addTitle: "Ajouter un serveur MCP", editTitle: "Modifier le serveur MCP", dialogDescription: "Seul stdio est pris en charge et la commande doit être un chemin absolu. Après enregistrement, le serveur entier est injecté au prochain tour humain non Plan.", name: "Nom", command: "Chemin absolu de la commande", args: "Arguments (un par ligne)", environment: "Variables d’environnement", addVariable: "Ajouter une variable", envName: "Nom de variable d’environnement", envNewValue: "Nouvelle valeur de {{name}}", envFallbackName: "variable d’environnement", retainValue: "Laisser vide pour conserver la valeur", value: "Valeur", removeVariable: "Supprimer {{name}}", envNameRequired: "Le nom de la variable ne peut pas être vide", envValueRequired: "Saisissez une nouvelle valeur pour {{name}}", descriptionLine: "{{transport}} · {{target}} · {{eligibility}} · {{health}}",
-    globalDescription: "Gérez les serveurs MCP globaux. Les Projects peuvent les hériter ou les remplacer sans modifier cette liste.",
-    projectDescription: "Les serveurs du Project lui sont privés. Les serveurs globaux hérités peuvent être remplacés ici.",
-    globalEmptyHint: "Ajoutez ici un serveur global. Les serveurs propres aux Projects n’apparaissent jamais sur cette page.",
+    globalDescription: "Gérez les serveurs MCP de tous les projets et chats indépendants sur cet ordinateur.",
+    globalEmptyHint: "Ajoutez un serveur pour l’utiliser dans les chats.",
     bridgeMissing: "Les réglages des serveurs MCP sont indisponibles dans cet environnement.",
-    projectGroup: "Serveurs du Project", projectGroupEmpty: "Aucun serveur propre au Project",
-    inheritedGroup: "Serveurs globaux hérités", inheritedGroupEmpty: "Aucun serveur global à hériter",
-    allInherited: "Ce Project utilise actuellement uniquement les réglages globaux hérités.",
-    editGlobally: "Modifier les serveurs MCP globaux dans Settings", resetOne: "Réinitialiser {{name}} à la valeur globale",
     conflict: "Le serveur a changé ailleurs. Le dernier état a été chargé et votre brouillon est conservé.",
-    source: { "global-default": "Valeur globale", "project-override": "Remplacement du Project", "project-owned": "Propre au Project" },
     effective: { enabled: "Activé", disabled: "Désactivé", unavailable: "Intention activée ; Backend indisponible" },
     eligibility: { eligible: "Actif au prochain tour humain non Plan", "remote-policy-unsupported": "Les canaux Remote ne sont pas encore disponibles", "authenticated-remote-unsupported": "Remote authentifié avec headers statiques non pris en charge", "query-remote-unsupported": "URL remote avec paramètres query non prise en charge" },
     health: { unobserved: "État non observé", healthy: "Protocole réussi", degraded: "Échec du protocole, nouvelle tentative en attente", quarantined: "État du processus inconnu, mis en quarantaine" },

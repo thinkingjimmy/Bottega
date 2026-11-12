@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React external stores and bounded catalog summary pages.
- * [OUTPUT]: useUnifiedPlugins for explicit management pagination and atomic fresh-cursor reloads retaining completed and requested depth.
+ * [OUTPUT]: Settings-scoped plugin management pagination with atomic refresh of the requested depth.
  * [POS]: Optional Plugins management projection; it does not define runtime contribution discovery.
  */
 import {useSyncExternalStore} from 'react';
@@ -19,13 +19,13 @@ async function loadCatalog(append=false){
   const depth=catalogRequestedDepth;
   const request=++catalogGeneration;catalogState={...catalogState,busy:true};emitCatalog();
   try{
-    let next=await bridge.list({limit:100,...(cursor?{cursor}:{})});if(request!==catalogGeneration)return;
+    let next=await bridge.list({scope:"settings",limit:100,...(cursor?{cursor}:{})});if(request!==catalogGeneration)return;
     const revision=next.revision;
     if(append&&previous?.revision!==revision)throw new Error('Stale plugin catalog cursor');
     const items=append?[...(previous?.items??[]),...next.items]:[...next.items];
     // A live notification must also satisfy an explicit Load more that has not returned yet.
     while(!append&&next.nextCursor&&items.length<depth){
-      next=await bridge.list({limit:100,cursor:next.nextCursor});if(request!==catalogGeneration)return;
+      next=await bridge.list({scope:"settings",limit:100,cursor:next.nextCursor});if(request!==catalogGeneration)return;
       if(next.revision!==revision)throw new Error('Stale plugin catalog cursor');
       items.push(...next.items);
     }

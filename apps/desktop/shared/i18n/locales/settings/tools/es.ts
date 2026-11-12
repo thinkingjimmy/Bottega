@@ -1,26 +1,21 @@
 /**
  * [INPUT]: Depends on the settingsToolsEn structural type
- * [OUTPUT]: Provides settingsToolsEs, the Spanish Settings Tools catalog including offline Design font access
+ * [OUTPUT]: Provides the es catalog for global MCP settings, official tool descriptions, and runtime support
  * [POS]: Spanish leaf of shared/i18n/locales/settings/tools; loaded on demand by the matching top-level locale
  */
 
 import type { settingsToolsEn } from "./en";
 
 export const settingsToolsEs: typeof settingsToolsEn = {
-  globalScopeNote: "Estos ajustes son globales. Cada Project puede sustituirlos sin cambiar esta página.",
   supportReason: {
     "runtime-unavailable": "Runtime no disponible", "builtin-tools-unsupported": "Herramientas integradas no compatibles", "transport-unsupported": "Transporte no compatible",
     "turn-origin-unsupported": "No disponible para este origen de turno", "plan-mode-unsupported": "No disponible en turnos Plan", "security-policy": "Bloqueado por la política de seguridad", unknown: "Backend no disponible",
     minimumRuntimeVersion: "Requiere runtime {{minimumVersion}} o posterior (detectado: {{detectedVersion}})", unknownVersion: "versión desconocida",
   },
   builtin: {
-    title: "Herramientas integradas", saveFailed: "No se pudo guardar el ajuste de la herramienta integrada", disabledCount: "{{count}} desactivadas",
-    globalDescription: "Los valores globales se aplican en el siguiente turno; cada Project puede sustituir cada herramienta.",
-    projectDescription: "Elige la intención de este Project para cada herramienta. Restablecer recupera el valor global.",
-    resetAll: "Restablecer todas las sustituciones del Project", resetOne: "Restablecer {{name}} al valor global",
-    source: { "global-default": "Valor global", "project-override": "Sustitución del Project" },
+    saveFailed: "No se pudo guardar el ajuste de la herramienta integrada",
+    globalDescription: "Los cambios se aplican de forma global a partir del siguiente turno.",
     effective: { enabled: "Activado", disabled: "Desactivado", unavailable: "Intención activada; Backend no disponible" },
-    domain: { sections: "Sections", subagents: "Subagentes", projects: "Projects", bases: "Bases", search: "Búsqueda", browser: "Browser", design: "Diseño", apps: "Apps" },
     items: {
       list_sections: { label: "Listar Sections", hint: "Ver todos los Chats persistentes y el resumen de sus Bases." },
       read_section: { label: "Leer Section", hint: "Leer la transcripción guardada de otro Chat." },
@@ -67,17 +62,12 @@ export const settingsToolsEs: typeof settingsToolsEn = {
     },
   },
   mcp: {
+    pageTitle: "MCP",
     title: "Servidores MCP", add: "Añadir servidor", edit: "Editar", delete: "Eliminar {{name}}", emptyTitle: "Aún no hay servidores MCP", addTitle: "Añadir servidor MCP", editTitle: "Editar servidor MCP", dialogDescription: "Solo se admite stdio y el comando debe ser una ruta absoluta. Al guardar, el servidor completo se inyecta en el siguiente turno humano no Plan.", name: "Nombre", command: "Ruta absoluta del comando", args: "Argumentos (uno por línea)", environment: "Variables de entorno", addVariable: "Añadir variable", envName: "Nombre de variable de entorno", envNewValue: "Nuevo valor de {{name}}", envFallbackName: "variable de entorno", retainValue: "Déjalo vacío para conservar el valor", value: "Valor", removeVariable: "Eliminar {{name}}", envNameRequired: "El nombre de la variable no puede estar vacío", envValueRequired: "Introduce un valor nuevo para {{name}}", descriptionLine: "{{transport}} · {{target}} · {{eligibility}} · {{health}}",
-    globalDescription: "Gestiona los servidores MCP globales. Los Projects pueden heredarlos o sustituirlos sin cambiar esta lista.",
-    projectDescription: "Los servidores del Project son privados. Los servidores globales heredados se pueden sustituir aquí.",
-    globalEmptyHint: "Añade aquí un servidor global. Los servidores propios de Projects nunca aparecen en esta página.",
+    globalDescription: "Gestiona los servidores MCP de todos los proyectos y chats independientes de este equipo.",
+    globalEmptyHint: "Añade un servidor para usarlo en los chats.",
     bridgeMissing: "Los ajustes de servidores MCP no están disponibles en este entorno.",
-    projectGroup: "Servidores del Project", projectGroupEmpty: "No hay servidores propios del Project",
-    inheritedGroup: "Servidores globales heredados", inheritedGroupEmpty: "No hay servidores globales para heredar",
-    allInherited: "Este Project usa actualmente solo los ajustes globales heredados.",
-    editGlobally: "Editar servidores MCP globales en Settings", resetOne: "Restablecer {{name}} al valor global",
     conflict: "El servidor cambió en otro lugar. Se cargó el estado más reciente y se conservó tu borrador.",
-    source: { "global-default": "Valor global", "project-override": "Sustitución del Project", "project-owned": "Propio del Project" },
     effective: { enabled: "Activado", disabled: "Desactivado", unavailable: "Intención activada; Backend no disponible" },
     eligibility: { eligible: "Activo en el siguiente turno humano no Plan", "remote-policy-unsupported": "Los canales Remote aún no están disponibles", "authenticated-remote-unsupported": "Remote autenticado con headers estáticos no compatible", "query-remote-unsupported": "URL remote con parámetros query no compatible" },
     health: { unobserved: "Estado no observado", healthy: "Protocolo correcto", degraded: "Falló el protocolo; esperando reintento", quarantined: "Estado del proceso desconocido; en cuarentena" },

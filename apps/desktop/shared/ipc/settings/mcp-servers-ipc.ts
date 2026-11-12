@@ -1,12 +1,11 @@
 /**
- * [INPUT]: Depends on Agent backend identity, neutral Product resource scope, Project override intent, and Extension MCP health subject
- * [OUTPUT]: Provides exact-scope masked manual MCP snapshots, scope-fenced mutations/events, no-collision aliases, and main-only frozen third-party plan types
- * [POS]: apps/desktop/shared/ipc/settings; Shared MCP boundary; renderer sees only global or exact-Project manual servers while package Extension MCP and secret values remain absent
+ * [INPUT]: Depends on Agent backend identity, Product resource scope, and Extension MCP health subjects
+ * [OUTPUT]: Provides masked global manual MCP snapshots, revision-fenced mutations and events, unique aliases, and main-only frozen third-party plan types
+ * [POS]: apps/desktop/shared/ipc/settings; renderer contract for global MCP settings and separate runtime plan types
  */
 
 import type { ProviderId } from "@bottega/contracts/model/provider";
 import type { McpComponentHealthSubject } from "./extensions-ipc";
-import type { ToolOverride } from "../workspace/project-tools-ipc";
 import type {
   EffectiveResourceState,
   ProductResourceScope,
@@ -43,23 +42,16 @@ export type McpServerHealthView = Readonly<{
   detail: string;
 }>;
 
-type McpServerEffectiveSource =
-  | "global-default"
-  | "project-override"
-  | "project-owned";
+export type ManualMcpScope = Extract<ProductResourceScope, { kind: "global" }>;
 
 type McpServerViewBase = Readonly<{
   serverId: `manual:${string}`;
   source: "manual";
-  owner: ProductResourceScope;
+  owner: ManualMcpScope;
   displayName: string;
-  /** Persisted owner value before an exact Project override is applied. */
-  configuredEnabled: boolean;
-  /** User intent in the queried scope; hard backend limits are separate. */
+  /** User intent before runtime capability and policy checks. */
   enabled: boolean;
-  override: ToolOverride | null;
   effectiveState: EffectiveResourceState;
-  effectiveSource: McpServerEffectiveSource;
   backendSupport: readonly ResourceBackendSupportView[];
   eligibility: ManualMcpEligibility;
   configDigest: string;
@@ -84,11 +76,9 @@ export type ManualMcpServerView =
 /* 包 Extension MCP 不在这份契约里，也不是"暂时没投影"：renderer 面只认
    manual server，让"零暴露"由类型系统承担，而不是由某个投影函数的纪律。 */
 export type McpServersSnapshot = Readonly<{
-  queryScope: ProductResourceScope;
+  queryScope: ManualMcpScope;
   storeRevision: number;
   globalScopeRevision: number;
-  projectScopeRevision: number | null;
-  projectLifecycleRevision: number | null;
   servers: readonly ManualMcpServerView[];
 }>;
 
@@ -114,17 +104,11 @@ export type ManualMcpServerDraft = Readonly<{
       }>;
 }>;
 
-type ManualMcpMutationFence =
-  | Readonly<{
-      scope: Readonly<{ kind: "global" }>;
-      expectedScopeRevision: number;
-      expectedProjectLifecycleRevision: null;
-    }>
-  | Readonly<{
-      scope: Readonly<{ kind: "project"; projectId: string }>;
-      expectedScopeRevision: number;
-      expectedProjectLifecycleRevision: number;
-    }>;
+type ManualMcpMutationFence = Readonly<{
+  scope: ManualMcpScope;
+  expectedScopeRevision: number;
+  expectedProjectLifecycleRevision: null;
+}>;
 
 export type SaveManualMcpServerInput = ManualMcpMutationFence & Readonly<{
   serverId?: `manual:${string}`;
@@ -136,11 +120,14 @@ export type RemoveManualMcpServerInput = ManualMcpMutationFence & Readonly<{
 }>;
 
 export type McpServersQuery = Readonly<{
-  scope: ProductResourceScope;
+  scope: ManualMcpScope;
 }>;
 
 export type McpServersChangedEvent = Readonly<{
-  version: ScopedResourceVersion;
+  version: ScopedResourceVersion & Readonly<{
+    scope: ManualMcpScope;
+    projectLifecycleRevision: null;
+  }>;
   storeRevision: number;
 }>;
 

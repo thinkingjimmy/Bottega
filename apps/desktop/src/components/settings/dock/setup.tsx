@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React, the desktop i18n provider, the shared Dialog root and StepDialogContent shell, Settings primitives, the Dock settings store/session calls, the shared candidate checklist, and Dock layout/preview projections.
+ * [INPUT]: Depends on React, the desktop i18n provider, the shared Dialog root and StepDialogContent shell, Settings primitives, the Dock settings store/session calls, the shared candidate checklist, Dock layout previews and native Widget package identities.
  * [OUTPUT]: Distinguishes signed-installation admission states.
  * Provides `DockSetupDialog`: replacement goes from mode directly to impact consent, then main automatically configures current system pins without an app checklist. Coexistence retains optional copy choices. Progress and Back follow visible steps; the footer omits Cancel, while dismissal releases preview sessions, including late replies. `flow: "consent"` opens directly on impact.
  * [POS]: settings/dock onboarding flow (3.1, DCK-08, DCK-46, INV-01), opened by the master switch; nothing is written before confirm, and the page reports the resulting phase honestly instead of declaring success here.
@@ -15,6 +15,8 @@ import { dockSettingsStore } from "@/lib/platform/system-dock-settings-client";
 import type { DockCapability, DockSetupPreview } from "../../../../shared/system-dock/ipc";
 import type { DockMode } from "../../../../shared/system-dock/local-state";
 import { CandidateChecklist, readFailureKey } from "./candidates";
+
+import { nativeWidgetType } from "../../../../shared/system-dock/widgets/catalog/official";
 
 export type DockSetupFlow = "full" | "consent";
 type PreviewStep = "layout" | "impact" | "import";
@@ -36,8 +38,13 @@ const TITLE_KEYS = { mode: "systemDock.settings.modeTitle", loading: "systemDock
 function PreviewStrip({ preview, selected }: { preview: DockSetupPreview; selected: ReadonlySet<string> }) {
   const { t } = useAppTranslation();
   const apps = preview.candidates.filter((candidate) => selected.has(candidate.key)).map((candidate) => candidate.label);
-  const fixed = preview.preview.items.flatMap((item) => item.kind === "system" ? [t(ENTRY_KEYS[item.entry])]
-    : item.kind === "widget" ? [(item.widget.type==='custom'||item.widget.type==='plugin')?(item.label??t('systemDock.widgets.title')):t(ENTRY_KEYS[item.widget.type])] : []);
+  const fixed = preview.preview.items.flatMap(item => {
+    if (item.kind === "system") return [t(ENTRY_KEYS[item.entry])];
+    if (item.kind !== "widget") return [];
+    const type = item.widget.type === "plugin" ? nativeWidgetType(item.widget.pluginId, item.widget.contributionId)
+      : item.widget.type === "custom" ? undefined : item.widget.type;
+    return [item.label ?? (type ? t(ENTRY_KEYS[type]) : t("systemDock.widgets.title"))];
+  });
   const labels = fixed[0] === t("systemDock.entry.finder") ? [fixed[0], ...apps, ...fixed.slice(1)] : [...apps, ...fixed];
   return <ol aria-label={t("systemDock.settings.previewLabel")} className="flex flex-wrap gap-1.5">
     {labels.map((label, index) => <li key={`${label}-${index}`} className="rounded-md bg-muted px-2 py-1 text-xs">{label}</li>)}

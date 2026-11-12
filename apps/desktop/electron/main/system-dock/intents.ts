@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on DockService facts and effects, the shared placement kernel, the add-candidate table, and Electron dialog/Menu for the two native affordances.
- * [OUTPUT]: Provides handleIntent: the single dispatcher for validated bar/panel intents — hover, activation (native/Bottega App, same-process host activation, running item, Finder, detail toggle), context menu, panel navigation, Downloads/Trash actions, add/remove/undo/move/pin, Widget draft/apply (refused as stale when the applied Widget changed since the draft began, unless forced)/cancel/refresh, full Usage and Settings destinations, system Dock restore, and runtime- and placement-fenced action completions that cannot invalidate or close a later run.
+ * [OUTPUT]: Routes Dock intents, applies Widget drafts to plugin instances and validates task navigation against the live Widget.
  * [POS]: system-dock intent boundary; every layout edit commits once through DockConfigStore.edit, and no intent can reach a path, shell, AX or Apple Event beyond the fixed adapters (INV-13/14).
  */
 
@@ -9,7 +9,8 @@ import { randomUUID } from "node:crypto";
 import { translate } from "../../../shared/i18n/runtime";
 import { agentBackendIdSchema } from "../../../shared/platform/agent-schema";
 import type { DockIntent } from "../../../shared/system-dock/ipc";
-import type { DockItemDraft } from "../../../shared/system-dock/layout";
+import { nativeDockWidget, toPluginDockWidget, type DockItemDraft } from "../../../shared/system-dock/layout";
+import { validateOfficial } from "./store/custom/official";
 import { addItem, moveItem, removeItem, undoRemove, updateItem } from "../../../shared/system-dock/placement";
 import { openDockTask } from "./widgets/tasks";
 import { addCandidates } from "./panel-snapshot";
@@ -89,11 +90,13 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
     }
     case "widget-draft": {
       const item = service.layoutItem(intent.itemId);
-      if (item?.kind !== "widget" || item.widget.type !== intent.widget.type) return;
-      if (intent.widget.type === "builtin.ai-activity" && !service.activityAllowed()) throw new Error("Official AI usage Widget is unavailable");
-      if (!service.draftBases.has(intent.itemId)) service.draftBases.set(intent.itemId, canonical(intent.base ?? item.widget));
-      service.drafts.set(intent.itemId, intent.widget);
-      service.setWidgetDemand("dock-panel", [{ itemId: intent.itemId, widget: intent.widget }]);
+      if (item?.kind !== "widget" || service.nativeWidget(item.widget)?.type !== intent.widget.type) return;
+      const draft = item.widget.type === "plugin" ? { ...toPluginDockWidget(item.id, intent.widget), size: item.widget.size } : intent.widget;
+      const base = item.widget.type === "plugin" && intent.base
+        ? { ...toPluginDockWidget(item.id, intent.base), size: item.widget.size } : intent.base ?? item.widget;
+      if (!service.draftBases.has(intent.itemId)) service.draftBases.set(intent.itemId, canonical(base));
+      service.drafts.set(intent.itemId, draft);
+      service.setWidgetDemand("dock-panel", [{ itemId: intent.itemId, widget: draft }]);
       service.schedule();
       return;
     }
@@ -102,11 +105,15 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
       if (!draft) return;
       let stale = false;
       await service.ports.config.edit((layout) => {
-        if (draft.type === "builtin.ai-activity" && !service.activityAllowed()) throw new Error("Official AI usage Widget is unavailable");
         const current = layout.items.find((item) => item.id === intent.itemId);
+        const native = service.nativeWidget(draft);
+        if (!native) throw new Error("Official Widget is unavailable");
         // Checked inside the store's serialized edit: a sync adoption between check and write cannot slip past (3.4).
         if (!intent.force && current?.kind === "widget" && canonical(current.widget) !== service.draftBases.get(intent.itemId)) { stale = true; return layout; }
-        const result = updateItem(layout, intent.itemId, (item) => item.kind === "widget" ? { ...item, widget: draft } : item); return "failure" in result ? layout : result;
+        if (current?.kind !== "widget" || nativeDockWidget(current.widget)?.type !== native.type) return layout;
+        validateOfficial(native, service.officialConfiguration(), nativeDockWidget(current.widget) ?? undefined);
+        const result = updateItem(layout, intent.itemId, item => item.kind === "widget" ? { ...item, widget: draft } : item);
+        return "failure" in result ? layout : result;
       });
       if (stale) { service.staleDrafts.add(intent.itemId); service.schedule(); return; }
       service.dropDraft(intent.itemId);
@@ -116,10 +123,10 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
     case "widget-cancel": service.dropDraft(intent.itemId); service.refreshPanelDemand(); service.schedule(); return;
     case "refresh-usage": {
       const item = service.layoutItem(intent.itemId);
-      if (item?.kind === "widget" && item.widget.type === "builtin.ai-activity" && service.ports.custom?.officialDirectory &&
-          (!service.activityAllowed() || service.ports.local.get().privacyMask || service.panelTargetItem() !== item.id))
-        throw new Error("Official AI usage Widget is unavailable");
-      if (item?.kind === "widget") {if(item.widget.type==='custom'||item.widget.type==='plugin')await service.ports.custom?.refresh(item.id);else await service.usage.refresh(service.drafts.get(item.id) ?? item.widget);}
+      if (item?.kind !== "widget" || service.ports.local.get().privacyMask || service.panelTargetItem() !== item.id) return;
+      const native = service.nativeWidget(service.drafts.get(item.id) ?? item.widget, true);
+      if (native) await service.usage.refresh(native);
+      else await service.ports.custom?.refresh(item.id);
       return;
     }
     case "open-full-usage": {
@@ -130,9 +137,9 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
     case "open-task": {
       if (role !== "panel") throw new Error("DOCK_PANEL_REQUIRED");
       const item = service.layoutItem(service.panelTargetItem() ?? "");
-      if (item?.kind !== "widget" || item.widget.type !== "builtin.tasks") throw new Error("DOCK_TASKS_NOT_VISIBLE");
+      if (item?.kind !== "widget" || service.nativeWidget(item.widget)?.type !== "builtin.tasks") throw new Error("DOCK_TASKS_NOT_VISIBLE");
       const current = service.captureInteraction();
-      await openDockTask(service.ports.tasks, intent.task);
+      await openDockTask(service.ports.tasks, intent.task, current);
       if (current()) service.closePanel(false);
       return;
     }

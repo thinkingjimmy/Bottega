@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Electron package identity, the local development catalog path and accepted revision receipts.
- * [OUTPUT]: Unpackaged-only Widget distribution admission and retirement of the legacy Weather runtime in that mode.
+ * [INPUT]: Electron package identity and the local development catalog path.
+ * [OUTPUT]: Allows local archive distribution only for unpackaged Apple silicon macOS builds.
  * [POS]: Main-owned switch between the current production bundle and local distribution acceptance.
  */
 import { app } from "electron";

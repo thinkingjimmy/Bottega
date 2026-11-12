@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow/ipcMain, the frame guard, the isolated system-dock preload, and the shared bar/panel channels and intent validator.
- * [OUTPUT]: Provides least-privilege Dock windows and DockIpc, pinning iframe documents to exact window leases and authorizing snapshots/intents/icons and panel-only bounded download visuals by live webContents, main frame and exact URL.
+ * [OUTPUT]: Provides least-privilege Dock windows with main-owned bar placement and DockIpc, pinning iframe documents to exact window leases and authorizing snapshots/intents/icons and panel-only bounded download visuals by live webContents, main frame and exact URL.
  * [POS]: system-dock/window trust boundary (INV-13); stale, destroyed or foreign senders are rejected before any intent reaches DockService.
  */
 
@@ -20,6 +20,8 @@ export function dockEntryUrl(mainDirectory: string, role: DockRole, rendererUrl 
 export function createDockSurface(input: { mainDirectory: string; role: DockRole; url: string; focusable: boolean; onGone(): void }): BrowserWindow {
   const window = new BrowserWindow({ show: false, frame: false, transparent: true, backgroundColor: "#00000000", resizable: false, movable: false, skipTaskbar: true, hasShadow: input.role === "panel",
     type: "panel", hiddenInMissionControl: true, focusable: input.focusable, acceptFirstMouse: true, minimizable: false, maximizable: false, fullscreenable: false,
+    // The bar's bounds already account for the active mode. Keep AppKit from moving the replacement bar into the work area.
+    enableLargerThanScreen: input.role === "bar",
     // The bar's native material (set per reveal by the service) is clipped by these corners; keep it active while unfocused.
     roundedCorners: true, visualEffectState: "active", width: 200, height: 40,
     webPreferences: { preload: join(input.mainDirectory, "../preload/system-dock.js"), sandbox: true, contextIsolation: true, nodeIntegration: false,
