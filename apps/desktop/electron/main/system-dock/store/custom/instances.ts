@@ -62,6 +62,7 @@ export class DockWidgetInstances{
   const input=officialWidgetQuerySchema.parse(raw),scope=this.liveScope(),before='itemId'in input?dockWidgetItemSchema.parse(this.ports.config.layout().items.find(item=>item.id===input.itemId)):null;
   if((before?.widget.type==='custom'||before?.widget.type==='plugin'))throw new Error('DOCK_OFFICIAL_WIDGET_REQUIRED');const directory=this.ports.officialDirectory();
   const widget=before?before.widget:officialDefault('definitionId'in input?input.definitionId:'builtin.tasks',directory);
+  if(widget.type==='builtin.ai-activity'&&directory.activityAllowed===false)throw new Error('DOCK_OFFICIAL_WIDGET_UNAVAILABLE');
   const value=officialWidgetFormSchema.parse({previewId:this.id(),itemId:before?.id??null,name:before?.label??this.ports.officialName(widget.type),widget,layoutRevision:this.ports.config.snapshot().localRevision,...officialChoices(directory)});
   for(const [id,entry]of this.officialForms)if(entry.expiresAt<=Date.now())this.officialForms.delete(id);while(this.officialForms.size>=16)this.officialForms.delete(this.officialForms.keys().next().value!);
   this.officialForms.set(value.previewId,{scope,value,before,expiresAt:Date.now()+600_000});return value;
@@ -69,7 +70,7 @@ export class DockWidgetInstances{
  submitOfficial(raw:SubmitOfficialWidget){const input=submitOfficialWidgetSchema.parse(raw);return this.mutate(input.operationId,input,async scope=>{
   const entry=this.officialForms.get(input.previewId);if(!entry||entry.expiresAt<=Date.now()||canonicalJson(entry.scope)!==canonicalJson(scope))throw new Error('DOCK_PREVIEW_EXPIRED');
   if(input.widget.type!==entry.value.widget.type||this.ports.config.snapshot().localRevision!==entry.value.layoutRevision||entry.before&&canonicalJson(this.ports.config.layout().items.find(item=>item.id===entry.before!.id)??null)!==canonicalJson(entry.before))throw new Error('DOCK_INSTANCE_CONFLICT');
-  validateOfficial(input.widget,this.ports.officialDirectory());
+  validateOfficial(input.widget,this.ports.officialDirectory(),entry.before?.widget);
   const name=entry.before?input.name:allocateWidgetName(input.name,this.ports.config.layout().items.flatMap(item=>item.kind==='widget'?[item.label??'']:[]),this.ports.locale());
   return{kind:entry.before?'configure':'add',before:entry.before,target:{id:entry.before?.id??this.id(),kind:'widget',label:name,widget:input.widget},mappingRevision:null,layoutRevision:entry.value.layoutRevision,paused:null,permission:null,api:null};
  });}
@@ -124,12 +125,12 @@ export class DockWidgetInstances{
     await owner.put({...mapping,...intent.permission,revision:mapping.revision+1,lastOperationId:'instance:'+entry.operationId});return this.complete(entry,receipt('applied'));
    }
    if(intent.kind==='add'&&intent.target?.widget.type==='custom'&&!this.ports.stillSaved(intent.target.widget))throw new Error('DOCK_INSTANCE_CONFLICT');
-   if(intent.target&&intent.target.widget.type!=='custom'&&intent.target.widget.type!=='plugin')validateOfficial(intent.target.widget,this.ports.officialDirectory());
+   if(intent.target&&intent.target.widget.type!=='custom'&&intent.target.widget.type!=='plugin')validateOfficial(intent.target.widget,this.ports.officialDirectory(),intent.before?.widget);
    if(intent.target?.widget.type==='custom'&&intent.api)await this.ports.api?.prepare({operationId:entry.operationId,scope:entry.scope,target:customWidgetItemSchema.parse(intent.target),consent:intent.api.consent,draftOwnerId:intent.api.draftOwnerId});
    const config=this.ports.config.snapshot(),actual=config.layout.items.find(item=>item.id===itemId)??null,alreadyWritten=canonicalJson(actual)===canonicalJson(intent.target)&&(intent.kind==='remove'||config.localRevision===intent.layoutRevision+1);
    if(!alreadyWritten){
     await this.ports.config.edit(layout=>{
-     this.assertScope(entry.scope);if(intent.target&&intent.target.widget.type!=='custom'&&intent.target.widget.type!=='plugin')validateOfficial(intent.target.widget,this.ports.officialDirectory());
+     this.assertScope(entry.scope);if(intent.target&&intent.target.widget.type!=='custom'&&intent.target.widget.type!=='plugin')validateOfficial(intent.target.widget,this.ports.officialDirectory(),intent.before?.widget);
      const current=layout.items.find(item=>item.id===itemId)??null;if(canonicalJson(current)!==canonicalJson(intent.before))throw new Error('DOCK_INSTANCE_CONFLICT');
      if(intent.kind==='add'){const {id,...draft}=intent.target!,added=addItem(layout,draft,{mint:()=>id});if('failure'in added)throw new Error('DOCK_WIDGET_ADD_FAILED');return added.layout;}
      if(intent.kind==='remove'){const removed=removeItem(layout,itemId);if('failure'in removed)throw new Error('DOCK_INSTANCE_CONFLICT');return removed.layout;}

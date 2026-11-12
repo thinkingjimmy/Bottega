@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the main quota owner (per-surface foreground/demand), the local usage history service, the shared quota projections, and the Dock Widget models.
- * [OUTPUT]: Provides DockUsage (its configurable Agents are the limits snapshot's, its activity sources and history resets the usage service's; no closed id list): per-surface (bar/panel) visibility-driven quota demand and today-activity reads with single flight, five-minute freshness, manual throttle and a failure backoff ladder; compact faces for both Widget kinds; detail projections; default Agent selection; and privacy-safe values (no guessing, zero vs unknown kept apart).
+ * [OUTPUT]: Provides DockUsage (its configurable Agents are the limits snapshot's, its activity sources and history resets the usage service's; no closed id list): per-surface (bar/panel/catalog) visibility-driven quota demand and today-activity reads with single flight, five-minute freshness, manual throttle and a failure backoff ladder; compact faces for both Widget kinds; detail projections; default Agent selection; and privacy-safe values (no guessing, zero vs unknown kept apart).
  * [POS]: system-dock/widgets Usage adapter (3.4, INV-11/12); prewarming is never a consumer, and releasing one surface never clears another window's demand.
  */
 
@@ -23,8 +23,8 @@ export type LimitsPort = {
 export type HistoryPort = { getSummary(target: UsageQueryTarget, options?: { forceRefresh?: boolean }): Promise<AgentUsageSummary>;
   /** The Providers with usage history, in display order: the activity sources. */
   sources(): readonly UsageSourceId[] };
-export type DockSurface = "dock-bar" | "dock-panel";
-type UsageSurface=DockSurface|'dock-custom-bar'|'dock-custom-panel'|'dock-preview-bar'|'dock-preview-panel';
+export type DockSurface = "dock-bar" | "dock-panel" | "dock-catalog";
+type UsageSurface=DockSurface|'dock-custom-bar'|'dock-custom-panel'|'dock-custom-catalog'|'dock-preview-bar'|'dock-preview-panel'|'dock-preview-catalog';
 type Activity = { summary: AgentUsageSummary | null; at: number; flight: Promise<void> | null; error: boolean; manualAt: number; failures: number };
 const ACTIVITY_REFRESH_MS = 5 * 60_000;
 
@@ -35,7 +35,7 @@ export class DockUsage {
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly stop: (() => void) | null;
   constructor(private readonly limits: LimitsPort | null, private readonly history: HistoryPort | null, private readonly changed: () => void,
-    private readonly now = Date.now) {
+    private readonly now = Date.now, private readonly activityAllowed = () => true) {
     this.stop = limits?.subscribe(() => this.changed()) ?? null;
   }
   /**
@@ -47,9 +47,10 @@ export class DockUsage {
     const previous = this.visible.get(surface);
     const limits = new Map<string, AgentBackendId[]>();
     const activity = new Set<UsageQueryTarget>();
+    const activityAllowed = this.activityAllowed();
     for (const { itemId, widget } of widgets) {
       if (widget.type === "builtin.ai-limits") { if (widget.selectedBackends.length) limits.set(itemId, [...widget.selectedBackends]); }
-      else if (widget.type === "builtin.ai-activity") activity.add(widget.source);
+      else if (widget.type === "builtin.ai-activity" && (surface.startsWith("dock-custom-") || surface.startsWith("dock-preview-") || activityAllowed)) activity.add(widget.source);
     }
     if (this.limits) {
       for (const itemId of previous?.limits.keys() ?? []) if (!limits.has(itemId)) this.limits.setDemand({ id: demandId(itemId), active: false, mode: "settings", backends: previous!.limits.get(itemId)! }, surface);
@@ -66,6 +67,10 @@ export class DockUsage {
     if (!want && this.timer) { clearInterval(this.timer); this.timer = null; }
   }
   private wantedActivity() { return new Set([...this.visible.values()].flatMap((entry) => [...entry.activity])); }
+  forgetUnusedActivity() {
+    const wanted = this.wantedActivity();
+    for (const target of this.activity.keys()) if (!wanted.has(target)) this.activity.delete(target);
+  }
   private readActivity(target: UsageQueryTarget, manual: boolean): Promise<void> {
     if (!this.history) return Promise.resolve();
     const state = this.activity.get(target) ?? { summary: null, at: 0, flight: null, error: false, manualAt: 0, failures: 0 };

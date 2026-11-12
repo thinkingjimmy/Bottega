@@ -219,8 +219,6 @@ export const basesJa: BasesCatalog = {
     leaseRefusedTitle: "この App ビューは再接続が必要です",
     leaseRefusedHint: "この App ビューへのアクセスは期限切れか取り消されています。App を開き直して続行してください。",
     surfaceAria: "App GUI",
-    surfaceTabsAria: "App のメイン画面",
-    appTab: "アプリ",
     dataTab: "データ",
     refresh: "GUI を更新",
     loading: "GUI を読み込み中…",

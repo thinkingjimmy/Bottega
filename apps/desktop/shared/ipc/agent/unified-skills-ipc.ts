@@ -10,11 +10,7 @@ import type { ProductResult } from "../../product/product-failure";
 export type ManagedSkillAgent = ProviderId;
 export type ManagedSkillSourceKind = "local-folder" | "adopted" | "extension";
 type ManagedSkillImportSource = ManagedSkillAgent | "local-folder" | "all";
-type ManagedSkillAllowedAction =
-  | "delete"
-  | "disable"
-  | "enable"
-  | "goto-package";
+type ManagedSkillAllowedAction = "delete" | "disable" | "enable";
 
 export type ManagedSkillReasonCode =
   | "missing-skill-md"

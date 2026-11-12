@@ -23,9 +23,9 @@ export const DOCK_METRICS = {
 
 export type MetricItem = { kind: string; entry?: string; widgetType?: string; size?:DockSummarySize;limits?: { configured: boolean; sourceCount: number; more: number } };
 /** Only projection facts affect geometry; the same adapter serves main and the item renderer. */
-export function metricItem(item: { kind: string; entry?: string; widget?: { type: string; size?:DockSummarySize;configured?: boolean; sources?: readonly unknown[]; more?: number } }): MetricItem {
+export function metricItem(item: { kind: string; entry?: string; widget?: { type: string; size?:DockSummarySize;officialWidget?: string; configured?: boolean; sources?: readonly unknown[]; more?: number } }): MetricItem {
   const widget = item.widget;
-  return { kind: item.kind, entry: item.entry, widgetType: widget?.type,...(widget?.type==='custom'&&widget.size?{size:widget.size}:{}),
+  return { kind: item.kind, entry: item.entry, widgetType: widget?.officialWidget === "bottega-ai-usage" ? "builtin.ai-activity" : widget?.type,...(widget?.type==='custom'&&widget.size?{size:widget.size}:{}),
     ...(widget?.type === "builtin.ai-limits" ? { limits: { configured: widget.configured === true, sourceCount: widget.sources?.length ?? 0, more: widget.more ?? 0 } } : {}) };
 }
 export function itemExtent(item: MetricItem, edge: DockEdge): number {

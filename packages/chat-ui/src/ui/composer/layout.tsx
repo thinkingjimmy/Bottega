@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React, shared UI primitives and host-owned presentation slots.
- * [OUTPUT]: Shared Chat empty state and composer layout with wrapping narrow-column toolbars, without platform effects.
+ * [OUTPUT]: Shared composer layout with shrinkable model labels and toolbar wrapping when the controls need another row.
  * [POS]: Common Chat presentation for local desktop, remote desktop and browser.
  */
 import type { ComponentProps } from "react";
@@ -24,5 +24,6 @@ export function ComposerToolbar({ className, ...props }: ComponentProps<typeof P
   return <PromptInputFooter className={cn("@container/composer flex-wrap", className)} {...props} />;
 }
 export function ComposerActions({ className, ...props }: ComponentProps<"div">) {
-  return <div className={cn("ml-auto flex min-w-0 items-center gap-1", className)} {...props} />;
+  // Base line fitting on room for the controls, independent of the full model label.
+  return <div className={cn("ml-auto flex min-w-0 flex-[1_1_7rem] items-center justify-end gap-1", className)} {...props} />;
 }

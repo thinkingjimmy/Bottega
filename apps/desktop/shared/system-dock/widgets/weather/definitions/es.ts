@@ -5,5 +5,5 @@
  */
 export const weatherEsDefinition={
   "name": "Tiempo",
-  "description": "El tiempo actual en tu ubicación o en la ciudad elegida."
+  "description": "Condiciones actuales y pronóstico de la ciudad elegida."
 };

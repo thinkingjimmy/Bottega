@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, window context, surface migration, shared feedback toasts, ArchiveCelebrationHost, SketchHost, lazy unified plugin update/page hosts, startup marks, and the build-gated cloud account lifecycle.
- * [OUTPUT]: Provides the module entry and registered side effects.
+ * [OUTPUT]: Provides the module entry, registered side effects, route visibility for Chat and catalog background navigation, and independent Skills and Extensions settings routes.
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
 import { SettingsNavigationContext } from "@/components/providers/navigation/context";
@@ -25,7 +25,6 @@ import {
 import { createRoot } from "react-dom/client";
 import {
   HashRouter,
-  Navigate,
   Route,
   Routes,
   useLocation,
@@ -69,6 +68,7 @@ import {
   activeSettingsSection,
   settingsExitTarget,
   settingsRouteSection,
+  EXTENSIONS_SETTINGS_PATH,
   MEMORY_SETTINGS_PATH,
   SKILLS_SETTINGS_PATH,
   OPEN_SETTINGS_EVENT,
@@ -183,6 +183,11 @@ const ToolsSettingsView = lazy(() =>
 const SkillsSettingsView = lazy(() =>
   import("@/views/settings/skills/settings-skills").then((module) => ({
     default: module.SkillsSettingsView,
+  }))
+);
+const ExtensionsSettingsView = lazy(() =>
+  import("@/views/settings/extensions/settings-extensions").then((module) => ({
+    default: module.ExtensionsSettingsView,
   }))
 );
 const UsageSettingsView = lazy(() =>
@@ -508,7 +513,7 @@ function ProductApp() {
                                 element={<BaseDetailView />}
                               />
                               <Route path="/plugins/:pluginId/:contributionId" element={<PluginPage />} />
-                              <Route path="/apps" element={<AppsListView />} />
+                              <Route path="/apps" element={<AppsListView surfaceVisible={!settingsSection} />} />
                               <Route
                                 path="/apps/:id/:surface?"
                                 element={<AppDetailView />}
@@ -526,12 +531,12 @@ function ProductApp() {
                                 element={<ToolsSettingsView />}
                               />
                               <Route
-                                path="/settings/skills"
+                                path={SKILLS_SETTINGS_PATH}
                                 element={<SkillsSettingsView />}
                               />
                               <Route
-                                path="/settings/extensions"
-                                element={<Navigate replace to="/settings/skills?tab=extensions" />}
+                                path={EXTENSIONS_SETTINGS_PATH}
+                                element={<ExtensionsSettingsView />}
                               />
                               <Route
                                 path="/projects/:projectId/settings"

@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on Library-first Skill rows, main-authored allowedActions, shared SkillRow/SkillBadge presentation, i18n, SettingsSwitch, and compact action buttons
- * [OUTPUT]: Provides one accessible Skill row with name/description/source, content presence, cross-device conversion notice, selection, one enabled switch, delete, and package navigation
+ * [OUTPUT]: Provides one accessible Skill row with name/description/source, content presence, cross-device conversion notice, selection, one enabled switch, and delete
  * [POS]: Global Skills management adapter for SkillRow; it never infers actions from source kind or filesystem state
  */
 
-import { ExternalLink, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { SettingsSwitch } from "@/components/settings/settings-layout";
 import { SkillBadge, SkillRow } from "./skill-row";
@@ -18,7 +18,6 @@ export function SkillLibraryRow({
   onSelected,
   onEnabled,
   onDelete,
-  onGotoPackage,
 }: {
   skill: ManagedSkillLibraryItem;
   selected: boolean;
@@ -26,7 +25,6 @@ export function SkillLibraryRow({
   onSelected(selected: boolean): void;
   onEnabled(enabled: boolean): void;
   onDelete(): void;
-  onGotoPackage(): void;
 }) {
   const { t } = useAppTranslation();
   const canEnable = skill.allowedActions.includes("enable");
@@ -73,30 +71,17 @@ export function SkillLibraryRow({
             label={t(skill.enabled ? "settings.skills.disable" : "settings.skills.enable")}
             onToggle={onEnabled}
           />
-          <div className="flex items-center">
-            {skill.allowedActions.includes("delete") && (
-              <Button
-                aria-label={t("settings.skills.delete")}
-                disabled={busy}
-                onClick={onDelete}
-                size="icon-lg"
-                variant="ghost"
-              >
-                <Trash2 />
-              </Button>
-            )}
-            {skill.allowedActions.includes("goto-package") && (
-              <Button
-                aria-label={t("settings.skills.gotoPackage")}
-                disabled={busy}
-                onClick={onGotoPackage}
-                size="icon-lg"
-                variant="ghost"
-              >
-                <ExternalLink />
-              </Button>
-            )}
-          </div>
+          {skill.allowedActions.includes("delete") && (
+            <Button
+              aria-label={t("settings.skills.delete")}
+              disabled={busy}
+              onClick={onDelete}
+              size="icon-lg"
+              variant="ghost"
+            >
+              <Trash2 />
+            </Button>
+          )}
         </>
       )}
     />

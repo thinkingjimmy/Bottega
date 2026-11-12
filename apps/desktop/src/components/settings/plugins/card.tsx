@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on lucide icons, Agent identity, the Settings switch, workbench-copy, the shared catalog card frame and plugin metadata.
  * [OUTPUT]: Provides PluginGlyph (built-in icon, Provider mark or package mark) and PluginIcon (that glyph on a md / lg / xl tile), PluginCard (icon, name that opens the plugin's
- *           introduction, publisher, two-line summary, actionable notes and a top-right switch or fixed status in equal-height cards; setup plugins open
+ *           introduction, publisher, up to two lines of summary, optional notes and a top-right switch or fixed status; setup plugins open
  *           their existing flow from the switch and reflect the confirmed catalog state), CardState (what the page
  *           knows beyond the catalog: switching now, busy, changed files) and lockedCard.
  * [POS]: One card of the All plugins catalog (redesign 2026-10-02: All plugins introduces, the sidebar entry holds settings). The whole
@@ -84,8 +84,8 @@ export function PluginCard({ plugin, workbench, state, onOpen, onToggle, onSetup
       summary={pluginText(plugin.summary, workbench) || fallbackSummary(plugin, copy)}
       icon={<span className={cn(!plugin.enabled && plugin.source !== "agent-native" && "opacity-60")}><PluginIcon plugin={plugin} size="md" /></span>}
       control={control} onOpen={() => onOpen(plugin)}
-      footer={<><div className="line-clamp-1" title={pluginText(plugin.systemRequirement, workbench)}><PluginRequirement plugin={plugin} workbench={workbench} /></div>
+      footer={plugin.systemRequirement || line ? <>{plugin.systemRequirement && <div className="line-clamp-1" title={pluginText(plugin.systemRequirement, workbench)}><PluginRequirement plugin={plugin} workbench={workbench} /></div>}
         {line && <p title={line} className={cn("line-clamp-1 text-xs leading-[18px]", note === "reinstall" ? "text-destructive" : note === "busy" || blocked ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}
-          data-plugin-note={note ?? (plugin.availability.state === "unsupported" ? "unsupported" : blocked ? "blocked" : "scoped")}>{line}</p>}</>}/>
+          data-plugin-note={note ?? (plugin.availability.state === "unsupported" ? "unsupported" : blocked ? "blocked" : "scoped")}>{line}</p>}</> : undefined}/>
   );
 }

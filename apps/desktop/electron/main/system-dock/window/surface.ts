@@ -1,11 +1,12 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow/ipcMain, the frame guard, the isolated system-dock preload, and the shared bar/panel channels and intent validator.
- * [OUTPUT]: Provides least-privilege Dock windows and DockIpc, authorizing snapshots/intents/icons and panel-only bounded download visuals by live webContents, main frame and exact URL.
+ * [OUTPUT]: Provides least-privilege Dock windows and DockIpc, pinning iframe documents to exact window leases and authorizing snapshots/intents/icons and panel-only bounded download visuals by live webContents, main frame and exact URL.
  * [POS]: system-dock/window trust boundary (INV-13); stale, destroyed or foreign senders are rejected before any intent reaches DockService.
  */
 
+import { pluginSurfaceIntegration } from "../../plugins/surface-integration/runtime";
 import { pluginDockWidgets } from "../widgets/plugins/runtime";
-import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { devRendererUrl, rendererMatches } from "../../window/security/frame-guard";
@@ -28,6 +29,18 @@ export function createDockSurface(input: { mainDirectory: string; role: DockRole
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: input.role === "panel", skipTransformProcessType: true });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event, target) => { if (target !== input.url) event.preventDefault(); });
+  window.webContents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
+  const pinnedFrames = new WeakSet<WebFrameMain>();
+  window.webContents.on("will-frame-navigate", event => {
+    if (event.isMainFrame) { if (event.url !== input.url) event.preventDefault(); return; }
+    const frame = event.frame;
+    const gateway = pluginSurfaceIntegration()?.gateway;
+    if (!frame || pinnedFrames.has(frame) || frame.parent !== frame.top || !gateway?.allowsDocument(event.url, window.webContents.id)) {
+      event.preventDefault();
+      return;
+    }
+    pinnedFrames.add(frame);
+  });
   window.webContents.on("will-attach-webview", (event) => event.preventDefault());
   window.webContents.on("render-process-gone", () => input.onGone());
   return window;

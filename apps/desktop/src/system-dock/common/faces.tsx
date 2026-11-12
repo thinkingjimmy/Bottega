@@ -1,14 +1,44 @@
 /**
- * [INPUT]: Depends on the Dock widget face projections, shared Agent logos, lucide state glyphs, and the common limits/activity/task readings.
- * [OUTPUT]: Provides `LimitsFace` (up to three Agents as ring gauges — the ring is the share of the limit left, orange below 20 %, dimmed and half-drawn when masked — single-source ring with window/reset caption, +N chip, neutral glyphs for non-numeric states, Set up affordance) `ActivityFace` (today's compact tokens and estimated cost) and `TasksFace` (active/waiting counts and batch results), with vertical stacks and explicit Details when a 48 DIP reading cannot fit.
- * [POS]: system-dock/bar compact Widget renderers; purely visual, aria-hidden — the item button carries the spoken reading from common/format.
+ * [INPUT]: Depends on actual Dock face projections, shared Agent logos/readings, declarative summaries, trusted Weather readings and the caller's exact plugin-card transport.
+ * [OUTPUT]: Provides shared `DockWidgetFace` plus `LimitsFace` (up to three Agents as ring gauges — the ring is the share of the limit left, orange below 20 %, dimmed and half-drawn when masked — single-source ring with window/reset caption, +N chip, neutral glyphs for non-numeric states, Set up affordance) `ActivityFace` (today's compact tokens and estimated cost) and `TasksFace` (active/waiting counts and batch results), with vertical stacks and explicit Details when a 48 DIP reading cannot fit.
+ * [POS]: Shared Dock and catalog presentation; compact builtins and accepted custom cards use one rendering implementation.
  */
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useLayoutEffect, useRef, useState } from "react";
 import { CircleAlert, Gauge, KeyRound, ListTodo, Minus } from "lucide-react";
 import { AgentBackendIcon } from "@ai-chat/ui/components/identity/agent";
-import type { LimitsFaceSource, WidgetFace } from "../../../shared/system-dock/ipc";
-import { activityReading, taskResultLabel, MASK, clockText, limitsReading, windowLabel, type DockT } from "../common/format";
+import type { LimitsFaceSource, WidgetFace, SystemDockBridge } from "../../../shared/system-dock/ipc";
+import { activityReading, taskResultLabel, MASK, clockText, limitsReading, windowLabel, type DockT } from "./format";
+import './faces.css';
+const PluginDockCard = lazy(() => import('./widgets/plugin-card').then(module => ({ default: module.PluginDockCard })));
+const DockSummary = lazy(() => import('./widgets/summary').then(module => ({ default: module.DockSummary })));
+const WeatherFace = lazy(() => import('./widgets/weather').then(module => ({ default: module.WeatherFace })));
+
+export function DockWidgetFace({ itemId, face, t, mask, now, edge, title, bridge, liveCard = true }: {
+  itemId: string; face: WidgetFace; t: DockT; mask: boolean; now: number;
+  edge: 'bottom' | 'left' | 'right'; title: string; liveCard?: boolean; bridge?: Pick<SystemDockBridge, 'pluginSurface'>;
+}) {
+  const locale = document.documentElement.lang || 'en';
+  const reading = face.type === "custom" && !mask && face.summary
+    ? <Suspense fallback="—">{face.weather
+      ? <WeatherFace reading={face.weather} size={face.size} edge={edge} locale={locale} t={t} />
+      : <DockSummary node={face.summary} readings={face.readings} locale={locale} />}
+    </Suspense> : null;
+  const fallback = face.type === "custom" ? <span data-widget-summary="" data-widget-state={face.state} aria-hidden="true"
+    style={{display:'flex',alignItems:'center',justifyContent:'center',width:'100%',height:'100%',padding:face.weather?0:4,overflow:'hidden',boxSizing:'border-box'}}>
+    {mask ? '—' : face.activity ? <ActivityFace face={face.activity} t={t} mask={false} vertical={edge!=='bottom'} />
+      : reading ?? <span style={{fontSize:10,lineHeight:1.2,textAlign:'center',whiteSpace:'normal',overflowWrap:'anywhere'}}>{t(`systemDock.widgets.states.${face.state}`)}</span>}
+  </span> : null;
+  return <div className="dock-widget-face" data-edge={edge} style={{ display:'grid',placeItems:'center',borderRadius:'inherit',color:'var(--text)',font:'13px/1.35 system-ui' }}>
+    {face.type === 'custom' ? face.plugin?.customCard && liveCard && !mask && (face.state === 'ready' || face.officialWidget)
+      ? <Suspense fallback={fallback}><PluginDockCard itemId={itemId} plugin={face.plugin} bridge={bridge} title={title} unavailable={t('systemDock.item.unavailable')} fallback={fallback}
+          presentation={face.officialWidget ? {view:'card',size:face.size,edge,locale} : undefined}/></Suspense>
+      : fallback
+      : face.type === 'builtin.tasks' ? <TasksFace face={face} t={t} mask={mask} vertical={edge !== 'bottom'} />
+        : face.type === 'builtin.ai-limits' ? <LimitsFace face={face} t={t} mask={mask} now={now} vertical={edge !== 'bottom'} />
+          : <ActivityFace face={face} t={t} mask={mask} vertical={edge !== 'bottom'} />}
+  </div>;
+}
 
 type LimitsFaceValue = Extract<WidgetFace, { type: "builtin.ai-limits" }>;
 type ActivityFaceValue = Extract<WidgetFace, { type: "builtin.ai-activity" }>;

@@ -1,27 +1,27 @@
 /**
  * [INPUT]: Only this locale definition labels.
- * [OUTPUT]: The complete weatherEs Weather copy object; the unused city-result instruction is excluded.
+ * [OUTPUT]: The complete weatherEs Weather copy for city selection, previews and forecasts.
  * [POS]: Deferred locale data; no other locale or aggregate dependency.
  */
 import {weatherEsDefinition} from '../definitions/es';
 export const weatherEs={
   ...weatherEsDefinition,
-  "current": "Ubicación actual",
-  "city": "Elegir ciudad",
-  "search": "Buscar ciudad",
-  "useCurrent": "Usar mi ubicación",
-  "locating": "Buscando ubicación…",
-  "located": "Ubicación encontrada",
+  "city": "Ciudad",
+  "search": "Buscar una ciudad",
+  "searching": "Buscando…",
+  "changeCity": "Cambiar de ciudad",
+  "cancelCityChange": "Cancelar el cambio",
   "noCities": "No se encontraron ciudades.",
-  "denied": "Se denegó la ubicación. Elige una ciudad o permite el acceso en Ajustes del Sistema.",
-  "disabled": "La ubicación está desactivada. Elige una ciudad o actívala en Ajustes del Sistema.",
-  "timeout": "La ubicación tardó demasiado. Reintenta o elige una ciudad.",
-  "unavailable": "Ubicación no disponible. Elige una ciudad.",
-  "authorization": "Permite la ubicación para usar tu posición actual.",
+  "today": "Hoy",
+  "dailyRange": "Máxima {{high}} °C, mínima {{low}} °C",
+  "forecastUnavailable": "Sin pronóstico",
+  "sizeCurrent": "Condiciones actuales",
+  "sizeToday": "Condiciones actuales y máxima y mínima de hoy",
+  "sizeForecast": "Condiciones actuales y pronóstico de los próximos tres días",
   "failed": "No se pudo cargar el tiempo. Reintenta.",
   "rateLimited": "El servicio está ocupado. Reintenta más tarde.",
   "invalid": "No se pudieron leer los datos del tiempo.",
-  "searchFailed": "No se pudieron buscar ciudades. Reintenta.",
+  "searchFailed": "No se pudieron buscar ciudades.",
   "temperature": "Temperatura",
   "feelsLike": "Sensación térmica",
   "humidity": "Humedad",

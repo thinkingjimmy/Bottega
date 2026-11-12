@@ -1,0 +1,16 @@
+/* [INPUT]: Shared actual Dock faces and edge-aware intrinsic geometry.
+ * [OUTPUT]: Scoped vertical face stacks and compact readings for side Dock and catalog previews.
+ * [POS]: Deferred with native sidebar styles; catalog imports it only with Widget management.
+ */
+@scope (.dock-widget-face) {
+:scope:not([data-edge="bottom"]) .face { flex-direction: column; justify-content: center; align-items: center; padding: 4px 0; gap: 6px; }
+:scope:not([data-edge="bottom"]) .face-activity { padding: 5px 0; gap: 2px; }
+:scope:not([data-edge="bottom"]) .face-more { align-self: center; margin-top: 0; }
+:scope:not([data-edge="bottom"]) .face-row { flex-direction: column; max-width: 100%; gap: 1px; }
+:scope:not([data-edge="bottom"]) .face-caption { max-width: 100%; overflow: visible; display: block; text-align: center; line-height: 1.3; }
+.compact-reading { position: relative; display: block; max-width: 48px; }
+.reading-measure { position: absolute; visibility: hidden; width: max-content; white-space: nowrap; pointer-events: none; }
+.reading-details { display: block; max-width: 48px; font-size: 10px; line-height: 1.3; font-weight: 500; color: var(--accent); white-space: normal; overflow-wrap: anywhere; }
+:scope:not([data-edge="bottom"]) .face-setup { flex-direction: column; font-size: 11px; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+:scope:not([data-edge="bottom"]) .face-glyph { flex: none; }
+}

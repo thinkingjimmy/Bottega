@@ -7,17 +7,17 @@
 import type { settingsSkillsEn } from "./en";
 
 export const settingsSkillsEs: typeof settingsSkillsEn = {
-  tabs: { skills: "Skills", extensions: "Extensiones" }, refresh: "Actualizar Skills", importTitle: "Añadir Skills",
+  refresh: "Actualizar Skills", importTitle: "Añadir Skills",
   description: "Importa una vez en tu Library personal y usa los Skills activados en todas las conversaciones compatibles.",
   libraryTitle: "Library personal",
   back: "Atrás", localFolder: "Carpeta local", chooseFolder: "Elegir carpeta…", importPrimary: "Importar todo", importSelected: "Importar y activar {{count}}",
   backend: { codex: "Codex", claude: "Claude", kimi: "Kimi", opencode: "OpenCode" },
   sourceKind: { "local-folder": "Local", adopted: "Importado", extension: "Extensión" },
-  selectSkill: "Seleccionar {{name}}", enable: "Activar", disable: "Desactivar", delete: "Eliminar", gotoPackage: "Ver extensión",
+  selectSkill: "Seleccionar {{name}}", enable: "Activar", disable: "Desactivar", delete: "Eliminar",
   batch: { selected: "{{count}} seleccionados", done: "Listo" },
   emptyTitle: "Aún no hay Skills", emptyScanning: "Buscando Skills en tus Agents instalados…",
   emptyLead: "Se encontraron {{count}} Skills en tus Agents. Impórtalos una vez para usarlos en todas las conversaciones compatibles.",
-  emptyNothingHint: "No hay Skills importables. Instala una extensión o elige una carpeta local.",
+  emptyNothingHint: "No hay Skills importables.",
   readOnly: "La gestión de Skills es de solo lectura",
   budget: "{{count}} activados · lista de sesión ≈ {{size}} (estimada con los Skills activos de la Library)", search: "Buscar Skills", noMatches: "No hay Skills coincidentes.",
   confirmDeleteTitle: "¿Eliminar Skills?", confirmDeleteBody: "Eliminar permanentemente {{count}} Skills de tu Library personal.", confirmDeleteAction: "Eliminar",

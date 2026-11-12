@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Japanese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
+ * [OUTPUT]: Provides the Apps Japanese catalog with App/Widget filters and exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Japanese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,6 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsJa: typeof appsEn = {
+  catalog: { filter: "プラグインの種類", widgets: "ウィジェット" },
   dock: {
     pin: "Dock に固定",
     unpin: "Dock から削除",
@@ -36,7 +37,6 @@ export const appsJa: typeof appsEn = {
     stepSelect: "App を選ぶ",
     stepAuthorize: "権限を決める",
     settingsTitle: "{{name}} の権限を設定",
-    settingsDescription: "何を見られるか、Agent が代わりに操作できるか。この 2 つで決まります。あとからいつでも変更できます。",
     loading: "インストール済み App を読み込み中…",
     loadFailed: "インストール済み App を読み込めませんでした",
     installedApps: "インストール済み App",
@@ -51,11 +51,10 @@ export const appsJa: typeof appsEn = {
     sourceGlobal: "グローバル設定",
     authorizationMode: "承認元",
     useInherited: "継承設定を使用",
-    useInheritedDescription: "Chat の上書きを作らず、{{source}} の現在の承認を使用します。",
+    useInheritedDescription: "{{source}} の権限設定を引き継ぎます。",
     customForChat: "この Chat 用に設定",
-    customDescription: "Project とグローバル設定を上書きする Chat 専用承認を作成します。",
+    customDescription: "この Chat だけに適用する権限を設定します。",
     dataAccess: "データ",
-    dataAccessDescription: "{{name}} は自分のデータ表を持っています。本当に必要な段階だけ渡してください。",
     dataNone: "データを渡さない",
     dataNoneDetail: "自分の画面だけを使い、データ表のレコードは 1 件も読めません。",
     dataRead: "読むだけ",

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "bottega-weather",
   "name": "Weather",
-  "description": "Current weather for your location or a selected city. Personal and non-commercial use.",
+  "description": "Current conditions and forecasts for a selected city. Personal and non-commercial use.",
   "version": "1.0.0",
   "source": {
     "kind": "official",
@@ -36,72 +36,53 @@
         "type": "object",
         "properties": {
           "location": {
-            "default": {
-              "mode": "current"
-            },
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "const": "current"
-                  }
-                },
-                "required": [
-                  "mode"
-                ],
-                "additionalProperties": false
+            "type": "object",
+            "properties": {
+              "mode": {
+                "const": "city"
               },
-              {
+              "city": {
                 "type": "object",
                 "properties": {
-                  "mode": {
-                    "const": "city"
+                  "id": {
+                    "type": "integer"
                   },
-                  "city": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "integer"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "region": {
-                        "type": "string"
-                      },
-                      "country": {
-                        "type": "string"
-                      },
-                      "latitude": {
-                        "type": "number"
-                      },
-                      "longitude": {
-                        "type": "number"
-                      },
-                      "timeZone": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "name",
-                      "region",
-                      "country",
-                      "latitude",
-                      "longitude",
-                      "timeZone"
-                    ],
-                    "additionalProperties": false
+                  "name": {
+                    "type": "string"
+                  },
+                  "region": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": "string"
+                  },
+                  "latitude": {
+                    "type": "number"
+                  },
+                  "longitude": {
+                    "type": "number"
+                  },
+                  "timeZone": {
+                    "type": "string"
                   }
                 },
                 "required": [
-                  "mode",
-                  "city"
+                  "id",
+                  "name",
+                  "region",
+                  "country",
+                  "latitude",
+                  "longitude",
+                  "timeZone"
                 ],
                 "additionalProperties": false
               }
-            ]
+            },
+            "required": [
+              "mode",
+              "city"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

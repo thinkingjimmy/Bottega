@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Native Chat controller, lightweight context labels, canonical selected-mode readiness and shared UI primitives.
- * [OUTPUT]: Persistent draft triggers with matching built-in mode icons, a Project-only lazy branch selector, top-preferring viewport-bounded lazy mode/object menus and immutable first-send footer mode.
+ * [OUTPUT]: Draft triggers with matching built-in mode icons, a Project-only lazy branch selector, viewport-bounded lazy mode/object menus and the named plugin mode indicator for persisted Chats.
  * [POS]: Composer context shell; RichInput remains mounted in its existing parent through every selection and menu load.
  */
 import {lazy,Suspense,useState} from 'react';
@@ -27,10 +27,22 @@ export function useSelectedModeIssue(mode:PluginModeSelection|undefined,remote:b
   if(!mode?.pluginId)return null;if(remote)return copy.localOnly;
   const current=modes.find(item=>modeKey(item)===modeKey(mode));return current?.ready?null:current?.unavailableReason??(error?copy.loadFailed:copy.unavailable);
 }
-export function LockedChatMode({controller}:{controller:ChatSessionController['composer']}){
-  const {i18n}=useAppTranslation(),copy=pluginContextCopy(i18n.language),mode=controller.turnOptions.mode;
-  if(!controller.persisted)return null;const name=mode?.pluginId?mode.name:mode?.id==='create'?copy.create:copy.standard;
-  return <Tooltip><TooltipTrigger asChild><span data-mode-locked="" tabIndex={0} className="inline-flex min-w-0 max-w-36 items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground"><LockKeyhole className="size-3 shrink-0"/><span className="truncate">{name}</span></span></TooltipTrigger><TooltipContent>{copy.locked}</TooltipContent></Tooltip>;
+export function LockedChatMode({ controller }: { controller: ChatSessionController['composer'] }) {
+  const { i18n } = useAppTranslation();
+  const mode = controller.turnOptions.mode;
+  if (!controller.persisted || !mode?.pluginId) return null;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span data-mode-locked="" tabIndex={0} className="inline-flex min-w-0 max-w-36 items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
+          <LockKeyhole className="size-3 shrink-0" />
+          <span className="truncate">{mode.name}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{pluginContextCopy(i18n.language).locked}</TooltipContent>
+    </Tooltip>
+  );
 }
 export function DraftContextControls({controller,remote,ownerLabel,onBranchBusy,disabled}:{controller:ChatSessionController['composer'];remote:boolean;ownerLabel:string|null;onBranchBusy:(busy:boolean)=>void;disabled:boolean}){
   const {i18n,t}=useAppTranslation(),copy=pluginContextCopy(i18n.language),state=useComposerState(controller.chatId),[open,setOpen]=useState(false);

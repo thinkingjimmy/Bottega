@@ -5,5 +5,5 @@
  */
 export const weatherJaDefinition={
   "name": "天気",
-  "description": "現在地または選択した都市の天気を表示します。"
+  "description": "選択した都市の現在の天気と予報を表示します。"
 };

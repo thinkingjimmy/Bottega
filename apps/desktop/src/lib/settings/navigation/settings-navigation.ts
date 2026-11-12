@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends only on route, overlay, and archived-item locator string values, plus the Agent identity type
  * [OUTPUT]: Provides canonical settings paths, archived-item locator keys/URLs, overlay/destination types, exit routing, the single active-section projection, the plugin page target (a plugin's introduction or its settings), and the window-level open-settings request used by background surfaces (optionally naming one plugin page)
- * [POS]: apps/desktop/src/lib/settings/navigation; Single renderer authority for Settings navigation, archive deep links, and active-section state, including the Extensions-to-Packages alias and the legacy Memory route handled by ProductApp
+ * [POS]: apps/desktop/src/lib/settings/navigation; Single renderer authority for Settings navigation, archive deep links, and active-section state, including the standalone Extensions route and the legacy Memory route handled by ProductApp
  */
 
 import type { AgentBackendId } from "../../../../shared/ipc/agent/agent-ipc";
@@ -15,7 +15,7 @@ export const MEMORY_SETTINGS_PATH = "/settings/memory";
 const ARCHIVE_SETTINGS_PATH = "/settings/archive";
 const TOOLS_SETTINGS_PATH = "/settings/tools";
 export const SKILLS_SETTINGS_PATH = "/settings/skills";
-const EXTENSIONS_SETTINGS_PATH = "/settings/extensions";
+export const EXTENSIONS_SETTINGS_PATH = "/settings/extensions";
 
 /** Sidebar 与 Settings 共用的归档定位身份；kind 进入 key，来源不会碰撞。 */
 export type ArchivedSettingsLocator = {
@@ -53,7 +53,7 @@ export type SettingsOverlaySection =
   | "archive";
 
 /** 设置的全部目的地：覆盖层七档 + 走真实路由的 Memory。 */
-export type SettingsDestination = SettingsOverlaySection | "memory" | "skills";
+export type SettingsDestination = SettingsOverlaySection | "memory" | "skills" | "extensions";
 
 /* ============================================================
  * 「我在设置里吗」有两份真相：覆盖层的 settingsSection，以及路由。
@@ -84,7 +84,8 @@ export function settingsRouteSection(
   if (pathname === MEMORY_SETTINGS_PATH) return "memory";
   if (pathname === ARCHIVE_SETTINGS_PATH) return "archive";
   if (pathname === TOOLS_SETTINGS_PATH) return "tools";
-  if (pathname === SKILLS_SETTINGS_PATH || pathname === EXTENSIONS_SETTINGS_PATH) return "skills";
+  if (pathname === SKILLS_SETTINGS_PATH) return "skills";
+  if (pathname === EXTENSIONS_SETTINGS_PATH) return "extensions";
   return null;
 }
 

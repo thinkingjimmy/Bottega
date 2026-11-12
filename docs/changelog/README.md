@@ -5,6 +5,16 @@
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
 
+## 2026-11-12 — v0.4.4
+
+Version 0.4.4 supports macOS on Apple silicon (ARM64) and uses Cloud protocol **27**. [Release and installer](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.4)
+
+- **Manage Apps and Dock Widgets.** With Dock enabled, add and configure Widgets from the Widgets tab in Apps. Pinned Apps have one entry in the sidebar.
+- **See the forecast for your city.** Search by city and region. Medium Weather Widgets show today's high and low. Large Widgets show the next three days. Existing automatic-location Widgets ask you to select a city.
+- **Keep the App page open while you work.** Open Data, Settings or Chat in the side panel. Opening Data keeps your place in the App.
+- **Reach Skills and Provider controls faster.** Skills opens the Library directly. Provider settings put sign-in, status, version and updates in one place.
+- **Use a narrow Chat more easily.** Long model names take less space so the Agent picker and Send button stay accessible. The sidebar has a new Bottega wordmark.
+
 ## 2026-11-11 — v0.4.3
 
 Version 0.4.3 source targets macOS on Apple silicon (ARM64) and uses Cloud protocol **27**. See the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest) for installer availability and validation scope.

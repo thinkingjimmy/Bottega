@@ -1,0 +1,20 @@
+/* [INPUT]: Product semantic tokens, native grid markup and actual Dock face geometry.
+ * [OUTPUT]: Quiet preview cards, adaptive spacing and hover/focus-visible/touch management controls.
+ * [POS]: Catalog-only surfaces; the actual Widget content is shared with the Dock.
+ */
+.widget-catalog { container: widget-catalog / inline-size; }
+.widget-catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); align-items: start; gap: 28px 24px; }
+.widget-catalog-card { position: relative; min-width: 0; }
+.widget-catalog-card[data-wide] { grid-column: span 2; }
+.widget-catalog-preview { --surface-solid: var(--background); --surface-raised: var(--muted); --text: var(--foreground); --line: var(--border); --accent: var(--primary); --caution: var(--color-amber-600); --hover: color-mix(in oklch, var(--foreground) 6%, transparent); --ring-track: color-mix(in oklch, var(--foreground) 12%, transparent); display: grid; place-items: center; height: 164px; border-radius: 20px; background: color-mix(in oklch, var(--muted) 58%, var(--background)); color: var(--foreground); overflow: hidden; box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 4%, transparent), 0 2px 4px rgb(0 0 0 / .025), 0 6px 16px rgb(0 0 0 / .035); }
+.widget-catalog-preview .dock-widget-face { --muted: var(--muted-foreground); }
+.widget-catalog-actions { position: absolute; top: 8px; right: 8px; z-index: 1; display: flex; gap: 4px; opacity: 0; pointer-events: none; transition: opacity 130ms ease-out; }
+.widget-catalog-action { width: 40px; height: 40px; border-radius: 50%; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 1px 5px rgb(0 0 0 / .08); }
+.widget-catalog-card:has(:focus-visible) .widget-catalog-actions, .widget-catalog-card:has([data-state="open"]) .widget-catalog-actions { opacity: 1; pointer-events: auto; }
+.widget-catalog-caption { padding: 12px 2px 0; }
+.widget-catalog-caption h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
+.widget-catalog-caption p { margin-top: 3px; color: var(--muted-foreground); font-size: 12px; overflow-wrap: anywhere; }
+@container widget-catalog (max-width: 440px) { .widget-catalog-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; } .widget-catalog-card[data-wide] { grid-column: auto; } }
+@media (hover: hover) and (pointer: fine) { .widget-catalog-card:hover .widget-catalog-actions { opacity: 1; pointer-events: auto; } }
+@media (hover: none), (pointer: coarse) { .widget-catalog-actions { position: static; justify-content: end; margin-top: 8px; opacity: 1; pointer-events: auto; } .widget-catalog-action { width: 44px; height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .widget-catalog-actions { transition: none; } }

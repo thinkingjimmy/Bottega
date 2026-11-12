@@ -14,8 +14,9 @@ export async function installBundledWeather(platform:UnifiedPluginPlatform,userD
  const directory=app.isPackaged?join(process.resourcesPath,'app.asar.unpacked/out/main/official-plugins/weather'):join(__dirname,'official-plugins/weather');
  const checked=await verifyUnifiedPluginDistribution(directory);
  const existing=platform.get(WEATHER_PLUGIN_ID);
+ if(platform.activeRevision(WEATHER_PLUGIN_ID)?.officialWidget)return;
  if(existing&&existing.installation.origin!=='official')throw new Error('Official weather identity is already owned by another source');
- await platform.register({manifest:checked.distribution.manifest,packageDirectory:directory,replace:true});
+ await platform.register({manifest:checked.distribution.manifest,packageDirectory:directory,replace:true,legacyWeather:true});
  if(existing?.activeRevision===checked.distribution.revisionId||!platform.get(WEATHER_PLUGIN_ID)?.installation.enabled)return;
  const sourceVersion=await platform.sourceChanged(WEATHER_PLUGIN_ID);
  const revision=await importPluginDistribution({directory,buildsRoot:join(userData,'plugin-builds'),sourceVersion});

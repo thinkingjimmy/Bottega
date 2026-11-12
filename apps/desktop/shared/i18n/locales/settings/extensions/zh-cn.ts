@@ -8,6 +8,7 @@ import type { settingsExtensionsEn } from "./en";
 
 export const settingsExtensionsZhCN: typeof settingsExtensionsEn = {
   page: {
+    title: "扩展",
     bridgeMissing: "当前环境不支持扩展管理（IPC 桥缺席）",
     admissionClosed: "有扩展正在收敛停用：撤投影绑定、释放共享产物、重启持旧发现快照的会话并使缓存失效。收敛完成前不会启动新的 Agent 会话。",
     installedTitle: "已安装扩展",

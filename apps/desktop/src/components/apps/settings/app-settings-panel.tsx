@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on the shared AppRecordProjection read model, AppSidePanel, Tabs, the settings tab bodies, and the shared busy/error shell
- * [OUTPUT]: Provides AppSettingsPanel; four stable tabs (General, Tools, Agent plugins, Grants) rendered in the same vocabulary as Project Settings, each owning its own reads
+ * [OUTPUT]: Provides AppSettingsPanel with optional inline panel sizing and four tabs (General, Tools, Agent plugins, Grants), each owning its own reads
  * [POS]: The third-column chrome of components/apps/settings; the shell and the error banner live here, every IPC lives in the tab that shows its result
  */
 
@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ai-chat/ui/components
 import { SettingsAlert } from "@/components/settings/settings-layout";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import type { AppRecordProjection } from "../../../../shared/ipc/apps/apps-ipc";
-import { AppSidePanel } from "../app-side-panel";
+import { AppSidePanel, type AppPanelLayout } from "../app-side-panel";
 import { GeneralTab } from "./general-tab";
 import { GrantsTab } from "./grants-tab";
 import { PluginsTab } from "./plugins-tab";
@@ -37,10 +37,11 @@ const TAB_LABEL_KEY = {
  * Radix 的上下文送进去，不该在栏与宿主之间多插一个盒子，否则宽度、
  * shrink-0 与 resize 全落在错误的元素上。
  * ============================================================ */
-export function AppSettingsPanel({ record, open, onClose }: {
+export function AppSettingsPanel({ record, open, onClose, inlineLayout }: {
   record: AppRecordProjection;
   open: boolean;
   onClose: () => void;
+  inlineLayout?: AppPanelLayout;
 }) {
   const { t } = useAppTranslation();
 
@@ -48,6 +49,7 @@ export function AppSettingsPanel({ record, open, onClose }: {
     <Tabs className="contents" defaultValue="general">
       <AppSidePanel
         closeLabel={t("apps.settingsCollapse")}
+        inlineLayout={inlineLayout}
         /* 标题落在页头基线上，页签条紧随其下自成一层。原本那句「通用配置、
            实时能力、Agent 插件和作用域授权」正是这四个 tab 的逐字复述，
            随 Sheet 一并退场。 */

@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on the main-owned App grant candidate projection, fenced grant commands, shared dialog/settings primitives, and renderer i18n
- * [OUTPUT]: Provides AppAuthorizationDialog, the two-step add/edit authorization workflow shared by Project and Chat surfaces
- * [POS]: Single renderer authorization workflow for contextual App attachment; step one only answers "which App", step two only answers "what may it see"
+ * [INPUT]: Depends on main's App grant candidate projection, fenced grant commands, shared dialog and settings primitives, and renderer i18n.
+ * [OUTPUT]: Provides AppAuthorizationDialog with grouped permission choices and one footer for add, edit, and recovery actions.
+ * [POS]: Shared authorization workflow for contextual App attachment and permission editing in Project and Chat.
  */
 
 import {
@@ -45,6 +45,7 @@ import { useAppTranslation } from "@/components/providers/preferences/i18n-provi
 import {
   SettingsBadge,
   SettingsChoiceRow,
+  SettingsList,
   SettingsSwitch,
 } from "@/components/settings/settings-layout";
 import {
@@ -274,6 +275,8 @@ function AppAuthorizationDialogSession({
 
   const selecting = step === "select";
   const hasData = selected?.domainIdentity?.kind === "base";
+  const editActions = mode === "edit" && !savedAppId ? selected : undefined;
+  const formLocked = busy || Boolean(savedAppId);
   /* 继承是机制，不是答案。第一步只回答「选谁」，所以「不动它会落在哪」
      降级成第二步对应档位上的一枚徽标——用户不必先学会「继承」。 */
   const inheritedLevel = selected?.inheritedGrant
@@ -283,29 +286,28 @@ function AppAuthorizationDialogSession({
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
       <AppDialogContent
+        {...(selecting ? {} : { "aria-describedby": undefined })}
         aria-busy={busy || loading || undefined}
-        className="sm:max-w-xl"
+        className={cn("p-0", mode === "add" && "sm:max-w-xl")}
         onEscapeKeyDown={(event) => {
           if (busy) event.preventDefault();
         }}
       >
-        <DialogHeader className="shrink-0 gap-0 text-left">
-          <DialogTitle>
+        <DialogHeader className="shrink-0 gap-0 px-5 pt-5 text-left">
+          <DialogTitle className="wrap-anywhere pr-8">
             {selecting
               ? t("apps.authorization.selectTitle")
               : t("apps.authorization.settingsTitle", {
                   name: selected?.name ?? "App",
                 })}
           </DialogTitle>
-          <DialogDescription className="mt-2">
-            {selecting
-              ? t(
-                  stableTarget.kind === "chat"
-                    ? "apps.authorization.selectDescriptionChat"
-                    : "apps.authorization.selectDescriptionProject"
-                )
-              : t("apps.authorization.settingsDescription")}
-          </DialogDescription>
+          {selecting && (
+            <DialogDescription className="mt-1 text-pretty">
+              {t(stableTarget.kind === "chat"
+                ? "apps.authorization.selectDescriptionChat"
+                : "apps.authorization.selectDescriptionProject")}
+            </DialogDescription>
+          )}
           {mode === "add" && (
             <>
               {/* 「第 1 步，共 2 步」只报数：它不说这两步分别要做什么，也没有
@@ -346,7 +348,7 @@ function AppAuthorizationDialogSession({
           )}
         </DialogHeader>
 
-        <AppDialogBody className="mt-4">
+        <AppDialogBody className="mx-0 mt-3 px-5 pb-4">
           {loading ? (
             <div className="flex min-h-40 items-center justify-center gap-2 text-muted-foreground text-sm" role="status">
               <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
@@ -414,26 +416,26 @@ function AppAuthorizationDialogSession({
               )}
             </div>
           ) : selected ? (
-            <div className="space-y-5">
+            <div className="space-y-4">
               {stableTarget.kind === "chat" && selected.inheritedGrant && (
-                <div role="radiogroup" aria-label={t("apps.authorization.authorizationMode")}>
+                <SettingsList role="radiogroup" aria-label={t("apps.authorization.authorizationMode")}>
                   <SettingsChoiceRow
                     checked={authorizationMode === "inherited"}
                     description={t("apps.authorization.useInheritedDescription", {
                       source: sourceLabel(selected.inheritedSource, t),
                     })}
-                    disabled={busy}
+                    disabled={formLocked}
                     label={t("apps.authorization.useInherited")}
                     onSelect={() => setAuthorizationMode("inherited")}
                   />
                   <SettingsChoiceRow
                     checked={authorizationMode === "custom"}
                     description={t("apps.authorization.customDescription")}
-                    disabled={busy}
+                    disabled={formLocked}
                     label={t("apps.authorization.customForChat")}
                     onSelect={() => setAuthorizationMode("custom")}
                   />
-                </div>
+                </SettingsList>
               )}
 
               {authorizationMode === "custom" && (
@@ -443,17 +445,12 @@ function AppAuthorizationDialogSession({
                       <h3 className="font-medium text-sm">
                         {t("apps.authorization.dataAccess")}
                       </h3>
-                      <p className="mt-1 text-muted-foreground text-xs">
-                        {t("apps.authorization.dataAccessDescription", {
-                          name: selected.name,
-                        })}
-                      </p>
-                      <div className="mt-2" role="radiogroup" aria-label={t("apps.authorization.dataAccess")}>
+                      <SettingsList className="mt-2" role="radiogroup" aria-label={t("apps.authorization.dataAccess")}>
                         {APP_DATA_LEVELS.map((level) => (
                           <SettingsChoiceRow
                             checked={dataLevel === level}
                             description={t(APP_DATA_LEVEL_DETAIL_KEYS[level])}
-                            disabled={busy}
+                            disabled={formLocked}
                             key={level}
                             label={t(APP_DATA_LEVEL_KEYS[level])}
                             labelMeta={
@@ -468,11 +465,11 @@ function AppAuthorizationDialogSession({
                             onSelect={() => setDataLevel(level)}
                           />
                         ))}
-                      </div>
+                      </SettingsList>
                     </section>
                   )}
 
-                  <section className="flex items-start gap-4 border-t pt-4">
+                  <section className="flex items-start gap-4">
                     <div className="min-w-0 flex-1">
                       <h3 className="font-medium text-sm">
                         {t("apps.authorization.agentDelegation")}
@@ -489,7 +486,7 @@ function AppAuthorizationDialogSession({
                     </div>
                     <SettingsSwitch
                       checked={delegated}
-                      disabled={busy}
+                      disabled={formLocked}
                       id={`app-authorization-delegation-${selected.appId}`}
                       label={t("apps.authorization.agentDelegation")}
                       onToggle={setDelegated}
@@ -522,33 +519,6 @@ function AppAuthorizationDialogSession({
                   )}
                 </>
               )}
-
-              {mode === "edit" && (
-                <section className="flex flex-wrap gap-2 border-t pt-4">
-                  {selected.scopeRecord && (
-                    <Button
-                      disabled={busy}
-                      onClick={() => void setScopeState("clear")}
-                      size="sm"
-                      variant="outline"
-                    >
-                      {stableTarget.kind === "chat"
-                        ? t("apps.authorization.restoreInheritance")
-                        : t("apps.authorization.restoreGlobal")}
-                    </Button>
-                  )}
-                  <Button
-                    disabled={busy}
-                    onClick={() => void setScopeState("disabled")}
-                    size="sm"
-                    variant="destructive"
-                  >
-                    {stableTarget.kind === "chat"
-                      ? t("apps.authorization.removeFromChat")
-                      : t("apps.authorization.removeFromProject")}
-                  </Button>
-                </section>
-              )}
             </div>
           ) : (
             <div className="flex min-h-40 items-center justify-center gap-2 text-muted-foreground text-sm" role="alert">
@@ -564,36 +534,48 @@ function AppAuthorizationDialogSession({
           )}
         </AppDialogBody>
 
-        {/* 出口收成两个。从前页脚的「取消」与右上角的 × 是同一件事说两遍，
-            而它与「返回」视觉重量接近、后果却差着一个量级。× 与 Esc 一样
-            走 close()，busy 时同样关不掉，所以删掉它不放松任何围栏。 */}
-        <DialogFooter className="mt-5 shrink-0 flex-row justify-between gap-3">
-          <div>
-            {mode === "add" && !selecting && !savedAppId && (
-              <Button
-                disabled={busy}
-                onClick={() => setStep("select")}
-                variant="ghost"
-              >
-                <ArrowLeft />
-                {t("apps.authorization.back")}
+        <DialogFooter className="shrink-0 flex-row flex-wrap items-center gap-2 border-t bg-muted/40 px-5 py-3">
+          {mode === "add" && !selecting && !savedAppId && (
+            <Button disabled={busy} onClick={() => setStep("select")} size="lg" variant="ghost">
+              <ArrowLeft />
+              {t("apps.authorization.back")}
+            </Button>
+          )}
+          {editActions && (
+            <Button
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={busy}
+              onClick={() => void setScopeState("disabled")}
+              size="lg"
+              variant="ghost"
+            >
+              {stableTarget.kind === "chat"
+                ? t("apps.authorization.removeFromChat")
+                : t("apps.authorization.removeFromProject")}
+            </Button>
+          )}
+          <div className="ml-auto flex flex-wrap justify-end gap-2">
+            {editActions?.scopeRecord && (
+              <Button disabled={busy} onClick={() => void setScopeState("clear")} size="lg" variant="outline">
+                {stableTarget.kind === "chat"
+                  ? t("apps.authorization.restoreInheritance")
+                  : t("apps.authorization.restoreGlobal")}
               </Button>
             )}
-          </div>
-          <div className="flex gap-2">
             {selecting ? (
               <Button
                 disabled={!selectedId || busy}
                 onClick={() => setStep("authorize")}
+                size="lg"
               >
                 {t("apps.authorization.next")}
               </Button>
             ) : savedAppId ? (
-              <Button disabled={busy} onClick={() => void retryFinish()}>
+              <Button disabled={busy} onClick={() => void retryFinish()} size="lg">
                 {t("apps.authorization.retryRefresh")}
               </Button>
             ) : (
-              <Button disabled={!selected || busy} onClick={() => void save()}>
+              <Button disabled={!selected || busy} onClick={() => void save()} size="lg">
                 {busy
                   ? t("apps.authorization.saving")
                   : mode === "add"

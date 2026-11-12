@@ -5,7 +5,7 @@
  *           only as set / not set with Replace and Clear), each with when it applies, "Changed" and Reset to default; an owner's
  *           confirmation (`confirm`) is asked in a dialog and answered by its id; a refusal is shown under its field.
  * [POS]: T-P5's form on the T-P4 detail page. Values live in main; the form sends one field at a time and shows what main answers,
- *        so a secret's clear text never comes back.
+ *        so a secret's clear text never comes back. Provider settings use the per-field timing badges without a section note.
  */
 import { useState } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
@@ -50,7 +50,6 @@ function SecretField({ set, label, copy, onSave }: { set: boolean; label: string
 
 export function PluginSettingsForm({ pluginId, provider, view: initial, bridge, workbench }: {
   pluginId: string;
-  name: string;
   provider: boolean;
   view: PluginSettingsView;
   bridge: PluginsBridge;
@@ -102,7 +101,7 @@ export function PluginSettingsForm({ pluginId, provider, view: initial, bridge, 
     }
   };
   return (
-    <SettingsSection title={copy.sectionSettings} action={<span className="text-muted-foreground text-xs">{provider ? copy.settingsProviderNote : copy.settingsNote}</span>}>
+    <SettingsSection title={copy.sectionSettings} action={!provider && <span className="text-muted-foreground text-xs">{copy.settingsNote}</span>}>
       <SettingsList>
         {view.fields.map(field => {
           const changed = view.changed.includes(field.id);

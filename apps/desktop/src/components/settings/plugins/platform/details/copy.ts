@@ -25,7 +25,7 @@ const en = {
     host_history: 'Read saved Chat history to continue earlier work.',
     host_skills: 'Find and read Skills available to the current Chat.',
     host_plugins: 'Create plugins, validate their source and manage versions.',
-    'bottega-weather': 'See current weather for your location or a selected city. For personal, non-commercial use.',
+    'bottega-weather': 'See current conditions and forecasts for a selected city. For personal, non-commercial use.',
   },
 };
 type Copy = typeof en;
@@ -52,7 +52,7 @@ const localized: Record<string, Copy> = {
       host_history: '读取已保存的 Chat 历史，接续之前的工作。',
       host_skills: '查找和读取当前 Chat 可使用的 Skill。',
       host_plugins: '创建插件、校验源码和管理版本。',
-      'bottega-weather': '查看当前位置或指定城市的实时天气。仅供个人及非商业用途。',
+      'bottega-weather': '查看所选城市的当前天气和预报。仅供个人及非商业用途。',
     },
   },
   ja: {
@@ -77,7 +77,7 @@ const localized: Record<string, Copy> = {
       host_history: '保存済みの Chat 履歴を読み、以前の作業を続けます。',
       host_skills: '現在の Chat で利用できる Skill を検索して読み取ります。',
       host_plugins: 'プラグインを作成し、ソースの検証とバージョン管理を行います。',
-      'bottega-weather': '現在地や選択した都市の天気を確認します。個人および非商用利用向けです。',
+      'bottega-weather': '選択した都市の現在の天気と予報を確認します。個人および非商用利用向けです。',
     },
   },
   fr: {
@@ -102,7 +102,7 @@ const localized: Record<string, Copy> = {
       host_history: 'Lisez l’historique des Chats pour reprendre un travail précédent.',
       host_skills: 'Trouvez et lisez les Skills disponibles dans le Chat actuel.',
       host_plugins: 'Créez des plugins, validez leur code et gérez leurs versions.',
-      'bottega-weather': 'Consultez la météo de votre position ou d’une ville choisie. Usage personnel et non commercial.',
+      'bottega-weather': 'Consultez les conditions actuelles et les prévisions pour une ville choisie. Usage personnel et non commercial.',
     },
   },
   es: {
@@ -127,7 +127,7 @@ const localized: Record<string, Copy> = {
       host_history: 'Lee el historial de Chat para continuar un trabajo anterior.',
       host_skills: 'Busca y lee los Skills disponibles para el Chat actual.',
       host_plugins: 'Crea plugins, valida su código y administra sus versiones.',
-      'bottega-weather': 'Consulta el tiempo de tu ubicación o de una ciudad. Para uso personal y no comercial.',
+      'bottega-weather': 'Consulta las condiciones actuales y el pronóstico de una ciudad. Para uso personal y no comercial.',
     },
   },
 };

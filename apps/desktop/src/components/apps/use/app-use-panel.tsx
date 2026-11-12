@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on AppUseChat explicit state machine, AppSidePanel chrome, fixed-App ChatView, i18n, and accessible UI primitives
- * [OUTPUT]: Provides Conversation and History surfaces with Chat-owned Agent choice, focus return, New Chat, frozen history, switching recovery and bottom dock.
+ * [OUTPUT]: Provides Conversation and History with optional inline sizing, Chat-owned Agent choice, focus return, New Chat, frozen history, switching recovery and bottom dock.
  * [POS]: App Use product surface; history is a first-class state rather than a chat selector embedded in Conversation chrome
  */
 
@@ -13,7 +13,7 @@ import { cn } from "@ai-chat/ui/lib/utils";
 import { panelChromeClassName } from "@/components/page-shell";
 import type { AppRecord } from "../../../../shared/ipc/apps/apps-ipc";
 import type { AppUseChat } from "./use-app-use-chat";
-import { AppSidePanel } from "../app-side-panel";
+import { AppSidePanel, type AppPanelLayout } from "../app-side-panel";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import {
   readAllChatActivity,
@@ -38,12 +38,14 @@ export function AppUsePanel({
   chat,
   onClose,
   onDock,
+  inlineLayout,
 }: {
   open: boolean;
   record: AppRecord;
   chat: AppUseChat;
   onClose: () => void;
   onDock: () => void;
+  inlineLayout?: AppPanelLayout;
 }) {
   const { t } = useAppTranslation();
   const busy = chat.switchState !== "idle";
@@ -70,6 +72,7 @@ export function AppUsePanel({
   return (
     <AppSidePanel
       closeLabel={t("apps.usePanel.close")}
+      inlineLayout={inlineLayout}
       header={history ? (
         <>
           <Button

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on dnd-kit sortable, the Setup presentation projection, Agent identity, Settings layout primitives and Providers i18n
- * [OUTPUT]: Provides ProviderRow — a sortable row for one Provider catalog entry with a drag handle, identity, a health note (attention, a custom route's explanation, why sign-in is not verified, or that the Agent runs with Bottega's own configuration) with its single fix, and the Default badge or Make default action
- * [POS]: Row of Settings › Providers; ProviderList owns ordering and persistence, this file only renders one entry; an unavailable package Provider shows its reason, and a package Provider can be made default once Setup reports it installed and supported (read back as stored, S3-d)
+ * [OUTPUT]: Provides ProviderRow with one line for identity, reordering, setup or update actions, and the default control; providerHealth supplies diagnostic copy to plugin settings and action eligibility to the list.
+ * [POS]: Row of Settings › Providers; ProviderList owns ordering and persistence. A package Provider can be made default once Setup reports it installed and supported.
  */
 
 import { useSortable } from "@dnd-kit/sortable";
@@ -11,9 +11,8 @@ import { useAppTranslation } from "@/components/providers/preferences/i18n-provi
 import { SettingsBadge, SettingsButton } from "@/components/settings/settings-layout";
 import { backendSetupPresentation } from "@/components/setup/backend-parts";
 import { providerTraits } from "../../../../shared/providers/traits";
-import { AgentBackendIcon, isAgentBackendId, providerName, providerState } from "@/lib/agent/agent-backends";
+import { AgentBackendIcon, isAgentBackendId, providerName } from "@/lib/agent/agent-backends";
 import type { ProviderEntry } from "@/lib/provider-catalog/store";
-import { AVAILABILITY_STATE_KEYS, PROVIDER_UNAVAILABLE_REASON_KEYS } from "../../../../shared/agent-availability/copy";
 import type { BackendInfo } from "../../../../shared/ipc/agent/agent-ipc";
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
 
@@ -59,9 +58,7 @@ export function ProviderRow({ entry, backend, isDefault, now, onMakeDefault, onF
   /* Every row moves: S3-c keeps any id in the order. */
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
   const name = backend?.displayName ?? providerName(entry);
-  const health = providerHealth(backend, now);
-  const noteKey = entry.unavailableReason ? PROVIDER_UNAVAILABLE_REASON_KEYS[entry.unavailableReason]
-    : providerState(entry, backend, now, true) === "unavailable" ? AVAILABILITY_STATE_KEYS.unavailable : health.noteKey;
+  const { fix, selectable } = providerHealth(backend, now);
   return <div ref={setNodeRef} role="group" aria-label={name}
     style={{ transform: transform ? `translate3d(0, ${Math.round(transform.y)}px, 0)` : undefined, transition }}
     className={cn("relative flex min-h-14 items-center gap-3 bg-card px-4 py-3", isDragging && "z-10 shadow-md ring-1 ring-foreground/10")}>
@@ -71,16 +68,13 @@ export function ProviderRow({ entry, backend, isDefault, now, onMakeDefault, onF
       <GripVertical aria-hidden="true" className="size-4" />
     </button>
     <AgentBackendIcon backend={id} className="size-5 shrink-0" />
-    <div className="min-w-0 flex-1">
-      <p className="truncate font-medium text-sm">{name}</p>
-      {noteKey && <p className="text-muted-foreground text-xs">{t(noteKey, { backend: name })}</p>}
-    </div>
+    <span className="min-w-0 flex-1 truncate font-medium text-sm">{name}</span>
     <div className="flex shrink-0 items-center gap-2">
-      {health.fix && <SettingsButton variant="outline" onClick={() => onFix(health.fix!)}>
-        {t(health.fix === "update" ? "settings.providers.update" : "settings.providers.setUp")}
+      {fix && <SettingsButton variant="outline" onClick={() => onFix(fix)}>
+        {t(fix === "update" ? "settings.providers.update" : "settings.providers.setUp")}
       </SettingsButton>}
       {isDefault ? <SettingsBadge tone="muted">{t("settings.providers.default")}</SettingsBadge>
-        : <SettingsButton variant="ghost" disabled={!canDefault || !health.selectable} onClick={() => onMakeDefault(id)}>{t("settings.providers.makeDefault")}</SettingsButton>}
+        : <SettingsButton variant="ghost" disabled={!canDefault || !selectable} onClick={() => onMakeDefault(id)}>{t("settings.providers.makeDefault")}</SettingsButton>}
     </div>
   </div>;
 }

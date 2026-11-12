@@ -5,6 +5,8 @@
  */
 export const systemDockBaseEn={
   "widgets": {
+    directory: {"title": "Browse Widgets", "install": "Install"},
+    catalog: {"title": "Widgets in your Dock", "count": "{{count}}", "empty": "No Widgets in your Dock yet.", "more": "More Widget actions", "manage": "Manage saved Widgets"},
     "summaryRefreshFailed": "Could not refresh the summary. The previous summary is kept.",
     "api": {
       "connectionRouting": "Uses your system proxy when configured. In proxy mode, Cloudflare resolves the service domain over HTTPS.",
@@ -63,7 +65,6 @@ export const systemDockBaseEn={
     },
     "install": {
       "repair": "Repair installation",
-      "preparing": "This version is still being prepared for this Mac.",
       "emptyHint": "Install this version on this Mac. Configure an instance before adding it to the Dock.",
       "accountAvailable": "Available in your account",
       "reviewSource": "Review in source Chat",
@@ -213,7 +214,7 @@ export const systemDockBaseEn={
     },
     "deadline": "Target date: {{date}}",
     "states": {
-      "needs-installation": "Needs installation",
+      "needs-install":"Needs installation","needs-installation": "Needs installation",
       "package-preparing": "Preparing package",
       "installing": "Installing…",
       "ready": "Ready",
@@ -250,14 +251,11 @@ export const systemDockBaseEn={
     "new": "New Widget",
     "untitled": "Untitled Widget",
     "edit": "Edit functionality",
-    "empty": "Create a Widget to keep the information you need in the Dock.",
-    "search": "Search Widgets",
     "failed": "The Widget could not be opened. Your work is kept. Try again.",
-    "creating": "Creating…",
     "example": "Example data",
     "impact": "{{count}} instances on this computer",
     "noMatches": "No matching Widgets",
-    "addExisting": "Choose a Widget",
+    "addExisting": "Add existing Widget",
     "cancel": "Cancel",
     "addFailed": "The Widget could not be added. Your choices are kept."
   },

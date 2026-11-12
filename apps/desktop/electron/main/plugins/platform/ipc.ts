@@ -11,6 +11,7 @@ import { rendererIpc } from "../../registration/ipc-registrar";
 import type { UnifiedPluginPlatform } from "./service";
 import type { PluginCloudPackages } from "../distribution/cloud";
 import type { UnifiedPluginSurfaceGateway } from "./gateway";
+import { isOfficialWidgetId } from "../../../../shared/system-dock/widgets/catalog/distribution";
 const hostImpact = z.object({ revision: z.number().int().nonnegative(), digest: z.string().min(1).max(128) }).strict().optional();
 const plugin = z.object({ pluginId: pluginIdentitySchema }).strict();
 export function registerUnifiedPluginPlatform(platform: UnifiedPluginPlatform, window: BrowserWindow, rendererUrl: string,
@@ -45,7 +46,9 @@ export function registerUnifiedPluginPlatform(platform: UnifiedPluginPlatform, w
     })
     .handleWithContext(C.openSurface, (context, input) => {
       if (!options.gateway) throw new Error("Plugin interface hosting is unavailable");
-      return options.gateway.open(z.object({ pluginId: pluginIdentitySchema, contributionId: pluginIdentitySchema, instanceId: pluginIdentitySchema.optional() }).strict().parse(input), context.webContentsId);
+      const request = z.object({ pluginId: pluginIdentitySchema, contributionId: pluginIdentitySchema, instanceId: pluginIdentitySchema.optional() }).strict().parse(input);
+      if (isOfficialWidgetId(request.pluginId)) throw new Error("Official Widget cards require a visible Dock instance");
+      return options.gateway.open(request, context.webContentsId);
     })
     .handleWithContext(C.call, (context, input) => {
       if (!options.gateway) throw new Error("Plugin service is unavailable");

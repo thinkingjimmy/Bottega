@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the shared quota store, localized formatting, Settings navigation, SettingsSurface, UsageRegion, UsageInfoTip and ui Tabs.
  * [OUTPUT]: Renders per-Agent headline quotas, complete calendar-aware windows (a window past its reset reads as renewed), resets, recovery states (a Terminal sign-in for a signed-out Agent; for Claude on a custom route, the fix and a reveal of settings.json) and refresh actions for every Provider main reads quota for (a skeleton until its first snapshot names them); a reading stays shown while a read waits, runs or fails, and the status line is a polite live region; opens on a requested Agent's tab.
- * [POS]: Account quota section above local usage history; shares the source-rail grammar with it and never aggregates percentages across pools.
+ * [POS]: Account quota section above local usage history. Each tab fits its readings, and the status region adds space only when it shows a message.
  */
 import { useEffect, useRef, useState } from "react";
 import { FolderOpen, LogIn, RefreshCw } from "lucide-react";
@@ -44,7 +44,7 @@ function QuotaWindowRow({ agent, pool, window, now }: { agent: AgentUsageLimits;
   const text = value === null ? t("settings.usage.limits.unknown") : t("settings.usage.limits.left", { percent });
   const caution = value !== null && value < 20;
   const scope = pool.isGeneral ? t("settings.usage.limits.general") : pool.label ?? pool.id;
-  return <div className="flex items-start gap-4 py-2" data-testid="quota-window" data-window={window.id}>
+  return <div className="flex items-start gap-4 py-2 last:pb-0" data-testid="quota-window" data-window={window.id}>
     <div className="min-w-0 flex-[0_1_15rem]">
       <p className="font-medium text-sm">{title}</p>
       {reset && <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground">{reset}</p>}
@@ -117,12 +117,11 @@ function AgentLimits({ agent, now, customRoute, signIn }: { agent: AgentUsageLim
           {pool.windows.map((window) => <QuotaWindowRow key={window.id} {...{ agent, pool, window, now }} />)}
         </section>)}
         {!pools.length && loading && <Skeleton className="h-11 w-full rounded-md" />}
-        {/* Always mounted, so a refresh that ends in a verdict is announced. Amber is for a read that failed with nothing to show;
-            a settled verdict (signed out, custom route) is information. */}
-        <div role="status" aria-live="polite">
-          {status && <p className={`text-xs leading-relaxed ${agent.fetchState === "error" && (agent.availability === "available" || agent.availability === "unavailable") ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}>{status}</p>}
-        </div>
         {!pools.length && !status && <p className="text-xs text-muted-foreground">{t("settings.usage.limits.noWindows")}</p>}
+      </div>
+      {/* Keep the live region mounted so a refresh can announce its result. */}
+      <div role="status" aria-live="polite" className={status && (pools.length > 0 || loading) ? "mt-3" : undefined}>
+        {status && <p className={`text-xs leading-relaxed ${agent.fetchState === "error" && (agent.availability === "available" || agent.availability === "unavailable") ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}>{status}</p>}
       </div>
     </UsageRegion>
   </article>;

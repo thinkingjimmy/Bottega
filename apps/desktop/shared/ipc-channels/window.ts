@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on nothing.
- * [OUTPUT]: Provides the window-surface launch arguments and listener-readiness channels, personalization channels and Dock settings/location-control channels. Includes the main-window App pin command.
+ * [OUTPUT]: Provides the window-surface launch arguments and listener-readiness channels, personalization channels and Dock settings/location-control channels. Includes main-window App pins and actual Widget catalog presentation/visibility/card channels.
  * [POS]: Zod-free IPC channel names (OPT-34): preload imports these so no schema module enters its bundle; the owning contract modules re-export them unchanged.
  */
 export const WINDOW_ROLE_ARGUMENT = "--bottega-window-role=";
@@ -34,6 +34,10 @@ export const PROJECT_PERSONALIZATION_CHANNEL = {
 } as const;
 
 const DOCK_SETTINGS_METHODS = {
+  widgetCatalogSnapshot:"widget-catalog-snapshot",
+  widgetDirectoryControl:"widget-directory-control",
+  setWidgetCatalogVisible:"widget-catalog-visible",
+  widgetCatalogSurface:"widget-catalog-surface",
   weatherControl:"weather-control",
   pluginWidgetForm:"plugin-widget-form",
   savePluginWidget:"save-plugin-widget",

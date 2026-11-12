@@ -11,7 +11,7 @@ import { hashCanonical } from "@bottega/contracts/core/canonical-json";
 import { unifiedPluginDistributionSchema, unifiedPluginManifestSchema, unifiedPluginRevisionId, UNIFIED_PLUGIN_PACKAGE_LIMITS as LIMITS } from "@bottega/contracts/plugins/platform";
 const hash = (value: unknown) => `sha256:${hashCanonical(value)}`;
 const bytesHash = (value: Uint8Array) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
-export async function verifyUnifiedPluginDistribution(directory: string) {
+export async function verifyUnifiedPluginDistribution(directory: string, target = hostTarget) {
   const root = await realpath(directory);
   if ((await lstat(directory)).isSymbolicLink()) throw new Error("Plugin package directory cannot be a symbolic link");
   const files = new Map<string, Buffer>(); let total = 0;
@@ -33,13 +33,14 @@ export async function verifyUnifiedPluginDistribution(directory: string) {
     }
   }
   await visit(root);
-  return verifyUnifiedPluginFiles(files);
+  return verifyUnifiedPluginFiles(files, target);
 }
-export function verifyUnifiedPluginFiles(files: Map<string, Buffer>) {
+const hostTarget = { platform: process.platform, arch: process.arch, nodeMajor: 24, sdkVersion: 1 };
+export function verifyUnifiedPluginFiles(files: Map<string, Buffer>, target = hostTarget) {
   const descriptor = files.get("plugin-package.json");
   if (!descriptor || descriptor.length > 1_048_576) throw new Error("Complete plugin distribution metadata is missing");
   const distribution = unifiedPluginDistributionSchema.parse(JSON.parse(descriptor.toString("utf8")));
-  if (distribution.target.platform !== process.platform || distribution.target.arch !== process.arch || distribution.target.nodeMajor !== 24 || distribution.target.sdkVersion !== 1) throw new Error("Plugin package target is unsupported on this computer");
+  if (distribution.target.platform !== target.platform || distribution.target.arch !== target.arch || distribution.target.nodeMajor !== target.nodeMajor || distribution.target.sdkVersion !== target.sdkVersion) throw new Error("Plugin package target is unsupported on this computer");
   if (unifiedPluginRevisionId(distribution) !== distribution.revisionId || distribution.manifestDigest !== hash(distribution.manifest) || distribution.contentDigest !== hash(distribution.files)) throw new Error("Plugin distribution identity changed");
   if (files.size !== distribution.files.length + 1) throw new Error("Plugin package contains missing or unlisted files");
   for (const file of distribution.files) { const content = files.get(file.path); if (!content || content.length !== file.bytes || bytesHash(content) !== file.sha256) throw new Error(`Plugin package file digest changed: ${file.path}`); }

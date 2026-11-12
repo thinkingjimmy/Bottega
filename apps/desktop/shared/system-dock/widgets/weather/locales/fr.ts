@@ -1,27 +1,27 @@
 /**
  * [INPUT]: Only this locale definition labels.
- * [OUTPUT]: The complete weatherFr Weather copy object; the unused city-result instruction is excluded.
+ * [OUTPUT]: The complete weatherFr Weather copy for city selection, previews and forecasts.
  * [POS]: Deferred locale data; no other locale or aggregate dependency.
  */
 import {weatherFrDefinition} from '../definitions/fr';
 export const weatherFr={
   ...weatherFrDefinition,
-  "current": "Position actuelle",
-  "city": "Choisir une ville",
+  "city": "Ville",
   "search": "Rechercher une ville",
-  "useCurrent": "Utiliser ma position",
-  "locating": "Localisation…",
-  "located": "Position trouvée",
+  "searching": "Recherche…",
+  "changeCity": "Changer de ville",
+  "cancelCityChange": "Annuler le changement",
   "noCities": "Aucune ville trouvée.",
-  "denied": "Accès à la position refusé. Choisissez une ville ou autorisez cet accès dans les réglages système.",
-  "disabled": "La localisation est désactivée. Choisissez une ville ou activez-la dans les réglages système.",
-  "timeout": "La localisation a expiré. Réessayez ou choisissez une ville.",
-  "unavailable": "Position indisponible. Choisissez une ville.",
-  "authorization": "Autorisez la localisation pour utiliser votre position.",
+  "today": "Aujourd’hui",
+  "dailyRange": "Max. {{high}} °C, min. {{low}} °C",
+  "forecastUnavailable": "Pas de prévision",
+  "sizeCurrent": "Conditions actuelles",
+  "sizeToday": "Conditions actuelles et températures du jour",
+  "sizeForecast": "Conditions actuelles et prévisions des trois prochains jours",
   "failed": "Impossible de charger la météo. Réessayez.",
   "rateLimited": "Le service météo est occupé. Réessayez plus tard.",
   "invalid": "Les données météo sont illisibles.",
-  "searchFailed": "Impossible de rechercher des villes. Réessayez.",
+  "searchFailed": "Impossible de rechercher des villes.",
   "temperature": "Température",
   "feelsLike": "Ressenti",
   "humidity": "Humidité",

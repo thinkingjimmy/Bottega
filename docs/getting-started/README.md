@@ -47,6 +47,10 @@ Setup has one path and never mentions an account: choose your Bottega folder, th
 
 See the [features guide](../features/README.md) for the product model and its four core capability areas.
 
+### Upgrading to 0.4.4
+
+0.4.4 uses protocol **27**. Update through the stable channel or install from the latest stable Release. Open Weather settings to select a city for each Widget that used automatic location. Read [Upgrading to 0.4.2](#upgrading-to-042) if you are coming from 0.4.1 or earlier.
+
 ### Upgrading to 0.4.3
 
 0.4.3 uses protocol **27**. Use the stable update channel or install from the latest stable Release. Read [Upgrading to 0.4.2](#upgrading-to-042) if you are coming from 0.4.1 or earlier.
@@ -127,7 +131,7 @@ Your saved title Agent and model stay unchanged. This version's Codex connection
 
 This release keeps **protocol 19**, existing content, sync passwords and account keys. No data reset is required. Dock remains Alpha on macOS 27.x with Apple silicon; replacement, system recovery and display/fullscreen combinations are still being validated. See the [0.2.7 changelog](../changelog/README.md#2026-10-18--v027) and [installation steps](#download-and-install).
 
-The older upgrade notes describe their original versions. Use Requirements and the 0.4.3 upgrade section for the current release.
+The older upgrade notes describe their original versions. Use Requirements and the 0.4.4 upgrade section for the current release.
 
 ## Upgrading to 0.2.6
 
@@ -159,7 +163,7 @@ Cloud Sync now uses protocol 15. Update all computers that use cloud features to
 
 ## Download and install
 
-Use the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest) for the available installer and accepted platform. Version 0.4.3 source targets **macOS on Apple silicon (ARM64)**. The source version does not certify that an installer has been published. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
+Use the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest) for the available installer and accepted platform. Version 0.4.4 source targets **macOS on Apple silicon (ARM64)**. The source version does not certify that an installer has been published. [Bottega Web](https://app.getbottega.app) is available in desktop and phone browsers.
 
 | Platform | Download | Notes |
 | --- | --- | --- |

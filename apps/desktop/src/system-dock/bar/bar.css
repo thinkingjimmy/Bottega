@@ -1,5 +1,5 @@
 /* [INPUT]: Common Dock tokens, the strip's inline metrics (zoom, gap, padding, height) and item data attributes (area, status, open, dragging, shifted).
- * [OUTPUT]: Three-edge handle and strip; fixed-axis slots, hover/highlight, status/busy/running indicators, drag placeholder shifts and faded drag-out removal preview, Widget faces, separator, overflow and empty CTA.
+ * [OUTPUT]: Three-edge handle and strip; fixed-axis slots, hover/highlight, status/busy/running indicators, drag placeholder shifts and faded drag-out removal preview, shared-face slots, separator, overflow and empty CTA.
  * [POS]: system-dock/bar stylesheet; widths come from shared metrics inline, so this file only draws — it never changes a slot's footprint.
  */
 .dock { display: flex; align-items: flex-end; justify-content: center; width: 100vw; height: 100vh; }
@@ -42,30 +42,3 @@
 .overflow svg { width: 20px; height: 20px; }
 .empty-cta { display: flex; align-items: center; justify-content: center; gap: 6px; height: 40px; border-radius: 10px; font-weight: 500; }
 .empty-cta svg { width: 16px; height: 16px; }
-.face { display: flex; width: 100%; height: 100%; padding: 4px 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.face-glyph { width: 14px; height: 14px; }
-.face-value { display: inline-flex; align-items: center; font-weight: 600; font-size: 13px; }
-.face-value[data-low] { color: var(--caution); }
-.face-value[data-muted] { color: var(--muted); }
-.face-caption { overflow: hidden; text-overflow: ellipsis; font-size: 10px; color: var(--muted); }
-.face-row { display: flex; align-items: center; gap: 6px; }
-.face-setup { align-items: center; justify-content: center; gap: 6px; color: var(--muted); font-weight: 500; }
-.face-activity { flex-direction: column; justify-content: center; align-items: flex-start; gap: 2px; }
-.face-limits { align-items: center; justify-content: center; gap: 4px; padding: 0; }
-.face-limits-single { flex-direction: row; align-items: center; gap: 8px; }
-.face-limits-single .face-caption { max-width: 76px; white-space: normal; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.face-ring { position: relative; display: grid; place-items: center; flex: none; width: 36px; height: 36px; }
-.face-ring > svg { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; }
-.face-ring-track { stroke: var(--ring-track); }
-.face-ring-arc { stroke: var(--text); stroke-linecap: round; }
-.face-ring[data-low] .face-ring-arc, .face-ring[data-low] .face-ring-value { stroke: var(--caution); color: var(--caution); }
-.face-ring[data-muted] .face-ring-arc { opacity: 0.45; }
-.face-ring-center { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; line-height: 1; }
-.face-ring-logo { display: block; width: 9px; height: 9px; opacity: 0.75; }
-.face-ring-logo svg { display: block; width: 100%; height: 100%; }
-.face-ring-value { font-size: 11px; font-weight: 650; letter-spacing: -0.2px; }
-.face-ring[data-muted] .face-ring-value { color: var(--muted); }
-.face-ring-glyph { width: 11px; height: 11px; color: var(--muted); }
-.face-more { align-self: flex-start; margin-top: 2px; padding: 0 3px; border-radius: 6px; font-size: 10px; font-weight: 600; color: var(--muted); background: var(--hover); }
-.face-activity .face-value { font-size: 15px; }
-.face-unit { font-size: 10px; color: var(--muted); }

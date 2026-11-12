@@ -4,7 +4,7 @@
 
 Bottega treats an Agent conversation as the control surface for a durable local workspace. The following capability areas define the product.
 
-This guide describes **0.4.3/protocol 27** source behavior. Installer availability and actual acceptance scope come from the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest).
+This guide describes **0.4.4/protocol 27** source behavior. Installer availability and actual acceptance scope come from the [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest).
 
 ## Multi-agent
 
@@ -135,11 +135,11 @@ Controlled-version checks cover macOS 26.4.1 and 27.0.0 on a macOS 27 Apple sili
 
 ### Custom Widgets
 
-Create a Widget from Dock settings and continue editing in its plugin source Project. Previewing remains optional. Valid local builds update installed instances automatically; failed builds keep the working version. Each instance has independent settings and Base/API grants. API credentials stay encrypted on this computer. Use standard or isolated details, approved actions and manual refresh. Review a received package before allowing it to run or access local data.
+With Dock enabled, open Apps › Widgets to add, configure or create a Widget. Continue editing a custom Widget in its plugin source Project. Previewing remains optional. Valid local builds update installed instances automatically; failed builds keep the working version. Each instance has independent settings and Base/API grants. API credentials stay encrypted on this computer. Use standard or isolated details, approved actions and manual refresh. Review a received package before allowing it to run or access local data.
 
 ### Weather
 
-Weather is preinstalled. Add it from Settings or Dock Add, choose current location or search for a city, and keep independent instances for different places. No Agent, account or API key is required. View temperature, conditions, feels-like temperature, humidity, observation time and data source. Refresh manually or every 15 minutes while visible. Hiding or disabling it stops requests; failed reads keep marked last-good data for the same place. Current-location coordinates stay local. City selection is available when system location is off. Successful native location authorization retains its separate acceptance scope.
+Weather is preinstalled. Add it from Apps › Widgets or the Dock Add menu. Search for a city and choose the result by region or country. Each Widget stores its own city. Small shows current conditions, Medium adds today's high and low, and Large adds the next three days. Previously automatic-location Widgets ask you to select a city. No Agent, account or API key is required. Refresh manually or every 15 minutes while visible. When a request fails, the Widget marks the last successful reading for that city as out of date.
 
 ## Cloud Sync
 

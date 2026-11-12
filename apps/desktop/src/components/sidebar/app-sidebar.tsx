@@ -2,7 +2,7 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, i18n, Sidebar UI, product providers, shared WorkspaceNavigation/SettingsNavigation and ComputerSwitcher, active App targets, footer affordances, cloud projections and the Sidebar notice dialog.
  * [OUTPUT]: Provides AppSidebar.
- * [POS]: Unified Plugins entry and declared ready page navigation; sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
+ * [POS]: App and Widget card catalog entry plus declared ready page navigation; sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  * Memory status follows its plugin item when the workbench UI is enabled; the footer uses the same destination.
  */
 import { useWorkbenchSettingsLabels } from "@/components/settings/plugins/navigation/labels";
@@ -528,7 +528,7 @@ function AppSidebarContent({
           apps={{
             label: pluginContextCopy(i18n.language).plugins,
             active: activePath === "/apps" || appTarget.kind === "apps",
-            render: (children) => <button type="button" onClick={() => onSelectSettings("plugins")}>{children}</button>,
+            render: (children) => <Link to="/apps" onClick={activeSettings ? onCloseSettings : undefined}>{children}</Link>,
           }}
           appsExtras={
             <>

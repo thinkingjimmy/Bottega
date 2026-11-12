@@ -8,7 +8,7 @@ import type {UsageSourceId} from '../../../../../shared/ipc/settings/usage-ipc';
 import type {AgentUsageLimits} from '../../../../../shared/usage-limits/types';
 import {defaultLimitsWidget,defaultActivityWidget,defaultTasksWidget} from '../../../../../shared/system-dock/layout';
 import type {OfficialWidget} from '../../../../../shared/system-dock/widgets/official';
-export type OfficialWidgetDirectory={agents:readonly AgentUsageLimits[];configurable:readonly AgentBackendId[];sources:readonly UsageSourceId[]};
+export type OfficialWidgetDirectory={activityAllowed?:boolean;agents:readonly AgentUsageLimits[];configurable:readonly AgentBackendId[];sources:readonly UsageSourceId[]};
 export function officialDefault(id:OfficialWidget['type'],directory:OfficialWidgetDirectory):OfficialWidget{
  return id==='builtin.tasks'?defaultTasksWidget():id==='builtin.ai-activity'?defaultActivityWidget():defaultLimitsWidget(directory.agents.filter(agent=>agent.availability==='available').map(agent=>agent.backend));
 }
@@ -16,8 +16,9 @@ export function officialChoices(directory:OfficialWidgetDirectory){
  return{configurable:[...directory.configurable],sources:[...directory.sources],agents:directory.agents.map(agent=>({backend:agent.backend,pools:agent.pools.map(pool=>({id:pool.id,label:pool.label,isGeneral:pool.isGeneral,
   windows:pool.windows.map(window=>({id:window.id,windowDurationMins:window.windowDurationMins,...(window.calendarPeriod?{calendarPeriod:window.calendarPeriod}:{})}))}))}))};
 }
-export function validateOfficial(widget:OfficialWidget,directory:OfficialWidgetDirectory){
- if(widget.type==='builtin.ai-activity'&&widget.source!=='all'&&!directory.sources.includes(widget.source))throw new Error('DOCK_WIDGET_SOURCE_CONFIGURATION_REQUIRED');
+export function validateOfficial(widget:OfficialWidget,directory:OfficialWidgetDirectory,prior?:{type:string;source?:string}){
+ if(widget.type==='builtin.ai-activity'&&directory.activityAllowed===false)throw new Error('DOCK_OFFICIAL_WIDGET_UNAVAILABLE');
+ if(widget.type==='builtin.ai-activity'&&widget.source!=='all'&&!directory.sources.includes(widget.source)&&!(prior?.type==='builtin.ai-activity'&&prior.source===widget.source))throw new Error('DOCK_WIDGET_SOURCE_CONFIGURATION_REQUIRED');
  if(widget.type!=='builtin.ai-limits')return;
  if(widget.selectedBackends.some(backend=>!directory.configurable.includes(backend))||Object.keys(widget.selectionByBackend).some(backend=>!widget.selectedBackends.some(selected=>selected===backend)))throw new Error('DOCK_WIDGET_SOURCE_CONFIGURATION_REQUIRED');
  for(const backend of widget.selectedBackends){

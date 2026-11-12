@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React state, an optional stable toolbar action host, i18n, scope-aware Extension client commands, package cards/dialog, and Settings primitives
- * [OUTPUT]: Provides one flat owned-package lifecycle surface reusable by global and Project Settings with optional canonical-adapter row exclusions, with a portal-mounted acquisition action in either scope or a section-level fallback
+ * [OUTPUT]: Provides the standalone global ExtensionsSettingsView and the scoped ExtensionsContent with optional canonical-adapter row exclusions and either a portal-mounted or section-level acquisition action
  * [POS]: apps/desktop/src/views/settings/extensions; Canonical Extension UI; CLI Agent-plugin diagnostics stay main-only and invalidations trigger qualified refetches
  */
 
@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Blocks, Plus } from "lucide-react";
+import { SettingsPage } from "@/components/page-shell";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import type {
   ExtensionRetainedInstallDataView,
@@ -32,6 +33,7 @@ import { ExtensionPackageCard } from "@/components/settings/extensions/extension
 import {
   SettingsAlert,
   SettingsButton,
+  SettingsCanvas,
   SettingsEmpty,
   SettingsList,
   SettingsRow,
@@ -49,6 +51,17 @@ import {
 } from "@/lib/clients/extensions-client";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { Button } from "@ai-chat/ui/components/ui/button";
+
+export function ExtensionsSettingsView() {
+  const { t } = useAppTranslation();
+  return (
+    <SettingsPage title={t("settings.extensions.page.title")}>
+      <SettingsCanvas>
+        <ExtensionsContent />
+      </SettingsCanvas>
+    </SettingsPage>
+  );
+}
 
 export function ExtensionsContent({
   scope = GLOBAL_PRODUCT_RESOURCE_SCOPE,

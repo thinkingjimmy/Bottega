@@ -227,8 +227,6 @@ export const basesEn = {
     leaseRefusedTitle: "This App view needs to reconnect",
     leaseRefusedHint: "Access to this App view expired or was withdrawn. Reopen the App to continue.",
     surfaceAria: "App GUI",
-    surfaceTabsAria: "App main surface",
-    appTab: "App",
     dataTab: "Data",
     refresh: "Refresh GUI",
     loading: "Loading GUI…",

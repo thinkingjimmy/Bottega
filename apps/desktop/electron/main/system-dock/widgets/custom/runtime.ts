@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on current local acceptance, verified packages, Provider account events, independent Usage scopes, Tasks and a shared visible clock.
+ * [INPUT]: Depends on current local acceptance, verified packages, Provider account events, independent bar/panel/catalog Usage scopes, Tasks and a shared visible clock.
  * [OUTPUT]: Provides bounded host readings, independent preview namespaces, zero-demand samples, account/Library/privacy/pause fences and exact consumer/subscription cleanup.
  * [POS]: Custom Widget runtime projection owner; no author code or independent per-summary process runs here.
  */
@@ -49,10 +49,10 @@ export class DockCustomWidgets implements DockCustomWidgetsPort{
  private scopeKey='';private signature='';private epoch=0;private cacheRevision=0;private closed=false;
  private accounts=new Map<string,string|null>();
  private readonly stopAccounts:(()=>void)|null;
- private readonly demandSurfaces:{bar:'dock-custom-bar'|'dock-preview-bar';panel:'dock-custom-panel'|'dock-preview-panel'};
+ private readonly demandSurfaces:{bar:'dock-custom-bar'|'dock-preview-bar';panel:'dock-custom-panel'|'dock-preview-panel';catalog:'dock-custom-catalog'|'dock-preview-catalog'};
  constructor(private readonly ports:Ports){
   this.clock=ports.clock??{now:Date.now,setTimeout:(callback,ms)=>setTimeout(callback,ms),clearTimeout:id=>clearTimeout(id as ReturnType<typeof setTimeout>)};
-  this.demandSurfaces=ports.usageScope==='authoring-preview'?{bar:'dock-preview-bar',panel:'dock-preview-panel'}:{bar:'dock-custom-bar',panel:'dock-custom-panel'};
+  this.demandSurfaces=ports.usageScope==='authoring-preview'?{bar:'dock-preview-bar',panel:'dock-preview-panel',catalog:'dock-preview-catalog'}:{bar:'dock-custom-bar',panel:'dock-custom-panel',catalog:'dock-custom-catalog'};
   this.usage=new DockUsage(ports.sampleReadings?null:ports.limits,ports.sampleReadings?null:ports.history,()=>{if(!this.closed)ports.changed();},()=>this.clock.now());
   this.accounts=this.accountSnapshot();
   this.stopAccounts=ports.sampleReadings?null:ports.onAccounts?.(()=>{
@@ -70,7 +70,7 @@ export class DockCustomWidgets implements DockCustomWidgetsPort{
  reconcile(){
   if(this.closed)return;this.checkScope();for(const reference of this.failures)if((this.ports.packages.archiveRevision?.(reference)??0)!==(this.failedArchives.get(reference)??0)){this.failures.delete(reference);this.failedArchives.delete(reference);}this.wanted.clear();this.references.clear();
   const groups:unknown[]=[];
-  for(const surface of ['dock-bar','dock-panel'] as const){
+  for(const surface of ['dock-bar','dock-panel','dock-catalog'] as const){
    const demands:Array<{itemId:string;widget:DockWidget}>=[],bases:WidgetDetailSource[]=[],apis:WidgetDetailSource[]=[];
    for(const entry of this.surfaces.get(surface)??[]){
     const item=this.ports.item(entry.itemId),accepted=item&&this.current(item);if(!accepted||accepted.paused||this.ports.masked())continue;
@@ -86,7 +86,7 @@ export class DockCustomWidgets implements DockCustomWidgetsPort{
     if(manifest.dock.refresh.mode==='manual')continue;
     for(const source of manifest.dock.data){const widget=internalWidget(source,accepted.widget,this.ports);if(widget)demands.push({itemId:customDemandId(item!.id,source.id),widget});}
    }
-   this.usage.setVisible(surface==='dock-bar'?this.demandSurfaces.bar:this.demandSurfaces.panel,demands);
+   this.usage.setVisible(surface==='dock-bar'?this.demandSurfaces.bar:surface==='dock-panel'?this.demandSurfaces.panel:this.demandSurfaces.catalog,demands);
    if(!this.ports.sampleReadings){this.ports.base?.setVisible(surface,bases);this.ports.api?.setVisible(surface,apis);}
   }
   for(const reference of this.failures)if(!this.references.has(reference)){this.failures.delete(reference);this.failedArchives.delete(reference);}
@@ -154,8 +154,8 @@ export class DockCustomWidgets implements DockCustomWidgetsPort{
  private checkScope(){
   const next=canonicalJson(this.ports.scope());if(next===this.scopeKey)return;this.scopeKey=next;this.epoch++;this.cache.clear();this.pending.clear();this.failures.clear();this.failedArchives.clear();this.references.clear();this.wanted.clear();this.cacheRevision++;
   if(this.timer!==null)this.clock.clearTimeout(this.timer);this.timer=null;this.timerInterval=0;
-  this.ports.api?.setVisible('dock-bar',[]);this.ports.api?.setVisible('dock-panel',[]);
-  this.usage.setVisible(this.demandSurfaces.bar,[]);this.usage.setVisible(this.demandSurfaces.panel,[]);this.usage.resetHistory();
+  for(const surface of ['dock-bar','dock-panel','dock-catalog'] as const)this.ports.api?.setVisible(surface,[]);
+  this.usage.setVisible(this.demandSurfaces.bar,[]);this.usage.setVisible(this.demandSurfaces.panel,[]);this.usage.setVisible(this.demandSurfaces.catalog,[]);this.usage.resetHistory();
  }
  private load(reference:string):Promise<void>{
   if(this.closed||this.pending.has(reference)||this.failures.has(reference))return Promise.resolve();const epoch=this.epoch,archiveRevision=this.ports.packages.archiveRevision?.(reference)??0;this.pending.add(reference);
@@ -175,5 +175,5 @@ export class DockCustomWidgets implements DockCustomWidgetsPort{
   if(this.timer!==null&&this.timerInterval===interval)return;if(this.timer!==null)this.clock.clearTimeout(this.timer);this.timerInterval=interval;
   this.timer=this.clock.setTimeout(()=>{this.timer=null;this.timerInterval=0;if(this.closed)return;this.checkScope();this.ports.changed();this.arm();},interval-this.clock.now()%interval);
  }
- async close(){this.closed=true;this.stopAccounts?.();this.accounts.clear();if(this.timer!==null)this.clock.clearTimeout(this.timer);this.timer=null;if(!this.ports.sampleReadings){this.ports.base?.setVisible('dock-bar',[]);this.ports.base?.setVisible('dock-panel',[]);this.ports.api?.setVisible('dock-bar',[]);this.ports.api?.setVisible('dock-panel',[]);}this.usage.close();this.wanted.clear();this.references.clear();this.surfaces.clear();this.cache.clear();this.failures.clear();this.failedArchives.clear();this.pending.clear();}
+ async close(){this.closed=true;this.stopAccounts?.();this.accounts.clear();if(this.timer!==null)this.clock.clearTimeout(this.timer);this.timer=null;if(!this.ports.sampleReadings)for(const surface of ['dock-bar','dock-panel','dock-catalog'] as const){this.ports.base?.setVisible(surface,[]);this.ports.api?.setVisible(surface,[]);}this.usage.close();this.wanted.clear();this.references.clear();this.surfaces.clear();this.cache.clear();this.failures.clear();this.failedArchives.clear();this.pending.clear();}
 }

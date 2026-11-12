@@ -8,6 +8,7 @@ import type { settingsExtensionsEn } from "./en";
 
 export const settingsExtensionsEs: typeof settingsExtensionsEn = {
   page: {
+    title: "Extensiones",
     bridgeMissing: "La gestión de extensiones no está disponible en este entorno (falta el bridge IPC)", admissionClosed: "Una extensión está convergiendo a desactivada: se revocan proyecciones, se liberan artefactos, se reinician sesiones con snapshots antiguos y se invalidan cachés. No se inician Agents nuevos hasta terminar.", installedTitle: "Extensiones instaladas", installedDescription: "Instala extensiones desde GitHub. Sus Skills quedan disponibles de inmediato para todos los Agents.", installGithub: "Instalar desde GitHub", emptyTitle: "No hay extensiones instaladas", emptyHint: "Instala una extensión desde GitHub para empezar.", retainedTitle: "Desinstaladas con datos conservados", retainedDescription: "Eliminar el código del paquete nunca borra de forma implícita sus datos. El borrado permanente es una acción separada y reinstalar no recupera datos eliminados.", purgeData: "Eliminar datos permanentemente", retainedCustody: "Custody aún activa: {{custody}}", retainedEpochs: "Quedan {{count}} data epochs en este equipo.",
   },
   install: {

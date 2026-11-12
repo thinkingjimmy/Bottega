@@ -6,6 +6,8 @@
 import {realpath,lstat,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {shell} from 'electron';
+import {developmentWidgetCatalogDirectory} from '../official/widget-mode';
+import {isOfficialWidgetId} from '../../../../shared/system-dock/widgets/catalog/distribution';
 import type {UnifiedPluginRevision} from '@bottega/contracts/plugins/platform';
 import {officialToolPlugins,setPluginToolAvailabilityResolver} from '../../../../shared/plugin-tools';
 import {UnifiedPluginPlatform} from '../platform/service';
@@ -39,6 +41,7 @@ export const unifiedPluginIntegration=()=>installed.current;
 
 export class UnifiedPluginIntegration{
   readonly platform:UnifiedPluginPlatform;
+  readonly widgetCatalogDirectory=developmentWidgetCatalogDirectory();
   readonly gateway:UnifiedPluginSurfaceGateway;
   private sources?:Promise<PluginSourceProjects>;
   readonly leases:PluginAuthoringLeases;
@@ -68,7 +71,7 @@ export class UnifiedPluginIntegration{
     this.leases=new PluginAuthoringLeases(ports.userData);
     this.gateway=new UnifiedPluginSurfaceGateway({transport:ports.transport,activeRevision:id=>this.platform.activeRevision(id),
       activationId:(id,revision)=>this.platform.activationId(id,revision),invoke:input=>ports.tools.processes.invoke({...input,revision:input.revisionId})});
-    this.platform=new UnifiedPluginPlatform({userData:ports.userData,prepareUi:input=>this.gateway.prepare(input),
+    this.platform=new UnifiedPluginPlatform({userData:ports.userData,developmentWidgetDistribution:Boolean(this.widgetCatalogDirectory),prepareUi:input=>this.gateway.prepare(input),
       prepareRuntime:async({revision,manifest,activationId,signal})=>{
         const contributions=manifest.contributions.filter(value=>value.kind==='service'||value.kind==='tool'&&value.executor.kind==='process');
         const host=ports.tools.hostRuntime(manifest,revision.revisionId);
@@ -108,6 +111,7 @@ export class UnifiedPluginIntegration{
       try{await owner.initialize();return owner;}catch(error){await owner.close();throw error;}
     });
   }
+  surfaceResources(){return this.ports.transport.resourceUsage();}
   private sourceProjects(){
     if(this.stop.signal.aborted)return Promise.reject<PluginSourceProjects>(this.stop.signal.reason);
     return this.sources??=(async()=>{
@@ -123,15 +127,17 @@ export class UnifiedPluginIntegration{
     this.releaseFailures=this.ports.tools.processes.onFailure(input=>{void this.platform.runtimeFailed(input.pluginId,input.revision,input.activationId,input.reason).catch(error=>console.warn('[plugins] process failure',error));});
     await this.leases.initialize();await this.platform.initialize();
     setPluginToolAvailabilityResolver(id=>this.platform.get(id)?this.platform.isActive(id):id.startsWith('host_'));
-    const {installBundledWeather}=await import('../official/bundled');
-    await installBundledWeather(this.platform,this.ports.userData);
-    let weatherEnabled=this.platform.get('bottega-weather')?.installation.enabled??false;
-    this.releaseBundled=this.platform.onChanged(()=>{
-      const enabled=this.platform.get('bottega-weather')?.installation.enabled??false,previous=weatherEnabled;weatherEnabled=enabled;
-      if(!enabled||previous||this.stop.signal.aborted)return;
-      const operation=installBundledWeather(this.platform,this.ports.userData);this.flights.set('bundled-weather',operation);
-      void operation.catch(error=>console.warn('[plugins] bundled weather update',error)).finally(()=>{if(this.flights.get('bundled-weather')===operation)this.flights.delete('bundled-weather');});
-    });
+    if(!this.widgetCatalogDirectory){
+      const {installBundledWeather}=await import('../official/bundled');
+      await installBundledWeather(this.platform,this.ports.userData);
+      let weatherEnabled=this.platform.get('bottega-weather')?.installation.enabled??false;
+      this.releaseBundled=this.platform.onChanged(()=>{
+        const enabled=this.platform.get('bottega-weather')?.installation.enabled??false,previous=weatherEnabled;weatherEnabled=enabled;
+        if(!enabled||previous||this.stop.signal.aborted)return;
+        const operation=installBundledWeather(this.platform,this.ports.userData);this.flights.set('bundled-weather',operation);
+        void operation.catch(error=>console.warn('[plugins] bundled weather update',error)).finally(()=>{if(this.flights.get('bundled-weather')===operation)this.flights.delete('bundled-weather');});
+      });
+    }
     const {composeOfficialFeatureAdapters}=await import('./adapters/features');
     this.featureAdapters=await composeOfficialFeatureAdapters({platform:this.platform,catalog:this.ports.catalog,
       reportError:error=>console.warn('[plugins] official feature adapter',error)});
@@ -185,7 +191,7 @@ export class UnifiedPluginIntegration{
     if(this.ports.libraryRoot()!==root)throw new Error('PLUGIN_LIBRARY_CHANGED');
     this.mountedLibrary=root;
   }
-  private nativeFeature(id:string){return Boolean(officialToolPlugins.find(value=>value.id===id)?.nativeFeature);}
+  private nativeFeature(id:string){return Boolean(this.widgetCatalogDirectory&&isOfficialWidgetId(id)||officialToolPlugins.find(value=>value.id===id)?.nativeFeature);}
   configureCloud(cloud:PluginCloudRuntime){
     this.releaseCloudIdentity?.();this.releaseCloudCatalog?.();this.cloud=cloud;
     let previous='';

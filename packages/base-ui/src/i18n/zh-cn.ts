@@ -231,8 +231,6 @@ export const basesZhCN: BasesCatalog = {
     leaseRefusedTitle: "这个 App 视图需要重新连接",
     leaseRefusedHint: "当前 App 视图的访问权限已到期或被撤回，请重新打开 App 后继续。",
     surfaceAria: "App GUI",
-    surfaceTabsAria: "App 主表面",
-    appTab: "应用",
     dataTab: "数据",
     refresh: "刷新 GUI",
     loading: "正在加载 GUI…",

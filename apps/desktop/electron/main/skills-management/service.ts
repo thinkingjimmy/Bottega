@@ -503,12 +503,10 @@ export class UnifiedSkillsService {
         enabled: source.enabled,
         contentState: source.contentState,
         ...(source.local?.notice ? { notice: source.local.notice } : {}),
-        allowedActions: source.local
-          ? ([source.enabled ? "disable" : "enable", "delete"] as const)
-          : ([
-              source.enabled ? "disable" : "enable",
-              "goto-package",
-            ] as const),
+        allowedActions: [
+          source.enabled ? "disable" : "enable",
+          ...(source.local ? ["delete"] as const : []),
+        ],
       })),
       sources: sourceViews(this.lastCandidates, installed),
       candidates: {

@@ -5,6 +5,16 @@
 本文件只记录产品里程碑，不记录内部实现的逐次迭代。日期表示对应能力首次形成完整产品形态的时间。
 
 
+## 2026-11-12 — v0.4.4
+
+0.4.4 适用于搭载 Apple 芯片的 macOS（ARM64），沿用 Cloud 协议 **27**。 [发布说明与安装包](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.4)
+
+- **管理 App 和 Dock 小组件。** 启用 Dock 后，可在 App 页的小组件标签中添加和设置小组件。固定的 App 在侧栏只显示一个入口。
+- **查看所选城市的天气预报。** 按城市和地区搜索。中号小组件显示今日最高和最低温度，大号显示未来三天预报。原本使用自动定位的小组件会提示选择城市。
+- **在 App 页面内处理数据。** 从侧栏面板打开数据、设置或对话。打开数据时，App 保留当前页面。
+- **更快找到 Skills 和 Provider 控件。** Skills 直接打开资料库。Provider 设置集中显示登录状态、CLI 版本和更新入口。
+- **在窄栏使用对话。** 长模型名会缩短显示，方便使用 Agent 选择器和发送按钮。侧栏换用新的 Bottega 字标。
+
 ## 2026-11-11 — v0.4.3
 
 0.4.3 源码面向搭载 Apple 芯片的 Mac（ARM64），使用 Cloud **协议 27**。安装包可用性与验收范围见[最新稳定 Release](https://github.com/thinkingjimmy/Bottega/releases/latest)。

@@ -5,5 +5,5 @@
  */
 export const weatherEnDefinition={
   "name": "Weather",
-  "description": "Current weather for your location or a selected city."
+  "description": "Current conditions and forecasts for a selected city."
 };

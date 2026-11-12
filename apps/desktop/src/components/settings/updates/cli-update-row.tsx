@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Setup terminal recovery, CLI verdicts/store, Agent identity, shared update rows, ui Collapsible and Updates i18n
- * [OUTPUT]: Provides CliUpdateRow with a fixed update/retry slot, visible progress/current status and collapsed failure/log/Terminal details
- * [POS]: Provider row of Settings › Updates; shares identity, version and action geometry with AppUpdateRow
+ * [OUTPUT]: Provides CliUpdateRow with update and retry actions, visible progress/current status and collapsed failure, log and Terminal details.
+ * [POS]: Shares identity and geometry with AppUpdateRow in Settings › Updates. A compact label reuses the same controls in Provider health without repeating the Provider's identity.
  */
 
 import { useSyncExternalStore } from "react";
@@ -22,7 +22,7 @@ const FAILURE_KEYS = {
   unavailable: "settings.updates.cliUnavailable",
 } as const;
 
-export function CliUpdateRow({ backend, disabled = false }: { backend: BuiltinBackendInfo; disabled?: boolean }) {
+export function CliUpdateRow({ backend, disabled = false, compactLabel }: { backend: BuiltinBackendInfo; disabled?: boolean; compactLabel?: string }) {
   const { t } = useAppTranslation();
   const setup = useSetup();
   const state = useSyncExternalStore(cliUpdateStore.subscribe, cliUpdateStore.getSnapshot);
@@ -36,7 +36,8 @@ export function CliUpdateRow({ backend, disabled = false }: { backend: BuiltinBa
           : <span className="text-xs text-muted-foreground">{t("settings.updates.latestUnknown")}</span>;
   const failure = verdict.kind === "failed" ? verdict.failure : null;
   const latest = backend.updateAvailable || backend.runtimeStatus === "unsupported" ? backend.latestVersion ?? backend.minimumVersion : undefined;
-  return <UpdateRow icon={<AgentBackendIcon backend={backend.id} className="size-6" />} name={name} current={backend.version}
+  return <UpdateRow icon={compactLabel === undefined ? <AgentBackendIcon backend={backend.id} className="size-6" /> : undefined}
+    name={compactLabel ?? name} current={backend.version}
     latest={latest !== backend.version ? latest : undefined}
     trailing={trailing}
     failure={failure ? {

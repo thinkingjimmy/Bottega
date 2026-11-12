@@ -21,8 +21,8 @@ export function cloudPluginReview(distribution: UnifiedPluginDistribution) {
   const bytes = Buffer.from(canonicalJson({ format: "bottega-plugin-review/v1", distribution }));
   if (bytes.length > B.runtimeFileBytes) throw new Error("Plugin review exceeds the encrypted transfer budget"); return bytes;
 }
-export async function freezeCloudPluginPacket(directory: string): Promise<FrozenCloudPluginPacket> {
-  const checked = await verifyUnifiedPluginDistribution(directory);
+export async function freezeCloudPluginPacket(directory: string, target?: Parameters<typeof verifyUnifiedPluginDistribution>[1]): Promise<FrozenCloudPluginPacket> {
+  const checked = await verifyUnifiedPluginDistribution(directory, target);
   const bytes = Buffer.from(canonicalJson({ format: "bottega-plugin-archive/v1", distribution: checked.distribution,
     files: [...checked.files].filter(([path]) => path !== "plugin-package.json").map(([path, content]) => ({ path, content: content.toString("base64") })) }));
   if (bytes.length > B.packageBytes) throw new Error("Plugin package exceeds the current encrypted transfer cap");

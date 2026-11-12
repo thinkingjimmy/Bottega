@@ -5,5 +5,5 @@
  */
 export const weatherFrDefinition={
   "name": "Météo",
-  "description": "La météo actuelle de votre position ou de la ville choisie."
+  "description": "Conditions actuelles et prévisions pour la ville choisie."
 };

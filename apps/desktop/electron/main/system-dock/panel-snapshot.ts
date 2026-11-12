@@ -44,7 +44,7 @@ export function addCandidates(service: DockService): CandidateTable {
   }
   push("builtin.ai-limits", { kind: "widget", widget: defaultLimitsWidget(service.usage.defaultBackends()) },
     { kind: "widget", label: entryLabel(locale, "limits"), iconKey: null, group: "widget" });
-  push("builtin.ai-activity", { kind: "widget", widget: defaultActivityWidget() },
+  if (service.activityAllowed()) push("builtin.ai-activity", { kind: "widget", widget: defaultActivityWidget() },
     { kind: "widget", label: entryLabel(locale, "activity"), iconKey: null, group: "widget" });
   push("builtin.tasks", { kind: "widget", widget: defaultTasksWidget() },
     { kind: "widget", label: entryLabel(locale, "tasks"), iconKey: null, group: "widget" });
@@ -66,7 +66,7 @@ export function buildPanel(service: DockService): PanelSnapshot {
   const current = service.panel.current();
   const view = current.state === "visible" ? current.request?.view ?? null : null;
   const items = service.allItems();
-  const base: PanelSnapshot = { revision: service.revision, locale: service.ports.locale(), view, focused: current.focused,
+  const base: PanelSnapshot = { edge: state.edge, revision: service.revision, locale: service.ports.locale(), view, focused: current.focused,
     mode: service.actualMode() ?? state.preferredMode, solidBackground: service.solidBackground, privacyMask: state.privacyMask, items,
     downloads: null, trash: null, limits: null, activity: null, candidates: null, undo: service.undo ? { label: service.undo.label } : null, draft: null };
   if (!view) return base;
@@ -80,9 +80,11 @@ export function buildPanel(service: DockService): PanelSnapshot {
   }
   if (item.kind === "system" && item.entry === "system.trash") return { ...base, trash: service.trash?.snapshot() ?? { state: "unknown", emptying: false, automation: "unavailable", lastResult: "none" } };
   if (item.kind !== "widget") return base;
-  if(item.widget.type==='custom'||item.widget.type==='plugin'){
+  if(item.widget.type==='custom'||item.widget.type==='plugin'||item.widget.type==='builtin.ai-activity'&&service.ports.custom?.officialDirectory){
     const detail=service.ports.custom?.detail(item,state.edge);if(!detail)return base;
-    return{...base,customWidget:state.privacyMask?{...detail,name:'••••',data:[],face:maskFace(detail.face) as typeof detail.face}:detail};
+    const panel = service.panelContainer();
+    return {...base, liveCards: service.ports.custom?.liveCards?.(panel && !panel.isDestroyed() ? panel.webContents.id : undefined),
+      customWidget: state.privacyMask ? {...detail,name:items.find(value => value.id === item.id)?.label ?? '••••',data:[],updatedAt:null,face:maskFace(detail.face) as typeof detail.face} : detail};
   }
   if (item.widget.type === "builtin.tasks") return { ...base, tasks: taskDetail(service.ports.tasks, state.privacyMask) };
   const draft: DockWidget = service.drafts.get(item.id) ?? item.widget;

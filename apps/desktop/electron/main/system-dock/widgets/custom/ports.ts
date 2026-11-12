@@ -11,6 +11,9 @@ import type {DockReading} from '@bottega/contracts/plugins/dock/data';
 import type {WidgetDetailSource} from '../detail/ports';
 export type WidgetItem=Extract<DockItem,{kind:'widget'}>;
 export interface DockCustomWidgetsPort{
+ officialDirectory?:boolean;
+ activityAllowed?():boolean;
+ liveCards?(windowId:number|undefined):readonly string[];
  candidates?():readonly {id:string;name:string;available:boolean}[];
  face(item:WidgetItem,edge:DockEdge):CustomWidgetFace;
  detail(item:WidgetItem,edge:DockEdge):CustomWidgetDetail|null;

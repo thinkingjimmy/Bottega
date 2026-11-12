@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Immutable unified package descriptors, canonical/byte digests and the existing opaque Surface gateway.
- * [OUTPUT]: Verified exact-activation UI leases/revocation, explicit whole-plugin release, fenced async issuance and non-replayed process calls.
+ * [OUTPUT]: Verified exact-activation UI leases and caller authorization, explicit whole-plugin release, fenced async issuance and non-replayed process calls.
  * [POS]: Unified UI adapter over the shared isolated transport; local registry capacity does not set runtime budgets.
  */
 import { createHash } from "node:crypto";
@@ -57,12 +57,16 @@ export class UnifiedPluginSurfaceGateway {
       windowId, controller: new AbortController(), isValid });
     return view;
   }
-  async call(input: { leaseId: string; method: string; input: unknown }, windowId: number): Promise<unknown> {
-    const lease = this.leases.get(input.leaseId);
+  async authorize(leaseId: string, windowId: number) {
+    const lease = this.leases.get(leaseId);
     if (!lease || lease.windowId !== windowId) throw new Error("Plugin Surface lease is unavailable");
-    await this.ports.transport.validate(input.leaseId, windowId);
-    if (this.leases.get(input.leaseId) !== lease || lease.controller.signal.aborted) throw new Error("Plugin Surface lease is unavailable");
+    await this.ports.transport.validate(leaseId, windowId);
+    if (this.leases.get(leaseId) !== lease || lease.controller.signal.aborted) throw new Error("Plugin Surface lease is unavailable");
     if (!lease.isValid()) throw new Error("Plugin activation is no longer active");
+    return lease;
+  }
+  async call(input: { leaseId: string; method: string; input: unknown }, windowId: number): Promise<unknown> {
+    const lease = await this.authorize(input.leaseId, windowId);
     if (!this.ports.invoke) throw new Error("Plugin service is unavailable");
     if (Buffer.byteLength(JSON.stringify(input.input) ?? "null") > 1_048_576) throw new Error("Plugin call exceeds its input budget");
     return this.ports.invoke({ pluginId: lease.pluginId, revisionId: lease.revisionId, activationId: lease.view.activationId, method: input.method, input: input.input, signal: lease.controller.signal });
@@ -107,7 +111,7 @@ export class UnifiedPluginSurfaceGateway {
       files.push({ path: file.path, mime: mime(file.path), bytes, sha256: file.sha256 });
     }
     return this.ports.transport.issuePublished({ pluginId: revision.pluginId, generationId: revision.revisionId,
-      artifactDigest: descriptor.contentDigest, entry: contribution.entry, files,
+      artifactDigest: descriptor.contentDigest, entry: contribution.entry, files, officialWidget: revision.officialWidget ? revision.pluginId : undefined,
       sourceFormat: { id: "bottega-plugin", version: 1, readableVersions: [1] }, operations: [], features:descriptor.manifest.requirements.features,isValid }, windowId);
   }
 }

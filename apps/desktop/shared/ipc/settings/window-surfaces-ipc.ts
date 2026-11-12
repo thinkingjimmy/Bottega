@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on clone-safe primitives and workspace-reference identities shared by Electron main, preload, and renderer
- * [OUTPUT]: Provides window role/bootstrap, exact App Studio route helpers, navigation-intent-fenced surface DTOs, migration commands with side-channel image transfers and their limits, fixed background-destination (activity/General/Dock/Usage) commands with independent quota/history selection, IPC channels, and WindowSurfacesBridgeApi
+ * [OUTPUT]: Provides window role/bootstrap, exact App Studio route helpers, Data panel checkpoints, navigation-intent-fenced surface DTOs, migration commands with side-channel image transfers and their limits, fixed background-destination (activity/General/Dock/Usage) commands with independent quota/history selection, IPC channels, and WindowSurfacesBridgeApi
  * The resume-drafts command restores editing after a cancelled draft flush.
  * Composer capsules retain original queued review request IDs/times instead of allocating new submissions.
  * [POS]: apps/desktop/shared/ipc/settings; Shared wire truth for one-surface-one-window routing; renderer submits intents while main owns residency and migration
@@ -33,7 +33,7 @@ export type SurfaceResidence = Readonly<{
 export type SurfaceRouteState = Readonly<{
   pathname: string;
   mainSurface?: "app" | "data";
-  rightSurface?: "none" | "settings" | "edit" | "use";
+  rightSurface?: "none" | "data" | "settings" | "edit" | "use";
   useDocked?: boolean;
   useChatId?: string | null;
 }>;

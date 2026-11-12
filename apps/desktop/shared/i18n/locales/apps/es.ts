@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Spanish catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
+ * [OUTPUT]: Provides the Apps Spanish catalog with App/Widget filters and exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Spanish copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,6 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsEs: typeof appsEn = {
+  catalog: { filter: "Tipo de plugin", widgets: "Widgets" },
   dock: {
     pin: "Fijar en el Dock",
     unpin: "Quitar del Dock",
@@ -36,7 +37,6 @@ export const appsEs: typeof appsEn = {
     stepSelect: "Elegir App",
     stepAuthorize: "Definir permisos",
     settingsTitle: "Definir los permisos de {{name}}",
-    settingsDescription: "Qué puede ver y si el Agent puede actuar en tu nombre. Ambos se pueden cambiar después.",
     loading: "Cargando Apps instaladas…",
     loadFailed: "No se pudieron cargar las Apps instaladas",
     installedApps: "Apps instaladas",
@@ -51,11 +51,10 @@ export const appsEs: typeof appsEn = {
     sourceGlobal: "los ajustes globales",
     authorizationMode: "Origen de autorización",
     useInherited: "Usar ajustes heredados",
-    useInheritedDescription: "Usa la autorización actual de {{source}} sin crear una excepción para el Chat.",
+    useInheritedDescription: "Usa los permisos de {{source}}.",
     customForChat: "Personalizar para este Chat",
-    customDescription: "Crea una autorización del Chat que sustituye los ajustes del Project y globales.",
+    customDescription: "Configura permisos solo para este Chat.",
     dataAccess: "Datos",
-    dataAccessDescription: "{{name}} tiene su propia tabla de datos. Dale solo el nivel que de verdad necesita.",
     dataNone: "Sin datos",
     dataNoneDetail: "Solo usa su propia interfaz y no lee ningún registro de la tabla.",
     dataRead: "Solo lectura",

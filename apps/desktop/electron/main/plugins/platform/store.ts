@@ -25,6 +25,7 @@ const fileSchema = z.object({
   schemaVersion: z.literal(1), revision: z.number().int().nonnegative(),
   plugins: z.array(unifiedPluginStoredRecordSchema), safeMode: pluginSafeModeSchema.optional(),
   startup: startupSchema.optional(),
+  removedOfficialWidgets: z.array(z.enum(["bottega-weather", "bottega-ai-usage"])).max(2).default([]),
 }).strict().superRefine((value, context) => {
   if (new Set(value.plugins.map(record => record.manifest.id)).size !== value.plugins.length)
     context.addIssue({ code: "custom", message: "Duplicate plugin identity" });
@@ -49,7 +50,7 @@ export class UnifiedPluginStore {
   private sessionId = randomUUID();
   constructor(userData: string, private now: () => number) {
     this.file = new DurableJson(join(userData, "plugin-platform.json"), fileSchema,
-      () => ({ schemaVersion: 1, revision: 0, plugins: [] }));
+      () => ({ schemaVersion: 1, revision: 0, plugins: [], removedOfficialWidgets: [] }));
   }
   async initialize() {
     await this.file.initialize();

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Zod and unified manifest identity schemas.
- * [OUTPUT]: Directory, installation, source/Chat links, instance, revision and activation records; bounded catalog summaries and exact full-detail live activation/readiness and source writer waits remain derived state.
+ * [OUTPUT]: Directory, installation, source/Chat links, instance, revision and activation records, including official Widget archive receipts; bounded catalog summaries and exact full-detail live activation/readiness and source writer waits remain derived state.
  * [POS]: Serializable ownership model; uninstall and data deletion are separate operations.
  */
 import { z } from "zod";
@@ -37,6 +37,7 @@ export const unifiedPluginRevisionSchema = z.object({
   createdAt: time, rootDirectory: absolutePath, manifest: unifiedPluginManifestSchema,
   packageDigest: pluginDigestSchema, dataContract: z.string().min(1).max(160), valid: z.boolean(),
   incompatibleReason: z.string().max(2048).optional(),
+  officialWidget: z.object({ publisherId: z.literal("bottega"), archiveSha256: pluginDigestSchema }).strict().optional(),
 }).strict().superRefine((value, context) => {
   if (value.manifest.id !== value.pluginId) context.addIssue({ code: "custom", message: "Revision plugin identity differs from manifest" });
 });

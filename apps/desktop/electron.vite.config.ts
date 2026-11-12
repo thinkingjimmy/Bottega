@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on electron-vite, Vite React/Tailwind plugins, esbuild, Node paths, Rollup diagnostics, cloud assembly configuration and the native Keychain/Core Location, official plugin package, maintained Canvas and independent worker build plugins
+ * [INPUT]: Depends on electron-vite, Vite React/Tailwind plugins, esbuild, Node paths, Rollup diagnostics, cloud assembly configuration and the native Keychain, official plugin package, maintained Canvas and independent worker build plugins
  * [OUTPUT]: Provides the fixed production desktop assembly, out entry selection, CSP, renderer module reports, and utility workers.
  * [POS]: Electron build entry coordinating main/preload rebuilds, process restarts, and renderer output and module code-highlighting workers
  */
@@ -16,7 +16,6 @@ import { resolveCloudAssembly, workbenchUiFor } from "./config/cloud-assembly";
 import { NODE_ENTRY_FILES, NODE_PACKAGES, type NodeEntry } from "./electron/main/runtime/model";
 import { canvasRuntime } from "./config/native/canvas-runtime";
 import { officialPlugins } from "./config/native/official-plugins";
-import { weatherLocation } from "./config/native/weather-location";
 import { keychainPolicy } from "./config/native/keychain-policy";
 import { isolatedProcessWorkers } from "./config/native/process-workers";
 const cloudAssembly = resolveCloudAssembly("production");
@@ -280,7 +279,7 @@ const onwarn: Rollup.WarningHandlerWithDefault = (warning, defaultHandler) => {
 };
 export default defineConfig({
     main: {
-        plugins: [keychainPolicy(), weatherLocation(), officialPlugins(__dirname), runtimeEntries(), isolatedProcessWorkers(resolve(__dirname), { esbuild: ESBUILD, onwarn, define: cloudDefines }), buildFlavor(), canvasRuntime(resolve(__dirname, "../../packages/canvas-runtime"))],
+        plugins: [keychainPolicy(), officialPlugins(__dirname), runtimeEntries(), isolatedProcessWorkers(resolve(__dirname), { esbuild: ESBUILD, onwarn, define: cloudDefines }), buildFlavor(), canvasRuntime(resolve(__dirname, "../../packages/canvas-runtime"))],
         define: { ...cloudDefines,
             /* Non-production mains may load the private entries built beside them; production compiles the loader out. */
             __BOTTEGA_PRIVATE_ENTRIES__: JSON.stringify(cloudAssembly.flavor !== "production"),

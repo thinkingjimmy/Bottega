@@ -1,0 +1,88 @@
+/*
+ * [INPUT]: Fixed Dock face dimensions, edge and size attributes, normalized weather presentation and the inherited color scheme.
+ * [OUTPUT]: Compact current readings and forecast columns or rows with bounded typography.
+ * [POS]: Scoped Weather skin shared by live Dock faces and in-form size previews.
+ */
+.weather-face {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 4px;
+  font: 11px/1.15 -apple-system, BlinkMacSystemFont, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  --weather-muted: color-mix(in srgb, currentColor 72%, transparent);
+  --weather-divider: color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.weather-face[data-edge="bottom"]:not([data-weather-face="small"]) {
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 4px;
+}
+
+.weather-face:not([data-edge="bottom"]):not([data-weather-face="small"]) {
+  grid-template-rows: 52px minmax(0, 1fr);
+  gap: 4px;
+}
+
+.weather-current {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+}
+
+.weather-city, .weather-caption, .weather-day-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weather-city { font-weight: 550; }
+.weather-condition-line { display: flex; align-items: center; justify-content: center; gap: 3px; max-width: 100%; min-width: 0; }
+.weather-caption { min-width: 0; color: var(--weather-muted); font-size: 9px; }
+.weather-temperature { font-size: 21px; font-weight: 630; letter-spacing: -.035em; }
+.weather-temperature small { font-size: 10px; vertical-align: 0.45em; }
+.weather-condition-icon { width: 14px; height: 14px; flex: none; }
+.weather-condition-line .weather-condition-icon { width: 12px; height: 12px; }
+.weather-condition-icon:is([data-condition="clear"], [data-condition="partlyCloudy"]) { color: light-dark(#8f5100, #ffbd68); }
+.weather-condition-icon:is([data-condition="rain"], [data-condition="drizzle"], [data-condition="showers"], [data-condition="snow"]) { color: light-dark(#245c91, #9bcafa); }
+
+.weather-forecast {
+  align-self: stretch;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  border-inline-start: 1px solid var(--weather-divider);
+  padding-inline-start: 3px;
+  box-sizing: border-box;
+}
+
+.weather-day { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; align-items: center; gap: 3px; min-width: 0; }
+.weather-day-name { font-size: 10px; font-weight: 550; }
+.weather-range { max-width: 100%; text-align: center; font-size: 9px; font-weight: 550; line-height: 1.2; overflow-wrap: anywhere; }
+.weather-face[data-weather-face="medium"] .weather-range { font-size: 11px; }
+.weather-low { color: var(--weather-muted); }
+.weather-unavailable { color: var(--weather-muted); font-size: 10px; text-align: center; }
+
+.weather-face:not([data-edge="bottom"]) .weather-forecast {
+  grid-auto-flow: row;
+  grid-auto-rows: 1fr;
+  border-inline-start: 0;
+  border-block-start: 1px solid var(--weather-divider);
+  padding-inline-start: 0;
+}
+
+@media (forced-colors: active) {
+  .weather-face { --weather-muted: CanvasText; --weather-divider: CanvasText; }
+  .weather-face .weather-condition-icon { color: CanvasText; }
+}

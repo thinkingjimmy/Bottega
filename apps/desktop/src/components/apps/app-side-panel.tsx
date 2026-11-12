@@ -1,15 +1,16 @@
 "use client";
 
 /**
- * [INPUT]: Depends on use HorizontalResize, PageShell crossHeaderPanelStyle/panelChromeClassName, Button and cn
- * [OUTPUT]: Provides AppSidePanel; a 44px resize rail on the leading edge, a 40px header, an optional second header band (rail) that takes over the divider, and zero width when closed
- * [POS]: The one resizable side-panel shell shared by the Use and Settings tabs; closed state collapses to zero width without unmounting its content
+ * [INPUT]: Depends on shared side-panel geometry, useHorizontalResize, PageShell chrome, Button and cn
+ * [OUTPUT]: Provides AppSidePanel, AppPanelLayout and the default panel width, with an optional header rail and zero width when closed
+ * [POS]: Resizable App panel shell for Data, Settings and Use Chat; mounts content only while open
  */
 
 import { type ReactNode, useState } from "react";
 import { XIcon } from "lucide-react";
 import { useHorizontalResize } from "@ai-chat/ui/hooks/use-horizontal-resize";
 import { Button } from "@ai-chat/ui/components/ui/button";
+import type { SidePanelGeometry } from "@ai-chat/ui/lib/side-panel-layout";
 import { cn } from "@ai-chat/ui/lib/utils";
 import {
   crossHeaderPanelStyle,
@@ -18,11 +19,15 @@ import {
 
 const MIN_WIDTH = 360;
 const MAX_WIDTH = 720;
-const DEFAULT_WIDTH = 448;
+export const APP_SIDE_PANEL_DEFAULT_WIDTH = 448;
+
+export type AppPanelLayout = SidePanelGeometry & { onWidthChange(width: number): void };
 
 export function AppSidePanel({
+  id,
   open,
   onClose,
+  inlineLayout,
   railLabel,
   railHint,
   closeLabel,
@@ -30,8 +35,10 @@ export function AppSidePanel({
   rail,
   children,
 }: {
+  id?: string;
   open: boolean;
   onClose: () => void;
+  inlineLayout?: AppPanelLayout;
   railLabel: string; // resize rail 的可访问名，如「调整设置栏宽度」
   railHint?: string; // rail 的 hover 提示；rail 本身不可见，键盘可缩放只能靠它露面
   closeLabel: string; // 关闭按钮的可访问名，如「收起设置栏」
@@ -43,16 +50,20 @@ export function AppSidePanel({
   rail?: ReactNode;
   children: ReactNode;
 }) {
-  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const [localWidth, setLocalWidth] = useState(APP_SIDE_PANEL_DEFAULT_WIDTH);
+  const width = inlineLayout?.width ?? localWidth;
+  const minWidth = inlineLayout?.minWidth ?? MIN_WIDTH;
+  const maxWidth = inlineLayout?.maxWidth ?? MAX_WIDTH;
+  const setWidth = inlineLayout?.onWidthChange ?? setLocalWidth;
   const resize = useHorizontalResize({
-    enabled: open,
+    enabled: open && maxWidth > 0,
     open,
     setOpen: (next) => {
       if (!next) onClose();
     },
     width,
-    minWidth: MIN_WIDTH,
-    maxWidth: MAX_WIDTH,
+    minWidth,
+    maxWidth,
     direction: -1,
     onWidthChange: setWidth,
   });
@@ -63,28 +74,24 @@ export function AppSidePanel({
       className="relative isolate z-10 shrink-0 overflow-hidden border-l bg-background data-[open=false]:w-0 data-[open=false]:border-transparent"
       data-open={open}
       data-resizing={resize.active ? "true" : undefined}
+      id={id}
       inert={!open}
-      style={{ ...crossHeaderPanelStyle, width: open ? width : 0 }}
+      style={{ ...(inlineLayout ? undefined : crossHeaderPanelStyle), width: open ? width : 0 }}
     >
-      {(open || resize.active) && (
+      {((open && maxWidth > 0) || resize.active) && (
         <button
           aria-label={railLabel}
           aria-orientation="vertical"
-          aria-valuemax={MAX_WIDTH}
-          aria-valuemin={MIN_WIDTH}
+          aria-valuemax={maxWidth}
+          aria-valuemin={minWidth}
           aria-valuenow={Math.round(width)}
-          className="absolute inset-y-0 left-0 z-50 w-11 -translate-x-1/2 touch-none cursor-col-resize"
+          className="absolute inset-y-0 left-0 z-50 w-11 -translate-x-1/2 touch-none cursor-col-resize [-webkit-app-region:no-drag]"
           onKeyDown={(event) => {
             if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
             event.preventDefault();
             const step = event.shiftKey ? 40 : 8;
             const direction = event.key === "ArrowLeft" ? 1 : -1;
-            setWidth((current) =>
-              Math.min(
-                MAX_WIDTH,
-                Math.max(MIN_WIDTH, current + step * direction)
-              )
-            );
+            setWidth(Math.min(maxWidth, Math.max(minWidth, width + step * direction)));
           }}
           onLostPointerCapture={resize.finish}
           onPointerCancel={resize.finish}

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Library-first Skills IPC/client, shared Skill rows/search/toolbar/import controller, compact batch/empty components, i18n, the shared Extensions surface, and Settings primitives
- * [OUTPUT]: Provides `/settings/skills` with name/description/source rows, one enabled switch, main-authored actions, deletion-only confirmation, budget facts, and a positionally identical Skills/Extensions acquisition toolbar
+ * [INPUT]: Depends on Library-first Skills IPC/client, shared Skill rows/search/import controls, batch and empty states, the route's package filter, i18n, and Settings primitives
+ * [OUTPUT]: Provides `/settings/skills` with Skill rows, main-authored actions, deletion-only confirmation, budget facts, refresh beside the title, and a trailing import button
  * [POS]: apps/desktop/src/views/settings/skills; Sole global Skills management surface; renderer submits intents and contains no Agent-home, projection, native-target, or Codex-special logic
  */
 
@@ -19,7 +19,6 @@ import { SkillEmptyState } from "@/components/settings/skills/skill-empty-state"
 import { SkillImportDialog } from "@/components/settings/skills/skill-import-dialog";
 import { SkillLibraryRow } from "@/components/settings/skills/skill-library-row";
 import { SkillSearch } from "@/components/settings/skills/skill-search";
-import { SkillsToolbar } from "@/components/settings/skills/controls/toolbar";
 import { useSkillImport } from "@/components/settings/skills/controls/use-skill-import";
 import {
   skillBytesText,
@@ -33,13 +32,8 @@ import {
   onUnifiedSkillsChanged,
   previewUnifiedSkillIntents,
 } from "@/lib/skills/unified-skills-client";
-import { ExtensionsContent } from "@/views/settings/extensions/settings-extensions";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import {
-  Tabs,
-  TabsContent,
-} from "@ai-chat/ui/components/ui/tabs";
 import type {
   ManagedSkillIntentInput,
   ManagedSkillLibraryItem,
@@ -51,8 +45,7 @@ let cachedSnapshot: UnifiedSkillsSnapshot | null = null;
 
 export function SkillsSettingsView() {
   const { t } = useAppTranslation();
-  const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") === "extensions" ? "extensions" : "skills";
+  const [params] = useSearchParams();
   const packageIdentity = params.get("package");
   const [snapshot, setSnapshot] = useState(cachedSnapshot);
   const [query, setQuery] = useState("");
@@ -60,9 +53,6 @@ export function SkillsSettingsView() {
   const [pendingDelete, setPendingDelete] = useState<ManagedSkillPlanPreview | null>(null);
   const [mutationBusy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [extensionsActionHost, setExtensionsActionHost] = useState<HTMLDivElement | null>(
-    null
-  );
   const skillImport = useSkillImport({ snapshot, onImported: setSnapshot });
   const busy = mutationBusy || skillImport.busy;
 
@@ -157,107 +147,90 @@ export function SkillsSettingsView() {
     return submit(intents);
   });
   return (
-    <Tabs
-      className="h-full min-h-0 gap-0"
-      onValueChange={(value) => setParams({ tab: value }, { replace: true })}
-      value={tab}
+    <SettingsPage
+      title={t("common.skills")}
+      titleAdornment={
+        <Button
+          aria-label={t("settings.skills.refresh")}
+          className="relative touch-target-44 [--touch-target-inset:-6px]"
+          disabled={busy}
+          onClick={() => void run(async () => setSnapshot(await listUnifiedSkills(true)))}
+          size="icon-lg"
+          type="button"
+          variant="ghost"
+        >
+          <RefreshCw aria-hidden="true" className={busy ? "animate-spin motion-reduce:animate-none" : ""} />
+        </Button>
+      }
+      actions={
+        <Button disabled={busy || readOnly} onClick={() => void skillImport.openDialog()} size="lg">
+          <Plus />{t("settings.skills.importTitle")}
+        </Button>
+      }
     >
-      <SettingsPage
-        actions={<>
-          <div ref={setExtensionsActionHost}>
-            {tab === "skills" && <Button disabled={busy || readOnly} onClick={() => void skillImport.openDialog()} size="lg">
-              <Plus />{t("settings.skills.importTitle")}
-            </Button>}
-          </div>
-          <Button
-            aria-label={t("settings.skills.refresh")}
-            disabled={busy}
-            onClick={() => void run(async () => setSnapshot(await listUnifiedSkills(true)))}
-            size="icon-lg"
-            variant="ghost"
-          >
-            <RefreshCw className={busy ? "animate-spin motion-reduce:animate-none" : ""} />
-          </Button>
-        </>}
-        title={t("common.skills")}
-      >
-        <SettingsCanvas>
-          <SkillsToolbar />
-          <TabsContent className="mt-0 space-y-4" value="skills">
-            {error && <SettingsAlert>{error}</SettingsAlert>}
-            {snapshot?.availability.kind === "read-only" && (
-              <SettingsAlert tone="warn">
-                {t("settings.skills.readOnly")}: {skillReasonText(t, snapshot.availability.reason)}
-              </SettingsAlert>
-            )}
-            {snapshot && snapshot.personalLibraryEmpty ? (
-              <SkillEmptyState
-                busy={busy || readOnly}
-                onChooseFolder={() => void skillImport.openDialog("local-folder")}
-                onImportAll={() => void run(importAll)}
-                scanning={scanning}
-                sources={snapshot.sources}
-              />
-            ) : (
-              <>
-                <div className="flex items-center gap-3">
-                  <p className="text-muted-foreground text-xs">{budget}</p>
-                  <SkillSearch onChange={setQuery} value={query} />
-                </div>
-                {shown.length ? (
-                  <SettingsList>
-                    {shown.map((skill) => (
-                      <SkillLibraryRow
-                        busy={busy || readOnly}
-                        key={skill.ref}
-                        onDelete={() => void rowDelete(skill)}
-                        onEnabled={(enabled) => void rowEnabled(skill, enabled)}
-                        onGotoPackage={() => setParams({
-                          tab: "extensions",
-                          ...(skill.source.installIdentity
-                            ? { package: skill.source.installIdentity }
-                            : {}),
-                        })}
-                        onSelected={(value) => setSelected((current) => {
-                          const next = new Set(current);
-                          if (value) next.add(skill.ref);
-                          else next.delete(skill.ref);
-                          return next;
-                        })}
-                        selected={selected.has(skill.ref)}
-                        skill={skill}
-                      />
-                    ))}
-                  </SettingsList>
-                ) : (
-                  <p className="py-12 text-center text-muted-foreground text-sm">
-                    {t("settings.skills.noMatches")}
-                  </p>
-                )}
-                {selectedRows.length > 0 && (
-                  <SkillBatchBar
-                    busy={busy || readOnly}
-                    canDisable={selectedRows.some((skill) => skill.allowedActions.includes("disable"))}
-                    canDelete={selectedRows.some((skill) => skill.allowedActions.includes("delete"))}
-                    canEnable={selectedRows.some((skill) => skill.allowedActions.includes("enable"))}
-                    onDelete={() => void batch("delete")}
-                    onDisable={() => void batch("disable")}
-                    onDone={() => setSelected(new Set())}
-                    onEnable={() => void batch("enable")}
-                    selected={selectedRows.length}
-                  />
-                )}
-              </>
-            )}
-          </TabsContent>
-          <TabsContent className="mt-0" value="extensions">
-            <ExtensionsContent
-              packageIdentity={packageIdentity}
-              toolbarActionHost={extensionsActionHost}
+      <SettingsCanvas>
+        <div className="space-y-4">
+          {error && <SettingsAlert>{error}</SettingsAlert>}
+          {snapshot?.availability.kind === "read-only" && (
+            <SettingsAlert tone="warn">
+              {t("settings.skills.readOnly")}: {skillReasonText(t, snapshot.availability.reason)}
+            </SettingsAlert>
+          )}
+          {snapshot?.personalLibraryEmpty && !packageIdentity ? (
+            <SkillEmptyState
+              busy={busy || readOnly}
+              onChooseFolder={() => void skillImport.openDialog("local-folder")}
+              onImportAll={() => void run(importAll)}
+              scanning={scanning}
+              sources={snapshot.sources}
             />
-          </TabsContent>
-        </SettingsCanvas>
-      </SettingsPage>
+          ) : (
+            <>
+              <div className="flex items-center gap-3">
+                <p className="text-muted-foreground text-xs">{budget}</p>
+                <SkillSearch onChange={setQuery} value={query} />
+              </div>
+              {shown.length ? (
+                <SettingsList>
+                  {shown.map((skill) => (
+                    <SkillLibraryRow
+                      busy={busy || readOnly}
+                      key={skill.ref}
+                      onDelete={() => void rowDelete(skill)}
+                      onEnabled={(enabled) => void rowEnabled(skill, enabled)}
+                      onSelected={(value) => setSelected((current) => {
+                        const next = new Set(current);
+                        if (value) next.add(skill.ref);
+                        else next.delete(skill.ref);
+                        return next;
+                      })}
+                      selected={selected.has(skill.ref)}
+                      skill={skill}
+                    />
+                  ))}
+                </SettingsList>
+              ) : (
+                <p className="py-12 text-center text-muted-foreground text-sm">
+                  {t("settings.skills.noMatches")}
+                </p>
+              )}
+              {selectedRows.length > 0 && (
+                <SkillBatchBar
+                  busy={busy || readOnly}
+                  canDisable={selectedRows.some((skill) => skill.allowedActions.includes("disable"))}
+                  canDelete={selectedRows.some((skill) => skill.allowedActions.includes("delete"))}
+                  canEnable={selectedRows.some((skill) => skill.allowedActions.includes("enable"))}
+                  onDelete={() => void batch("delete")}
+                  onDisable={() => void batch("disable")}
+                  onDone={() => setSelected(new Set())}
+                  onEnable={() => void batch("enable")}
+                  selected={selectedRows.length}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </SettingsCanvas>
       <SkillImportDialog {...skillImport.dialogProps} />
       <ConfirmationDialog
         busy={busy}
@@ -273,6 +246,6 @@ export function SkillsSettingsView() {
         open={Boolean(pendingDelete)}
         title={t("settings.skills.confirmDeleteTitle")}
       />
-    </Tabs>
+    </SettingsPage>
   );
 }

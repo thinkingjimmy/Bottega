@@ -1,27 +1,27 @@
 /**
  * [INPUT]: Only this locale definition labels.
- * [OUTPUT]: The complete weatherJa Weather copy object; the unused city-result instruction is excluded.
+ * [OUTPUT]: The complete weatherJa Weather copy for city selection, previews and forecasts.
  * [POS]: Deferred locale data; no other locale or aggregate dependency.
  */
 import {weatherJaDefinition} from '../definitions/ja';
 export const weatherJa={
   ...weatherJaDefinition,
-  "current": "現在地",
-  "city": "都市を選択",
+  "city": "都市",
   "search": "都市を検索",
-  "useCurrent": "現在地を使用",
-  "locating": "位置を確認中…",
-  "located": "位置を確認しました",
+  "searching": "検索中…",
+  "changeCity": "都市を変更",
+  "cancelCityChange": "変更をキャンセル",
   "noCities": "都市が見つかりません。",
-  "denied": "位置情報が拒否されました。都市を選ぶか、システム設定で許可してください。",
-  "disabled": "位置情報サービスが無効です。都市を選ぶか、システム設定で有効にしてください。",
-  "timeout": "位置の確認がタイムアウトしました。再試行するか都市を選択してください。",
-  "unavailable": "現在地を取得できません。都市を選択してください。",
-  "authorization": "現在地を使用するには位置情報を許可してください。",
+  "today": "今日",
+  "dailyRange": "最高 {{high}}°C、最低 {{low}}°C",
+  "forecastUnavailable": "予報なし",
+  "sizeCurrent": "現在の天気",
+  "sizeToday": "現在の天気と今日の最高・最低気温",
+  "sizeForecast": "現在の天気と今後3日間の予報",
   "failed": "天気を取得できません。再試行してください。",
   "rateLimited": "天気サービスが混雑しています。後で再試行してください。",
   "invalid": "天気データを読み取れません。",
-  "searchFailed": "都市を検索できません。再試行してください。",
+  "searchFailed": "都市を検索できませんでした。",
   "temperature": "気温",
   "feelsLike": "体感温度",
   "humidity": "湿度",

@@ -1,19 +1,19 @@
 /**
  * [INPUT]: Depends on React Router, SettingsPage, the Settings canvas and alert, workbench-copy, the main window's bounded summary catalog, complete identity index, exact full detail and original plugins bridges, shared stage metadata, original native Dock catalog/introduction controls, Settings navigation, and shared plugin list, detail, switch and native package lifecycle components.
- * [OUTPUT]: Provides PluginsSettingsView — All plugins (the complete grouped catalog and App adapters, without duplicate Skills/Extensions/MCP sections), a plugin's introduction, or a plugin's settings page; turning
- *           off uses the shared impact confirmation. Memory's settings page directly reuses its existing settings UI; Dock's reuses its
+ * [OUTPUT]: Provides PluginsSettingsView — All plugins (the grouped catalog without App cards or duplicate Skills/Extensions/MCP management), a plugin's introduction, or a plugin's settings page; turning
+ *           off uses the shared impact confirmation. The settings header links to the introduction as "About this plugin". Memory's settings page directly reuses its existing settings UI; Dock's reuses its
  *           original sections and target-scoped setup flow. Related pages use the same Settings navigation; source authoring prepares a
  *           lazy Create-mode source intent without allocating a Project. Canonical HostPackage entries delegate original install-identity detail/settings/lifecycle and deduplicate the old rows. Completed package uninstall returns to the catalog and its retained-data controls.
  * [POS]: apps/desktop/src/views/settings/plugins; Unified Plugins management is available in every Main build, independently of the workbench flag. ProductApp owns the target: a card or a background surface opens the
  *        introduction; the sidebar's Plugins entries (turned-on plugins with settings) and the introduction's Settings icon open the
- *        settings page. The unified catalog includes New plugin and trust-reviewed local installation; introductions keep a catalog return and one hero H1. Turning a plugin off on its settings
+ *        settings page. The unified catalog groups New plugin and reviewed local installation in one add menu; introductions keep a catalog return and one hero H1. Turning a plugin off on its settings
  *        page keeps the page, so owner recovery (Dock) stays reachable while off.
  */
 import { ArrowLeft, ArrowUpRight } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import { useSettingsNavigation } from "@/components/providers/navigation/context";
 import { useNavigate } from "react-router";
-import { formatWorkbench, useWorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
+import { useWorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
 import { SettingsPage } from "@/components/page-shell";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { SettingsAlert, SettingsButton, SettingsCanvas } from "@/components/settings/settings-layout";
@@ -24,14 +24,13 @@ import { PluginAboutPage, PluginControl } from "@/components/settings/plugins/de
 import { PluginSettingsPage } from "@/components/settings/plugins/detail/settings-page";
 import { PluginStage } from "@/components/settings/plugins/detail/metadata";
 import { usePluginSwitch } from "@/components/settings/plugins/turn-off";
-import { pluginPlatformBridge,hostPackageIdentity,isNativeDockPlugin } from "@/lib/plugin-platform/client";
+import { hostPackageIdentity,isHostedAppPlugin,isNativeDockPlugin } from "@/lib/plugin-platform/client";
 import {useUnifiedPlugins} from '@/lib/plugin-platform/projection/catalog';
-import {useUnifiedPluginIndex,useRuntimePlugins} from '@/lib/plugin-platform/projection/runtime';
+import {useUnifiedPluginIndex} from '@/lib/plugin-platform/projection/runtime';
 import {usePluginDetail} from '@/lib/plugin-platform/projection/detail';
 import { pluginPlatformCopy } from "@/lib/plugin-platform/copy";
 import { UnifiedPluginCards, UnifiedPluginDetail } from "@/components/settings/plugins/platform/catalog";
-import { InstallUnifiedPlugin } from "@/components/settings/plugins/platform/install";
-import { PluginAdapters } from "@/components/settings/plugins/platform/adapters";
+import { PluginAddMenu } from "@/components/settings/plugins/platform/install";
 import { usePluginList } from "@/components/settings/plugins/use-plugins";
 import type { PluginDetail, PluginView, PluginsBridge } from "@ai-chat/cloud-protocol/contracts/plugins/catalog";
 import { effectiveLocale } from "@/lib/appearance/i18n-locale";
@@ -75,7 +74,7 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
       .finally(() => { authoringBusy.current = false; });
   };
   const plugins = usePluginList(bridge);
-  const unified=useUnifiedPlugins(),index=useUnifiedPluginIndex(),surfaces=useRuntimePlugins(),platformCopy=pluginPlatformCopy(locale);
+  const unified=useUnifiedPlugins(),index=useUnifiedPluginIndex(),platformCopy=pluginPlatformCopy(locale);
   const summary=target?index.items.find(item=>item.manifest.id===target.id||hostPackageIdentity(item)===target.id):undefined;
   const detail=usePluginDetail(summary?.manifest.id??target?.id),native=detail.plugin;
   const hostPackageId=summary?hostPackageIdentity(summary):native?hostPackageIdentity(native):undefined;
@@ -124,7 +123,7 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
       <div className="h-full" data-plugin-detail={target.id} data-plugin-view="settings">
       <SettingsPage title={name} titleAdornment={plugin && <PluginStage plugin={plugin} workbench={workbench} />} actions={<>
         <SettingsButton variant="ghost" onClick={() => openAbout(target.id)} data-plugin-about-link="">
-          {name && formatWorkbench(copy.aboutPlugin, { name })}<ArrowUpRight aria-hidden className="size-3.5" /></SettingsButton>
+          {copy.aboutPlugin}<ArrowUpRight aria-hidden className="size-3.5" /></SettingsButton>
         {plugin && <PluginControl plugin={plugin} workbench={workbench} switching={switching} onSetup={setup} />}
       </>}>
         <SettingsCanvas>
@@ -157,18 +156,17 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
   }
 
   return (
-    <SettingsPage title={copy.sidebarAll} actions={<><SettingsButton disabled={!pluginPlatformBridge()} onClick={()=>openAuthoring("")}>{platformCopy.newPlugin}</SettingsButton><InstallUnifiedPlugin locale={locale} onInstalled={openAbout}/></>}>
+    <SettingsPage title={copy.sidebarAll} actions={<PluginAddMenu locale={locale} onNew={()=>openAuthoring("")} onInstalled={openAbout}/>}>
       <SettingsCanvas>
         {alerts}
         <div className="flex flex-col gap-5">
           <p className="text-pretty text-muted-foreground text-sm">{copy.description}</p>
           {unified.page?.safeMode && <SettingsAlert tone="warn">{platformCopy.safeMode}<SettingsButton variant="ghost" onClick={()=>openAbout(unified.page!.safeMode!.pluginId)}>{platformCopy.details}</SettingsButton></SettingsAlert>}
           {unified.error && <SettingsAlert>{platformCopy.loadFailed}<SettingsButton variant="ghost" onClick={()=>void unified.reload()}>{platformCopy.retry}</SettingsButton></SettingsAlert>}
-          <UnifiedPluginCards items={unified.items} locale={locale} workbench={workbench} onOpen={openAbout} dock={{plugin:plugins?.find(item=>item.id==="dock"),switching,onSetup:setup}}/>
+          <UnifiedPluginCards items={unified.items.filter(item=>!isHostedAppPlugin(item))} locale={locale} workbench={workbench} onOpen={openAbout} dock={{plugin:plugins?.find(item=>item.id==="dock"),switching,onSetup:setup}}/>
           {unified.page?.nextCursor && <SettingsButton variant="outline" disabled={unified.busy} onClick={()=>void unified.reload(true)}>{platformCopy.more}</SettingsButton>}
           {plugins && <PluginGrid plugins={plugins.filter(item=>!/^sha256:[a-f0-9]{64}$/.test(item.id)&&!index.items.some(native=>native.manifest.id===item.id||native.manifest.id===`bottega.${item.id}`))} workbench={workbench} state={switching.state}
             onOpen={item => openAbout(item.id)} onToggle={switching.toggle} onSetup={setup} />}
-          <PluginAdapters native={index.items} surfaces={surfaces.items} locale={locale}/>
         </div>
       </SettingsCanvas>
       {dialogs}

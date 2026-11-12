@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Navigation destinations, metadata section models, host actions, the lightweight computer panel identity and optional native window chrome.
- * [OUTPUT]: WorkspaceNavigation owns the text-only Bottega header, computer strip, primary routes, ordered groups, settings footer and resize rail, live or inert, as a sidebar or phone home page. The activity bell can carry a count badge.
+ * [INPUT]: Navigation destinations, metadata section models, product identity, host actions, the lightweight computer panel identity and optional native window chrome.
+ * [OUTPUT]: WorkspaceNavigation owns the Bottega header, computer strip, primary routes, ordered groups, settings footer and resize rail. The sidebar uses the wordmark and the phone home page uses the product name as text.
  * [POS]: The single product sidebar view; Electron IPC, browser queries and routing stay in host adapters.
  */
 import type { ComponentProps, ReactElement, ReactNode } from "react";
@@ -24,7 +24,7 @@ import {
 } from "../../ui/navigation/sidebar";
 import { WorkspaceSidebar } from "../sidebar";
 import { toastClearanceRef } from "../../ui/feedback/sonner";
-import { PRODUCT_NAME } from "../brand";
+import { PRODUCT_NAME, PRODUCT_SIDEBAR_WORDMARK_URL } from "../brand";
 import {
   WORKSPACE_SIDEBAR_MAX_WIDTH,
   WORKSPACE_SIDEBAR_MIN_WIDTH,
@@ -129,9 +129,14 @@ export function WorkspaceNavigation({
           >
             <span
               data-sidebar-brand-name
-              className="min-w-0 truncate select-none text-[18px] font-semibold tracking-[-0.02em] text-sidebar-foreground"
+              className={`min-w-0 select-none text-sidebar-foreground ${page
+                ? "truncate text-[18px] font-semibold tracking-[-0.02em]"
+                : "block h-[31px] w-[83px] bg-current forced-color-adjust-none forced-colors:text-[CanvasText]"}`}
+              style={page ? undefined : {
+                mask: `url("${PRODUCT_SIDEBAR_WORDMARK_URL}") left center / contain no-repeat`,
+              }}
             >
-              {PRODUCT_NAME}
+              <span className={page ? undefined : "sr-only"}>{PRODUCT_NAME}</span>
             </span>
             <button
               type="button"

@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/thinkingjimmy/Bottega/tree/main"><img alt="Source 0.4.3" src="https://img.shields.io/badge/source-0.4.3-blue"></a>
+  <a href="https://github.com/thinkingjimmy/Bottega/tree/main"><img alt="Source 0.4.4" src="https://img.shields.io/badge/source-0.4.4-blue"></a>
   <a href="https://github.com/thinkingjimmy/Bottega/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/thinkingjimmy/Bottega?style=flat&amp;logo=github"></a>
   <a href="./LICENSE"><img alt="First-party MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
@@ -35,7 +35,7 @@
   <img src="./images/readme.png" alt="Bottega-README">
 </p>
 
-This source is version **0.4.3**, using **protocol 27**. The [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest) owns installer availability and its accepted platforms; a source version does not certify publication or package acceptance.
+This source is version **0.4.4**, using **protocol 27**. The [latest stable Release](https://github.com/thinkingjimmy/Bottega/releases/latest) owns installer availability and its accepted platforms; a source version does not certify publication or package acceptance.
 
 # Key features
 
@@ -65,11 +65,11 @@ Choose a prebuilt desktop release or run Bottega directly from source. Before la
 | --- | --- |
 | macOS (Apple silicon / ARM64) | [DMG or ZIP](https://github.com/thinkingjimmy/Bottega/releases/latest) |
 
-Version 0.4.3 targets **macOS on Apple silicon (ARM64)**. Choose the installer and accepted platform listed on the latest stable Release. Official stable installers use the automatic-update channel.
+Version 0.4.4 targets **macOS on Apple silicon (ARM64)**. Choose the installer and accepted platform listed on the latest stable Release. Official stable installers use the automatic-update channel.
 
 **Updating:** 0.2.6 and 0.2.7 installations use the stable update channel. The shipped 0.2.5 personal build has its updater disabled and requires a manual installation from the latest stable Release. Before replacing the app, quit Bottega completely and back up your Bottega folder and application data.
 
-0.4.3 uses **protocol 27**. See the [upgrade guide](./docs/getting-started/README.md#upgrading-to-043) for the desktop update and the 0.4.2 retirement scope.
+0.4.4 uses **protocol 27**. See the [upgrade guide](./docs/getting-started/README.md#upgrading-to-044) for the desktop update and the 0.4.2 retirement scope.
 
 For an official release, use its **Developer ID signed and Apple notarized** DMG or ZIP and the release-evidence archive attached to that same Release. Read `release-manifest.json` at the archive’s root. Run `shasum -a 256` on the installer and compare the result with its `sha256` in the manifest, then copy Bottega into `Applications`. See the [installation guide](./docs/getting-started/README.md#download-and-install) for the commands.
 

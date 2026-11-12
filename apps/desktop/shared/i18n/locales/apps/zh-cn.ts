@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Simplified Chinese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
+ * [OUTPUT]: Provides the Apps Simplified Chinese catalog with App/Widget filters and exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: Simplified Chinese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
@@ -8,6 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsZhCN: typeof appsEn = {
+  catalog: { filter: "插件类型", widgets: "Widgets" },
   dock: {
     pin: "固定到 Dock",
     unpin: "从 Dock 移除",
@@ -35,8 +36,7 @@ export const appsZhCN: typeof appsEn = {
     step: "第 {{current}} 步，共 {{total}} 步",
     stepSelect: "选择 App",
     stepAuthorize: "设置权限",
-    settingsTitle: "设置 {{name}} 的权限",
-    settingsDescription: "它能看到什么、Agent 能不能替你操作它，由下面两项决定。之后随时能改。",
+    settingsTitle: "{{name}}的权限",
     loading: "正在加载已安装的 App…",
     loadFailed: "已安装 App 加载失败",
     installedApps: "已安装的 App",
@@ -46,16 +46,15 @@ export const appsZhCN: typeof appsEn = {
     alreadyOpen: "已在当前 Chat 打开",
     alreadyAdded: "已经在这个 Project 里",
     disabledHere: "之前在这里被停用 · 重新加入会覆盖那次停用",
-    inheritedBadge: "{{source}}当前是这一档",
+    inheritedBadge: "来自{{source}}",
     sourceProject: "当前 Project",
     sourceGlobal: "全局设置",
     authorizationMode: "授权来源",
-    useInherited: "使用继承设置",
-    useInheritedDescription: "直接使用{{source}}授权，不创建 Chat 覆盖。",
+    useInherited: "沿用上级权限",
+    useInheritedDescription: "权限来自{{source}}，并随其更新。",
     customForChat: "为此 Chat 自定义",
-    customDescription: "创建 Chat 专属授权，覆盖 Project 与全局设置。",
+    customDescription: "单独设置权限，仅在这个 Chat 生效。",
     dataAccess: "数据",
-    dataAccessDescription: "{{name}} 有一张自己的数据表。给它够用的那一档就好。",
     dataNone: "不给数据",
     dataNoneDetail: "它只能用自己的界面，读不到数据表里任何一条记录。",
     dataRead: "只能读",

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: The host-owned location and weather reader.
- * [OUTPUT]: The official current-weather summary and native detail.
- * [POS]: Preinstalled service; location permission belongs to the host form.
+ * [INPUT]: The host-owned city weather reader.
+ * [OUTPUT]: Current readings, daily forecasts and native detail for the selected city.
+ * [POS]: Preinstalled service; the host owns transport and validation.
  */
 export async function summary(input,{api,signal}){
  signal.throwIfAborted();

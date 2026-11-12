@@ -3,7 +3,6 @@
  * [OUTPUT]: Provides DockService: the single main-owned Dock runtime — enable/start/stop, actual mode, three-edge display directory/placement, grouped overflow-aware panel anchors and revision-fenced hover, takeover-gated presentation with synchronous surface retirement before restoration, bounded transparent-frame transitions, the revealed bar's native glass, lazy panel orchestration, bar/panel/settings snapshots with an always-reachable local host, independent Tasks activity and coalesced publication, consumer demand per ready visible surface, serialized startup cleanup, generation-fenced startup, renderer recovery, native-failure replacement suspension, placement-fenced drag-removal admission, item-anchored native menus with display-safe bounds, reference-only download visuals and resolution, disabled recovery responsibility, truthful recovery/permission health, keyboard entry, temporary hide, and the replacement admission facts. Settings snapshots include pinned Bottega App IDs.
  * [POS]: system-dock orchestrator; intents live in intents.ts and Settings flows in setup.ts, both acting through this service. It is the only writer of DockConfigStore's working layout and DockLocalStore.
  */
-
 import { BrowserWindow, globalShortcut, powerMonitor, screen, systemPreferences } from "electron";
 import { type AgentAccounts, watchAgentAccounts } from "./widgets/account-watch";
 import { homedir, release } from "node:os";
@@ -20,7 +19,7 @@ import { DownloadsEntry } from "./entries/downloads";
 import { TrashEntry } from "./entries/trash";
 import { NativeApps } from "./native/apps";
 import { DockNativeBridge } from "./native/bridge";
-import { entryLabel, isDockEmpty, maskFace, metricItems, projectPinned, projectRunning, type BottegaAppFact, type NativeResolution } from "./projection";
+import { entryLabel, isDockEmpty, maskFace, metricItems, projectPinned, projectRunning, type BottegaAppFact, type NativeResolution, type ProjectionFacts } from "./projection";
 import { ReplacementController, type ReplacementAdmission } from "./replacement/controller";
 import { RecoveryFiles } from "./replacement/journal";
 import { createRegistration, type LoginItemApi } from "./replacement/registration";
@@ -28,7 +27,7 @@ import { verifyDockInstallation } from "./replacement/installation";
 import type { DockConfigStore } from "./store/config-store";
 import type { DockLocalStore } from "./store/local-store";
 import { buildPanel, panelDemand } from "./panel-snapshot";
-import { DockUsage, type HistoryPort, type LimitsPort } from "./widgets/usage";
+import { DockUsage, type DockSurface, type HistoryPort, type LimitsPort } from "./widgets/usage";
 import { inBarGap, resolveBarPlacement, placePanel, placeContextMenu, type BarPlacement } from "./window/geometry";
 import { DisplayDirectory, dockClock, type DockClock } from "./window/display-observer";
 import { PanelLifecycle, type OpenRequest } from "./window/panel";
@@ -152,7 +151,8 @@ export class DockService {
     this.trash = this.native ? new TrashEntry(this.native, () => this.schedule()) : null;
     this.downloads = new DownloadsEntry({ openPath: (path) => import("electron").then(({ shell }) => shell.openPath(path)),
       showItemInFolder: (path) => import("electron").then(({ shell }) => shell.showItemInFolder(path)) }, () => this.schedule());
-    this.usage = new DockUsage(ports.limits, ports.history, () => this.schedule());
+    this.usage = new DockUsage(ports.limits, ports.history, () => this.schedule(), undefined,
+      () => this.activityAllowed() && (!ports.custom?.officialDirectory || !ports.local.get().privacyMask));
     this.stopAccounts = this.watchAccounts();
     const serviceName = ports.platform.serviceName;
     this.replacement = this.native ? new ReplacementController({ native: this.native, files: this.files,
@@ -174,7 +174,6 @@ export class DockService {
       failed: (cause) => console.warn("[system-dock] panel failed", cause),
     });
   }
-  /* ============================================================ lifecycle */
   async initialize() {
     await Promise.all([this.ports.local.initialize(), this.ports.config.initialize()]);
     // An old takeover is restored even when the feature is now off or gated (5.6, INV-05).
@@ -356,7 +355,6 @@ export class DockService {
     this.ready = false;
     await Promise.all([this.ports.local.close(), this.ports.config.close()]).catch(() => undefined);
   }
-  /* ============================================================ replacement admission (INV-01/07/10) */
   admission(): ReplacementAdmission {
     const state = this.ports.local.get();
     if (!this.capability.replacement || this.quitRestore) return { ok: false, reason: "unsupported" };
@@ -381,7 +379,6 @@ export class DockService {
     const current = this.panel.current();
     this.setWidgetDemand("dock-panel", panelDemand(current.state === "visible" ? current.request?.view ?? null : null, (id) => this.layoutItem(id), this.drafts));
   }
-  /* ============================================================ windows */
   /** A coexistence renderer retry never changes replacement intent or system preferences. */
   async resumeBar() {
     if (this.quitRestore) throw new Error("DOCK_CLOSING");
@@ -533,7 +530,6 @@ export class DockService {
     this.runtime.revealed = true;
     this.schedule();
   }
-  /* ============================================================ facts */
   layoutItem(itemId: string): DockItem | undefined { return this.ports.config.layout().items.find((item) => item.id === itemId); }
   private pruneDrafts() { for (const itemId of [...this.drafts.keys()]) if (!this.layoutItem(itemId)) this.dropDraft(itemId); }
   dropDraft(itemId: string) { this.drafts.delete(itemId); this.draftBases.delete(itemId); this.staleDrafts.delete(itemId); }
@@ -560,7 +556,7 @@ export class DockService {
     }
     this.schedule();
   }
-  private facts() {
+  private facts(): ProjectionFacts {
     const state = this.ports.local.get();
     const locale = this.ports.locale();
     const mode = this.actualMode() ?? state.preferredMode;
@@ -577,25 +573,29 @@ export class DockService {
       trash: this.trash?.face() ?? "unknown",
       widgetFace: (item: Extract<DockItem, { kind: "widget" }>) => {
         const widget = item.widget;
-        const face:WidgetFace = (widget.type==='custom'||widget.type==='plugin')?(this.ports.custom?.face(item,state.edge)??{type:'custom',size:widget.size,state:'definition-missing',summary:null,description:null,readings:{}}):widget.type === "builtin.tasks" ? taskFace(this.ports.tasks)
+        const face:WidgetFace = (widget.type==='custom'||widget.type==='plugin'||widget.type==='builtin.ai-activity'&&this.ports.custom?.officialDirectory)?(this.ports.custom?.face(item,state.edge)??{type:'custom',size:'size'in widget?widget.size:'small',state:'definition-missing',summary:null,description:null,readings:{}}):widget.type === "builtin.tasks" ? taskFace(this.ports.tasks)
           : widget.type === "builtin.ai-limits" ? this.usage.limitsFace(widget) : this.usage.activityFace(widget);
         return state.privacyMask ? maskFace(face) : face;
       },
-      label: (key: "finder" | "downloads" | "trash" | "limits" | "activity" | "tasks") => entryLabel(locale, key),
+      label: key => entryLabel(locale, key),
       showRunning: state.showRunningByMode[mode],
     };
   }
   visibleItems(): { pinned: DockBarItem[]; running: DockBarItem[]; overflow: number } {
     const layout = this.ports.config.layout();
     const facts = this.facts();
-    const pinned = projectPinned(layout, facts);
+    const pinned = projectPinned(layout, facts, this.ports.local.get().privacyMask);
     const running = projectRunning(layout, facts);
     const fit = this.runtime.placement?.fit ?? { pinned: pinned.length, running: running.length };
     return { pinned: pinned.slice(0, fit.pinned), running: running.slice(0, fit.running), overflow: pinned.length - Math.min(fit.pinned, pinned.length) + running.length - Math.min(fit.running, running.length) };
   }
   isEmpty(): boolean { return isDockEmpty(this.ports.config.layout(), this.facts()); }
-  allItems(): DockBarItem[] { const layout = this.ports.config.layout(); const facts = this.facts(); return barGroups(projectPinned(layout, facts), projectRunning(layout, facts)).flatMap((group) => group.items); }
-  setWidgetDemand(surface:'dock-bar'|'dock-panel',widgets:readonly{itemId:string;widget:DockWidget}[]){this.usage.setVisible(surface,widgets);this.ports.custom?.setVisible(surface,widgets);}
+  allItems(): DockBarItem[] { const layout = this.ports.config.layout(); const facts = this.facts(); return barGroups(projectPinned(layout, facts, this.ports.local.get().privacyMask), projectRunning(layout, facts)).flatMap((group) => group.items); }
+  activityAllowed() { return this.ports.custom?.activityAllowed?.() ?? true; }
+  setWidgetDemand(surface: DockSurface, widgets: readonly { itemId: string; widget: DockWidget }[]) {
+    this.usage.setVisible(surface, widgets);
+    this.ports.custom?.setVisible(surface, widgets);
+  }
   private refreshAccessibility() {
     if (process.platform !== "darwin") return;
     try { this.accessibility = systemPreferences.isTrustedAccessibilityClient(false) ? "granted" : "not-granted"; } catch { this.accessibility = "unsupported"; }
@@ -712,7 +712,7 @@ export class DockService {
     this.bindShortcut();
     const bar = this.runtime.bar, state = this.ports.local.get();
     const layout = this.ports.config.layout(), facts = this.facts();
-    const pinned = projectPinned(layout, facts), running = projectRunning(layout, facts);
+    const pinned = projectPinned(layout, facts, this.ports.local.get().privacyMask), running = projectRunning(layout, facts);
     const previous = this.runtime.placement;
     const calculate = () => resolveBarPlacement({ displays: this.directory(), state, mode: this.actualMode() ?? "coexist",
       revealed: state.visibility === "pinned" || this.runtime.revealed || this.panel.visible || (!pinned.length && !running.length),
@@ -756,13 +756,13 @@ export class DockService {
         if (this.glassOn) { clearDockGlass(bar, this.ports.platform.paths.glass); this.glassOn = false; }
         if (this.barMaterial !== null) { this.barMaterial = null; bar.setVibrancy(null); }
       }
-      this.ipc?.send("bar", this.barSnapshot());
     }
     const showing = this.presentation.presentation === "shown";
     const visibleWidgets = pinned.slice(0, placement?.fit.pinned ?? 0).flatMap((item) => {
       const source = this.layoutItem(item.id); return source?.kind === "widget" ? [{ itemId: source.id, widget: source.widget }] : [];
     });
     this.setWidgetDemand("dock-bar", showing ? visibleWidgets : []);
+    if (bar && !bar.isDestroyed()) this.ipc?.send("bar", this.barSnapshot());
     this.trash?.demand("bar", showing && layout.items.some((item) => item.kind === "system" && item.entry === "system.trash"));
     if (this.panel.visible) { this.panel.reposition(); this.ipc?.send("panel", this.panelSnapshot()); }
     const settings = this.settingsSnapshot();
@@ -774,7 +774,7 @@ export class DockService {
     const current = this.panel.current();
     return { revision: this.runtime.revision, edge: state.edge, placementRevision: this.locationRevision, locale: this.ports.locale(), mode: this.actualMode() ?? state.preferredMode, visibility: state.visibility,
       revealed: Boolean(this.runtime.placement?.revealed), showHandle: state.showHandle, scale: state.scale, privacyMask: state.privacyMask,
-      pinned: visible.pinned, running: visible.running, overflow: visible.overflow, reducedMotion: systemPreferences.getAnimationSettings?.().prefersReducedMotion ?? false,
+      pinned: visible.pinned, running: visible.running, liveCards: this.ports.custom?.liveCards?.(this.barWindow()?.webContents.id), overflow: visible.overflow, reducedMotion: systemPreferences.getAnimationSettings?.().prefersReducedMotion ?? false,
       panelTarget: current.state === "visible" && current.request?.view.kind === "detail" ? current.request.view.itemId : null,
       solidBackground: this.solidBackground, busyItemId: this.runtime.busy, highlightItemId: this.highlighted, empty: this.isEmpty(), syncPending: this.ports.config.snapshot().sync.pending };
   }

@@ -11,6 +11,7 @@ import { DurableJson } from "../../persistence/durable-json";
 import type { UnifiedPluginPlatform } from "../platform/service";
 import { importPluginDistribution } from "../integration/distribution";
 import { verifyUnifiedPluginDistribution } from "./verify";
+import { assertUnreservedWidget } from "../platform/official-widgets/identity";
 const receipt = z.object({ operationId: z.string(), pluginId: z.string(), revisionId: z.string(), phase: z.enum(["prepared", "installed", "failed"]), error: z.string().optional() }).strict();
 type ReceiveAuthority = { signal?: AbortSignal; assertCurrent?(): void; operationId?: string };
 const queues = new WeakMap<UnifiedPluginPlatform, Promise<unknown>>();
@@ -23,6 +24,7 @@ async function receive(platform: UnifiedPluginPlatform, userData: string, input:
   const assertCurrent = () => { authority.signal?.throwIfAborted(); authority.assertCurrent?.(); };
   assertCurrent();
   const checked = await verifyUnifiedPluginDistribution(input.directory), distribution = checked.distribution;
+  assertUnreservedWidget(distribution.pluginId);
   if (input.expectedManifestDigest && input.expectedManifestDigest !== distribution.manifestDigest) throw new Error("Plugin package changed after installation review");
   assertCurrent();
   const existing = platform.get(distribution.pluginId);

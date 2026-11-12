@@ -1,27 +1,27 @@
 /**
  * [INPUT]: Only this locale definition labels.
- * [OUTPUT]: The complete weatherZhCN Weather copy object; the unused city-result instruction is excluded.
+ * [OUTPUT]: The complete weatherZhCN Weather copy for city selection, previews and forecasts.
  * [POS]: Deferred locale data; no other locale or aggregate dependency.
  */
 import {weatherZhCNDefinition} from '../definitions/zh-cn';
 export const weatherZhCN={
   ...weatherZhCNDefinition,
-  "current": "当前位置",
-  "city": "选择城市",
+  "city": "城市",
   "search": "搜索城市",
-  "useCurrent": "使用当前位置",
-  "locating": "正在定位…",
-  "located": "定位成功",
+  "searching": "正在搜索…",
+  "changeCity": "更换城市",
+  "cancelCityChange": "取消更换",
   "noCities": "未找到城市。",
-  "denied": "定位权限被拒绝。请选择城市，或在系统设置中允许定位。",
-  "disabled": "系统定位已关闭。请选择城市，或在系统设置中开启。",
-  "timeout": "定位超时。请重试或选择城市。",
-  "unavailable": "系统定位不可用。请选择城市。",
-  "authorization": "请允许定位以使用当前位置。",
+  "today": "今天",
+  "dailyRange": "最高 {{high}}°C，最低 {{low}}°C",
+  "forecastUnavailable": "暂无预报",
+  "sizeCurrent": "当前天气",
+  "sizeToday": "当前天气和今日最高、最低温",
+  "sizeForecast": "当前天气和未来三天预报",
   "failed": "无法获取天气，请重试。",
   "rateLimited": "天气服务繁忙，请稍后重试。",
   "invalid": "无法读取天气数据。",
-  "searchFailed": "无法搜索城市，请重试。",
+  "searchFailed": "无法搜索城市。",
   "temperature": "温度",
   "feelsLike": "体感温度",
   "humidity": "湿度",

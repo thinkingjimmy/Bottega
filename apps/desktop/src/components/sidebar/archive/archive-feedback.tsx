@@ -84,7 +84,7 @@ function ArchiveFeedbackContent({
       onDismiss={() => toast.dismiss(toastId)}
     >
       <FeedbackToastAction
-        variant="secondary"
+        variant="ghost"
         onClick={view}
       >
         {t("archive.toast.view")}

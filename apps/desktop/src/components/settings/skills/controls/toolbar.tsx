@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React nodes, shared Tabs primitives, and Skills translations
+ * [INPUT]: Depends on React nodes, shared Tabs primitives, and Skills and Extensions labels
  * [OUTPUT]: Provides SkillsToolbar with shared segmented tabs and an optional stable acquisition-action host
- * [POS]: Common toolbar for global and Project Skills settings; the surrounding Tabs owns navigation
+ * [POS]: Toolbar for Project Skills settings; the surrounding Tabs owns navigation
  */
 
 import type { ReactNode, Ref } from "react";
@@ -19,8 +19,8 @@ export function SkillsToolbar({
   return (
     <div className="mb-4 flex items-center gap-2" data-testid="settings-skills-toolbar">
       <TabsList>
-        <TabsTrigger value="skills">{t("settings.skills.tabs.skills")}</TabsTrigger>
-        <TabsTrigger value="extensions">{t("settings.skills.tabs.extensions")}</TabsTrigger>
+        <TabsTrigger value="skills">{t("common.skills")}</TabsTrigger>
+        <TabsTrigger value="extensions">{t("settings.extensions.page.title")}</TabsTrigger>
       </TabsList>
       {(actionHostRef || children) && <div className="ml-auto" ref={actionHostRef}>{children}</div>}
     </div>

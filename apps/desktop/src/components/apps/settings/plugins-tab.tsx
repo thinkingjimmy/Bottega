@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on the App extension status/revoke/rebuild IPC, react-router navigation, and Settings primitives
+ * [INPUT]: Depends on the App extension status/revoke/rebuild IPC, the global Extensions route, react-router navigation, and Settings primitives
  * [OUTPUT]: Provides PluginsTab — declared Agent plugins with their four independent badges, plus the revoke and rebuild-generation actions
  * [POS]: The third body of components/apps/settings; the extension snapshot is read here and nowhere else
  */
@@ -20,6 +20,7 @@ import {
   SettingsSection,
 } from "@/components/settings/settings-layout";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
+import { EXTENSIONS_SETTINGS_PATH } from "@/lib/settings/navigation/settings-navigation";
 import {
   readAppExtensionStatus,
   rebuildAppExtensionGeneration,
@@ -70,7 +71,7 @@ export function PluginsTab({ record, busy, fail, run, onClose }: AppSettingsTabP
                 label={t("apps.settingsOpenGlobalPlugins")}
                 onSelect={() => {
                   onClose();
-                  void navigate("/settings/extensions");
+                  void navigate(EXTENSIONS_SETTINGS_PATH);
                 }}
               />
             </SettingsList>

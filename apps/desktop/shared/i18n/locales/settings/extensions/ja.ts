@@ -8,6 +8,7 @@ import type { settingsExtensionsEn } from "./en";
 
 export const settingsExtensionsJa: typeof settingsExtensionsEn = {
   page: {
+    title: "拡張",
     bridgeMissing: "この環境では拡張を管理できません（IPC bridge なし）", admissionClosed: "拡張を無効化する収束処理中です。投影の解除、共有成果物の解放、古い discovery snapshot を持つセッションの再起動、キャッシュ無効化が完了するまで新しい Agent セッションは開始しません。", installedTitle: "インストール済み拡張", installedDescription: "GitHub から拡張をインストールすると、Skills がすべての Agent ですぐに使えます。", installGithub: "GitHub からインストール", emptyTitle: "拡張はまだありません", emptyHint: "GitHub から拡張をインストールして始めましょう。", retainedTitle: "アンインストール済み・データ保持中", retainedDescription: "package コードの削除は install-owned データを暗黙に消しません。完全削除は独立した操作で、削除後に同じリポジトリを再インストールしても復元できません。", purgeData: "データを完全に削除", retainedCustody: "custody が残っています：{{custody}}", retainedEpochs: "{{count}} 個の data epoch がこのコンピューターに残っています。",
   },
   install: {

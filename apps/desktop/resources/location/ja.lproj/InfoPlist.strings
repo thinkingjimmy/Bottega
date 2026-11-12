@@ -1,3 +1,0 @@
-/* Location purpose shown by macOS for the preinstalled Weather Widget. */
-NSLocationUsageDescription = "天気 Widget を選ぶと、Bottega は現在の天気を表示するために位置情報を使用します。";
-NSLocationWhenInUseUsageDescription = "天気 Widget を選ぶと、Bottega は現在の天気を表示するために位置情報を使用します。";

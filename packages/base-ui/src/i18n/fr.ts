@@ -220,8 +220,6 @@ export const basesFr: BasesCatalog = {
     leaseRefusedTitle: "Cette vue de l’App doit se reconnecter",
     leaseRefusedHint: "L’accès à cette vue de l’App a expiré ou a été retiré. Rouvrez l’App pour continuer.",
     surfaceAria: "GUI de l’App",
-    surfaceTabsAria: "Surface principale de l’App",
-    appTab: "App",
     dataTab: "Données",
     refresh: "Actualiser la GUI",
     loading: "Chargement de la GUI…",

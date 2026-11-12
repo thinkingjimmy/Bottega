@@ -100,7 +100,7 @@ export function DockBar() {
             style={{ [vertical ? "height" : "width"]: DOCK_METRICS.separator - DOCK_METRICS.gap }} />}
           {group.items.map((item) => <BarItem key={item.id} item={item}
             index={(group.area === "pinned" ? snapshot.pinned : snapshot.running).indexOf(item)} area={group.area} {...common}
-            open={snapshot.panelTarget === item.id} busy={snapshot.busyItemId === item.id} highlight={snapshot.highlightItemId === item.id} />)}
+            liveCard={snapshot.liveCards?.includes(item.id)} open={snapshot.panelTarget === item.id} busy={snapshot.busyItemId === item.id} highlight={snapshot.highlightItemId === item.id} />)}
         {group.overflow && <button type="button" className="overflow" style={{ width: vertical ? DOCK_METRICS.item : DOCK_METRICS.overflowButton, height: DOCK_METRICS.overflowButton }}
           aria-label={t("systemDock.bar.overflow", { count: snapshot.overflow })} title={t("systemDock.bar.overflow", { count: snapshot.overflow })}
           aria-haspopup="dialog" onClick={() => void sendIntent({ kind: "open-panel", view: { kind: "navigate" }, placementRevision })}>

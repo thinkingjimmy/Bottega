@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the exact Extension lifecycle projection, i18n and Settings controls.
- * [OUTPUT]: Provides ExtensionPackageCard and reusable UninstallPanel for custody, App migration, retry and retained-data decisions.
+ * [INPUT]: Depends on the exact Extension lifecycle projection, the Skills routes, i18n and Settings controls.
+ * [OUTPUT]: Provides ExtensionPackageCard with scope-specific Skills links and reusable UninstallPanel for custody, App migration, retry and retained-data decisions.
  * [POS]: apps/desktop/src/components/settings/extensions; Extension package card; Plugins reuses the same uninstall status presentation.
  */
 
@@ -17,6 +17,7 @@ import {
   SettingsSection,
 } from "../settings-layout";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
+import { SKILLS_SETTINGS_PATH } from "@/lib/settings/navigation/settings-navigation";
 import type { TFunction } from "i18next";
 import { Link } from "react-router";
 
@@ -62,6 +63,7 @@ export function ExtensionPackageCard({
           {skillComponents.length > 0 && (
             <Link
               className="inline-flex min-h-11 touch-manipulation items-center rounded-md border px-3 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              replace={record.scope.kind === "global"}
               to={manageSkillsHref(record)}
             >
               {t("settings.extensions.package.manageSkills")}
@@ -161,10 +163,10 @@ export function ExtensionPackageCard({
 }
 
 function manageSkillsHref(record: ExtensionPackageView) {
-  const query = `tab=skills&package=${encodeURIComponent(record.installIdentity)}`;
+  const packageFilter = `package=${encodeURIComponent(record.installIdentity)}`;
   return record.scope.kind === "project"
-    ? `/projects/${encodeURIComponent(record.scope.projectId)}/settings?${query}`
-    : `/settings/skills?${query}`;
+    ? `/projects/${encodeURIComponent(record.scope.projectId)}/settings?tab=skills&${packageFilter}`
+    : `${SKILLS_SETTINGS_PATH}?${packageFilter}`;
 }
 
 function ConvergenceNotes({ record }: { record: ExtensionPackageView }) {

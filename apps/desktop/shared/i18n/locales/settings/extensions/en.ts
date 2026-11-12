@@ -6,6 +6,7 @@
 
 export const settingsExtensionsEn = {
   page: {
+    title: "Extensions",
     bridgeMissing: "Extension management is unavailable in this environment (IPC bridge missing)",
     admissionClosed:
       "An extension is converging to disabled: projection bindings are being revoked, shared artifacts released, sessions with old discovery snapshots restarted, and caches invalidated. New Agent sessions remain paused until convergence completes.",

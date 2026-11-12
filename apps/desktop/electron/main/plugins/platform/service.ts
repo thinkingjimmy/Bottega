@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical plugin contracts, real filesystem identity, strict durable storage and whole-package activation.
- * [OUTPUT]: Unified catalog with exact-owner crash cleanup, guarded native source roots, live activation/effective Slot readiness, bounded summaries/full detail and descriptive mode provenance, readonly official copy admission and guarded recovery.
+ * [OUTPUT]: Unified catalog, atomic official Widget revision selection and uninstall markers, with exact-owner crash cleanup, guarded native source roots, live activation/effective Slot readiness, bounded summaries/full detail and descriptive mode provenance, readonly official copy admission and guarded recovery.
  * [POS]: Main platform facade used by startup, authoring/build owners, renderer IPC and isolated contribution hosts.
  */
 import { lstat, readFile, realpath } from "node:fs/promises";
@@ -15,8 +15,10 @@ import {
 import { UnifiedPluginActivation } from "./activation";
 import { PluginContributionRegistry } from "./registry";
 import { UnifiedPluginStore, type UnifiedPluginStoredRecord } from "./store";
-import type { RegisterUnifiedPluginInput, UnifiedPluginPlatformOptions, PluginOperationOptions, PluginActivationOptions, PluginSourceBuild, PluginActivationIdentity } from "./model";
+import type { RegisterUnifiedPluginInput, UnifiedPluginPlatformOptions, PluginOperationOptions, PluginActivationOptions, PluginSourceBuild, PluginActivationIdentity, OfficialWidgetOperation } from "./model";
 import { PluginSourceSupersededError } from "./model";
+import { assertUnreservedWidget, canActivateWidget } from "./official-widgets/identity";
+import { isOfficialWidgetId, type OfficialWidgetId } from "../../../../shared/system-dock/widgets/catalog/distribution";
 export type { PreparedPluginRuntime, UnifiedPluginPlatformOptions, RegisterUnifiedPluginInput, PluginOperationOptions } from "./model";
 
 export type UnifiedPluginHostAdapter = Readonly<{
@@ -53,6 +55,10 @@ export class UnifiedPluginPlatform {
         pending.splice(pending.indexOf(record), 1); progress = true;
         const revision = record.revisions.find(value => value.revisionId === record.activeRevision);
         if (!revision) continue;
+        if (!canActivateWidget(revision, this.options.developmentWidgetDistribution, record.installation.origin)) {
+          await this.fail(record.manifest.id, new Error("This Widget needs an official package"), "unavailable");
+          continue;
+        }
         try { await this.activation.activate(revision, { startup: true }); }
         catch (cause) { this.options.reportError?.(cause); }
       }
@@ -144,6 +150,7 @@ export class UnifiedPluginPlatform {
     const directory = await this.directory(input.directory), path = join(directory, UNIFIED_PLUGIN_MANIFEST), info = await lstat(path);
     if (!info.isFile() || info.isSymbolicLink() || info.size > 1024 * 1024) throw new Error("Plugin declaration is not a bounded regular file");
     const declared = unifiedPluginManifestSchema.parse(JSON.parse(await readFile(path, "utf8")));
+    assertUnreservedWidget(declared.id);
     if (declared.source.format === "bottega") await this.directory(input.directory, true);
     const existing = this.get(declared.id);
     const owned = Boolean(existing && existing.directory.packageDirectory === directory);
@@ -157,6 +164,8 @@ export class UnifiedPluginPlatform {
   async register(input: RegisterUnifiedPluginInput): Promise<UnifiedPluginCatalogItem> {
     this.assertOpen();
     const declared = unifiedPluginManifestSchema.parse(input.manifest);
+    if (!(input.legacyWeather && !this.options.developmentWidgetDistribution && declared.id === "bottega-weather" &&
+      declared.version === "1.0.0" && declared.source.kind === "official")) assertUnreservedWidget(declared.id);
     const registered = this.get(declared.id);
     const manifest = unifiedPluginManifestSchema.parse({ ...declared,
       essential: Boolean(declared.essential && input.trustedEssential && declared.source.kind === "official" && registered?.installation.origin !== "external"),
@@ -355,7 +364,8 @@ export class UnifiedPluginPlatform {
         });
         if (before.activeRevision) {
           const revision = this.revisions(input.pluginId).find(value => value.revisionId === before.activeRevision);
-          if (revision) await this.activation.activate(revision, { startup: true });
+          if (revision && canActivateWidget(revision, this.options.developmentWidgetDistribution, before.installation.origin))
+            await this.activation.activate(revision, { startup: true });
         }
         if (!enabledBefore) await this.options.applyEnablement?.(input);
       }
@@ -371,6 +381,8 @@ export class UnifiedPluginPlatform {
       assertCurrent();
       const revision = this.revisions(value.pluginId).find(item => item.revisionId === value.revisionId);
       if (!revision) throw new Error("Plugin revision is not available");
+      if (!canActivateWidget(revision, this.options.developmentWidgetDistribution, this.require(value.pluginId).installation.origin))
+        throw new Error("This Widget revision is retired");
       if (value.sourceOnly) {
         if (!this.options.restoreSource) throw new Error("Source restoration is unavailable");
         await this.options.restoreSource(revision, { ...options, assertCurrent }); assertCurrent();
@@ -389,12 +401,17 @@ export class UnifiedPluginPlatform {
         if (!this.options.deleteData) throw new Error("Plugin data removal is unavailable");
         await this.options.deleteData(input.pluginId);
       }
-      await this.store.mutate(state => { state.plugins = state.plugins.filter(value => value.manifest.id !== input.pluginId); });
+      await this.store.mutate(state => {
+        state.plugins = state.plugins.filter(value => value.manifest.id !== input.pluginId);
+        if (this.options.developmentWidgetDistribution && isOfficialWidgetId(input.pluginId) &&
+          !state.removedOfficialWidgets.includes(input.pluginId)) state.removedOfficialWidgets.push(input.pluginId);
+      });
       this.hostAdapters.delete(input.pluginId); this.registry.unregister(input.pluginId);
       this.changed();
     });
   }
   async noteAvailablePackage(input: { manifest: UnifiedPluginManifest; revisionId: string; packageDirectory: string }, assertCurrent?: () => void) {
+    if (isOfficialWidgetId(input.manifest.id)) return;
     const existing = this.get(input.manifest.id);
     if (!existing) {
       const manifest = unifiedPluginManifestSchema.parse({ ...input.manifest, source: { ...input.manifest.source, kind: "external", editable: false } });
@@ -406,6 +423,76 @@ export class UnifiedPluginPlatform {
       await this.store.mutate(state => { assertCurrent?.(); const record = this.record(state.plugins, input.manifest.id); record.availableRevision = input.revisionId; record.installation.availableRevision = input.revisionId; });
     } else return;
     this.changed();
+  }
+  wasOfficialWidgetRemoved(pluginId: OfficialWidgetId) {
+    return this.store.read(state => state.removedOfficialWidgets.includes(pluginId));
+  }
+  installOfficialWidget(revision: UnifiedPluginRevision, options: OfficialWidgetOperation) {
+    this.assertOpen();
+    const { pluginId } = revision;
+    if (!isOfficialWidgetId(pluginId) || !canActivateWidget(revision, this.options.developmentWidgetDistribution, "official"))
+      throw new Error("Official Widget receipt is unavailable");
+    return this.serialize(pluginId, async () => {
+      const assertCurrent = () => { this.assertOpen(); options.signal?.throwIfAborted(); options.assertCurrent?.(); };
+      assertCurrent();
+      const existing = this.get(pluginId);
+      if (existing && existing.installation.origin !== "official") throw new Error("Official Widget identity conflict");
+      if (options.migration && (this.wasOfficialWidgetRemoved(pluginId) || this.activeRevision(pluginId)?.officialWidget)) return existing;
+      const prior = options.priorInstallation;
+      if (prior && (prior.installedAt !== (existing?.installation.installedAt ?? null) ||
+          prior.removed !== this.wasOfficialWidgetRemoved(pluginId))) throw new Error("Widget installation changed during review");
+      if (existing?.acceptedRevision === revision.revisionId && (!existing.installation.enabled || this.isActive(pluginId, revision.revisionId))) return existing;
+      const sourceVersion = await this.store.mutate(state => {
+        assertCurrent();
+        const record = state.plugins.find(value => value.manifest.id === pluginId);
+        if (record) return ++record.sourceVersion;
+        const now = this.now();
+        state.plugins.push({
+          manifest: revision.manifest, installation: { pluginId, installedAt: now, origin: "official", enabled: true },
+          directory: { pluginId, packageDirectory: revision.rootDirectory, registeredAt: now, missing: false },
+          status: "installed", warnings: [], instanceCount: 0, revisions: [], activation: null, sourceVersion: 1,
+        });
+        return 1;
+      });
+      const candidate = { ...revision, sourceVersion };
+      const previouslyRetained = Boolean(existing && this.revisions(pluginId).some(value => value.revisionId === revision.revisionId));
+      try {
+        if (this.require(pluginId).installation.enabled) {
+          await this.activation.activate(candidate, { ...options, assertCurrent });
+        } else {
+          const signal = options.signal ?? new AbortController().signal;
+          const ready = await this.options.prepareUi?.({ revision: candidate, manifest: candidate.manifest, activationId: "", signal });
+          if (ready?.length !== 1 || !ready[0]?.ready) throw new Error("Official Widget interface is unavailable");
+          await this.store.mutate(state => {
+            assertCurrent();
+            const record = this.record(state.plugins, pluginId);
+            if (record.installation.enabled || record.sourceVersion !== sourceVersion) throw new Error("Widget installation changed");
+            const previous = record.revisions.find(value => value.revisionId === candidate.revisionId);
+            if (previous && (previous.packageDigest !== candidate.packageDigest || previous.rootDirectory !== candidate.rootDirectory))
+              throw new Error("Immutable plugin revision changed");
+            if (!previous) record.revisions.push(candidate);
+            record.directory.packageDirectory = candidate.rootDirectory;
+            record.manifest = candidate.manifest;
+            record.activeRevision = record.acceptedRevision = record.installation.acceptedRevision = candidate.revisionId;
+            record.activation = null;
+            record.status = "disabled";
+            delete record.error;
+            state.removedOfficialWidgets = state.removedOfficialWidgets.filter(id => id !== pluginId);
+          });
+        }
+      } catch (error) {
+        await this.store.mutate(state => {
+          const record = state.plugins.find(value => value.manifest.id === pluginId);
+          if (!record || record.activeRevision === candidate.revisionId || record.status === "cleanup-failed") return;
+          if (!existing) state.plugins = state.plugins.filter(value => value !== record);
+          else if (!previouslyRetained) record.revisions = record.revisions.filter(value => value.revisionId !== candidate.revisionId);
+        });
+        this.changed();
+        throw error;
+      }
+      this.changed();
+      return this.require(pluginId);
+    });
   }
   async acceptInactivePackage(revision: UnifiedPluginRevision, assertCurrent?: () => void) {
     await this.serialize(revision.pluginId, async () => {

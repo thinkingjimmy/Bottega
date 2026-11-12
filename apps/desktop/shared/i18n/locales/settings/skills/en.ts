@@ -5,7 +5,6 @@
  */
 
 export const settingsSkillsEn = {
-  tabs: { skills: "Skills", extensions: "Extensions" },
   refresh: "Refresh Skills", importTitle: "Add Skills",
   description: "Import into your personal Library once, then use enabled Skills from every compatible conversation.",
   libraryTitle: "Personal Library",
@@ -13,11 +12,11 @@ export const settingsSkillsEn = {
   importPrimary: "Import all", importSelected: "Import and enable {{count}}",
   backend: { codex: "Codex", claude: "Claude", kimi: "Kimi", opencode: "OpenCode" },
   sourceKind: { "local-folder": "Local", adopted: "Imported", extension: "Extension" },
-  selectSkill: "Select {{name}}", enable: "Enable", disable: "Disable", delete: "Delete", gotoPackage: "View extension",
+  selectSkill: "Select {{name}}", enable: "Enable", disable: "Disable", delete: "Delete",
   batch: { selected: "{{count}} selected", done: "Done" },
   emptyTitle: "No Skills yet", emptyScanning: "Looking for Skills in your installed Agents…",
   emptyLead: "Found {{count}} Skills in your existing Agents. Import once to use them from every compatible conversation.",
-  emptyNothingHint: "No importable Skills were found. Install an Extension or choose a local folder.",
+  emptyNothingHint: "No importable Skills were found.",
   readOnly: "Skill management is read-only",
   budget: "{{count}} enabled · session list about {{size}} (estimated from enabled Library Skills)",
   search: "Search Skills", noMatches: "No Skills match this search.",

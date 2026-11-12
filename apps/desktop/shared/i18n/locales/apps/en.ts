@@ -1,11 +1,12 @@
 /**
  * [INPUT]: Depends only on i18next interpolation syntax
- * [OUTPUT]: Provides the Apps English catalog, first-party preset copy, contextual authorization copy, operation-specific progress copy, and the structural reference for translated Apps catalogs; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
+ * [OUTPUT]: Provides the Apps English catalog, App/Widget catalog filters, first-party preset copy, contextual authorization copy, operation-specific progress copy, and the structural reference for translated Apps catalogs; native Reveal copy is shared at the top level; includes receipt-backed Base plugin promotion progress and reviewed conflict decisions Includes Dock shortcut actions and standalone activation failures. Includes quarantine diagnostics and source-rebuild recovery copy.
  * First-party preset copy includes Expense Tracker and Fitness Log.
  * [POS]: English copy for Apps discovery, install, lifecycle, authorization, Studio, sharing, and non-cancellable deletion surfaces; assembled by the matching top-level locale
  */
 
 export const appsEn = {
+  catalog: { filter: "Plugin type", widgets: "Widgets" },
   dock: {
     pin: "Pin to Dock",
     unpin: "Remove from Dock",
@@ -34,7 +35,6 @@ export const appsEn = {
     stepSelect: "Pick an App",
     stepAuthorize: "Set permissions",
     settingsTitle: "Set permissions for {{name}}",
-    settingsDescription: "What it can see, and whether the Agent may act on your behalf. Both stay editable later.",
     loading: "Loading installed Apps…",
     loadFailed: "Failed to load installed Apps",
     installedApps: "Installed Apps",
@@ -49,11 +49,10 @@ export const appsEn = {
     sourceGlobal: "global settings",
     authorizationMode: "Authorization source",
     useInherited: "Use inherited settings",
-    useInheritedDescription: "Use the current authorization from {{source}} without creating a Chat override.",
+    useInheritedDescription: "Follow permissions from {{source}}.",
     customForChat: "Customize for this Chat",
-    customDescription: "Create a Chat-specific authorization that overrides Project and global settings.",
+    customDescription: "Set permissions that apply only in this Chat.",
     dataAccess: "Data",
-    dataAccessDescription: "{{name}} has a data table of its own. Give it the level it actually needs.",
     dataNone: "No data",
     dataNoneDetail: "It can only use its own interface and reads no record in the table.",
     dataRead: "Read only",

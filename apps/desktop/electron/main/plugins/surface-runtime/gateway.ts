@@ -13,13 +13,17 @@ import {DOCK_OPERATIONS,DOCK_SESSION_TIMING,type DockOperation} from '@bottega/c
 import {WIDGET_PACKAGE_BUDGET} from '@bottega/contracts/plugins/dock/packages';
 export type PluginSurfaceLease = PluginSurfaceDescriptor;
 export type DockSurfaceLease=Readonly<{kind:'dock';id:string;definitionId:string;generationId:string;origin:string;url:string;expiresAt:number;sandbox:'allow-scripts';operations:readonly DockOperation[]}>;
-type PublishedInput={generationId:string;artifactDigest:string;entry?:string;files:readonly {path:string;mime:string;bytes:Uint8Array;sha256:string}[];isValid():boolean;validate?():Promise<void>};
+type PublishedInput={officialWidget?:string;generationId:string;artifactDigest:string;entry?:string;files:readonly {path:string;mime:string;bytes:Uint8Array;sha256:string}[];isValid():boolean;validate?():Promise<void>};
 type Lease = {view:PluginSurfaceLease|DockSurfaceLease;windowId:number;retainedBytes:number;csp?:string;available():boolean;validate():Promise<void>;release():void;files:Map<string,{mime:string;read():Promise<Uint8Array>}>};
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; sandbox allow-scripts; frame-ancestors file: http://localhost:*";
 export class PluginSurfaceGateway {
   private origin:((id:string)=>string)|null=null;
   private readonly leases=new Map<string,Lease>();
   constructor(private readonly runtime:PluginSurfaceRuntime) {}
+  resourceUsage() {
+    this.purge();
+    return { leases: this.leases.size, retainedBytes: [...this.leases.values()].reduce((sum, lease) => sum + lease.retainedBytes, 0) };
+  }
   configure(origin:(id:string)=>string) {this.origin=origin;}
   private drop(id:string){const lease=this.leases.get(id);if(!lease)return;this.leases.delete(id);lease.release();}
   private purge() {for(const [id,lease] of this.leases)if(lease.view.expiresAt<=Date.now())this.drop(id);}
@@ -40,12 +44,17 @@ export class PluginSurfaceGateway {
     }catch(cause){pin.release();throw cause;}
   }
   issuePublished(input:{pluginId:string;generationId:string;artifactDigest:string;entry?:string;files:readonly {path:string;mime:string;bytes:Uint8Array;sha256:string}[];
-    sourceFormat:{id:string;version:number;readableVersions:readonly number[]};operations:readonly string[];features?:readonly ('worker'|'wasm')[];isValid():boolean;validate?():Promise<void>},windowId:number):PluginSurfaceLease {
+    sourceFormat:{id:string;version:number;readableVersions:readonly number[]};operations:readonly string[];officialWidget?:string;features?:readonly ('worker'|'wasm')[];isValid():boolean;validate?():Promise<void>},windowId:number):PluginSurfaceLease {
     if(!input.pluginId)throw new Error('Published plugin is unavailable');
     const {id,origin,files,total}=this.publishedFiles(input,{files:512,bytes:50_000_000});
     const view:PluginSurfaceLease={id,pluginId:input.pluginId,generationId:input.generationId,origin,url:`${origin}/_plugin/${id}/${input.entry??'index.html'}`,expiresAt:Date.now()+30*60_000,
       readyNonce:randomBytes(24).toString("base64url"),sandbox:"allow-scripts",...pluginSurfaceDefinitionSchema.parse({sourceFormat:input.sourceFormat,operations:input.operations})};
     let csp=CSP;
+    if(input.officialWidget){
+      const scope=`${origin}/_plugin/${id}/`;
+      csp=csp.replace("script-src 'self'",`script-src ${scope}`)
+        .replace("style-src 'self'",`style-src ${scope}`).replace("img-src 'self'",`img-src ${scope}`).replace("font-src 'self'",`font-src ${scope}`);
+    }
     if(input.features?.includes('worker'))csp=csp.replace("worker-src 'none'","worker-src data:");
     // Complete bundled data Workers retain an opaque origin and use only verified package assets.
     if(input.features?.some(value=>value==='worker'||value==='wasm')){
@@ -72,7 +81,10 @@ export class PluginSurfaceGateway {
       if(file.path.startsWith('/')||file.path.includes('\\')||file.path.split('/').some(part=>!part||part==='.'||part==='..')||files.has(file.path)||sha256(file.bytes)!==file.sha256)throw new Error('Invalid published plugin file');
       const bytes=Uint8Array.from(file.bytes);files.set(file.path,{mime:file.mime,read:async()=>bytes});
     }
-    if(!files.has(input.entry??'index.html'))throw new Error('Plugin interface entry is missing');const id=randomUUID(),origin=this.origin(`plugin-${id}`);return{id,origin,files,total};
+    if(!files.has(input.entry??'index.html'))throw new Error('Plugin interface entry is missing');const id=randomUUID();
+    // A Widget's opaque documents share an HTTP host. Each lease keeps its own asset path and CSP.
+    const origin=this.origin(input.officialWidget ? `widget-${input.officialWidget}` : `plugin-${id}`);
+    return{id,origin,files,total};
   }
   release(id:string,windowId:number) {if(this.leases.get(id)?.windowId===windowId)this.drop(id);}
   releaseWindow(windowId:number) {for(const [id,lease] of this.leases)if(lease.windowId===windowId)this.drop(id);}
@@ -100,7 +112,7 @@ export class PluginSurfaceGateway {
     }catch(cause){this.drop(id);throw cause;}
   }
   async handle(request:IncomingMessage,response:ServerResponse):Promise<boolean> {
-    if(!/^plugin-[a-f0-9-]{36}\.localhost:\d+$/.test(request.headers.host??""))return false;
+    if(!/^(?:plugin-[a-f0-9-]{36}|widget-bottega-(?:weather|ai-usage))\.localhost:\d+$/.test(request.headers.host??""))return false;
     this.purge();
     const deny=(status:number)=>{response.writeHead(status,{"Cache-Control":"no-store"});response.end();return true;};
     if(!["GET","HEAD"].includes(request.method??""))return deny(405);

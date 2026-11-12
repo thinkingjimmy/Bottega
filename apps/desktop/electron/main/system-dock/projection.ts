@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the shared layout/IPC/metrics models and caller-supplied branded host, resolution, running, entry and Widget facts.
+ * [INPUT]: Depends on the shared layout/IPC/metrics models, the official Weather identity and caller-supplied branded host, resolution, running, entry and Widget facts.
  * [OUTPUT]: Provides pure pinned/running item projections with bundle-identity de-duplication and one always-reachable branded host, shared face-dependent metric items for fitting, and privacy-safe labels. Projects live App emoji without adding them to persisted layout.
  * [POS]: system-dock projection kernel; DockService owns facts, this file only shapes them for renderers (INV-06/08/12).
  */
@@ -8,10 +8,13 @@ import { translate } from "../../../shared/i18n/runtime";
 import type { DockBarItem, TrashState, WidgetFace } from "../../../shared/system-dock/ipc";
 import { orderedItems, type DockItem, type DockLayout } from "../../../shared/system-dock/layout";
 import { metricItem, type MetricItem } from "../../../shared/system-dock/metrics";
+import { WEATHER_PLUGIN_ID } from "../../../shared/system-dock/widgets/weather";
+import { weatherDefinitionCopy } from "../../../shared/system-dock/widgets/weather/labels";
 import type { RunningApp } from "./native/protocol";
 
 export type NativeResolution = { path: string; bundleIdentifier: string | null; name: string } | null;
 export type BottegaAppFact = { appIcon?: string | null; label: string; state: "ready" | "unavailable" | "missing"; running: boolean };
+type DockEntryLabel = "finder" | "downloads" | "trash" | "limits" | "activity" | "tasks" | "weather";
 export type ProjectionFacts = {
   resolution(item: DockItem): NativeResolution | undefined;
   bottega(appId: string | null): BottegaAppFact;
@@ -23,14 +26,14 @@ export type ProjectionFacts = {
   downloadsPath: string;
   trash: TrashState;
   widgetFace(item: Extract<DockItem, { kind: "widget" }>): WidgetFace;
-  label(key: "finder" | "downloads" | "trash" | "limits" | "activity" | "tasks"): string;
+  label(key: DockEntryLabel): string;
   showRunning: boolean;
 };
 function isHost(facts: ProjectionFacts, target: { bundleIdentifier: string | null; path: string | null }): boolean {
   return Boolean(facts.host && ((target.bundleIdentifier && target.bundleIdentifier === facts.host.bundleIdentifier)
     || (target.path && target.path === facts.host.path)));
 }
-export function projectPinned(layout: DockLayout, facts: ProjectionFacts): DockBarItem[] {
+export function projectPinned(layout: DockLayout, facts: ProjectionFacts, privacyMask = false): DockBarItem[] {
   return orderedItems(layout).map((item): DockBarItem => {
     if (item.kind === "system") {
       if (item.entry === "system.finder") return { id: item.id, kind: "system", entry: item.entry, pinned: true, label: facts.label("finder"),
@@ -39,8 +42,13 @@ export function projectPinned(layout: DockLayout, facts: ProjectionFacts): DockB
         iconKey: facts.iconKey(facts.downloadsPath), running: false, status: "ok" };
       return { id: item.id, kind: "system", entry: item.entry, pinned: true, label: facts.label("trash"), iconKey: null, running: false, status: "ok", trash: facts.trash };
     }
-    if (item.kind === "widget") return { id: item.id, kind: "widget", pinned: true, running: false, status: "ok", iconKey: null,
-      label: item.label??facts.label(item.widget.type === "builtin.tasks" ? "tasks" : item.widget.type === "builtin.ai-limits" ? "limits" : "activity"), widget: facts.widgetFace(item) };
+    if (item.kind === "widget") {
+      const maskedWeather = privacyMask && item.widget.type === "plugin" && item.widget.pluginId === WEATHER_PLUGIN_ID;
+      const maskedActivity = privacyMask && item.widget.type === "builtin.ai-activity";
+      return { id: item.id, kind: "widget", pinned: true, running: false, status: "ok", iconKey: null,
+        label: maskedWeather ? facts.label("weather") : maskedActivity ? facts.label("activity") : item.label ?? facts.label(item.widget.type === "builtin.tasks" ? "tasks" : item.widget.type === "builtin.ai-limits" ? "limits" : "activity"),
+        widget: facts.widgetFace(item) };
+    }
     if (item.kind === "bottega-app") {
       const fact = facts.bottega(item.appId);
       return { id: item.id, kind: "bottega-app", pinned: true, label: fact.label || item.label || "", iconKey: null, appIcon: fact.appIcon, running: fact.running,
@@ -75,7 +83,7 @@ export function projectRunning(layout: DockLayout, facts: ProjectionFacts): Dock
     });
 }
 /** Literal keys so the catalog gate can see every reader. */
-export function entryLabel(locale: import("@ai-chat/ui/lib/locale").AppLocale, key: "finder" | "downloads" | "trash" | "limits" | "activity" | "tasks"): string {
+export function entryLabel(locale: import("@ai-chat/ui/lib/locale").AppLocale, key: DockEntryLabel): string {
   switch (key) {
     case "finder": return translate(locale, "systemDock.entry.finder");
     case "downloads": return translate(locale, "systemDock.entry.downloads");
@@ -83,6 +91,7 @@ export function entryLabel(locale: import("@ai-chat/ui/lib/locale").AppLocale, k
     case "limits": return translate(locale, "systemDock.entry.limits");
     case "activity": return translate(locale, "systemDock.entry.activity");
     case "tasks": return translate(locale, "systemDock.entry.tasks");
+    case "weather": return weatherDefinitionCopy(locale).name;
   }
 }
 /** Empty means nothing to show at all: no pins and no running Apps in the area this mode displays (INV-07). */
@@ -94,7 +103,7 @@ export function metricItems(items: readonly DockBarItem[]): MetricItem[] {
 }
 /** Privacy mask hides values and file names in every projection, including accessible names (INV-06). */
 export function maskFace(face: WidgetFace): WidgetFace {
-  if(face.type==='custom')return{...face,summary:null,description:null,readings:{},...(face.plugin?{plugin:{...face.plugin,customCard:false,configuration:{}}}:{})};
+  if(face.type==='custom')return{...face,summary:null,weather:undefined,activity:undefined,description:null,readings:{},...(face.plugin?{plugin:{...face.plugin,customCard:false,configuration:{}}}:{})};
   if (face.type === "builtin.tasks") return { ...face, running: null, waiting: null, result: null };
   if (face.type === "builtin.ai-limits") return { ...face, sources: face.sources.map((source) => ({ ...source, remaining: null, resetsAt: null })) };
   return { ...face, tokens: null, costUsd: null, unpricedTokens: 0 };

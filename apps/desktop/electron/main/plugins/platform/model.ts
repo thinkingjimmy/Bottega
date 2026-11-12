@@ -15,6 +15,10 @@ export class PluginSourceSupersededError extends Error {
 }
 
 export type PluginOperationOptions = Readonly<{ signal?: AbortSignal; assertCurrent?(): void }>;
+export type OfficialWidgetOperation = PluginOperationOptions & Readonly<{
+  migration?: boolean;
+  priorInstallation?: { installedAt: number | null; removed: boolean };
+}>;
 export type PluginSourceBuild = Readonly<{ sourceDirectory: string; sourceDigest: string; revisionId: string }>;
 export type PluginActivationOptions = PluginOperationOptions & Readonly<{ restore?: boolean; startup?: boolean; builtSource?: Omit<PluginSourceBuild, "revisionId"> }>;
 export type PluginEnablementRequest = Readonly<{
@@ -30,6 +34,7 @@ export type UnifiedPluginPlatformOptions = Readonly<{
   sourcePathScope?: PluginPathScope;
   now?: () => number;
   startupWindowMs?: number;
+  developmentWidgetDistribution?: boolean;
   /** Delegates explicit feature switches, never ordinary revision prepare/drain. */
   applyEnablement?(input: PluginEnablementRequest): Promise<void>;
   featureReady?(pluginId: string): boolean;
@@ -51,6 +56,7 @@ export type RegisterUnifiedPluginInput = Readonly<{
   projectId?: string; chatIds?: string[]; enabled?: boolean; trust?: true; replace?: boolean; hostAdapter?: true;
   /** Only main may grant essential status to a verified official registration; manifests cannot grant it. */
   trustedEssential?: true;
+  legacyWeather?: true;
 }>;
 export type ActivePluginRuntime = {
   runtime: PreparedPluginRuntime; context: PluginServiceContext; controller: AbortController;

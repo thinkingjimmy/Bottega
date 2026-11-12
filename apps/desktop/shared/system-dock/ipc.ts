@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod, Dock layout/local state, narrow Widget quick entries, task/Agent/usage identities and the shared locale type; host form contracts are type-only dependencies.
- * [OUTPUT]: Provides least-privilege Dock channels, pathless download visuals, task face/detail snapshots and identity-fenced Chat opening, validated intents including placement-fenced drag removal, isolated bridges and the main-window Settings and weather-control contracts. Includes strict App pin intents, pinned App IDs and live App emoji.
+ * [OUTPUT]: Provides least-privilege Dock channels, pathless download visuals, task face/detail snapshots and identity-fenced Chat opening, validated intents including placement-fenced drag removal, isolated bridges and the main-window Settings and weather-control contracts. Includes strict App pin intents, pinned App IDs, live App emoji and Main-only actual Widget catalog presentation/visibility/card methods.
  * [POS]: shared/system-dock transport contract; auxiliary renderers receive projections and opaque short-lived references only, never paths, accounts, shell, AX or Apple Event senders (INV-13).
  */
 import type {WidgetApiControl,WidgetApiReview} from './widgets/api/control';
@@ -12,7 +12,7 @@ import type { TaskActivitySnapshot, PresenceTask } from "../ipc/agent/presence-i
 import type { UsageSourceId } from "../ipc/settings/usage-ipc";
 import type { AgentUsageLimits } from "../usage-limits/types";
 import { aiActivityWidgetSchema, aiLimitsWidgetSchema, tasksWidgetSchema, type AiLimitsWidget, type DockLayout, type DockWidget, type SystemEntryId } from "./layout";
-import { dockPreferencePatchSchema, type DockLocalState, type DockMode, type RecoveryRegistration, type ReplacementPhase, type SuspendReason } from "./local-state";
+import { dockPreferencePatchSchema, type DockEdge, type DockLocalState, type DockMode, type RecoveryRegistration, type ReplacementPhase, type SuspendReason } from "./local-state";
 import type { MergeConflict } from "./merge";
 import type { DockDisplay, DockPlacementStatus } from "./displays";
 import type {WidgetManagementSnapshot,WidgetPreview,WidgetApplyInput,WidgetApplyReceipt,WidgetVersionView,editDockWidgetSchema,previewWidgetVersionSchema} from './widgets/authoring';
@@ -63,6 +63,7 @@ export type DockBarItem = Readonly<{
   widget?: WidgetFace;
 }>;
 export type DockBarSnapshot = Readonly<{
+  liveCards?: readonly string[];
   revision: number;
   locale: AppLocale;
   mode: DockMode;
@@ -104,6 +105,8 @@ export type TrashDetail = Readonly<{ state: TrashState; emptying: boolean; autom
 export type AddCandidate = Readonly<{ key: string; kind: "native-app" | "bottega-app" | "system" | "widget"; label: string; iconKey: string | null;
   appIcon?: string | null; pinned: boolean; group: "native" | "bottega" | "system" | "widget"; note?: "unavailable" | "needs-repair" }>;
 export type PanelSnapshot = Readonly<{
+  edge?: DockEdge;
+  liveCards?: readonly string[];
   revision: number;
   locale: AppLocale;
   view: PanelView | null;
@@ -240,6 +243,10 @@ export { dockPreferencePatchSchema };
 export type SetupConfirm = z.infer<typeof setupConfirmSchema>;
 export type ConflictChoice = z.infer<typeof conflictChoiceSchema>;
 export type SystemDockSettingsBridge = {
+  widgetDirectoryControl(input: import("./widgets/catalog/distribution").WidgetDirectoryRequest): Promise<import("./widgets/catalog/distribution").WidgetDirectoryResponse>;
+  widgetCatalogSnapshot(): Promise<import("./widgets/catalog").WidgetCatalogSnapshot>;
+  setWidgetCatalogVisible(input: z.infer<typeof import("./widgets/catalog").widgetCatalogVisibilitySchema>): Promise<void>;
+  widgetCatalogSurface(input: z.infer<typeof import("./widgets/plugin").pluginDockSurfaceSchema>): Promise<unknown>;
   weatherControl(input: import("./widgets/weather").WeatherControl): Promise<import("./widgets/weather").WeatherControlResult>;
   pluginWidgetForm(input: z.infer<typeof import("./widgets/plugin").pluginWidgetFormInputSchema>): Promise<import("./widgets/plugin").PluginWidgetForm>;
   savePluginWidget(input: z.infer<typeof import("./widgets/plugin").savePluginWidgetSchema>): Promise<import("./widgets/plugin").PluginWidgetReceipt>;

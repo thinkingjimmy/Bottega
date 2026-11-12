@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Durable platform store, contribution registry and injected process/Surface lifecycle ports.
- * [OUTPUT]: Strict source/authority CAS, exact owner identity and revocation, accepted-source receipts, guarded original-feature recovery and cancellation/compensation.
+ * [OUTPUT]: Strict source/authority CAS, exact owner identity and revocation, accepted-source and official Widget directory receipts, guarded original-feature recovery and cancellation/compensation.
  * [POS]: Unified plugin version switch owner; business data and instance configuration are never restored.
  */
 import { randomUUID } from "node:crypto";
@@ -9,6 +9,7 @@ import type { ActivePluginRuntime, PreparedPluginRuntime, UnifiedPluginPlatformO
 import { PluginSourceSupersededError } from "./model";
 import { pluginSourceBuildSchema, type UnifiedPluginStore, type UnifiedPluginStoredRecord } from "./store";
 import type { PluginContributionRegistry } from "./registry";
+import { canActivateWidget } from "./official-widgets/identity";
 
 const message = (cause: unknown) => String(cause instanceof Error ? cause.message : cause).slice(0, 2048);
 const emptyRuntime = (): PreparedPluginRuntime => ({
@@ -103,6 +104,7 @@ export class UnifiedPluginActivation {
         record.activation = activation; record.activeRevision = revision.revisionId;
         record.acceptedRevision = revision.revisionId; record.installation.acceptedRevision = revision.revisionId;
         record.manifest = this.canonicalManifest(revision);
+        if (revision.officialWidget) record.directory.packageDirectory = revision.rootDirectory;
         if (sourceBuild) record.sourceBuild = sourceBuild;
       });
       committed = true;
@@ -122,6 +124,7 @@ export class UnifiedPluginActivation {
         controller.signal.throwIfAborted(); options.assertCurrent?.();
         const record = this.find(state.plugins, pluginId);
         record.status = "ready"; delete record.error;
+        if (revision.officialWidget) state.removedOfficialWidgets = state.removedOfficialWidgets.filter(id => id !== pluginId);
         if (state.safeMode?.pluginId === pluginId) delete state.safeMode;
       });
       candidate = undefined;
@@ -182,6 +185,8 @@ export class UnifiedPluginActivation {
     }
   }
   private async prepare(revision: UnifiedPluginRevision, context: PluginServiceContext): Promise<PreparedPluginRuntime> {
+    if (!canActivateWidget(revision, this.options.developmentWidgetDistribution, this.record(revision.pluginId).installation.origin))
+      throw new Error("This Widget revision is retired");
     const input = { revision, manifest: this.canonicalManifest(revision), activationId: context.activationId, signal: context.signal };
     const executable = revision.manifest.contributions.some(value => value.kind === "service" || value.kind === "tool");
     if (executable && !this.options.prepareRuntime) throw new Error("Plugin process runtime is unavailable");
@@ -229,10 +234,12 @@ export class UnifiedPluginActivation {
       record.installation.enabled = record.installation.enabled && before.installation.enabled;
       record.activation = before.activation; record.activeRevision = before.activeRevision;
       record.manifest = before.manifest; record.acceptedRevision = before.acceptedRevision;
+      record.directory = before.directory;
       record.installation.acceptedRevision = before.installation.acceptedRevision;
       if (before.sourceBuild) record.sourceBuild = before.sourceBuild; else delete record.sourceBuild;
     });
-    if (!revision || !this.record(before.manifest.id).installation.enabled) return;
+    if (!revision || !this.record(before.manifest.id).installation.enabled ||
+      !canActivateWidget(revision, this.options.developmentWidgetDistribution, before.installation.origin)) return;
     const controller = new AbortController(), activationId = randomUUID();
     const context: PluginServiceContext = { pluginId: before.manifest.id, revision: revision.revisionId, activationId, signal: controller.signal };
     const runtime = await this.prepare(revision, context);

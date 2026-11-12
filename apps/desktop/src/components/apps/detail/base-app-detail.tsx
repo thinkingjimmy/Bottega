@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * [INPUT]: Depends on localized surface migration failure projection; Depends on Base App lifecycle/generation, the main-owned AppRecordProjection, declaresBaseGui, BaseWorkbench/AppGuiSurface, trusted file-export IPC, shared editor and skill-feedback hooks, use-chat, native or delegated page routing, and window surface capsule checkpoints
- * [OUTPUT]: Provides BaseAppDetail with a main-derived studioSurfaceReady gate that discloses every requested capability and offers allow/decline, visible surface failures and reauthorization on the App route, uniformly styled tri-zone header actions, stable GUI frame ownership during pending refresh with fail-closed error reset, shared skill-failure feedback with persistent menu recovery, explicit App-window handoff, generation-bound native file export, Use panel/dock, Editor navigation, settings, normal-close checkpoints, and hosted App/Data choices that retain the canonical plugin route
- * [POS]: Resident Base App Studio; the App-window shell removes global chrome while this component keeps the same main and third-panel product structure
+ * [INPUT]: Main-owned App and GUI grants, BaseWorkbench, AppGuiSurface, shared panel sizing, file-export IPC, editor and Use Chat controls, and window checkpoints
+ * [OUTPUT]: Provides BaseAppDetail with Studio consent and recovery, title-level refresh and More actions, a stable GUI beside one Data, Settings or Use Chat panel, generation-bound file export, and App-window handoff
+ * [POS]: Resident Base App Studio for native and delegated plugin routes
  */
 
-import { lazy, Suspense, useRef, useState, type KeyboardEvent } from "react";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
+import { usePanelLayout, type PanelWidths } from "@ai-chat/chat-ui/side-panel/layout";
 import {
   EllipsisIcon,
   InfoIcon,
@@ -18,6 +18,7 @@ import {
   RefreshCwIcon,
   Settings2Icon,
   Share2Icon,
+  Table2Icon,
   TestTube2Icon,
 } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
@@ -41,6 +42,7 @@ import {
   useStudioConsent,
 } from "../authorization/app-consent-disclosure";
 import { AppUsePanel } from "../use/app-use-panel";
+import { APP_SIDE_PANEL_DEFAULT_WIDTH, AppSidePanel } from "../app-side-panel";
 import { useAppUseChat } from "../use/use-app-use-chat";
 import { ReadmeDialog, useAppReadme } from "./app-readme-adornment";
 import { AppShareDialog } from "../dialogs/app-share-dialog";
@@ -80,8 +82,12 @@ import { useAppEditor } from "../use-app-editor";
 import { AppWorkbench } from "./app-workbench";
 import { useAppSkillFeedback } from "./use-app-skill-feedback";
 const AppUseDock = lazy(() => import("../use/app-use-dock").then(module => ({ default: module.AppUseDock })));
-type RightSurface = "none" | "settings" | "use";
+type RightSurface = "none" | "data" | "settings" | "use";
 type MainSurface = "app" | "data";
+const STUDIO_PANEL_WIDTHS: PanelWidths = {
+  read: () => APP_SIDE_PANEL_DEFAULT_WIDTH,
+  write: (width) => width,
+};
 /* 弹窗式入口住进了 ⋯ 菜单，而菜单一关就把整棵子树卸掉——触发器若自持
    open，弹窗与它共命，永远开不起来。故开关上提到这一层。 */
 type Overlay = "none" | "readme" | "share" | "workbench";
@@ -170,30 +176,23 @@ function AuthorizedBaseAppDetail({ record, hosted }: { record: AppRecordProjecti
   const navigate = useNavigate();
   const openEditor = useAppEditor(record.id);
   const { surface: routeSurface } = useParams<{ surface?: string }>();
-  /* Chat tab 里的 GUI 没有数据页可切，只能把 open-data-view 转成一次跳转。
-     viewId 随 location.state 过来，落在同一个 requestedView 上——两条入口
-     一个消费点，不再有「跳过来了但视图没选中」这种半成品。 */
-  const routedViewId = useLocation().state?.requestedViewId;
+  const location = useLocation();
+  const studioNeedsChat = declaresBaseGui(record);
+  const dataEntry = !hosted && routeSurface === "data" ? location.key : null;
+  const routedViewId = location.state?.requestedViewId;
   const residenceSurface = appStudioSurface(record.id);
   /* Only the window holding the Studio owns its Use chat. A window the Studio is moving away from (main, after "Open in window", from
      the export on) must not sync, or main refuses it as nonresident; the move carries the Use chat along as a companion, and a restored
      move gives the Studio back, so the page syncs again. */
   const holdsStudio = useHoldsSurface(residenceSurface);
-  const checkpoint = readSurfaceCheckpoint(residenceSurface).route;
-  const [hostedSurface, setHostedSurface] = useState<MainSurface | undefined>(
-    checkpoint.mainSurface === "app" || checkpoint.mainSurface === "data"
-      ? checkpoint.mainSurface
-      : undefined
-  );
-  const surface = hosted ? hostedSurface : routeSurface;
-  const initialRightSurface = checkpoint.rightSurface;
-  const [rightSurface, setRightSurface] = useState<RightSurface>(
-    initialRightSurface === "settings" ||
-      initialRightSurface === "use"
-      ? initialRightSurface
-      : "none"
-  );
-  const [useDocked, setUseDocked] = useState(Boolean(checkpoint.useDocked));
+  const [checkpoint] = useState(() => readSurfaceCheckpoint(residenceSurface).route);
+  const [handledDataEntry, setHandledDataEntry] = useState(dataEntry);
+  const [rightSurface, setRightSurface] = useState<RightSurface>(() => {
+    if (dataEntry && studioNeedsChat) return "data";
+    const saved = checkpoint.rightSurface;
+    return saved === "data" || saved === "settings" || saved === "use" ? saved : "none";
+  });
+  const [useDocked, setUseDocked] = useState(() => rightSurface === "none" && Boolean(checkpoint.useDocked));
   const [overlay, setOverlay] = useState<Overlay>("none");
   const readme = useAppReadme(record.id);
   const [requestedView, setRequestedView] = useState<
@@ -203,7 +202,25 @@ function AuthorizedBaseAppDetail({ record, hosted }: { record: AppRecordProjecti
       ? { viewId: routedViewId, nonce: 0 }
       : undefined
   );
-  const studioNeedsChat = declaresBaseGui(record);
+  // A link from a Chat's App tab can request Data and a view on an already mounted Studio.
+  if (dataEntry !== handledDataEntry) {
+    setHandledDataEntry(dataEntry);
+    if (dataEntry) {
+      if (studioNeedsChat) {
+        setRightSurface("data");
+        setUseDocked(false);
+      }
+      setRequestedView(
+        typeof routedViewId === "string" && routedViewId
+          ? { viewId: routedViewId, nonce: (requestedView?.nonce ?? 0) + 1 }
+          : undefined
+      );
+    }
+  }
+  const { containerRef, geometry, widthChange } = usePanelLayout(STUDIO_PANEL_WIDTHS);
+  const panelLayout = { ...geometry, onWidthChange: widthChange };
+  const dataButton = useRef<HTMLButtonElement>(null);
+  const dataPanelId = `app-data-${record.id}`;
   const useChat = useAppUseChat(
     record,
     studioNeedsChat || rightSurface === "use" || useDocked
@@ -244,21 +261,22 @@ function AuthorizedBaseAppDetail({ record, hosted }: { record: AppRecordProjecti
   >(undefined);
   const settingsOpen = rightSurface === "settings";
   const hasGui = gui.pages.includes("index.html");
-  const hasAppSurface = hasGui || (surface === "app" && Boolean(gui.error || appSurfaceError));
-  // Pending refresh must retain the frame owner and its active/candidate buffers.
-  const showSurfaceTabs = hasAppSurface;
-  const mainSurface: MainSurface =
-    surface === "data" ? "data" : surface === "app" ? "app" : hasGui ? "app" : "data";
+  const showGui = studioNeedsChat || hasGui;
+  const mainSurface: MainSurface = showGui ? "app" : "data";
+  const dataOpen = showGui && rightSurface === "data";
   const waitingForStudioSurface = studioNeedsChat &&
     (!surfaceIdentity || !appSurface) &&
     !appSurfaceError;
-  const waitingForGui = (gui.loading || waitingForStudioSurface) &&
-    !hasAppSurface &&
-    surface !== "data";
+  // Keep the active frame mounted while a refresh prepares its replacement.
+  const waitingForGui = waitingForStudioSurface || (gui.loading && !hasGui && !gui.error);
   const standalone = windowContext().role === "app-window";
-  const selectMainSurface = (next: MainSurface) => {
-    if (hosted) setHostedSurface(next);
-    else navigate(`/apps/${record.id}/${next}`, { replace: true });
+  const selectRightSurface = (next: RightSurface) => {
+    setUseDocked(false);
+    setRightSurface(next);
+  };
+  const closeData = () => {
+    setRightSurface("none");
+    dataButton.current?.focus();
   };
   const handleHostAction = async (
     action: BaseGuiHostAction,
@@ -298,26 +316,18 @@ function AuthorizedBaseAppDetail({ record, hosted }: { record: AppRecordProjecti
         nonce: (current?.nonce ?? 0) + 1,
       }));
     }
-    selectMainSurface("data");
+    selectRightSurface("data");
     return true;
   };
 
   useEffect(() => {
-    if (hosted || loading || !ownerKey || gui.loading || waitingForStudioSurface || appSurfaceError) return;
-    const target = surface === "app" && !hasGui && !gui.error
-      ? "data"
-      : surface === "app" || surface === "data"
-        ? null
-        : hasGui ? "app" : "data";
-    if (!target) return;
-    navigate(`/apps/${record.id}/${target}`, {
-      replace: true,
-    });
-  }, [appSurfaceError, gui.error, gui.loading, hasGui, hosted, loading, navigate, ownerKey, record.id, surface, waitingForStudioSurface]);
+    if (hosted || loading || !ownerKey || routeSurface === "data" || routeSurface === mainSurface) return;
+    navigate(canonicalAppSurfaceRoute(record.id, mainSurface), { replace: true });
+  }, [hosted, loading, mainSurface, navigate, ownerKey, record.id, routeSurface]);
 
   useEffect(() => {
     checkpointSurface(residenceSurface, {
-      pathname: `/apps/${record.id}/${mainSurface}`,
+      pathname: canonicalAppSurfaceRoute(record.id, mainSurface),
       mainSurface,
       rightSurface,
       useDocked,
@@ -379,15 +389,7 @@ function AuthorizedBaseAppDetail({ record, hosted }: { record: AppRecordProjecti
     };
   }, [record.id, residentUseChat, surfaceIdentity, t]);
 
-  const tabId = (value: MainSurface) => `${record.id}-${value}-tab`;
-  const selectAdjacentTab = (event: KeyboardEvent, value: MainSurface) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    const next = value === "app" ? "data" : "app";
-    selectMainSurface(next);
-    document.getElementById(tabId(next))?.focus();
-  };
-  const renderMainSurface = (value: MainSurface) => {
+  const renderSurface = (value: MainSurface, compact = false) => {
     if (error) {
       return (
         <div className="grid size-full place-items-center p-8 text-destructive text-sm">
@@ -424,10 +426,11 @@ function AuthorizedBaseAppDetail({ record, hosted }: { record: AppRecordProjecti
         </div>
       );
     }
-    if (loading || !ownerKey || waitingForGui) {
+    const checkingGui = value === "app" && waitingForGui;
+    if (loading || !ownerKey || checkingGui) {
       return (
         <div className="grid size-full place-items-center text-muted-foreground text-sm">
-          {waitingForGui ? t("apps.guiChecking") : t("apps.baseOpening")}
+          {checkingGui ? t("apps.guiChecking") : t("apps.baseOpening")}
         </div>
       );
     }
@@ -435,13 +438,14 @@ function AuthorizedBaseAppDetail({ record, hosted }: { record: AppRecordProjecti
       <AppGuiSurface
         // A settled failure must discard retained frames before recovery is shown.
         key={gui.error ? "failed" : "active"}
+        chromeless
         gui={gui}
         baseOwnerKey={ownerKey}
         onHostAction={handleHostAction}
-        onGoToData={() => selectMainSurface("data")}
+        onGoToData={() => selectRightSurface("data")}
       />
     ) : (
-      <BaseWorkbench ownerKey={ownerKey} requestedViewId={requestedView} />
+      <BaseWorkbench compact={compact} ownerKey={ownerKey} requestedViewId={requestedView} />
     );
   };
 
@@ -468,211 +472,196 @@ function AuthorizedBaseAppDetail({ record, hosted }: { record: AppRecordProjecti
     }
   };
 
-  return (
-    <PageShell
-      /* 右侧只放第三栏那两颗互斥开关：跨页头面板盖住的正是它们自己，
-         而面板自带的收起钮当场接任，没有任何操作因此失联。
-         其余入口——编辑、独立窗口、关于、分享——全部收进标题旁的 ⋯，
-         那一格永远不会被盖住。被盖住的按钮等于不存在的按钮。 */
-      actions={
-        <div className="flex items-center gap-1">
+  const dataLabel = t("bases.gui.dataTab");
+  const actions = (
+    <div className="flex items-center gap-1">
+      {showGui && (
+        <Button
+          aria-controls={dataPanelId}
+          aria-label={dataLabel}
+          aria-pressed={dataOpen}
+          className={panelChromeClassName}
+          onClick={() => selectRightSurface(dataOpen ? "none" : "data")}
+          ref={dataButton}
+          size="icon-lg"
+          title={dataLabel}
+          type="button"
+          variant={dataOpen ? "secondary" : "ghost"}
+        >
+          <Table2Icon />
+        </Button>
+      )}
+      <Button
+        aria-label={t("apps.baseDetail.settings")}
+        aria-pressed={settingsOpen}
+        className={panelChromeClassName}
+        onClick={() => selectRightSurface(settingsOpen ? "none" : "settings")}
+        size="icon-lg"
+        variant={settingsOpen ? "secondary" : "ghost"}
+      >
+        <Settings2Icon />
+      </Button>
+      <Button
+        aria-label={t(
+          rightSurface === "use"
+            ? "apps.baseDetail.closeUseChat"
+            : "apps.baseDetail.openUseChat"
+        )}
+        aria-pressed={rightSurface === "use"}
+        className={panelChromeClassName}
+        onClick={() => selectRightSurface(rightSurface === "use" ? "none" : "use")}
+        size="icon-lg"
+        variant={rightSurface === "use" ? "secondary" : "ghost"}
+      >
+        <MessageSquareIcon />
+      </Button>
+    </div>
+  );
+  const titleActions = (
+    <span className="flex items-center gap-1 opacity-0 transition-opacity motion-reduce:transition-none [header:hover_&]:opacity-100 has-[:focus-visible]:opacity-100 has-[[data-state=open]]:opacity-100 no-hover:opacity-100">
+      {showGui && !waitingForGui && !appSurfaceError && (
+        <Button
+          aria-label={t("bases.gui.refresh")}
+          className={panelChromeClassName}
+          disabled={gui.loading}
+          onClick={gui.refresh}
+          size="icon-lg"
+          title={t("bases.gui.refresh")}
+          type="button"
+          variant="ghost"
+        >
+          <RefreshCwIcon />
+        </Button>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
           <Button
-            aria-label={t("apps.baseDetail.settings")}
-            aria-pressed={settingsOpen}
+            aria-label={t("apps.baseDetail.more")}
             className={panelChromeClassName}
-            onClick={() => {
-              setUseDocked(false);
-              setRightSurface(settingsOpen ? "none" : "settings");
-            }}
             size="icon-lg"
-            variant={settingsOpen ? "secondary" : "ghost"}
+            title={t("apps.baseDetail.more")}
+            variant="ghost"
           >
-            <Settings2Icon />
+            <EllipsisIcon />
           </Button>
-          <Button
-            aria-label={t(
-              rightSurface === "use"
-                ? "apps.baseDetail.closeUseChat"
-                : "apps.baseDetail.openUseChat"
-            )}
-            aria-pressed={rightSurface === "use"}
-            className={panelChromeClassName}
-            onClick={() => {
-              setUseDocked(false);
-              setRightSurface((current) => current === "use" ? "none" : "use");
-            }}
-            size="icon-lg"
-            variant={rightSurface === "use" ? "secondary" : "ghost"}
-          >
-            <MessageSquareIcon />
-          </Button>
-        </div>
-      }
-      backHref={standalone ? undefined : "/apps"}
-      /* 页签并进页头正中：它原先独占一条 40px 横带；现在与两侧 chrome 同为
-         32px 高，但保留文本 tab 的选中语义，而不是冒充图标按钮。
-         还顺手画出第二条分隔线——page-shell 的注释亲口禁止过那件事。
-         上来这一格，横带与那条线一起消失，内容区白拿 40px。 */
-      center={
-        showSurfaceTabs ? (
-          <div
-            aria-label={t("bases.gui.surfaceTabsAria")}
-            className="flex items-center gap-1"
-            role="tablist"
-          >
-            {(["app", "data"] as const).map((value) => (
-              <Button
-                aria-controls={`${record.id}-${value}-panel`}
-                aria-selected={mainSurface === value}
-                className={panelChromeClassName}
-                id={tabId(value)}
-                key={value}
-                onClick={() => selectMainSurface(value)}
-                onKeyDown={(event) => selectAdjacentTab(event, value)}
-                role="tab"
-                size="lg"
-                tabIndex={mainSurface === value ? 0 : -1}
-                variant={mainSurface === value ? "secondary" : "ghost"}
-              >
-                {value === "app"
-                  ? t("bases.gui.appTab")
-                  : t("bases.gui.dataTab")}
-              </Button>
-            ))}
-          </div>
-        ) : undefined
-      }
-      title={`${record.manifest?.icon ?? "📦"} ${record.displayName}`}
-      titleAdornment={
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label={t("apps.baseDetail.more")}
-              className={panelChromeClassName}
-              size="icon-lg"
-              variant="ghost"
-            >
-              <EllipsisIcon />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-48">
-            {skillFeedback.failed && (
-              <>
-                <DropdownMenuItem
-                  disabled={skillFeedback.retrying}
-                  onSelect={() => void skillFeedback.retry()}
-                >
-                  <RefreshCwIcon />
-                  {t("apps.baseDetail.retrySkill")}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            )}
-            {record.editableSource === true && (
-              <DropdownMenuItem onSelect={() => void openEditor()}>
-                <PencilLineIcon />
-                {t("apps.baseDetail.edit")}
-              </DropdownMenuItem>
-            )}
-            {record.editableSource === true && <DropdownMenuSeparator />}
-            <DropdownMenuItem onSelect={() => setOverlay("workbench")}>
-              <TestTube2Icon />
-              {t("apps.baseDetail.workbench")}
-            </DropdownMenuItem>
-            {!standalone && (
-              <DropdownMenuItem onSelect={() => void openWindow()}>
-                <PanelsTopLeftIcon />
-                {t("windowSurface.openInWindow")}
-              </DropdownMenuItem>
-            )}
-            {readme !== "" && (
-              <DropdownMenuItem onSelect={() => setOverlay("readme")}>
-                <InfoIcon />
-                {t("apps.readme.about")}
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setOverlay("share")}>
-              <Share2Icon />
-              {t("apps.share.title")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      }
-    >
-      <div className="flex h-full min-w-0">
-        <main className="relative flex min-w-0 flex-1 flex-col">
-          {showSurfaceTabs ? (
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-48">
+          {skillFeedback.failed && (
             <>
-              {(["app", "data"] as const).map((value) => {
-                const active = mainSurface === value;
-                return (
-                  <div
-                    aria-labelledby={tabId(value)}
-                    className={active
-                      ? "flex min-h-0 flex-1 flex-col"
-                      : "hidden"}
-                    hidden={!active}
-                    id={`${record.id}-${value}-panel`}
-                    key={value}
-                    role="tabpanel"
-                  >
-                    {active ? renderMainSurface(value) : null}
-                  </div>
-                );
-              })}
+              <DropdownMenuItem
+                disabled={skillFeedback.retrying}
+                onSelect={() => void skillFeedback.retry()}
+              >
+                <RefreshCwIcon />
+                {t("apps.baseDetail.retrySkill")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
             </>
-          ) : (
-            <div className="flex min-h-0 flex-1 flex-col">
-              {renderMainSurface(hasAppSurface ? mainSurface : "data")}
-            </div>
           )}
-          {/* dock 挂在 main 里，因为它要盖住的正是 main：定位锚点就是这层
-              relative，与全屏 Base 把 dock 挂在自己的 relative 容器里同理。 */}
-          {useDocked && useChat.chatId && (
-            <Suspense fallback={null}>
-              <AppUseDock
-                key={useChat.chatId}
-                appId={record.id}
-                chatId={useChat.chatId}
-              />
-            </Suspense>
+          {record.editableSource === true && (
+            <DropdownMenuItem onSelect={() => void openEditor()}>
+              <PencilLineIcon />
+              {t("apps.baseDetail.edit")}
+            </DropdownMenuItem>
           )}
-        </main>
-        {/* Settings and Use remain mutually exclusive resident side surfaces. */}
-        <AppSettingsPanel
-          onClose={() => setRightSurface("none")}
-          open={settingsOpen}
-          record={record}
-        />
-        <AppUsePanel
-          chat={useChat}
-          onClose={() => setRightSurface("none")}
-          onDock={() => {
-            setRightSurface("none");
-            setUseDocked(true);
-          }}
-          open={rightSurface === "use"}
-          record={record}
-        />
-        <ReadmeDialog
-          appName={record.displayName}
-          onOpenChange={(next) => setOverlay(next ? "readme" : "none")}
-          open={overlay === "readme"}
-          readme={readme}
-        />
-        <AppShareDialog
-          onOpenChange={(next) => setOverlay(next ? "share" : "none")}
-          open={overlay === "share"}
-          record={record}
-        />
-        <AppWorkbench
-          gui={gui}
-          onOpenChange={(next) => setOverlay(next ? "workbench" : "none")}
-          open={overlay === "workbench"}
-          record={record}
-        />
-      </div>
-    </PageShell>
+          {record.editableSource === true && <DropdownMenuSeparator />}
+          <DropdownMenuItem onSelect={() => setOverlay("workbench")}>
+            <TestTube2Icon />
+            {t("apps.baseDetail.workbench")}
+          </DropdownMenuItem>
+          {!standalone && (
+            <DropdownMenuItem onSelect={() => void openWindow()}>
+              <PanelsTopLeftIcon />
+              {t("windowSurface.openInWindow")}
+            </DropdownMenuItem>
+          )}
+          {readme !== "" && (
+            <DropdownMenuItem onSelect={() => setOverlay("readme")}>
+              <InfoIcon />
+              {t("apps.readme.about")}
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setOverlay("share")}>
+            <Share2Icon />
+            {t("apps.share.title")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
+  );
+
+  return (
+    <div className="flex h-full min-w-0 [--page-shell-header-height:2.5rem]" ref={containerRef}>
+      <main className="min-w-0 flex-1">
+        <PageShell
+          actions={actions}
+          backHref={standalone ? undefined : "/apps"}
+          title={
+            <span className="[-webkit-app-region:no-drag]">
+              {record.manifest?.icon ?? "📦"} {record.displayName}
+            </span>
+          }
+          titleAdornment={titleActions}
+        >
+          <div className="relative flex size-full min-w-0 flex-col">
+            {renderSurface(mainSurface)}
+            {useDocked && useChat.chatId && (
+              <Suspense fallback={null}>
+                <AppUseDock key={useChat.chatId} appId={record.id} chatId={useChat.chatId} />
+              </Suspense>
+            )}
+          </div>
+        </PageShell>
+      </main>
+      {showGui && (
+        <AppSidePanel
+          closeLabel={t("chat.sidePanel.closePanel")}
+          header={<h2 className="min-w-0 flex-1 truncate px-2 font-medium text-sm">{dataLabel}</h2>}
+          id={dataPanelId}
+          inlineLayout={panelLayout}
+          onClose={closeData}
+          open={dataOpen}
+          railLabel={t("chat.sidePanel.shell.resize")}
+          railHint={t("chat.sidePanel.shell.resizeHint")}
+        >
+          {dataOpen && renderSurface("data", true)}
+        </AppSidePanel>
+      )}
+      <AppSettingsPanel
+        inlineLayout={panelLayout}
+        onClose={() => setRightSurface("none")}
+        open={settingsOpen}
+        record={record}
+      />
+      <AppUsePanel
+        chat={useChat}
+        inlineLayout={panelLayout}
+        onClose={() => setRightSurface("none")}
+        onDock={() => {
+          setRightSurface("none");
+          setUseDocked(true);
+        }}
+        open={rightSurface === "use"}
+        record={record}
+      />
+      <ReadmeDialog
+        appName={record.displayName}
+        onOpenChange={(next) => setOverlay(next ? "readme" : "none")}
+        open={overlay === "readme"}
+        readme={readme}
+      />
+      <AppShareDialog
+        onOpenChange={(next) => setOverlay(next ? "share" : "none")}
+        open={overlay === "share"}
+        record={record}
+      />
+      <AppWorkbench
+        gui={gui}
+        onOpenChange={(next) => setOverlay(next ? "workbench" : "none")}
+        open={overlay === "workbench"}
+        record={record}
+      />
+    </div>
   );
 }

@@ -1,8 +1,6 @@
 /**
- * [INPUT]: Depends on lucide icons, Settings layout primitives, the Setup context with providerHealth, UpdateList and CliUpdateRow (a built-in
- *           Provider's live CLI facts and one-click update), app i18n, workbench-copy, the report-issue button and the plugin detail.
- * [OUTPUT]: Provides the pieces both plugin pages compose: PluginBanners (the one most urgent state, with its fix), HealthSection,
- *           AboutSection, CapabilitiesSection, WorksWithSection and InformationSection
+ * [INPUT]: Depends on lucide icons, Settings layout, Setup, Provider diagnostics, shared CLI update state and row, localized copy, the report-issue button and plugin detail.
+ * [OUTPUT]: Provides PluginBanners, HealthDot, HealthSection with one list for Provider status and CLI updates, AboutSection, CapabilitiesSection, WorksWithSection and InformationSection.
  * [POS]: Read-only parts of the plugin pages; about.tsx and settings-page.tsx place them. Dependencies read as sentences (who meets
  *        each need, or why nothing does), with the contract id as small print.
  */
@@ -15,9 +13,9 @@ import { useSetup } from "@/components/providers/setup-provider";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { providerHealth } from "@/components/settings/providers/provider-row";
 import { CliUpdateRow } from "@/components/settings/updates/cli-update-row";
-import { UpdateList } from "@/components/settings/updates/update-row";
 import { ReportIssueButton } from "@/components/report-issue-button";
 import { backendLabel, isAgentBackendId } from "@/lib/agent/agent-backends";
+import { isUpdatableCli } from "@/lib/updates/cli-updates";
 import type { PluginDetail, PluginView } from "@ai-chat/cloud-protocol/contracts/plugins/catalog";
 import { blockReasonLabel, pluginPublisher, pluginText } from "../copy";
 
@@ -70,32 +68,45 @@ export function HealthSection({ detail, workbench, locale }: Props & { locale: s
   const copy = workbench.plugins;
   const { t } = useAppTranslation();
   const setup = useSetup();
-  const backend = detail.kind === "provider" && isAgentBackendId(detail.id) ? setup.status?.backends.find(info => info.id === detail.id) : undefined;
+  const builtinProvider = detail.kind === "provider" && isAgentBackendId(detail.id);
+  const backend = builtinProvider ? setup.status?.backends.find(info => info.id === detail.id) : undefined;
   const provider = backend ? providerHealth(backend, setup.now) : null;
-  const checked = detail.health.checkedAt ? formatWorkbench(copy.checkedAt, { time: new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(detail.health.checkedAt) }) : null;
+  const cli = backend && isUpdatableCli(backend) ? backend : null;
+  const { health } = detail;
+  const summary = pluginText(health.summary, workbench);
+  const summaryKey = "key" in health.summary ? health.summary.key : null;
+  const signIn = builtinProvider ? health.facts.find(fact => "key" in fact.label && fact.label.key === "plugins.health.signIn") : undefined;
+  const facts = health.facts.filter(fact => !builtinProvider || (
+    fact !== signIn &&
+    !(cli && "key" in fact.label && fact.label.key === "plugins.health.cliVersion") &&
+    !("key" in fact.value && fact.value.key === summaryKey)
+  ));
+  const note = provider?.noteKey ? t(provider.noteKey, { backend: backendLabel(detail.id) }) : null;
+  const checked = health.checkedAt ? <span className="text-muted-foreground text-xs tabular-nums">
+    {formatWorkbench(copy.checkedAt, { time: new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(health.checkedAt) })}
+  </span> : null;
   return (
-    <SettingsSection title={copy.sectionHealth}>
+    <SettingsSection title={copy.sectionHealth} action={builtinProvider ? checked : undefined}>
       <SettingsList>
         <Row>
-          <HealthDot level={detail.health.level} />
-          <span className="flex-1 font-medium" data-plugin-health={detail.health.level}>{pluginText(detail.health.summary, workbench)}</span>
-          {checked && <span className="text-muted-foreground text-xs">{checked}</span>}
+          <HealthDot level={health.level} />
+          {signIn && summaryKey?.startsWith("plugins.health.auth.") && <span className="text-muted-foreground text-xs">{copy.health.signIn}</span>}
+          <span className={cn("min-w-0 wrap-anywhere font-medium", !builtinProvider && "flex-1")} data-plugin-health={health.level}>{summary}</span>
+          {signIn && summaryKey === "plugins.health.ready" && <span className="text-muted-foreground text-xs">
+            <span aria-hidden>· </span>{pluginText(signIn.value, workbench)}
+          </span>}
+          {!builtinProvider && checked}
+          {provider?.fix === "setup" && <SettingsButton variant="outline" className="ml-auto" onClick={() => setup.openOnboarding("agent")}>{copy.setUp}</SettingsButton>}
         </Row>
-        {detail.health.facts.map(fact => (
+        {cli && <CliUpdateRow backend={cli} compactLabel={copy.health.cliVersion} />}
+        {facts.map(fact => (
           <Row key={pluginText(fact.label, workbench)} label={pluginText(fact.label, workbench)}>
-            {fact.level && <HealthDot level={fact.level} />}
-            <span>{pluginText(fact.value, workbench)}</span>
+            {fact.level && (!builtinProvider || fact.level !== "ok") && <HealthDot level={fact.level} />}
+            <span className="wrap-anywhere">{pluginText(fact.value, workbench)}</span>
           </Row>
         ))}
-        {provider?.noteKey && (
-          <Row className="text-muted-foreground text-xs">
-            <span className="flex-1">{t(provider.noteKey, { backend: backendLabel(detail.id) })}</span>
-            {provider.fix === "setup" && <SettingsButton variant="outline" onClick={() => setup.openOnboarding("agent")}>{copy.setUp}</SettingsButton>}
-          </Row>
-        )}
+        {note && note !== summary && <Row className="wrap-anywhere text-muted-foreground text-xs">{note}</Row>}
       </SettingsList>
-      {/* The same update row as Settings › Updates: one-click update, progress, verified failure and the Terminal fallback. */}
-      {backend && isAgentBackendId(backend.id) && backend.runtimeStatus === "installed" && <UpdateList><CliUpdateRow backend={{ ...backend, id: backend.id }} /></UpdateList>}
     </SettingsSection>
   );
 }

@@ -5,5 +5,5 @@
  */
 export const weatherZhCNDefinition={
   "name": "天气",
-  "description": "查看当前位置或指定城市的当前天气。"
+  "description": "查看所选城市的当前天气与预报。"
 };

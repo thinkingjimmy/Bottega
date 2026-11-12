@@ -90,6 +90,7 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
     case "widget-draft": {
       const item = service.layoutItem(intent.itemId);
       if (item?.kind !== "widget" || item.widget.type !== intent.widget.type) return;
+      if (intent.widget.type === "builtin.ai-activity" && !service.activityAllowed()) throw new Error("Official AI usage Widget is unavailable");
       if (!service.draftBases.has(intent.itemId)) service.draftBases.set(intent.itemId, canonical(intent.base ?? item.widget));
       service.drafts.set(intent.itemId, intent.widget);
       service.setWidgetDemand("dock-panel", [{ itemId: intent.itemId, widget: intent.widget }]);
@@ -101,6 +102,7 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
       if (!draft) return;
       let stale = false;
       await service.ports.config.edit((layout) => {
+        if (draft.type === "builtin.ai-activity" && !service.activityAllowed()) throw new Error("Official AI usage Widget is unavailable");
         const current = layout.items.find((item) => item.id === intent.itemId);
         // Checked inside the store's serialized edit: a sync adoption between check and write cannot slip past (3.4).
         if (!intent.force && current?.kind === "widget" && canonical(current.widget) !== service.draftBases.get(intent.itemId)) { stale = true; return layout; }
@@ -114,6 +116,9 @@ export async function handleIntent(service: DockService, role: DockRole, intent:
     case "widget-cancel": service.dropDraft(intent.itemId); service.refreshPanelDemand(); service.schedule(); return;
     case "refresh-usage": {
       const item = service.layoutItem(intent.itemId);
+      if (item?.kind === "widget" && item.widget.type === "builtin.ai-activity" && service.ports.custom?.officialDirectory &&
+          (!service.activityAllowed() || service.ports.local.get().privacyMask || service.panelTargetItem() !== item.id))
+        throw new Error("Official AI usage Widget is unavailable");
       if (item?.kind === "widget") {if(item.widget.type==='custom'||item.widget.type==='plugin')await service.ports.custom?.refresh(item.id);else await service.usage.refresh(service.drafts.get(item.id) ?? item.widget);}
       return;
     }
@@ -192,6 +197,8 @@ async function commitAdd(service: DockService, draft: DockItemDraft, binding: { 
   const current = service.captureInteraction();
   let itemId: string | null = null;
   const record = await service.ports.config.edit((layout) => {
+    if (draft.kind === "widget" && draft.widget.type === "builtin.ai-activity" && !service.activityAllowed())
+      throw new Error("Official AI usage Widget is unavailable");
     const result = addItem(layout, draft);
     if ("failure" in result) return layout;
     itemId = result.itemId;
