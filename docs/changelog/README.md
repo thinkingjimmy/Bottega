@@ -9,7 +9,7 @@ This file records product milestones, not internal implementation iterations. Da
 
 Version 0.4.5 supports macOS on Apple silicon (ARM64) and uses Cloud protocol **27**. [Release and installer](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.5)
 
-- **Use the four built-in Dock Widgets.** Weather, AI Limits, AI Usage and Tasks come with Bottega. Existing Dock items keep their order and settings.
+- **Use the four built-in Dock Widgets.** Weather, AI Limits, AI Usage and Tasks come with Bottega. Existing Dock items keep their order and settings. AI Limits merges Agent order and quota selections across devices.
 - **Find the right settings faster.** Manage Apps and Widgets from their own tabs. Settings › Plugins focuses on plugins with tools, modes or other capabilities. Dock settings use a simpler layout.
 - **Manage tools across Projects.** Add global servers in Settings › MCP. Find the built-in tool switches under Contributions in the plugin that provides them.
 - **Open Project Skills directly.** The list shows the current Project's Skills. Search, refresh or open Add Skills from the same page.

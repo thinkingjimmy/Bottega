@@ -58,7 +58,7 @@ export const chatSurfacesFr: typeof chatSurfacesEn = {
         backendUnsupported:
           "le backend actuel ne possède aucun canal d’outils : agir à votre place est indisponible. L’accès aux fichiers en lecture seule reste appliqué.",
         baseToolsDisabled:
-          "les outils de lecture et d’écriture de Base sont tous deux désactivés. Activez-les dans Réglages › Outils.",
+          "les outils de lecture et d’écriture de Base sont tous deux désactivés. Ouvrez Réglages › Plugins, sélectionnez Base et activez-les dans Fonctions.",
       },
       degradation: {
         baseReadsDisabled:

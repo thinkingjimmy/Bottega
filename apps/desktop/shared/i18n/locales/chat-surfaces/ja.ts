@@ -55,7 +55,7 @@ export const chatSurfacesJa: typeof chatSurfacesEn = {
         backendUnsupported:
           "現在のバックエンドにはツールチャンネルがなく、代わりの操作は使えません。読み取り専用のファイルアクセスは有効です。",
         baseToolsDisabled:
-          "Base の読み書きツールが両方オフです。設定 › ツールでオンにしてください。",
+          "Base の読み書きツールが両方オフです。「設定 › プラグイン」で Base を選び、「機能」でオンにしてください。",
       },
       degradation: {
         baseReadsDisabled:

@@ -53,7 +53,7 @@ export const chatSurfacesEn = {
         backendUnsupported:
           "the current backend has no tool channel, so acting for you is unavailable. Read-only file access still applies.",
         baseToolsDisabled:
-          "the Base read and write tools are both off. Turn them on in Settings › Tools.",
+          "the Base read and write tools are both off. Open Settings › Plugins, select Base and turn them on under Contributions.",
       },
       degradation: {
         baseReadsDisabled:

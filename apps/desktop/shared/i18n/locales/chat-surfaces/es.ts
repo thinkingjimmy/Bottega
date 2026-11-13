@@ -57,7 +57,7 @@ export const chatSurfacesEs: typeof chatSurfacesEn = {
         backendUnsupported:
           "el backend actual no tiene canal de herramientas, así que actuar por ti no está disponible. El acceso de solo lectura a archivos sigue vigente.",
         baseToolsDisabled:
-          "las herramientas de lectura y escritura de Base están desactivadas. Actívalas en Ajustes › Herramientas.",
+          "las herramientas de lectura y escritura de Base están desactivadas. Abre Ajustes › Plugins, selecciona Base y actívalas en Funciones.",
       },
       degradation: {
         baseReadsDisabled:

@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on the shared DockLayout model and semantic keys.
- * [OUTPUT]: Provides the single snapshot three-way merge (base/local/remote) with delete-wins for base IDs, field-level item merge, ordered-set merge for the outer order and each limits Widget's Agent order, singleton de-duplication, explicit conflicts, resolution, and the no-base union preview.
+ * [INPUT]: Depends on the shared DockLayout model, semantic keys, and native and plugin Widget adapters.
+ * [OUTPUT]: Provides the single snapshot three-way merge (base/local/remote) with delete-wins for base IDs, field-level item merge, ordered-set merge for the outer order and AI Limits Agent order and per-Agent settings in native and plugin Widgets, singleton de-duplication, explicit conflicts, resolution, and the no-base union preview.
  * [POS]: shared/system-dock conflict algorithm (PRD 4.3); the only merge the sync coordinator may apply. No op-log, CRDT, or per-item tombstones.
  */
 
-import { dockLayoutSchema, semanticKey, type DockItem, type DockLayout } from "./layout";
+import { dockLayoutSchema, nativeDockWidget, semanticKey, toPluginDockWidget, type AiLimitsWidget, type DockItem, type DockLayout, type DockWidget } from "./layout";
 
 export type MergeConflict =
   | { kind: "item"; itemId: string; field: string; local: unknown; remote: unknown }
@@ -61,15 +61,32 @@ function mergeFields(itemId: string, base: DockItem, local: DockItem, remote: Do
   }
   return merged as DockItem;
 }
-function mergeWidget(itemId: string, base: Extract<DockItem, { kind: "widget" }>["widget"], local: typeof base, remote: typeof base, pick: Picker): typeof base {
-  if (local.type !== "builtin.ai-limits" || remote.type !== "builtin.ai-limits" || base.type !== "builtin.ai-limits") {
+function mergeWidget(itemId: string, base: DockWidget, local: DockWidget, remote: DockWidget, pick: Picker): DockWidget {
+  const baseLimits = nativeDockWidget(base), localLimits = nativeDockWidget(local), remoteLimits = nativeDockWidget(remote);
+  const baseInstance = base.type === "plugin" ? base.instanceId : itemId;
+  const localInstance = local.type === "plugin" ? local.instanceId : itemId;
+  const remoteInstance = remote.type === "plugin" ? remote.instanceId : itemId;
+  if (baseLimits?.type !== "builtin.ai-limits" || localLimits?.type !== "builtin.ai-limits" || remoteLimits?.type !== "builtin.ai-limits"
+    || baseInstance !== localInstance || baseInstance !== remoteInstance) {
     return same(local, remote) || same(remote, base) ? local : same(local, base) ? remote : pick({ kind: "item", itemId, field: "widget", local, remote }) === "remote" ? remote : local;
   }
+  const limits = mergeLimits(itemId, baseLimits, localLimits, remoteLimits, pick);
+  if (base.type !== "plugin" && local.type !== "plugin" && remote.type !== "plugin") return limits;
+
+  // Legacy Limits used the same instance ID and a fixed small size.
+  const baseSize = base.type === "plugin" ? base.size : "small";
+  const localSize = local.type === "plugin" ? local.size : "small";
+  const remoteSize = remote.type === "plugin" ? remote.size : "small";
+  const size = localSize === remoteSize || remoteSize === baseSize ? localSize : localSize === baseSize ? remoteSize
+    : pick({ kind: "item", itemId, field: "widget", local, remote }) === "remote" ? remoteSize : localSize;
+  return { ...toPluginDockWidget(baseInstance, limits), size };
+}
+function mergeLimits(itemId: string, base: AiLimitsWidget, local: AiLimitsWidget, remote: AiLimitsWidget, pick: Picker): AiLimitsWidget {
   const survivors = new Set([...local.selectedBackends, ...remote.selectedBackends].filter((backend) =>
     !(base.selectedBackends.includes(backend) && (!local.selectedBackends.includes(backend) || !remote.selectedBackends.includes(backend)))));
   const selectedBackends = mergeOrder(base.selectedBackends, local.selectedBackends, remote.selectedBackends, survivors,
-    (l, r) => pick({ kind: "agent-order", itemId, local: l, remote: r })) as typeof base.selectedBackends;
-  const selectionByBackend: typeof base.selectionByBackend = {};
+    (l, r) => pick({ kind: "agent-order", itemId, local: l, remote: r })) as AiLimitsWidget["selectedBackends"];
+  const selectionByBackend: AiLimitsWidget["selectionByBackend"] = {};
   for (const backend of selectedBackends) {
     const b = base.selectionByBackend[backend], l = local.selectionByBackend[backend], r = remote.selectionByBackend[backend];
     const value = same(l, r) || same(r, b) ? l : same(l, b) ? r : pick({ kind: "item", itemId, field: `selectionByBackend.${backend}`, local: l, remote: r }) === "remote" ? r : l;

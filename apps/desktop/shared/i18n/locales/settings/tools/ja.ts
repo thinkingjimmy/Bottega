@@ -15,7 +15,7 @@ export const settingsToolsJa: typeof settingsToolsEn = {
   builtin: {
     saveFailed: "組み込みツール設定を保存できませんでした",
     globalDescription: "変更は次のターンから全体に適用されます。",
-    effective: { enabled: "有効", disabled: "無効", unavailable: "使用意図は有効ですが Backend を利用できません" },
+    effective: { unavailable: "使用意図は有効ですが Backend を利用できません" },
     items: {
       list_sections: { label: "Sections を一覧表示", hint: "すべての永続チャットと Base の概要を表示します。" },
       read_section: { label: "Section を読む", hint: "別のチャットの保存済みトランスクリプトを読みます。" },

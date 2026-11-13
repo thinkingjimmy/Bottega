@@ -19,7 +19,7 @@ export const settingsToolsEn = {
   builtin: {
     globalDescription: "Changes apply globally on the next turn.",
     saveFailed: "Failed to save the built-in tool setting",
-    effective: { enabled: "Enabled", disabled: "Disabled", unavailable: "Intent enabled; backend unavailable" },
+    effective: { unavailable: "Intent enabled; backend unavailable" },
     items: {
       list_sections: { label: "List Sections", hint: "View every persistent chat and its Base summary." },
       read_section: { label: "Read Section", hint: "Read another chat's persisted transcript." },

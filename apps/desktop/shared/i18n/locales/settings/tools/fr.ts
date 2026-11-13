@@ -15,7 +15,7 @@ export const settingsToolsFr: typeof settingsToolsEn = {
   builtin: {
     saveFailed: "Impossible d’enregistrer le réglage de l’outil intégré",
     globalDescription: "Les changements s’appliquent à tous les chats à partir du prochain tour.",
-    effective: { enabled: "Activé", disabled: "Désactivé", unavailable: "Intention activée ; Backend indisponible" },
+    effective: { unavailable: "Intention activée ; Backend indisponible" },
     items: {
       list_sections: { label: "Lister les Sections", hint: "Afficher tous les Chats persistants et leur résumé Base." },
       read_section: { label: "Lire une Section", hint: "Lire la transcription enregistrée d’un autre Chat." },

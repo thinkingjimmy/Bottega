@@ -52,7 +52,7 @@ export const chatSurfacesZhCN: typeof chatSurfacesEn = {
         instructionBudget: "附加的 App 说明超出 2 KB 预算，减掉几个再试。",
         backendUnsupported:
           "当前后端没有工具通道，「代你操作」用不了；文件只读仍然有效。",
-        baseToolsDisabled: "Base 的读写工具都关着，去 Settings › Tools 打开。",
+        baseToolsDisabled: "Base 的读写工具都已关闭。打开「设置 › 插件」，选择 Base，在「提供的能力」中启用。",
       },
       degradation: {
         baseReadsDisabled: "这一轮它只能改数据行，读不了表：Base 读取被关掉了。",

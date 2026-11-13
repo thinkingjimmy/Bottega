@@ -15,7 +15,7 @@ export const settingsToolsEs: typeof settingsToolsEn = {
   builtin: {
     saveFailed: "No se pudo guardar el ajuste de la herramienta integrada",
     globalDescription: "Los cambios se aplican de forma global a partir del siguiente turno.",
-    effective: { enabled: "Activado", disabled: "Desactivado", unavailable: "Intención activada; Backend no disponible" },
+    effective: { unavailable: "Intención activada; Backend no disponible" },
     items: {
       list_sections: { label: "Listar Sections", hint: "Ver todos los Chats persistentes y el resumen de sus Bases." },
       read_section: { label: "Leer Section", hint: "Leer la transcripción guardada de otro Chat." },

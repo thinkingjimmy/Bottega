@@ -15,7 +15,7 @@ export const settingsToolsZhCN: typeof settingsToolsEn = {
   builtin: {
     globalDescription: "更改全局生效，从下一轮开始。",
     saveFailed: "内置工具设置保存失败",
-    effective: { enabled: "已启用", disabled: "已停用", unavailable: "意图已启用；Backend 不可用" },
+    effective: { unavailable: "意图已启用；Backend 不可用" },
     items: {
       list_sections: { label: "列出 Sections", hint: "查看全部持久聊天及其 Base 摘要。" },
       read_section: { label: "读取 Section", hint: "读取另一条聊天已落盘的转录。" },
