@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on the ProjectSettingsPane navigation state, Projects provider, pane sections, Project Skills, and i18n
- * [OUTPUT]: Provides ProjectSettingsPane — the 440px right column hosting one-scroll Project Settings with focus scrolling and Escape close
+ * [OUTPUT]: Provides ProjectSettingsPane — the 440px right column hosting one-scroll Project Settings with focus scrolling and a close control outside the native drag region
  * [POS]: Main-layout third pane; hidden (not unmounted) while the global Settings overlay is open; full width below 900px
  */
 
@@ -72,7 +72,7 @@ export function ProjectSettingsPane({ hidden }: { hidden?: boolean }) {
         </h2>
         <button
           aria-label={t("common.close")}
-          className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground [-webkit-app-region:no-drag] hover:bg-muted hover:text-foreground"
           onClick={() => navigation?.close()}
           type="button"
         >
