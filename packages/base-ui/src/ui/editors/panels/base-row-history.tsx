@@ -10,13 +10,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useBaseSnapshots } from "../../platform/context";
 import { useAppTranslation } from "../../platform/i18n";
 import { describeBaseFailure, type BaseMutationErrorCopy } from "../../state/base-mutation-error";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogContent, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import type { BaseColumn } from "@ai-chat/base-core/model/bases-ipc";
 import type { BaseHistoryEntry } from "@ai-chat/base-core/metadata/history-ledger-schema";
 
@@ -62,11 +57,8 @@ export function BaseRowHistoryDialog({
   }, [bases, open, ownerKey, rowId]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(42rem,calc(100dvh-2rem))] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{t("bases.history.title")}</DialogTitle>
-          <DialogDescription>{t("bases.history.description", { id: rowId })}</DialogDescription>
-        </DialogHeader>
+      <AppDialogContent size="lg" showCloseButton className="max-h-[min(42rem,calc(100dvh-2rem))]">
+        <AppDialogHeader title={t("bases.history.title")} description={t("bases.history.description", { id: rowId })}/>
         {error ? <p className="text-destructive text-sm">{t(error.copyKey, error.values)}</p> : null}
         {!error && !entries.length ? (
           <p className="py-6 text-center text-muted-foreground text-sm">{t("bases.history.empty")}</p>
@@ -99,7 +91,7 @@ export function BaseRowHistoryDialog({
             })}
           </ol>
         )}
-      </DialogContent>
+      </AppDialogContent>
     </Dialog>
   );
 }

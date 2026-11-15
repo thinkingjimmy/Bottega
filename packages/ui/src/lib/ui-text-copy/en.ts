@@ -5,6 +5,7 @@
  */
 export const uiTextEn = {
   cancel: "Cancel",
+  retry: "Retry",
   uploadFiles: "Upload files",
   loadingRichContent: "Loading rich content",
   loading: "Loading",

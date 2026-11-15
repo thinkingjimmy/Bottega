@@ -8,12 +8,12 @@ import { useState } from "react";
 import {
   AppDialogBody,
   AppDialogContent,
+  AppDialogFooter,
 } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   Dialog,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
@@ -70,7 +70,7 @@ export function AppProgressDialog({
       onOpenChange={setOpen}
     >
       <AppDialogContent
-        className="sm:max-w-2xl"
+        size="lg"
         onEscapeKeyDown={(event) => event.preventDefault()}
         onPointerDownOutside={(event) => event.preventDefault()}
       >
@@ -118,7 +118,7 @@ export function AppProgressDialog({
                 </pre>
               </SlimScroller>
             </AppDialogBody>
-            <DialogFooter className="mt-4 shrink-0 sm:gap-3">
+            <AppDialogFooter>
               {isCancelableOperation(effectiveOperation) && (
                 <Button
                   size="pill"
@@ -139,7 +139,7 @@ export function AppProgressDialog({
               >
                 {t("apps.progress.showLog")}
               </Button>
-            </DialogFooter>
+            </AppDialogFooter>
           </>
         )}
       </AppDialogContent>

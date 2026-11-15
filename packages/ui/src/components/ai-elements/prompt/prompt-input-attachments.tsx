@@ -87,7 +87,7 @@ export const PromptInputAttachments = ({
           if (!open) setPreviewId(null);
         }}
       >
-        <AppDialogContent className="w-auto max-w-[calc(100vw-3rem)] gap-2 p-2 sm:max-w-[calc(100vw-8rem)]">
+        <AppDialogContent showCloseButton className="w-auto max-w-[calc(100vw-3rem)] gap-2 p-2 sm:max-w-[calc(100vw-8rem)]">
           <DialogTitle className="truncate pr-8 pl-1 font-medium text-xs">
             {preview?.filename ?? attachmentLabel}
           </DialogTitle>

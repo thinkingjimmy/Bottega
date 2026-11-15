@@ -9,7 +9,6 @@ import type { settingsSkillsEn } from "./en";
 export const settingsSkillsZhCN: typeof settingsSkillsEn = {
   refresh: "刷新 Skills", importTitle: "添加 Skills",
   description: "只需导入个人 Library 一次，即可在所有兼容会话中使用已启用的 Skill。",
-  libraryTitle: "个人 Library",
   back: "返回", localFolder: "本地文件夹", chooseFolder: "选择文件夹…", importPrimary: "全部导入", importSelected: "导入并启用 {{count}} 个",
   backend: { codex: "Codex", claude: "Claude", kimi: "Kimi", opencode: "OpenCode" },
   sourceKind: { "local-folder": "本地", adopted: "已导入", extension: "扩展" },

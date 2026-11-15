@@ -6,7 +6,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { widgetDirectoryCopy } from "../../../../../../shared/i18n/locales/system-dock/distribution";
 import { ImageOff } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { Button } from "@ai-chat/ui/components/ui/button";
+import { AppDialogBody, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { SettingsAlert, SettingsButton } from "@/components/settings/settings-layout";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import type {
@@ -123,10 +125,10 @@ export function WidgetDirectoryDialog({ subject, onClose, onAdd, onChanged, onRe
     return null;
   };
   return <Dialog open onOpenChange={open => { if (!open) { if (transfer.current) cancel(transfer.current); onClose(); } }}>
-    <DialogContent data-official-widget-directory="" className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl"
+    <AppDialogContent data-official-widget-directory="" size="lg"
       onCloseAutoFocus={event => { event.preventDefault(); if (!handoff.current) onReturnFocus(); }}>
-      <DialogTitle>{t("systemDock.widgets.directory.title")}</DialogTitle>
-      <DialogDescription>{copy.description}</DialogDescription>
+      <AppDialogHeader title={t("systemDock.widgets.directory.title")} description={copy.description}/>
+      <AppDialogBody className="space-y-4">
       {loading && !directory?.version && <p role="status">{t("common.loading")}</p>}
       {!loading && directory?.state === "unavailable" && <SettingsAlert>
         <span role="alert">{copy.unavailable}</span>
@@ -134,7 +136,7 @@ export function WidgetDirectoryDialog({ subject, onClose, onAdd, onChanged, onRe
       </SettingsAlert>}
       {!loading && directory?.state === "ready" && rows.length === 0 && <p role="status">{copy.empty}</p>}
       {rows.length > 0 && <ul className="grid gap-4 sm:grid-cols-2">
-        {rows.map(row => <li key={row.pluginId} data-official-widget={row.pluginId} className="flex min-w-0 flex-col gap-3 rounded-xl border p-3">
+        {rows.map(row => <li key={row.pluginId} data-official-widget={row.pluginId} className="flex min-w-0 flex-col gap-3 rounded-2xl border p-3">
           <div className="grid aspect-[2/1] place-items-center overflow-hidden rounded-lg bg-muted">
             {row.preview ? <img src={row.preview} alt="" className="h-full w-full object-contain" />
               : <ImageOff aria-hidden="true" className="size-5 text-muted-foreground" />}
@@ -167,7 +169,8 @@ export function WidgetDirectoryDialog({ subject, onClose, onAdd, onChanged, onRe
           <SettingsButton variant="outline" disabled={!!active} onClick={() => void recover(subject.pluginId)}>{copy.recover}</SettingsButton>
           {failure === subject.pluginId && rows.length === 0 && <p role="alert">{copy.installFailed}</p>}
         </div>}
-      <DialogFooter><SettingsButton variant="outline" onClick={() => { if (transfer.current) cancel(transfer.current); onClose(); }}>{t("common.close")}</SettingsButton></DialogFooter>
-    </DialogContent>
+      </AppDialogBody>
+      <AppDialogFooter><Button size="pill" onClick={() => { if (transfer.current) cancel(transfer.current); onClose(); }}>{t("common.close")}</Button></AppDialogFooter>
+    </AppDialogContent>
   </Dialog>;
 }

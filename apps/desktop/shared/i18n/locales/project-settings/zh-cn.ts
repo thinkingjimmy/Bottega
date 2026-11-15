@@ -8,15 +8,15 @@ import { workspaceCopy } from "@ai-chat/ui/workspace-copy/zh-cn";
 
 export const projectSettingsZhCN = {
   entry: workspaceCopy.project.settings, open: "打开 Project 设置", title: workspaceCopy.project.settingsTitle,
-  tabs: { general: "通用", personalization: "个性化", skills: "Skills" },
+  pane: { generalSection: "通用", instructionsSection: "说明", instructionsMeta: "{{file}} · {{count}} 行", instructionsEdit: "编辑" },
   general: {
-    sectionBasics: workspaceCopy.project.basics, name: workspaceCopy.project.identity, renameAction: "重命名", appearanceAria: workspaceCopy.project.appearanceLabel,
+    name: workspaceCopy.project.identity, renameAction: "重命名", appearanceAria: workspaceCopy.project.appearanceLabel,
     memory: "记忆", memoryDisabled: "记忆服务未启用", memoryPaused: "记忆已暂停", memoryUnavailable: "服务不可用", memoryScoped: "本 Project 拥有独立记忆域", memoryShared: "记忆按会话或个人域共享，Project 不单独分域", memoryDelivering: "导入记忆交付中…", memoryManage: "管理记忆",
     history: "History 导入", historyHint: "手动导入本 Project 的外部 Agent 历史，后续变化需再次手动导入。",
     appsSection: "App", appsDescription: "添加进来的 App 可以在这个 Project 的对话里使用。Pin 只把它放进 Sidebar，不改变它能看到的数据。", appsManagedByApp: "此 App Project 的能力授权在 App 页面管理。",
     placements: { pinControl: "将 {{name}} Pin 到 Sidebar", grantSummary: "{{grant}} · {{agent}}", unavailableBadge: "暂不可用", agentOn: "Agent 可代你操作", agentOff: "只有你能操作", noGrant: "还没有授权", unavailable: "这个版本还不能运行，去 Apps 页面修好后才能 Pin", empty: "这个 Project 还没有 App", emptyHint: "添加后，它会出现在这个 Project 的对话里。你来决定它能看到哪些数据。", loading: "正在加载 Apps…", failed: "Apps 加载失败。", retry: "重试", pending: "正在保存 Pin…", pinFailed: "无法保存这个 App 的 Pin。" },
     baseSection: workspaceCopy.project.baseTitle, baseEmpty: workspaceCopy.project.baseEmpty, baseCreate: workspaceCopy.project.baseCreate, baseOpen: workspaceCopy.project.baseOpen, baseSummary: workspaceCopy.project.baseSummary, baseLoading: "正在加载 Project Base",
-    danger: workspaceCopy.project.danger, archiveHint: workspaceCopy.project.archiveHint, detachHint: "移除本机 Project 记录，不删除外部目录。", appLifecycleHint: "App Project 的生命周期随 App；请在 Apps 页删除该 App。"
+     appLifecycleHint: "App Project 的生命周期随 App；请在 Apps 页删除该 App。"
   },
   instructions: {
     section: "Project 指令", description: "编辑各 Agent 在此 Project 工作目录读取的指令文件。", pointerHint: "此文件指向 AGENTS.md，通常无需直接编辑。", noWorkspace: "请先在侧栏 Project 行菜单中选择工作目录。", bridgeMissing: "当前环境无法使用 Project 个性化桥。", appReadOnly: "App Project 指令由 App generation 管理，因此只读。", appEditGuide: "请打开 App 页面，在 App Edit 会话中继续。", workspaceChanged: "Project 工作目录已更换。磁盘基线已刷新，你的草稿仍保留。", loading: "正在加载 Project 指令", saveFailed: "Project 指令保存失败", outsideWorkspace: "此指令文件的真身位于 Project 工作目录之外，无法读取或修改。", appManaged: "App Project 指令由 App generation 管理。"

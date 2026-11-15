@@ -198,7 +198,6 @@ export const basesEs: BasesCatalog = {
     uploadCancelled: "Subida cancelada. Tus datos se conservan.",
     uploading: "Subiendo imagen…",
     cancelUpload: "Cancelar subida",
-    saving: "Guardando…",
     leaveTitle: "¿Descartar los cambios?",
     leaveDescription: "Los cambios de este formulario aún no se han guardado.",
     discard: "Descartar cambios",

@@ -41,11 +41,9 @@ export const memoryLazyZhCN: typeof memoryLazyEn = {
     connectTitle: "连接模型", connectDescription: "由一个 OpenAI 兼容模型读取你写的消息，提取值得记住的内容。密钥只保存在这台 Mac 上。", connectSubmit: "启动服务",
     draftKept: "关闭后草稿会保留，直到成功生效。",
     row: {
-      notSetUp: "未设置",
       installing: "安装中",
       installed: "已安装",
       failed: "安装失败",
-      description: "记住过往对话里重要的内容，并在相关时带回来。会在这台 Mac 上运行一个小型服务。",
       installingDescription: "正在安装 {{provider}}——会在后台继续，稍后可以再完成设置。",
       connectDescription: "{{provider}} {{version}} 已安装。连接一个模型即可开始记忆。",
       failedDescription: "{{provider}} 未能装完。重新设置即可重试。",
@@ -53,8 +51,13 @@ export const memoryLazyZhCN: typeof memoryLazyEn = {
       showProgress: "查看进度",
       connect: "连接…",
     },
+
+    guide: {
+      title: "记住每次对话中重要的事",
+      description: "Memory 在这台 Mac 上运行一个小服务，把相关事实带回新的对话。由你决定它使用的模型与可读取的内容。",
+      action: "设置 Memory…",
+    },
     notes: {
-      title: "开始之前",
       localTerm: "只留在这台 Mac 上",
       localDetail: "记忆库存永远不会离开这台电脑。运行时与数据目录相互独立。",
       modelTerm: "需要一个模型来提取记忆",
@@ -70,7 +73,7 @@ export const memoryLazyZhCN: typeof memoryLazyEn = {
   version: { historyTitle: "最近安装", loading: "正在读取版本目录…", confirmTitle: "把 {{provider}} 切换到 {{version}}？", listStale: "读取过程中运行时发生了变化，这份版本列表已过期；请再试一次。", description: "精确安装所选 release；只有健康检查成功后才写入 last-known-good。", current: "当前", locked: "推荐", latest: "最新", yanked: "已撤回", selected: "自选版本", currentYanked: "当前版本已被 PyPI 撤回；可以保留，也可以主动切换。", downgradeWarning: "这是降级操作。现有数据保留，但运行时兼容性可能变化。", unverifiedWarning: "此版本未经产品验证。现有数据会保留，但兼容性可能变化。", catalogStaleWarning: "版本元数据刷新失败，当前缓存可能过期。", catalogValidationWarning: "PyPI 公告版本与可安装目录不一致，已按可安装目录计算。", listFailed: "版本列表读取失败，请重试。", switchFailed: "版本切换失败，请查看运行时错误后重试。", runningInBackground: "切换会在后台继续；可以关闭弹窗，并在 Memory 页面查看真实进度。", confirm: "切换版本", action: "选择版本", available: "可更新到 {{version}}", check: "检查更新" },
   rebuild: { ...memoryLazyEn.rebuild, button: "重建记忆", title: "重建记忆？", confirm: "开始重建", unavailable: "重建期间长期记忆暂不可用，当前 Chat 仍照常工作。", progress: "已清理 {{purged}}/{{totalScopes}} 个远端会话 · 已回灌 {{backfilledTurns}}/{{totalTurns}} 个 turn", intentStable: "完成或失败都不会改变你的开启或暂停设置。", description: "这会先清空 {{provider}} 当前 data instance 上由本产品写入的全部记忆，再重新提取仍存续且已获授权的内容；不是只重跑当前 Chat。", scope: "预计范围：{{chats}} 个 Chat、{{turns}} 个 turn；目的地为 {{hostname}}/{{model}}。这可能耗时、消耗额度或产生费用。", pauseIntent: "重建期间长期记忆暂不可用，Chat 不受影响。完成保留“{{intent}}”设置；过程中修改则以最新设置为准。", trimmed: "已被裁剪的历史无法恢复，会如实记入缺口账本。", resetManualConfig: "若配置文件已手工接管，运行时重置会清除该文件并恢复产品管理。", phase: { prepared: "准备中", quiescing: "静默进行中的请求", reconciling: "对账在途提交", purging: "清理远端", "watermarks-cleared": "重置水位", backfilling: "回灌历史", completed: "已完成", failed: "已中断" } },
   runtime: {
-    installHeading: "安装本地记忆服务", installPackage: "安装 {{provider}} {{version}}（独立 Python 环境、版本锁定；来源与校验过程在日志中可见）。", installAutostart: "注册登录自启：服务常驻本机 {{url}}，崩溃自动拉起。", installStorage: "记忆库存本机；提取内容可能发送到你配置的模型服务。运行时与数据目录分离。", installAction: "一键安装", managedNeedsConfig: "{{provider}} {{version}} 已安装，等待提取密钥；提交后注册登录自启并启动服务。", repairAction: "修复安装", repairTitle: "修复 {{provider}} 安装？", repairDescription: "这会短暂停止服务并重新安装当前托管运行时。记忆数据、提取模型配置与安装身份都会保留，完成后服务自动重启。", running: "执行中…", openRunning: "打开 Memory 运行状态", retryInstall: "重试安装", unsupported: "当前平台暂不支持一键安装。", versionMismatch: "已安装 {{installed}}，本版应用锁定 {{locked}}。功能继续可用；建议升级。", stepFailed: "{{step}}失败：", configModified: "{{file}} 已被手工修改", configModifiedDetail: "覆盖重生成会恢复产品管理；手工接管后需直接修改文件中的 key 与模型。", regenerate: "覆盖重生成", adoptManual: "手工接管", manualDetail: "配置已手工接管；产品不会改写该文件。", steps: "步骤 {{current}}/{{total}}", preparing: "准备中", upgradeTo: "升级到 {{version}}", recheck: "重新检测", downloadHint: "需要下载依赖，可能持续数分钟", errorLog: "错误日志", hideLog: "收起日志", showLog: "查看日志", configureAction: "配置提取模型", configDialogTitle: "配置 {{provider}}", retainBlank: "留空表示保留已有值", draftRetained: "关闭弹窗或重启失败都会在内存中保留本次填写；仅配置成功后清空。", submitRestart: "提交并重启服务", savingConfig: "正在保存…", configSaveFailed: "提取模型配置保存失败", uninstallTitle: "卸载 {{provider}} 托管运行时？", uninstallDescription: "这会停止服务、移除登录自启，并永久删除托管运行时目录及其中全部长期记忆数据。若正在使用该后端，长期记忆将自动关闭。", uninstallRetention: "授权账本与聊天记录不受影响；重新安装后可通过重建重新提取保留窗口内的已授权历史。", uninstallConfirm: "卸载并删除数据", modelTransferAria: "模型下载进度", modelTransfer: "{{received}} / {{total}} MiB", modelRecovered: "模型校验失败，正在重新下载可信副本。", interruptedInstall: "安装在归属提交前中断；重试会安全替换残留运行时。", versionIntentRecoveryRequired: "切换到 {{version}} 时在候选版本验真前中断；修复会恢复 last-known-good 运行时。", versionCandidateAwaitingReadiness: "{{version}} 已安装但尚未通过就绪验真；提交所需配置后会校验并晋升。", identityRepair: "托管文件存在但安装清单丢失；修复会从 ownership marker 重建身份。", identityMissing: "目录没有产品归属标记，不会被自动接管。",
+    installHeading: "安装本地记忆服务", installPackage: "安装 {{provider}} {{version}}（独立 Python 环境、版本锁定；来源与校验过程在日志中可见）。", installAutostart: "注册登录自启：服务常驻本机 {{url}}，崩溃自动拉起。", installStorage: "记忆库存本机；提取内容可能发送到你配置的模型服务。运行时与数据目录分离。", installAction: "一键安装", managedNeedsConfig: "{{provider}} {{version}} 已安装，等待提取密钥；提交后注册登录自启并启动服务。", repairAction: "修复安装", repairTitle: "修复 {{provider}} 安装？", repairDescription: "这会短暂停止服务并重新安装当前托管运行时。记忆数据、提取模型配置与安装身份都会保留，完成后服务自动重启。", running: "执行中…", openRunning: "打开 Memory 运行状态", retryInstall: "重试安装", unsupported: "当前平台暂不支持一键安装。", versionMismatch: "已安装 {{installed}}，本版应用锁定 {{locked}}。功能继续可用；建议升级。", stepFailed: "{{step}}失败：", configModified: "{{file}} 已被手工修改", configModifiedDetail: "覆盖重生成会恢复产品管理；手工接管后需直接修改文件中的 key 与模型。", regenerate: "覆盖重生成", adoptManual: "手工接管", manualDetail: "配置已手工接管；产品不会改写该文件。", steps: "步骤 {{current}}/{{total}}", preparing: "准备中", upgradeTo: "升级到 {{version}}", recheck: "重新检测", downloadHint: "需要下载依赖，可能持续数分钟", errorLog: "错误日志", hideLog: "收起日志", showLog: "查看日志", configureAction: "配置提取模型", configDialogTitle: "配置 {{provider}}", retainBlank: "留空表示保留已有值", draftRetained: "关闭弹窗或重启失败都会在内存中保留本次填写；仅配置成功后清空。", submitRestart: "提交并重启服务", configSaveFailed: "提取模型配置保存失败", uninstallTitle: "卸载 {{provider}} 托管运行时？", uninstallDescription: "这会停止服务、移除登录自启，并永久删除托管运行时目录及其中全部长期记忆数据。若正在使用该后端，长期记忆将自动关闭。", uninstallRetention: "授权账本与聊天记录不受影响；重新安装后可通过重建重新提取保留窗口内的已授权历史。", uninstallConfirm: "卸载并删除数据", modelTransferAria: "模型下载进度", modelTransfer: "{{received}} / {{total}} MiB", modelRecovered: "模型校验失败，正在重新下载可信副本。", interruptedInstall: "安装在归属提交前中断；重试会安全替换残留运行时。", versionIntentRecoveryRequired: "切换到 {{version}} 时在候选版本验真前中断；修复会恢复 last-known-good 运行时。", versionCandidateAwaitingReadiness: "{{version}} 已安装但尚未通过就绪验真；提交所需配置后会校验并晋升。", identityRepair: "托管文件存在但安装清单丢失；修复会从 ownership marker 重建身份。", identityMissing: "目录没有产品归属标记，不会被自动接管。",
     step: {
       "refresh-version-catalog": "刷新可信版本目录", "remove-plist": "移除登录自启", "remove-venv": "移除候选运行环境", "prepare-toolchain": "准备锁版 uv 工具链", "ensure-venv": "创建 Python {{version}} 环境", "fetch-artifacts": "下载并校验安装包",
       "install-packages": "安装锁定版本 {{version}}（可能需数分钟）", "install-packages_selected": "安装自选版本 {{version}}（可能需数分钟）",

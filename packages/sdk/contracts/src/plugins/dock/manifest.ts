@@ -78,6 +78,13 @@ export const dockContributionSchema=z.object({
       while(pending.length){
         const {node,path:nodePath}=pending.shift()!;
         if('children'in node){node.children.forEach((child,index)=>pending.push({node:child,path:[...nodePath,'children',index]}));continue;}
+        if(node.type==='columns'){if(!sources.has(node.source))add([...nodePath,'source'],'Summary references an undeclared data source');continue;}
+        if(node.type==='icon'&&'source' in node){
+          const source=sources.get(node.source);
+          if(!source){add([...nodePath,'source'],'Summary references an undeclared data source');continue;}
+          if(dockDataFields(source)[node.field]!=='text')add([...nodePath,'field'],'Icon bindings require a declared text field');
+          continue;
+        }
         const binding='text' in node&&node.text.kind==='binding'?node.text:'source' in node?node:null;
         if(!binding)continue;
         const source=sources.get(binding.source);

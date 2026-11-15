@@ -12,7 +12,8 @@ import { type HistoryMemoryEligibility, type HistoryMemoryPreview, type HistoryS
 import { AgentBackendIcon } from "@/lib/agent/agent-backends";
 import { commitHistoryMemory, discardHistoryMemory, historyMemoryEligibility } from "@/lib/history/client";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogAlert, AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
@@ -182,23 +183,29 @@ export function ProjectImportDialog({ canonicalRoot, counts, sourceKinds, mode, 
         if (!open && !busy) onComplete();
       }}
     >
-      <DialogContent>
+      {/* “添加”模式下页脚是 Add-with/without-history 两个前进动作，没有出口，
+          由 × 顶上；其余状态下页脚的第一颗 ghost 就是出口。 */}
+      <AppDialogContent size="lg" showCloseButton={mode === "add" && !preview}>
         {preview ? (
           <>
-            <DialogHeader className="pr-6">
-              <DialogTitle>{t("history.projectMemoryPreviewTitle")}</DialogTitle>
-              <DialogDescription>{t("history.projectMemoryNeedsConfirmation")}</DialogDescription>
-            </DialogHeader>
+            <AppDialogHeader
+              title={t("history.projectMemoryPreviewTitle")}
+              description={t("history.projectMemoryNeedsConfirmation")}
+            />
             <MemoryDelta preview={preview} />
           </>
         ) : (
           <>
             <div className="flex flex-col">
-              <DialogTitle className="pr-6 font-medium text-sm leading-snug">
-                {t("history.projectImportTitle")}
-                <span className="sr-only">{` — ${leaf}`}</span>
-              </DialogTitle>
-              <DialogDescription className="mt-1 pr-6 text-[11px] leading-[16px]">{description}</DialogDescription>
+              <AppDialogHeader
+                title={
+                  <>
+                    {t("history.projectImportTitle")}
+                    <span className="sr-only">{` — ${leaf}`}</span>
+                  </>
+                }
+                description={description}
+              />
               <ul className="mt-3 divide-y divide-border">
                 {sourceKinds.map((kind) => (
                   <SourceRow
@@ -231,23 +238,11 @@ export function ProjectImportDialog({ canonicalRoot, counts, sourceKinds, mode, 
             </div>
           </>
         )}
-        {error && (
-          <p className="rounded-md bg-destructive/10 px-3 py-2 text-destructive text-xs ring-1 ring-destructive/20" role="alert">
-            {error}
-          </p>
-        )}
-        <DialogFooter className="flex-row justify-end gap-3">
+        {error && <AppDialogAlert>{error}</AppDialogAlert>}
+        <AppDialogFooter>
           {preview ? (
             <>
-              <Button
-                className="text-muted-foreground hover:text-foreground"
-                disabled={busy}
-                onClick={() => onComplete()}
-                size="pill"
-                variant="ghost"
-              >
-                {t("common.cancel")}
-              </Button>
+              <AppDialogCancel disabled={busy} onClick={() => onComplete()} />
               <Button disabled={busy} onClick={() => void confirmMemory()} size="pill">
                 {pending === "confirm" && <Loader2 className="animate-spin motion-reduce:animate-none" />}
                 {t("history.settingsConfirm")}
@@ -256,24 +251,21 @@ export function ProjectImportDialog({ canonicalRoot, counts, sourceKinds, mode, 
           ) : (
             <>
               {/* Existing Projects cancel this operation; only first-time Add can skip history. */}
-              <Button
-                className="text-muted-foreground hover:text-foreground"
+              <AppDialogCancel
                 disabled={busy}
                 onClick={() => mode === "add" ? void commit(false) : onComplete()}
-                size="pill"
-                variant="ghost"
               >
                 {pending === "skip" && <Loader2 className="animate-spin motion-reduce:animate-none" />}
                 {t(mode === "add" ? "history.addWithoutHistory" : empty ? "common.close" : "common.cancel")}
-              </Button>
+              </AppDialogCancel>
               {!empty && <Button disabled={busy} onClick={() => void commit(true)} size="pill">
                 {pending === "add" && <Loader2 className="animate-spin motion-reduce:animate-none" />}
                 {t("history.addWithHistory")}
               </Button>}
             </>
           )}
-        </DialogFooter>
-      </DialogContent>
+        </AppDialogFooter>
+      </AppDialogContent>
     </Dialog>
   );
 }

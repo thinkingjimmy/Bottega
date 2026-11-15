@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Original Chat controller, trusted reference/workspace bridge, composer append/submission owner and durable flush acknowledgement.
- * [OUTPUT]: Lazy native file/Base actions and exact-reference draft/send handoff with one target chip, comment text and preserved unrelated drafts or failed/unknown input.
+ * [OUTPUT]: Scope-checked Artifact opening, lazy native file/Base actions and exact-reference draft/send handoff.
  * [POS]: Deferred desktop artifact capability implementation behind the lightweight host registry.
  */
 import type { RefObject } from "react";
@@ -20,6 +20,7 @@ export function desktopArtifactActions(chatId: string, incarnationId: string, lo
       release: lease => { void window.artifacts?.release(lease.id).catch(() => undefined); },
       action: (fence, action) => fence.kind === "claude-artifact" && fence.url ? (window.app?.openExternal(fence.url) ?? Promise.reject(new Error("artifact-unavailable"))) : bridge().action(ref(fence.id), action),
       open: async fence => {
+        if (current().transcript.chatId !== chatId || current().transcript.incarnationId !== incarnationId) throw new Error("Original Chat changed");
         if (fence.kind === "claude-artifact" && fence.url) {
           await openInBrowser(fence.url, enableSidePanel ? () => current().sidePanel.openTabs({ target: "browser" }) : undefined);
         } else current().sidePanel.openArtifact(fence);

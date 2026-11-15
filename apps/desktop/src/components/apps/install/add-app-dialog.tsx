@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on the shared AppDialog shell, repo preflight IPC, the shared GitHub repo URL normalizer, Apps i18n, the install grant card plus a local README disclosure, requirements, AgentSelect, Apps/Setup providers, and dialog primitives
- * [OUTPUT]: Provides source preflight and authorization with a request-bound host reminder, one-shot latest-candidate selection and focus restoration to the return entry.
+ * [OUTPUT]: Provides AddAppDialog (built-in trigger, or caller-opened through openSignal) with source preflight and authorization with a request-bound host reminder, one-shot latest-candidate selection and focus restoration to the return entry.
  * [POS]: Sole Apps creation entry; renderer owns review UI while main owns submitted durable install intents
  */
 
@@ -15,14 +15,14 @@ import { Plus } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   AppDialogBody,
+  AppDialogCancel,
   AppDialogContent,
+  AppDialogFooter,
+  AppDialogHeader,
 } from "@ai-chat/ui/components/ui/app-dialog";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import {
   Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   DialogTrigger,
 } from "@ai-chat/ui/components/ui/dialog";
 import { Input } from "@ai-chat/ui/components/ui/input";
@@ -65,6 +65,10 @@ type AddAppDialogProps = {
   onInstallStarted?: (appId: string) => void;
   resumeRequestId?: string;
   onResumeClosed?(): void;
+  /** Hide the built-in trigger when a caller menu or row opens the dialog through openSignal. */
+  hideTrigger?: boolean;
+  /** Each increment opens the dialog once. */
+  openSignal?: number;
 };
 
 type Stage = "blocked" | "form" | "confirm" | "base-confirm";
@@ -160,12 +164,15 @@ function probeFailureCopy(cause: unknown, t: ReturnType<typeof useAppTranslation
   return t(key as never, { host });
 }
 
-export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed }: AddAppDialogProps) {
+export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed, hideTrigger = false, openSignal = 0 }: AddAppDialogProps) {
   const { t } = useAppTranslation();
   const navigate = useNavigate();
   const { records, addApp, highlightApp } = useApps();
   const setup = useSetup();
   const [open, setOpen] = useState(false);
+  // Only a new signal opens the dialog; remounting with an old one (switching tabs back) must not reopen it.
+  const handledSignal = useRef(openSignal);
+  useEffect(() => { if (openSignal !== handledSignal.current) { handledSignal.current = openSignal; setOpen(true); } }, [openSignal]);
   const [repoUrl, setRepoUrl] = useState("");
   const [normalized, setNormalized] = useState("");
   const [compatibility, setCompatibility] = useState<AppCompatibilityFailure | null>(null);
@@ -375,10 +382,9 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
   const actions = {
     blocked: {
       secondary: {
-        label: setup.checking
-          ? t("apps.addDialog.checking")
-          : t("apps.addDialog.recheck"),
+        label: t("apps.addDialog.recheck"),
         disabled: setup.checking,
+        variant: "outline" as const,
         run: () => void setup.recheck(),
       },
       primary: {
@@ -394,15 +400,14 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
       secondary: {
         label: t("common.cancel"),
         disabled: false,
+        variant: "ghost" as const,
         run: () => {
           setOpen(false);
           reset();
         },
       },
       primary: {
-        label: probing
-          ? t("apps.addDialog.preflighting")
-          : t(candidateUnavailable ? "appHost.checkLatest" : "common.continue"),
+        label: t(candidateUnavailable ? "appHost.checkLatest" : "common.continue"),
         disabled: probing || !repoUrl.trim(),
         run: () => void review(candidateUnavailable),
       },
@@ -411,6 +416,7 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
       secondary: {
         label: t("common.back"),
         disabled: saving,
+        variant: "outline" as const,
         run: () => {
           /* stage 由 probe 判，不由 normalized 判：只清 normalized 只会把
              人留在一张空表单上，而那颗「下载并安装」仍然亮着——回到表单
@@ -421,9 +427,7 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
         },
       },
       primary: {
-        label: saving
-          ? t("apps.addDialog.submitting")
-          : t("apps.addDialog.downloadAndInstall"),
+        label: t("apps.addDialog.downloadAndInstall"),
         disabled: saving,
         run: () => void install(),
       },
@@ -432,6 +436,7 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
       secondary: {
         label: t("common.back"),
         disabled: saving,
+        variant: "outline" as const,
         run: () => {
           if (probe?.kind === "base") void discardAppProbe(probe.preflightId);
           setProbe(null);
@@ -440,9 +445,7 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
         },
       },
       primary: {
-        label: saving
-          ? t("apps.presetInstalling")
-          : t("apps.presetAllowAndInstall"),
+        label: t("apps.presetAllowAndInstall"),
         disabled:
           saving ||
           !maintenanceBackends.some(
@@ -457,6 +460,9 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
       },
     },
   }[stage];
+  const backable = stage === "confirm" || stage === "base-confirm";
+  const secondarySpin = stage === "blocked" && setup.checking;
+  const primarySpin = probing || saving;
 
   return (
     <Dialog
@@ -468,11 +474,11 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
         if (!next && !installing.current) reset();
       }}
     >
-      <DialogTrigger asChild>
-        <Button aria-label={t("apps.addApp")} size="icon-sm" variant="ghost">
-          <Plus />
+      {!hideTrigger && <DialogTrigger asChild>
+        <Button aria-label={t("apps.addApp")} size="lg" variant="outline" className="gap-1.5 px-3 text-sm">
+          <Plus />{t("apps.addApp")}
         </Button>
-      </DialogTrigger>
+      </DialogTrigger>}
       {/* 这张弹窗此前独自留在旧外壳上：448px、12px 正文、黑 80% 加模糊的
           遮罩、h-7 的页脚。它与 Save as App、Share、Delete 是同一族——一张
           问「装哪个仓库」的表单，没有理由自成一格。 */}
@@ -480,19 +486,15 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
         if (resumeFocus.current) { event.preventDefault(); resumeFocus.current.focus(); resumeFocus.current = null; }
       }}>
         {compatibility ? <CompatibilityReminder failure={compatibility} onClose={() => { setOpen(false); reset(); }} onRetry={() => { setCompatibility(null); void review(); }} /> : <>
-        <DialogHeader className="mb-4 shrink-0 gap-0 text-left">
-          <DialogTitle className="text-xl/7 font-semibold">
-            {t(
-              STAGE_TEXT[stage].titleKey,
-              stage === "base-confirm" && probe?.kind === "base"
-                ? { name: probe.manifest.name }
-                : undefined
-            )}
-          </DialogTitle>
-          <DialogDescription className="mt-3 text-[15px]/[1.4]">
-            {t(STAGE_TEXT[stage].descriptionKey)}
-          </DialogDescription>
-        </DialogHeader>
+        <AppDialogHeader
+          title={t(
+            STAGE_TEXT[stage].titleKey,
+            stage === "base-confirm" && probe?.kind === "base"
+              ? { name: probe.manifest.name }
+              : undefined
+          )}
+          description={t(STAGE_TEXT[stage].descriptionKey)}
+        />
         {/* 旧外壳自己就是滚动容器（overflow-y-auto 直接挂在圆角盒上，系统
             滚动条会骑在弧线上）。新外壳把滚动交给正文层，gap-4 则接回从前
             由 DialogContent 的 grid 提供的那 16px 段距。 */}
@@ -707,23 +709,44 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
 
         </AppDialogBody>
 
-        <DialogFooter className="mt-4 shrink-0 sm:gap-3">
-          <Button
-            size="pill"
-            variant="outline"
-            disabled={actions.secondary.disabled}
-            onClick={actions.secondary.run}
-          >
-            {actions.secondary.label}
-          </Button>
+        {/* Back 不是出口：确认态把它让到页脚左端，右组的取消沿用主外壳
+            从前的 ×（DialogClose → setOpen(false)，在途安装由 installing
+            守住不被 reset）。 */}
+        <AppDialogFooter
+          leading={
+            backable ? (
+              <Button
+                size="pill"
+                variant={actions.secondary.variant}
+                disabled={actions.secondary.disabled}
+                onClick={actions.secondary.run}
+              >
+                {actions.secondary.label}
+              </Button>
+            ) : undefined
+          }
+        >
+          {!backable && (
+            <Button
+              size="pill"
+              variant={actions.secondary.variant}
+              disabled={actions.secondary.disabled}
+              onClick={actions.secondary.run}
+            >
+              {secondarySpin && <Spinner />}
+              {actions.secondary.label}
+            </Button>
+          )}
+          {stage !== "form" && <AppDialogCancel />}
           <Button
             size="pill"
             disabled={actions.primary.disabled}
             onClick={actions.primary.run}
           >
+            {primarySpin && <Spinner />}
             {actions.primary.label}
           </Button>
-        </DialogFooter>
+        </AppDialogFooter>
         </>}
       </AppDialogContent>
     </Dialog>

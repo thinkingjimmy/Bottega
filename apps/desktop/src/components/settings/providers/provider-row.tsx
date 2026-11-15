@@ -1,14 +1,21 @@
 /**
- * [INPUT]: Depends on dnd-kit sortable, the Setup presentation projection, Agent identity, Settings layout primitives and Providers i18n
- * [OUTPUT]: Provides ProviderRow with one line for identity, reordering, setup or update actions, and the default control; providerHealth supplies diagnostic copy to plugin settings and action eligibility to the list.
- * [POS]: Row of Settings › Providers; ProviderList owns ordering and persistence. A package Provider can be made default once Setup reports it installed and supported.
+ * [INPUT]: Depends on dnd-kit sortable, the shared tooltip primitives, the Setup presentation projection, Agent identity, Settings layout primitives and Providers i18n
+ * [OUTPUT]: Provides ProviderRow with one line for identity, reordering, the default radio (S16) and setup or update actions; providerHealth supplies diagnostic copy to plugin settings and action eligibility to the list.
+ * [POS]: Row of Settings › Providers; ProviderList owns ordering, persistence and the row save-failure error. A package Provider can be made default once Setup reports it installed and supported.
  */
 
+import type { ReactNode } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { GripVertical } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@ai-chat/ui/components/ui/tooltip";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { SettingsBadge, SettingsButton } from "@/components/settings/settings-layout";
+import { SettingsButton, SettingsRow } from "@/components/settings/settings-layout";
 import { backendSetupPresentation } from "@/components/setup/backend-parts";
 import { providerTraits } from "../../../../shared/providers/traits";
 import { AgentBackendIcon, isAgentBackendId, providerName } from "@/lib/agent/agent-backends";
@@ -17,6 +24,7 @@ import type { BackendInfo } from "../../../../shared/ipc/agent/agent-ipc";
 import type { ProviderId } from "@ai-chat/cloud-protocol/contracts/provider";
 
 export type ProviderFix = "setup" | "update";
+export type ProviderRowError = { message: ReactNode; onRetry(): void };
 
 const UNVERIFIED_REASON_KEYS = {
   "provider-scoped": "agentAvailability.unverifiedReason.provider-scoped",
@@ -42,11 +50,44 @@ export function providerHealth(backend: BackendInfo | undefined, now: number) {
   } as const;
 }
 
-export function ProviderRow({ entry, backend, isDefault, now, onMakeDefault, onFix }: {
+/* S16: the leading radio is the Default control — checked means default, disabled means "Set up first". */
+function DefaultRadio({ checked, disabled, label, onSelect }: {
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  onSelect(): void;
+}) {
+  const radio = (
+    <button type="button" role="radio" aria-checked={checked} disabled={disabled}
+      aria-label={label}
+      onClick={onSelect}
+      className={cn(
+        "grid size-[18px] shrink-0 cursor-pointer place-items-center rounded-full border-[1.5px] border-input p-0",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+        "disabled:cursor-not-allowed disabled:opacity-45",
+        checked && "border-primary",
+        checked && "after:block after:size-[9px] after:rounded-full after:bg-primary"
+      )}
+    />
+  );
+  /* Disabled controls cannot point at a tooltip themselves; the span carries it. */
+  if (!disabled) return radio;
+  return (
+    <TooltipProvider delayDuration={350}>
+      <Tooltip>
+        <TooltipTrigger asChild><span className="inline-flex">{radio}</span></TooltipTrigger>
+        <TooltipContent side="top" sideOffset={6}>{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+export function ProviderRow({ entry, backend, isDefault, now, error, onMakeDefault, onFix }: {
   entry: ProviderEntry;
   backend?: BackendInfo;
   isDefault: boolean;
   now: number;
+  error?: ProviderRowError;
   onMakeDefault(provider: ProviderId): void;
   onFix(fix: ProviderFix): void;
 }) {
@@ -58,23 +99,29 @@ export function ProviderRow({ entry, backend, isDefault, now, onMakeDefault, onF
   /* Every row moves: S3-c keeps any id in the order. */
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
   const name = backend?.displayName ?? providerName(entry);
-  const { fix, selectable } = providerHealth(backend, now);
+  const { noteKey, fix, selectable } = providerHealth(backend, now);
+  const defaultDisabled = !canDefault || !selectable;
   return <div ref={setNodeRef} role="group" aria-label={name}
     style={{ transform: transform ? `translate3d(0, ${Math.round(transform.y)}px, 0)` : undefined, transition }}
-    className={cn("relative flex min-h-14 items-center gap-3 bg-card px-4 py-3", isDragging && "z-10 shadow-md ring-1 ring-foreground/10")}>
-    <button ref={setActivatorNodeRef} type="button" {...attributes} {...listeners}
-      aria-label={t("settings.providers.reorder", { name })}
-      className="-ml-1 flex size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 active:cursor-grabbing">
-      <GripVertical aria-hidden="true" className="size-4" />
-    </button>
-    <AgentBackendIcon backend={id} className="size-5 shrink-0" />
-    <span className="min-w-0 flex-1 truncate font-medium text-sm">{name}</span>
-    <div className="flex shrink-0 items-center gap-2">
-      {fix && <SettingsButton variant="outline" onClick={() => onFix(fix)}>
+    className={cn("relative bg-card", isDragging && "z-10 shadow-md ring-1 ring-foreground/10")}>
+    <SettingsRow
+      leading={<div className="flex items-center gap-1.5">
+        <button ref={setActivatorNodeRef} type="button" {...attributes} {...listeners}
+          aria-label={t("settings.providers.reorder", { name })}
+          className="-ml-1 flex size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 active:cursor-grabbing">
+          <GripVertical aria-hidden="true" className="size-4" />
+        </button>
+        <DefaultRadio checked={isDefault} disabled={defaultDisabled}
+          label={defaultDisabled ? t("settings.providers.setUpFirst") : t("settings.providers.makeDefaultOf", { name })}
+          onSelect={() => onMakeDefault(id)} />
+        <AgentBackendIcon backend={id} className="size-5 shrink-0" />
+      </div>}
+      label={name}
+      description={noteKey ? t(noteKey) : t("settings.providers.available")}
+      error={error}
+      control={fix ? <SettingsButton variant="outline" onClick={() => onFix(fix)}>
         {t(fix === "update" ? "settings.providers.update" : "settings.providers.setUp")}
-      </SettingsButton>}
-      {isDefault ? <SettingsBadge tone="muted">{t("settings.providers.default")}</SettingsBadge>
-        : <SettingsButton variant="ghost" disabled={!canDefault || !selectable} onClick={() => onMakeDefault(id)}>{t("settings.providers.makeDefault")}</SettingsButton>}
-    </div>
+      </SettingsButton> : <span className="hidden" />}
+    />
   </div>;
 }

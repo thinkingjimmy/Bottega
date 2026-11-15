@@ -6,7 +6,7 @@
  */
 
 export const appsEn = {
-  catalog: { filter: "Plugin type", widgets: "Widgets" },
+  catalog: { filter: "Plugin type", widgets: "Widgets", yours: "Your Apps", starter: "Starter Apps", more: "More to try", feature: "Start with {{name}}", get: "Get", open: "Open", githubTitle: "From a GitHub repo", githubSubtitle: "Install an App someone shared", pasteLink: "Paste link", addFromGithub: "Install from GitHub…", addFromGithubHint: "Paste a repository link", build: "Build with your Agent…", buildHint: "Describe a tool and start a chat" },
   dock: {
     pin: "Pin to Dock",
     unpin: "Remove from Dock",
@@ -79,7 +79,6 @@ export const appsEn = {
     savedRefreshFailed: "Permissions were saved, but the panel could not refresh.",
     saveFailed: "Failed to save App authorization",
     retryRefresh: "Retry refresh",
-    saving: "Saving…",
     addToProject: "Add to Project",
     addToChat: "Add to Chat",
     save: "Save",
@@ -128,11 +127,8 @@ export const appsEn = {
       probeFailed: "Couldn't check this repository. Try again. If it keeps failing, ask its author.",
     },
     addFailed: "Failed to add App",
-    checking: "Checking…",
     recheck: "Check again",
     openAgentSettings: "Open Agent settings",
-    preflighting: "Running secure preflight…",
-    submitting: "Submitting…",
     downloadAndInstall: "Download and install",
     blockedDisclosure: "A runtime Agent installs, repairs, and runs this App unattended on this device. The backend must implement the maintenance adapter and pass its capability gate; a boundary that cannot be enforced is available only after you explicitly accept a recorded risk exception.",
     blockedReadyHint: "This entry opens automatically when an Agent passes the capability gate or has an explicit risk exception.",
@@ -176,6 +172,7 @@ export const appsEn = {
   },
   failure: {
     recommended: "Recommended",
+    otherOptions: "Other options",
     phaseTitle: {
       clone: "Downloading the source failed",
       manifest: "Reading the App manifest failed",

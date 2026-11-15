@@ -207,7 +207,7 @@ function parseFile(value: unknown, catalog: ProviderCatalog): { file: SettingsFi
   const { chatOptionsByScope: _retired, ...file } = value as Record<string, unknown>;
   if (!file.settings || typeof file.settings !== "object" || Array.isArray(file.settings)) throw new Error("settings.json has no settings object");
   /* Retired fields are discarded; current last-use preferences have their own marker and narrow write command. */
-  const { lastSelectedBackend: _lastUsed, agentConnectionsEnabled: _lab, showTaskStatusAtTop: _notch, ...settings } = file.settings as Record<string, unknown>;
+  const { lastSelectedBackend: _lastUsed, agentConnectionsEnabled: _lab, showTaskStatusAtTop: _notch, memoryWorkflowRoles: _workflow, ...settings } = file.settings as Record<string, unknown>;
   const providerFields = Object.fromEntries(PROVIDER_KEYS.map((key) => [key, settings[key]]));
   for (const key of PROVIDER_KEYS) delete settings[key];
   const stored = readProviderFields(providerFields, warnSettings);

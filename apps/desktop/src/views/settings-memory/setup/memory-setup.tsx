@@ -311,7 +311,7 @@ export function useMemorySetupFlow({
     );
     back = () => showStep(2);
     primary = {
-      label: configBusy ? t("memory.runtime.savingConfig") : t("memory.setup.connectSubmit"),
+      label: t("memory.setup.connectSubmit"),
       submit: true,
       disabled: configBusy,
       busy: configBusy,

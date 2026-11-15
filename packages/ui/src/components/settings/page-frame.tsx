@@ -7,6 +7,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { Info } from "lucide-react";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
+import { SettingsInlineAlert } from "@ai-chat/ui/components/settings/alert";
 import { toastClearanceRef } from "@ai-chat/ui/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@ai-chat/ui/components/ui/tooltip";
 import { cn } from "@ai-chat/ui/lib/utils";
@@ -96,21 +97,26 @@ export function SettingsSection({
   info,
   action,
   alert,
+  alertTone,
+  alertAction,
   children,
 }: {
-  title: string;
+  /* S14: a one-section page needs no section heading — omit title and the header drops away. */
+  title?: string;
   titleAdornment?: ReactNode;
   description?: ReactNode;
   info?: string;
   action?: ReactNode;
   alert?: ReactNode;
+  alertTone?: "danger" | "warn";
+  alertAction?: ReactNode;
   children: ReactNode;
 }) {
-  const titleId = `settings-${title.replace(/\s+/g, "-")}`;
+  const titleId = title ? `settings-${title.replace(/\s+/g, "-")}` : undefined;
   return (
 
     <section aria-labelledby={titleId} className="flex flex-col gap-3">
-      <div className="space-y-1">
+      {(title || description || action || info || titleAdornment) && <div className="space-y-1">
         <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className={cn("flex min-w-0 items-center", titleAdornment ? "gap-2" : "gap-1.5")}>
             <h2 id={titleId} className="min-w-0 font-heading font-semibold text-sm">
@@ -122,7 +128,7 @@ export function SettingsSection({
                   <button
                     type="button"
                     aria-label={info}
-                    className="relative inline-flex size-5 shrink-0 cursor-help touch-manipulation items-center justify-center rounded-sm text-muted-foreground/60 transition-colors touch-target-44 [--touch-target-inset:-12px] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
+                    className="relative inline-flex size-5 shrink-0 cursor-help touch-manipulation items-center justify-center rounded-full text-muted-foreground/60 transition-colors touch-target-44 [--touch-target-inset:-12px] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
                   >
                     <Info className="size-3.5" aria-hidden="true" />
                   </button>
@@ -141,8 +147,8 @@ export function SettingsSection({
             {description}
           </p>
         )}
-      </div>
-      {alert && <SettingsAlert>{alert}</SettingsAlert>}
+      </div>}
+      {alert && <SettingsAlert tone={alertTone} title={alert} action={alertAction} />}
       {children}
     </section>
   );
@@ -151,22 +157,19 @@ export function SettingsSection({
 export function SettingsAlert({
   children,
   tone = "danger",
+  title,
+  description,
+  action,
+  className,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
 
   tone?: "danger" | "warn";
+  title?: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
+  className?: string;
 }) {
-  return (
-    <p
-      role="alert"
-      className={cn(
-        "rounded-md px-3 py-2 text-xs ring-1",
-        tone === "warn"
-          ? "bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:text-amber-400"
-          : "bg-destructive/10 text-destructive ring-destructive/20"
-      )}
-    >
-      {children}
-    </p>
-  );
+  /* children stays the title slot so existing callers keep working; new callers use title/description/action. */
+  return <SettingsInlineAlert tone={tone} title={title ?? children} description={description} action={action} className={className} />;
 }

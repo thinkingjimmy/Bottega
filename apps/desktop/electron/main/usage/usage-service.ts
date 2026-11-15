@@ -20,9 +20,9 @@ import {
   type UsageScanProgress,
   type UsageSourceId,
 } from "../../../shared/ipc/settings/usage-ipc";
-import { listClaudeFiles, parseClaudeFile } from "./claude-source";
-import { listCodexFiles, parseCodexFile } from "./codex-source";
-import { listKimiFiles, parseKimiFile } from "./kimi-source";
+import { claudeLogsHome, listClaudeFiles, parseClaudeFile } from "./claude-source";
+import { codexLogsHome, listCodexFiles, parseCodexFile } from "./codex-source";
+import { kimiLogsHome, listKimiFiles, parseKimiFile } from "./kimi-source";
 import {
   combineMergeResults,
   computeStats,
@@ -69,6 +69,8 @@ type SourceAdapter = {
   cached: boolean;
   listFiles: (home: string) => Promise<string[]>;
   parseFile: (path: string, signal?: AbortSignal) => Promise<FileEvents>;
+  /** The log folder a Settings "Show folder" action opens for this source. */
+  root?: (home: string) => string;
 };
 
 type UsageWindow = {
@@ -132,6 +134,7 @@ const DEFAULT_ADAPTERS: Record<UsageSourceId, SourceAdapter> = {
     cached: true,
     listFiles: listCodexFiles,
     parseFile: parseCodexFile,
+    root: codexLogsHome,
   },
   /* claude 与 kimi 一样是「一个文件解析成一组孤立事件、无跨文件状态」，
      完全满足快照缓存的契约。它此前是唯一一个 cached: false 的源，于是每次
@@ -141,11 +144,13 @@ const DEFAULT_ADAPTERS: Record<UsageSourceId, SourceAdapter> = {
     cached: true,
     listFiles: listClaudeFiles,
     parseFile: parseClaudeFile,
+    root: claudeLogsHome,
   },
   kimi: {
     cached: true,
     listFiles: listKimiFiles,
     parseFile: parseKimiFile,
+    root: kimiLogsHome,
   },
 };
 
@@ -242,6 +247,13 @@ export function assertUsageRequest(
   };
 }
 
+export function assertUsageSource(raw: unknown): UsageSourceId {
+  if (!USAGE_SOURCE_ORDER.includes(String(raw) as UsageSourceId)) {
+    throw new Error("Usage source 格式无效");
+  }
+  return raw as UsageSourceId;
+}
+
 export class UsageService {
   private readonly home: string;
   private readonly cache: UsageCacheLike;
@@ -255,6 +267,10 @@ export class UsageService {
   );
   /** The Providers with a usage-history adapter, in display order (the Dock's activity sources ask here). */
   sources(): UsageSourceId[] { return [...this.states.keys()]; }
+  /** The log folder the Settings issue alert's "Show folder" opens; null when an adapter declares none. */
+  sourceRoot(source: UsageSourceId): string | null {
+    return this.adapters[source]?.root?.(this.home) ?? null;
+  }
   private cacheEntries = new Map<string, UsageCacheEntry>();
   private cacheLoad: Promise<void> | null = null;
   private window: UsageWindow | null = null;

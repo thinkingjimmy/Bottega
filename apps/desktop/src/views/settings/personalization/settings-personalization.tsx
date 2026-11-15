@@ -120,30 +120,39 @@ export function PersonalizationSettingsContent({
   const [drafts, setDrafts] = useState<DraftMap>({});
   const [selected, setSelected] = useState<AgentBackendId | null>(null);
   const [finding, setFinding] = useState(false);
-  const [loading, setLoading] = useState(Boolean(bridge));
-  const [loadError, setLoadError] = useState(bridge ? "" : t("settings.personalization.errors.bridge"));
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [loadResult, setLoadResult] = useState<{
+    bridge: PersonalizationBridgeApi;
+    attempt: number;
+    failed: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!bridge) return;
-    let live = true;
+    let active = true;
     void bridge.list().then((next) => {
-      if (!live) return;
+      if (!active) return;
       const fileMap = Object.fromEntries(next.map((file) => [file.backend, file])) as FileMap;
       const draftMap = Object.fromEntries(next.map((file) => [file.backend, file.content ?? ""])) as DraftMap;
       setFiles(fileMap);
       setDrafts(draftMap);
+      setLoadResult({ bridge, attempt: loadAttempt, failed: false });
     }).catch(() => {
-      if (live) setLoadError(t("settings.personalization.errors.readFailed"));
-    }).finally(() => {
-      if (live) setLoading(false);
+      if (active) setLoadResult({ bridge, attempt: loadAttempt, failed: true });
     });
-    return () => { live = false; };
-  }, [bridge, t]);
+    return () => { active = false; };
+  }, [bridge, loadAttempt]);
+
+  const result = loadResult?.bridge === bridge && loadResult?.attempt === loadAttempt ? loadResult : null;
+  const loading = Boolean(bridge && !result);
+  const loadError = !bridge
+    ? t("settings.personalization.errors.bridge")
+    : result?.failed ? t("settings.personalization.errors.readFailed") : "";
 
   const activeBackend = selected && installed.includes(selected)
     ? selected
     : installed[0] ?? null;
-  const activeFile = activeBackend ? files[activeBackend] : undefined;
+  const activeFile = activeBackend && result && !result.failed ? files[activeBackend] : undefined;
 
   /* 查找条的开关住在这里而不是编辑面里：开它的入口在顶栏（顶栏属于卡片，
      不属于任何一家），而正文在编辑面里。状态跟着入口走，⌘F 与那颗按钮
@@ -220,7 +229,16 @@ export function PersonalizationSettingsContent({
   return (
     <SettingsCanvas fill>
       <div className="flex min-h-0 flex-1 flex-col gap-3">
-        {loadError&&<SettingsAlert>{loadError}</SettingsAlert>}
+        {loadError && (
+          <SettingsAlert
+            title={loadError}
+            action={bridge ? (
+              <SettingsButton variant="outline" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
+                {t("common.retry")}
+              </SettingsButton>
+            ) : undefined}
+          />
+        )}
         {loading ? (
           <SettingsEmpty icon={<FileText />} title={t("settings.personalization.loading")} hint={null} />
         ) : installed.length === 0 ? (
@@ -288,7 +306,7 @@ export function InstructionsPathBar({
         <code className="truncate font-mono text-muted-foreground text-xs">{file.displayPath}</code>
         <Button
           aria-label={copied ? t("settings.personalization.copied") : t("settings.personalization.copyPath")}
-          className="ml-1"
+          className="ml-1 rounded-full"
           onClick={copy}
           size="icon-sm"
           variant="ghost"
@@ -297,6 +315,7 @@ export function InstructionsPathBar({
         </Button>
         <Button
           aria-label={t("settings.personalization.reveal")}
+          className="rounded-full"
           disabled={!onReveal || !file.exists}
           onClick={onReveal}
           size="icon-sm"
@@ -306,6 +325,7 @@ export function InstructionsPathBar({
         </Button>
         <Button
           aria-label={t("settings.personalization.find.open")}
+          className="rounded-full"
           disabled={!findable}
           onClick={onFind}
           size="icon-sm"

@@ -8,7 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsEs: typeof appsEn = {
-  catalog: { filter: "Tipo de plugin", widgets: "Widgets" },
+  catalog: { filter: "Tipo de plugin", widgets: "Widgets", yours: "Tus Apps", starter: "Apps para empezar", more: "Prueba también", feature: "Empieza con {{name}}", get: "Obtener", open: "Abrir", githubTitle: "Desde un repo de GitHub", githubSubtitle: "Instala una App que alguien compartió", pasteLink: "Pegar enlace", addFromGithub: "Instalar desde GitHub…", addFromGithubHint: "Pega el enlace de un repositorio", build: "Crear con tu Agent…", buildHint: "Describe una herramienta e inicia un chat" },
   dock: {
     pin: "Fijar en el Dock",
     unpin: "Quitar del Dock",
@@ -81,7 +81,6 @@ export const appsEs: typeof appsEn = {
     savedRefreshFailed: "Los permisos se guardaron, pero el panel no pudo actualizarse.",
     saveFailed: "No se pudo guardar la autorización de la App",
     retryRefresh: "Reintentar actualización",
-    saving: "Guardando…",
     addToProject: "Añadir al Project",
     addToChat: "Añadir al Chat",
     save: "Guardar",
@@ -130,11 +129,8 @@ export const appsEs: typeof appsEn = {
       probeFailed: "No se pudo comprobar este repositorio. Vuelve a intentarlo. Si sigue fallando, contacta con su autor.",
     },
     addFailed: "No se pudo añadir la App",
-    checking: "Comprobando…",
     recheck: "Comprobar de nuevo",
     openAgentSettings: "Abrir ajustes del Agent",
-    preflighting: "Ejecutando comprobación segura…",
-    submitting: "Enviando…",
     downloadAndInstall: "Descargar e instalar",
     blockedDisclosure: "Un Agent de ejecución instala, repara y ejecuta esta App sin supervisión en el dispositivo. El backend debe implementar el adaptador de mantenimiento y superar su puerta de capacidad; un límite que no pueda imponerse solo estará disponible tras aceptar explícitamente una excepción de riesgo registrada.",
     blockedReadyHint: "Esta entrada se habilita automáticamente cuando un Agent supera la puerta de capacidad o tiene una excepción de riesgo explícita.",
@@ -178,6 +174,7 @@ export const appsEs: typeof appsEn = {
   },
   failure: {
     recommended: "Recomendado",
+    otherOptions: "Otras opciones",
     phaseTitle: {
       clone: "Error al descargar el código fuente",
       manifest: "Error al leer el manifiesto de la App",

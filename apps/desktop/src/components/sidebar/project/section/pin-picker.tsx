@@ -13,8 +13,8 @@ import { useProjects } from "@/components/providers/projects-provider";
 import type { Project } from "../../../../../shared/ipc/workspace/projects-ipc";
 import { useCloudSidebar } from "../../cloud/context";
 import { computerPresenceLabel } from "@ai-chat/ui/components/account/computer-switcher";
-import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
-import { AppDialogBody, AppDialogContent, DialogChoice } from "@ai-chat/ui/components/ui/app-dialog";
+import { Dialog, DialogClose } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogBody, AppDialogContent, AppDialogFooter, AppDialogHeader, DialogChoice } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { computerOnline, type CloudComputer } from "@ai-chat/cloud-protocol";
 
@@ -47,11 +47,11 @@ export function PinPicker({ open, onOpenChange, onCloseAutoFocus }: { open: bool
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <AppDialogContent data-pin-remote-project="" onCloseAutoFocus={onCloseAutoFocus}>
-        <DialogHeader className="shrink-0 text-left">
-          <DialogTitle className="text-xl/7 font-semibold">{t("projects.pin.title")}</DialogTitle>
-          <DialogDescription className="mt-3 text-[15px]/[1.4]">{t("projects.pin.description")}</DialogDescription>
-        </DialogHeader>
+      <AppDialogContent size="lg" data-pin-remote-project="" onCloseAutoFocus={onCloseAutoFocus}>
+        <AppDialogHeader
+          title={t("projects.pin.title")}
+          description={t("projects.pin.description")}
+        />
         <AppDialogBody className="mt-4 flex flex-col gap-4">
           {groups.length === 0 && <p className="text-muted-foreground text-sm">{t("projects.pin.empty")}</p>}
           {groups.map(({ computer, rows }) => {
@@ -72,7 +72,6 @@ export function PinPicker({ open, onOpenChange, onCloseAutoFocus }: { open: bool
                     <DialogChoice
                       key={project.id}
                       variant="plain"
-                      size="sm"
                       selected={pinned}
                       aria-pressed={pinned}
                       icon={<Check className={pinned ? "opacity-100" : "opacity-0"} />}
@@ -85,9 +84,11 @@ export function PinPicker({ open, onOpenChange, onCloseAutoFocus }: { open: bool
             );
           })}
         </AppDialogBody>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>
-        </DialogFooter>
+        <AppDialogFooter>
+          <DialogClose asChild>
+            <Button size="pill">{t("common.close")}</Button>
+          </DialogClose>
+        </AppDialogFooter>
       </AppDialogContent>
     </Dialog>
   );

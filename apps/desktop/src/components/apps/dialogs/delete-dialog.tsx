@@ -7,15 +7,13 @@
 import { useState } from "react";
 import { Database, Trash2 } from "lucide-react";
 import {
+  AppDialogAlert,
   AppDialogContent,
+  AppDialogHeader,
   ConfirmationDialog,
   DialogChoice,
 } from "@ai-chat/ui/components/ui/app-dialog";
-import {
-  Dialog,
-  DialogHeader,
-  DialogTitle,
-} from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
 import type { RemoveAppMode } from "../../../../shared/ipc/apps/apps-ipc";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 
@@ -113,12 +111,11 @@ export function AppDeleteDialog({
       }}
     >
       {/* 描述句已拆进选项，显式声明无 description，免得 Radix 误报缺失。 */}
-      <AppDialogContent aria-describedby={undefined}>
-        <DialogHeader className="min-h-0 gap-0 overflow-y-auto text-left">
-          <DialogTitle className="text-xl/7 font-semibold">
-            {t("apps.deleteDialog.title", { name })}
-          </DialogTitle>
-        </DialogHeader>
+      <AppDialogContent aria-describedby={undefined} showCloseButton>
+        <AppDialogHeader
+          className="min-h-0 overflow-y-auto"
+          title={t("apps.deleteDialog.title", { name })}
+        />
         {/* 负外边距让 hover 底铺到内边距的边上，行内文字则与标题左侧对齐：
             填色比文字宽出去一圈，才像一份可按的清单而不是两段缩进的正文。 */}
         <div className="-mx-2.5 mt-4 grid shrink-0 gap-2">
@@ -152,9 +149,5 @@ export function AppDeleteDialog({
    读者眼睛所在的那一层，否则点了删除就是石沉大海。 */
 function DeleteError({ message }: { message?: string }) {
   if (!message) return null;
-  return (
-    <p className="mt-3 text-[13px] text-destructive" role="alert">
-      {message}
-    </p>
-  );
+  return <AppDialogAlert className="shrink-0">{message}</AppDialogAlert>;
 }

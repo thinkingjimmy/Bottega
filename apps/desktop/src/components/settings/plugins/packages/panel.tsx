@@ -65,7 +65,7 @@ export default function NativePackagePanel({ installIdentity, toolbarHost, onUni
     <Download aria-hidden />{copy.install}</SettingsButton>;
   return <>
     {toolbarHost && createPortal(button, toolbarHost)}
-    {error && <SettingsAlert>{error}</SettingsAlert>}
+    {error && <SettingsAlert title={error} action={<SettingsButton variant="outline" onClick={() => void refresh()}>{t("common.retry")}</SettingsButton>}/>}
     {!installIdentity && requests.length > 0 && <SettingsSection title={copy.requests} description={copy.requestDescription}>
       <SettingsList>{requests.map(item => <SettingsRow key={item.requestId} label={item.repoUrl} description={copy.requestSource.replace("{{device}}", item.sourceDeviceId)}
         control={<div className="flex flex-wrap gap-2"><SettingsButton disabled={busy || item.state === "installing"} onClick={() => setSource({ repoUrl: item.repoUrl,

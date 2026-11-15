@@ -109,6 +109,7 @@
     "./quota/summary": "./src/ui/composer/agent/quota/summary.tsx",
     "./side-panel/slots": "./src/ui/side-panel/slots.ts",
     "./side-panel/catalog": "./src/ui/side-panel/catalog.ts",
+    "./side-panel/artifact-picker": "./src/ui/side-panel/artifact-picker.tsx",
     "./models/selection": "./src/ui/composer/models/selection.ts",
     "./models/selector": "./src/ui/composer/models/selector.tsx",
     "./models/list": "./src/ui/composer/models/list.tsx",

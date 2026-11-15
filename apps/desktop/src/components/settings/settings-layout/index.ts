@@ -10,6 +10,8 @@
    问题，不是使用者的知识。哪天再拆一层，调用方仍然一个字都不必改。 */
 
 export { SettingsAlert, SettingsCanvas, SettingsSection } from "@ai-chat/ui/components/settings/page-frame";
+export { SettingsInlineAlert } from "@ai-chat/ui/components/settings/alert";
+export { SettingsSetupGuide } from "@ai-chat/ui/components/settings/guide";
 export {
   SettingsBadge,
   SettingsEmpty,
@@ -26,4 +28,5 @@ export {
   SettingsIconButton,
   SettingsLabelAction,
   SettingsSwitch,
+  SettingsTechnicalDetails,
 } from "@ai-chat/ui/components/settings/controls";

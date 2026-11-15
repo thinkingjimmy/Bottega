@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, SettingsPage, the setup context (custom routes and the Terminal sign-in), Settings/Usage primitives, UsageLimitsSection, quota/history/settings stores, backendLabel and existing controls.
- * [OUTPUT]: Provides account quotas/reset details above independent history and a combined refresh action in UsageSettingsView, with warnings only for usage really missing from the numbers inside the persistent history panel (so source switches preserve the reading position), a loading skeleton in the content's own order, and a price-update switch that reports its own save failure.
+ * [OUTPUT]: Provides account quotas/reset details above independent history and a combined refresh circle as the page's title adornment in UsageSettingsView, with warn issue alerts (each carrying a "Show folder" reveal of the source's log root) only for usage really missing from the numbers inside the persistent history panel (so source switches preserve the reading position), a loading skeleton in the content's own order, and a price-update switch that reports its own save failure.
  * [POS]: apps/desktop/src/views/settings/usage; Settings layer's Usage view; holds no snapshot of its own — subscribes to usageStore and dispatches intents
  */
 
@@ -11,8 +11,8 @@ import { usageLimitsStore } from "@/lib/usage-limits/store";
 import { useUsageLimits } from "@/lib/usage-limits/hooks";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { AlertTriangle, RefreshCw } from "lucide-react";
-import type { AgentUsageSummary, UsageQueryTarget } from "../../../../shared/ipc/settings/usage-ipc";
+import { RefreshCw } from "lucide-react";
+import type { AgentUsageSummary, UsageQueryTarget, UsageSourceId } from "../../../../shared/ipc/settings/usage-ipc";
 import { SettingsPage } from "@/components/page-shell";
 import {
   UsageHeatmap,
@@ -23,8 +23,10 @@ import { UsageSourceRail } from "@/components/settings/usage/usage-source-rail";
 import { UsageStatRow } from "@/components/settings/usage/usage-stat-row";
 import { UsageToday } from "@/components/settings/usage/charts/usage-today";
 import {
+  SettingsAlert,
   SettingsButton,
   SettingsCanvas,
+  SettingsIconButton,
   SettingsList,
   SettingsRow,
   SettingsSection,
@@ -34,13 +36,13 @@ import { backendLabel } from "@/lib/agent/agent-backends";
 import { intlLocale } from "@/lib/appearance/i18n-locale";
 import { settingsStore } from "@/lib/settings/store/settings-store";
 import { usageStore } from "@/lib/usage/usage-store";
+import { revealUsageSource } from "@/lib/usage/usage-client";
 import {
   usageIssueWarnings,
   usageStatus,
   type UsageStatus,
   type UsageSummaries,
 } from "@/lib/usage/usage-view-state";
-import { Button } from "@ai-chat/ui/components/ui/button";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 
 /* ============================================================
@@ -98,10 +100,12 @@ export function UsageContent({
   summaries,
   target,
   status,
+  onRetry,
 }: {
   summaries: UsageSummaries;
   target: UsageQueryTarget;
   status: UsageStatus;
+  onRetry: () => void;
 }) {
   const { t } = useAppTranslation();
   const summary: AgentUsageSummary | null = summaries[target];
@@ -109,9 +113,11 @@ export function UsageContent({
   if (!summary) {
     if (status === "loading") return <LoadingPanel />;
     return (
-      <p className="px-6 py-12 text-center text-destructive text-sm">
-        {t("settings.usage.readFailed")}
-      </p>
+      <SettingsAlert
+        className="m-4"
+        title={t("settings.usage.readFailed")}
+        action={<SettingsButton variant="outline" onClick={onRetry}>{t("common.retry")}</SettingsButton>}
+      />
     );
   }
 
@@ -228,6 +234,12 @@ export function UsageSettingsView({ focusAgent = null }: { focusAgent?: AgentBac
   const signIn = { run: (backend: AgentBackendId) => void setup.terminalAction(backend, "login"), busy: (backend: AgentBackendId) => setup.busy[backend] === "login" };
   const status = usageStatus(view);
   const summaryIssues = usageIssueWarnings(view.summaries[target]?.issues ?? []);
+  /* A reveal that fails (folder gone) says so inside the same alert instead of rejecting unhandled. */
+  const [revealFailed, setRevealFailed] = useState<UsageSourceId | null>(null);
+  const showFolder = async (source: UsageSourceId) => {
+    setRevealFailed(null);
+    try { await revealUsageSource(source); } catch { setRevealFailed(source); }
+  };
   /* 请求在飞或后台还在扫盘，都归结为同一个字：忙 */
   const quota = useUsageLimits();
   const busy = status === "loading" || Object.keys(progress).length > 0 || quota.snapshot.agents.some((agent) => agent.fetchState === "refreshing");
@@ -235,18 +247,16 @@ export function UsageSettingsView({ focusAgent = null }: { focusAgent?: AgentBac
   return (
     <SettingsPage
       title={t("common.usage")}
-      actions={
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          aria-label={t("settings.usage.refresh")}
+      titleAdornment={
+        <SettingsIconButton
+          label={t("settings.usage.refresh")}
           data-testid="usage-refresh"
           data-busy={busy}
+          disabled={busy}
           onClick={() => { void usageStore.refresh(); void usageLimitsStore.refresh(); }}
         >
-          <RefreshCw className={busy ? "animate-spin" : ""} />
-        </Button>
+          <RefreshCw aria-hidden="true" className={busy ? "animate-spin motion-reduce:animate-none" : ""} />
+        </SettingsIconButton>
       }
     >
       <SettingsCanvas>
@@ -266,24 +276,23 @@ export function UsageSettingsView({ focusAgent = null }: { focusAgent?: AgentBac
             loading={status === "loading"}
             onChange={usageStore.setTarget}
           >
-            {/* Only usage really missing from the numbers is said, in amber; everything that asks nothing of the reader stays quiet. */}
-            {summaryIssues.length > 0 && (
-              <div
-                role="alert"
-                className="m-4 space-y-1 rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs ring-1 ring-amber-500/20 dark:text-amber-400"
-              >
-                {summaryIssues.map((issue) => (
-                  <p key={`${issue.source}:${issue.key}`}>
-                    <AlertTriangle className="mr-1 inline size-3.5" />
-                    {backendLabel(issue.source)} · {t(issue.key, { count: issue.count, formatted: issue.count.toLocaleString(intlLocale()) })}
-                  </p>
-                ))}
-              </div>
-            )}
+            {/* Only usage really missing from the numbers is said, in a warn alert with the one fix
+                (usage-issues): the log folder that could not be read, shown in the file manager. */}
+            {summaryIssues.map((issue) => (
+              <SettingsAlert
+                key={`${issue.source}:${issue.key}`}
+                tone="warn"
+                className="m-4"
+                title={`${backendLabel(issue.source)} · ${t(issue.key, { count: issue.count, formatted: issue.count.toLocaleString(intlLocale()) })}`}
+                description={revealFailed === issue.source ? t("settings.usage.issues.revealFailed") : undefined}
+                action={<SettingsButton variant="outline" onClick={() => void showFolder(issue.source)}>{t("settings.usage.issues.showFolder")}</SettingsButton>}
+              />
+            ))}
             <UsageContent
               summaries={view.summaries}
               target={target}
               status={status}
+              onRetry={() => void usageStore.refresh()}
             />
           </UsageSourceRail>
         </div>

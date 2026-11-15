@@ -20,6 +20,7 @@ import { useAppTranslation } from "@/components/providers/preferences/i18n-provi
 import { SKILLS_SETTINGS_PATH } from "@/lib/settings/navigation/settings-navigation";
 import type { TFunction } from "i18next";
 import { Link } from "react-router";
+import { useProjectSettingsPane } from "@/components/providers/navigation/project-settings-pane";
 
 export function ExtensionPackageCard({
   record,
@@ -41,6 +42,7 @@ export function ExtensionPackageCard({
   onMigrate: (appId: string) => void;
 }) {
   const { t } = useAppTranslation();
+  const paneNavigation = useProjectSettingsPane();
   const skillComponents = record.components.filter((component) => component.kind === "skill");
   const enabledSkills = skillComponents.filter((component) => component.enabled).length;
   return (
@@ -60,15 +62,27 @@ export function ExtensionPackageCard({
       })}
       action={
         <div className="flex gap-2">
-          {skillComponents.length > 0 && (
+          {skillComponents.length > 0 && (record.scope.kind === "project" ? (
+            <button
+              className="inline-flex min-h-11 touch-manipulation cursor-pointer items-center rounded-md border px-3 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              onClick={() => paneNavigation?.open({
+                projectId: record.scope.kind === "project" ? record.scope.projectId : "",
+                focus: "skills",
+                packageFilter: record.installIdentity,
+              })}
+              type="button"
+            >
+              {t("settings.extensions.package.manageSkills")}
+            </button>
+          ) : (
             <Link
               className="inline-flex min-h-11 touch-manipulation items-center rounded-md border px-3 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-              replace={record.scope.kind === "global"}
+              replace
               to={manageSkillsHref(record)}
             >
               {t("settings.extensions.package.manageSkills")}
             </Link>
-          )}
+          ))}
           <SettingsButton disabled={busy} onClick={onUpdate} variant="ghost">
             {t("settings.extensions.package.checkUpdate")}
           </SettingsButton>
@@ -163,10 +177,7 @@ export function ExtensionPackageCard({
 }
 
 function manageSkillsHref(record: ExtensionPackageView) {
-  const packageFilter = `package=${encodeURIComponent(record.installIdentity)}`;
-  return record.scope.kind === "project"
-    ? `/projects/${encodeURIComponent(record.scope.projectId)}/settings?tab=skills&${packageFilter}`
-    : `${SKILLS_SETTINGS_PATH}?${packageFilter}`;
+  return `${SKILLS_SETTINGS_PATH}?package=${encodeURIComponent(record.installIdentity)}`;
 }
 
 function ConvergenceNotes({ record }: { record: ExtensionPackageView }) {

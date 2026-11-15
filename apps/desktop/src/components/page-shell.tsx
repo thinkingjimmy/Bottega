@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Router links, desktop i18n/platform, shared WorkspacePage/WorkspaceBackLink and the content-heading SettingsPage.
- * [OUTPUT]: PageShell, SettingsPage, DesktopWorkspaceHeader and common panel geometry.
+ * [OUTPUT]: PageShell (back link or caller leading control), SettingsPage, DesktopWorkspaceHeader and common panel geometry.
  * [POS]: Desktop page adapter; native chrome remains host-owned.
  */
 import type { ComponentProps } from "react";
@@ -11,11 +11,11 @@ import { SettingsPage as SharedSettingsPage } from "@ai-chat/ui/components/setti
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { isApplePlatform } from "@/lib/platform/platform";
 export { panelChromeClassName, crossHeaderPanelStyle } from "@ai-chat/ui/components/workspace/page";
-type PageShellProps = Omit<ComponentProps<typeof WorkspacePage>, "leading" | "chrome" | "collapsedInset"> & { backHref?: string };
-export function PageShell({ backHref, ...props }: PageShellProps) {
+type PageShellProps = Omit<ComponentProps<typeof WorkspacePage>, "chrome" | "collapsedInset"> & { backHref?: string };
+export function PageShell({ backHref, leading, ...props }: PageShellProps) {
   const { t } = useAppTranslation(), { state } = useSidebar();
   return <WorkspacePage {...props} chrome="native" collapsedInset={state === "collapsed" ? isApplePlatform() ? "mac" : "compact" : undefined}
-    leading={backHref && <WorkspaceBackLink aria-label={t("common.back")} asChild><Link to={backHref} /></WorkspaceBackLink>} />;
+    leading={backHref ? <WorkspaceBackLink aria-label={t("common.back")} asChild><Link to={backHref} /></WorkspaceBackLink> : leading} />;
 }
 
 export function SettingsPage({ backHref, leading, ...props }: Omit<ComponentProps<typeof SharedSettingsPage>, "chrome" | "collapsedInset"> & { backHref?: string }) {

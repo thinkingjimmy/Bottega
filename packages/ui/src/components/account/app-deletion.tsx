@@ -5,21 +5,22 @@
  */
 import { useId, type ComponentProps } from "react";
 import { Button } from "../ui/controls/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/overlays/dialog";
+import { Dialog } from "../ui/overlays/dialog";
+import { AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "../ui/overlays/app-dialog";
 import type { CloudCopy } from "../../lib/cloud-copy/en";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 export type AppDeletionPhase = "reviewing" | "ready" | "submitting" | "unknown" | "conflicted" | "blocked" | "failed" | "expired" | "confirmed";
 type AppDeletionDialogProps = {
   name: string; phase: AppDeletionPhase; connected: boolean; retainBase: boolean; copy: CloudCopy["appDeletion"];
   onRetainBaseChange(value: boolean): void; onConfirm(): void; onRetry(): void; onReview(): void; onClose(): void;
-  onCloseAutoFocus?: ComponentProps<typeof DialogContent>["onCloseAutoFocus"];
+  onCloseAutoFocus?: ComponentProps<typeof AppDialogContent>["onCloseAutoFocus"];
 };
 export function AppDeletionDialog({ name, phase, connected, retainBase, copy, onRetainBaseChange, onConfirm, onRetry, onReview, onClose, onCloseAutoFocus }: AppDeletionDialogProps) {
   const id = useId(), busy = phase === "submitting", reviewable = ["conflicted", "blocked", "failed", "expired"].includes(phase);
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }}>
-    <DialogContent showCloseButton={!busy} onCloseAutoFocus={onCloseAutoFocus} className="max-h-[90dvh] overflow-y-auto">
+    <AppDialogContent onCloseAutoFocus={onCloseAutoFocus} className="max-h-[90dvh]">
       <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (phase === "ready" && connected) onConfirm(); }}>
-        <DialogHeader className="pr-8"><DialogTitle>{copy.title.replace("{{name}}", name)}</DialogTitle>
-          <DialogDescription>{copy.details}</DialogDescription></DialogHeader>
+        <AppDialogHeader title={copy.title.replace("{{name}}", name)} description={copy.details}/>
         <fieldset disabled={phase !== "ready" || !connected} className="space-y-2">
           <legend className="mb-2 text-sm font-medium">{copy.dataChoice}</legend>
           {([true, false] as const).map(retain => <label key={String(retain)} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border p-3 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:disabled]:cursor-default">
@@ -33,13 +34,13 @@ export function AppDeletionDialog({ name, phase, connected, retainBase, copy, on
         {phase === "reviewing" && <p role="status" className="text-sm">{copy.reviewing}</p>}
         {["unknown", "conflicted", "blocked", "failed", "expired"].includes(phase) && <p role="alert" className="text-sm text-destructive">{copy[phase as "unknown" | "conflicted" | "blocked" | "failed" | "expired"]}</p>}
         {phase === "confirmed" && <p role="status" className="text-sm">{copy.confirmed}</p>}
-        <DialogFooter>
-          <Button type="button" variant="ghost" className="min-h-11" disabled={busy} onClick={onClose}>{copy.close}</Button>
-          {reviewable ? <Button type="button" variant="outline" className="min-h-11" disabled={!connected} onClick={onReview}>{copy.review}</Button> :
-            phase === "unknown" ? <Button type="button" className="min-h-11" disabled={!connected} onClick={onRetry}>{copy.retry}</Button> :
-              phase !== "confirmed" && <Button type="submit" variant="destructive" className="min-h-11" disabled={phase !== "ready" || !connected}>{busy ? copy.deleting : copy.confirm}</Button>}
-        </DialogFooter>
+        <AppDialogFooter>
+          <AppDialogCancel type="button" disabled={busy} onClick={onClose}>{copy.close}</AppDialogCancel>
+          {reviewable ? <Button type="button" size="pill" variant="outline" disabled={!connected} onClick={onReview}>{copy.review}</Button> :
+            phase === "unknown" ? <Button type="button" size="pill" disabled={!connected} onClick={onRetry}>{copy.retry}</Button> :
+              phase !== "confirmed" && <Button type="submit" size="pill" variant="destructive" disabled={phase !== "ready" || !connected}>{busy && <Spinner />}{copy.confirm}</Button>}
+        </AppDialogFooter>
       </form>
-    </DialogContent>
+    </AppDialogContent>
   </Dialog>;
 }

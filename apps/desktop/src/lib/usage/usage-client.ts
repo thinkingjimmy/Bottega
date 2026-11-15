@@ -13,6 +13,7 @@ import type {
   UsageQueryTarget,
   UsagePricingUpdate,
   UsageScanProgress,
+  UsageSourceId,
 } from "../../../shared/ipc/settings/usage-ipc";
 
 declare global {
@@ -196,6 +197,11 @@ export function getUsageSummary(
     window.usage?.getSummary(target, options) ??
     Promise.resolve(fallbackSummary(target))
   );
+}
+
+/** Opens the source's log folder in the system file manager (the issue alert's "Show folder"). */
+export function revealUsageSource(source: UsageSourceId) {
+  return window.usage?.revealSource?.(source) ?? Promise.resolve();
 }
 
 export function subscribeScanProgress(

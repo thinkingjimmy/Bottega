@@ -8,7 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsZhCN: typeof appsEn = {
-  catalog: { filter: "插件类型", widgets: "小组件" },
+  catalog: { filter: "插件类型", widgets: "小组件", yours: "你的 App", starter: "入门 App", more: "试试更多", feature: "从 {{name}} 开始", get: "获取", open: "打开", githubTitle: "从 GitHub 仓库安装", githubSubtitle: "安装别人分享的 App", pasteLink: "粘贴链接", addFromGithub: "从 GitHub 安装…", addFromGithubHint: "粘贴仓库链接", build: "让 Agent 帮你做…", buildHint: "描述一个工具，开始一段对话" },
   dock: {
     pin: "固定到 Dock",
     unpin: "从 Dock 移除",
@@ -81,7 +81,6 @@ export const appsZhCN: typeof appsEn = {
     savedRefreshFailed: "权限已保存，但右侧面板没刷新出来。",
     saveFailed: "App 授权保存失败",
     retryRefresh: "重试刷新",
-    saving: "正在保存…",
     addToProject: "添加到 Project",
     addToChat: "添加到 Chat",
     save: "保存",
@@ -130,11 +129,8 @@ export const appsZhCN: typeof appsEn = {
       probeFailed: "无法检查这个仓库。请重试；如果仍然失败，请联系作者。",
     },
     addFailed: "添加 App 失败",
-    checking: "正在检测…",
     recheck: "重新检测",
     openAgentSettings: "打开 Agent 设置",
-    preflighting: "正在安全预检…",
-    submitting: "正在提交…",
     downloadAndInstall: "下载并安装",
     blockedDisclosure: "运行 Agent 会在本机无人值守地安装、修复并运行此 App，因此后端必须实现维护适配器并通过能力门禁；若某些围栏无法强制，只能在你明确接受并已记录风险例外后开放。",
     blockedReadyHint: "符合能力门禁或已有明确风险例外的 Agent 就绪后，此入口将自动开放。",
@@ -178,6 +174,7 @@ export const appsZhCN: typeof appsEn = {
   },
   failure: {
     recommended: "推荐",
+    otherOptions: "其他选项",
     phaseTitle: {
       clone: "下载源码失败",
       manifest: "读取 App 清单失败",

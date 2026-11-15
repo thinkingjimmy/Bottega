@@ -10,7 +10,7 @@ import { Kbd, KbdGroup } from "../../ui/feedback/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/overlays/tooltip";
 import { SettingsAlert, SettingsSection } from "../page-frame";
 import { SettingsList, SettingsRow } from "../content";
-import { SettingsButton } from "../controls";
+import { SettingsButton, SettingsTechnicalDetails } from "../controls";
 import { cn } from "../../../lib/utils";
 import {
   shortcutGlyphs,
@@ -35,7 +35,7 @@ type Props = {
   copy: Copy;
   apple: boolean;
   hasOverrides: boolean;
-  error?: string | null;
+  error?: { title: ReactNode; details?: string } | null;
   children?(layout: { description: string; actions: ReactNode; content: ReactNode }): ReactNode;
   capture(event: KeyboardEvent): CaptureResult;
   onChange(
@@ -78,7 +78,15 @@ export function ShortcutSettings({
   ) : null;
   const content = (
     <div className="space-y-3">
-      {(error || failure) && <SettingsAlert>{error || failure}</SettingsAlert>}
+      {failure && <SettingsAlert title={failure} />}
+      {error && (
+        /* A settings-load error is a raw message: a plain sentence here, the detail under the disclosure (shortcuts-page-error).
+           Cloud's storage failure instead passes its own self-explaining title with no detail (cw-shortcuts-storage). */
+        <div className="space-y-2">
+          <p className="text-muted-foreground text-sm">{error.title}</p>
+          {error.details && <SettingsTechnicalDetails details={error.details} />}
+        </div>
+      )}
       <SettingsList>
         {rows.map((row) => (
           <ShortcutRow key={row.id} row={row} copy={copy} {...props} />
@@ -150,7 +158,7 @@ function ShortcutRow({
   const conflict = row.conflicts?.length
     ? shortcutText(copy.conflictWith, { name: row.conflicts.join(", ") })
     : null;
-  const touch = "max-md:size-11 pointer-coarse:size-11";
+  const touch = "rounded-full max-md:size-11 pointer-coarse:size-11";
   return (
     <SettingsRow
       label={row.label}
@@ -197,7 +205,7 @@ function ShortcutRow({
           <span
             data-testid={`shortcut-keys-${row.id}`}
             className={cn(
-              "flex h-8 min-w-24 items-center justify-center rounded-md px-2.5 text-xs",
+              "flex h-8 min-w-24 items-center justify-center rounded-[0.5rem] px-2.5 text-xs",
               recording &&
                 "h-auto min-h-8 max-w-48 bg-muted/60 ring-1 ring-ring/40",
             )}

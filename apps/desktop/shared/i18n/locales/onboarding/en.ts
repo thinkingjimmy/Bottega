@@ -1,6 +1,6 @@
 /**
  * [INPUT]: No runtime dependencies
- * [OUTPUT]: Provides onboardingEn — two-step folder/Agent setup, its Install later exemption and completion, plus the separate Chat Skills import prompt — and the structural shape its translated leaves derive from
+ * [OUTPUT]: Provides onboardingEn — two-step folder/Agent setup, its Install later exemption and completion, the static product-preview demo copy, plus the separate Chat Skills import prompt — and the structural shape its translated leaves derive from
  * [POS]: English leaf of shared/i18n/locales/onboarding; the heading/description tables share the one path's step ids while the Chat Skills prompt retains its import and dismissal copy
  */
 
@@ -28,6 +28,17 @@ export const onboardingEn = {
   agentInstalling: "Waiting for installation…",
   agentCheckFailed: "Couldn't check the installation. Try again.",
   agentAbout: { codex: "OpenAI’s coding Agent", claude: "Anthropic’s coding Agent", kimi: "Moonshot’s coding Agent", opencode: "Open-source, bring your own model" },
+  preview: {
+    project: "Bottega Site",
+    chats: { releaseNotes: "Ship the release notes", settingsPanel: "Port the settings panel", changelog: "Draft the changelog", importTests: "Cover the CLI import path", onboarding: "Trim the onboarding copy", iconGrid: "Compare the two icon grids", acp: "Explain the ACP handshake" },
+    priorAsk: "Which PRs merged since 0.1.9 would a user actually notice?",
+    priorReply: "Six of the eighteen. Agent parity is the one people will feel first; the two internal refactors fold into a line.",
+    ask: "Draft the 0.2.0 release notes from the merged PRs since 0.1.9.",
+    workedFor: "Worked for {{duration}}",
+    planTitle: "0.2.0 release notes", summary: "Summary", summaryFirst: "Six headline changes since `0.1.9`, grouped by what a user notices first.", summarySecond: "Agent parity is the lede — `Kimi` and `OpenCode` now reach the same permission ladder as `Codex`.",
+    plan: "Plan", model: "GPT-5.6 Sol",
+    status: "Responding", askAnything: "Ask anything",
+  },
   skillsImportTitle: "Found {{count}} Skills in your existing Agents",
   skillsImportDescription: "Import them to use in every compatible conversation.",
   skillsImportAll: "Import all and enable", skillsSkip: "Skip", skillsUpdateFailed: "Could not update Skills onboarding",

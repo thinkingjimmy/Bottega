@@ -35,7 +35,7 @@ const localized: Record<string, Copy> = {
     noParameters: '无需参数。', unspecified: '未指定字段。', schema: '完整定义',
     authored: '你创建的插件', personalCopy: '个人副本', external: '外部插件',
     fallback: {
-      page: '在 Bottega 中打开此插件的页面。', widget: '将此插件的 Widget 添加到 Dock。',
+      page: '在 Bottega 中打开此插件的页面。', widget: '将此插件的小组件添加到 Dock。',
       composer: '编写消息时使用此插件。', tool: '在 Chat 中使用此插件提供的工具。',
       service: '运行此插件的后台功能。', mode: '在 Chat 中选择此插件提供的模式。',
       none: '打开插件，查看它的详细信息。',

@@ -1,19 +1,13 @@
 /**
- * [INPUT]: Depends on i18n, icons, UI menu primitives, Base/App actions, panel eligibility, shared image/Artifact identities and Browser tab projections
- * [OUTPUT]: Canonical panel tab/region types with Artifact tabs, catalog descriptors and keyboard-readable directory UI
+ * [INPUT]: Localized copy, shared catalog and panel primitives, Base/App actions and Browser tab projections
+ * [OUTPUT]: Desktop tab/region projections and catalog controls with separate App and Artifact picker actions
  * [POS]: The tab identity and add-menu truth source for chat/side-panel
  */
 
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { SidePanelAddMenu,SidePanelCatalog } from "@ai-chat/ui/components/workspace/side-panel/catalog";
-import {
-FileIcon,
-GlobeIcon,
-ImageIcon,
-LoaderCircleIcon,
-type LucideIcon
-} from "lucide-react";
-import { lazy,Suspense,useState,type ReactNode } from "react";
+import { SidePanelAddMenu, SidePanelCatalog, type PanelCatalogItem } from "@ai-chat/ui/components/workspace/side-panel/catalog";
+import { GlobeIcon, ImageIcon, LoaderCircleIcon, type LucideIcon } from "lucide-react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import type { BrowserTabProjection } from "../../../../shared/ipc/workspace/browser-ipc";
 import type { ConversationImageSource } from "../runtime/chat-session-model";
 
@@ -36,7 +30,8 @@ export type AppRegionId = `app:${string}`;
 export type ImageRegionId = `image:generated:${string}` | `image:attachment:${string}`;
 export type PanelTabId = "base" | "subagents" | AppRegionId | ImageRegionId | ArtifactTabId;
 export type PanelRegion = PanelTabId | "browser";
-export type PanelCatalogId = "base" | "subagents" | "browser" | "app";
+export type PanelCatalogId = (typeof PANEL_CATALOG)[number]["id"];
+type PanelCatalogEntry = Exclude<PanelCatalogId, "app"> | "app:catalog";
 
 export const isAppRegion = (region: string): region is AppRegionId =>
   region.startsWith("app:") && region.length > 4;
@@ -72,7 +67,7 @@ type PanelTabSpec<Id extends string = PanelCatalogId> = {
   ) => ReactNode;
 };
 
-export const PANEL_TAB_SPECS: readonly PanelTabSpec[] = PANEL_CATALOG.map(spec => ({ ...spec,
+export const PANEL_TAB_SPECS: readonly PanelTabSpec<PanelCatalogId>[] = PANEL_CATALOG.map(spec => ({ ...spec,
   ...(spec.id === "base" ? {
     renderTabActions: (ownerKey: string, chatId: string) => <Suspense fallback={null}><BaseTabMenu chatId={chatId} ownerKey={ownerKey} /></Suspense>,
     renderHeaderActions: (ownerKey: string, chatId: string, onClose: () => void) => <Suspense fallback={null}><BaseHeaderActions chatId={chatId} ownerKey={ownerKey} mode="panel" onClose={onClose} /></Suspense>,
@@ -91,7 +86,7 @@ const IMAGE_TAB_SPEC: PanelTabSpec<"image"> = {
 };
 
 export function specForRegion(region: PanelRegion) {
-  if (isArtifactTab(region)) return { ...IMAGE_TAB_SPEC, icon: FileIcon };
+  if (isArtifactTab(region)) return PANEL_TAB_SPEC.artifact;
   if (isAppRegion(region)) return PANEL_TAB_SPEC.app;
   if (isImageRegion(region)) return IMAGE_TAB_SPEC;
   return PANEL_TAB_SPEC[region];
@@ -154,21 +149,34 @@ export function WebTabIcon({ tab }: { tab: BrowserTabProjection }) {
 /** Desktop adapters preserve the canonical directory identities and localized names. */
 function useCatalog() {
   const { t } = useAppTranslation();
-  return { t, items: PANEL_TAB_SPECS.map(spec => ({ id: spec.id === "app" ? "app:catalog" : spec.id, label: t(spec.labelKey), hint: t(spec.hintKey), icon: spec.icon, menuHint: spec.id === "app" })) };
+  const items = PANEL_TAB_SPECS.map<PanelCatalogItem<PanelCatalogEntry>>(spec => ({
+    id: spec.id === "app" ? "app:catalog" : spec.id,
+    label: t(spec.labelKey),
+    hint: t(spec.hintKey),
+    icon: spec.icon,
+    menuHint: spec.id === "app",
+  }));
+  return { t, items };
 }
-export function AddPanelMenu({ disabledFor, disabledReasonFor, onOpen, onOpenApp, appsDisabled = false }: {
-  disabledFor(id: PanelRegion): boolean; disabledReasonFor?(id: PanelRegion): string | undefined; onOpen(id: PanelRegion): void; onOpenApp(): void; appsDisabled?: boolean;
+type CatalogActions = {
+  disabledFor?(id: PanelCatalogEntry): boolean;
+  disabledReasonFor?(id: PanelCatalogEntry): string | undefined;
+  onOpen(id: PanelRegion): void;
+  onOpenApp(): void;
+  onOpenArtifact(trigger: HTMLButtonElement): void;
+};
+
+export function AddPanelMenu({ disabledFor = () => false, disabledReasonFor, onOpen, onOpenApp, onOpenArtifact, appsDisabled = false }: CatalogActions & {
+  appsDisabled?: boolean;
 }) {
   const { t, items } = useCatalog();
-  return <SidePanelAddMenu items={items} disabledFor={id => id === "app:catalog" && appsDisabled || disabledFor(id as PanelRegion)} disabledReasonFor={id => disabledReasonFor?.(id as PanelRegion)}
-    onOpen={id => id === "app:catalog" ? onOpenApp() : onOpen(id as PanelRegion)} label={t("chat.sidePanel.addPanel")} fullLabel={t("chat.sidePanel.allPanelsOpen")}
+  return <SidePanelAddMenu<PanelCatalogEntry> items={items} disabledFor={id => id === "app:catalog" && appsDisabled || disabledFor(id)} disabledReasonFor={disabledReasonFor}
+    onOpen={(id, trigger) => id === "artifact" ? onOpenArtifact(trigger) : id === "app:catalog" ? onOpenApp() : onOpen(id)} label={t("chat.sidePanel.addPanel")} fullLabel={t("chat.sidePanel.allPanelsOpen")}
     accessibleLabel={(item, reason) => reason ? t("chat.sidePanel.unavailableNamedPanel", { name: item.label, reason }) : t("chat.sidePanel.openNamedPanel", { name: item.label })} />;
 }
-export function PanelTabsEmpty({ onOpen, onOpenApp, disabledFor = () => false, disabledReasonFor }: {
-  onOpen(id: PanelRegion): void; onOpenApp(): void; disabledFor?(id: PanelRegion): boolean; disabledReasonFor?(id: PanelRegion): string | undefined;
-}) {
+export function PanelTabsEmpty({ onOpen, onOpenApp, onOpenArtifact, disabledFor = () => false, disabledReasonFor }: CatalogActions) {
   const { t, items } = useCatalog();
-  return <SidePanelCatalog items={items} disabledFor={id => disabledFor(id as PanelRegion)} disabledReasonFor={id => disabledReasonFor?.(id as PanelRegion)}
-    onOpen={id => id === "app:catalog" ? onOpenApp() : onOpen(id as PanelRegion)}
+  return <SidePanelCatalog<PanelCatalogEntry> items={items} disabledFor={id => disabledFor(id)} disabledReasonFor={disabledReasonFor}
+    onOpen={(id, trigger) => id === "artifact" ? onOpenArtifact(trigger) : id === "app:catalog" ? onOpenApp() : onOpen(id)}
     accessibleLabel={(item, reason) => reason ? t("chat.sidePanel.unavailableNamedPanel", { name: item.label, reason }) : t("chat.sidePanel.openNamedPanel", { name: item.label })} />;
 }

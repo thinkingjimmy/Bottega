@@ -9,7 +9,6 @@ import type { settingsSkillsEn } from "./en";
 export const settingsSkillsJa: typeof settingsSkillsEn = {
   refresh: "Skills を更新", importTitle: "Skills を追加",
   description: "個人 Library に一度取り込むと、有効な Skill をすべての対応会話で使えます。",
-  libraryTitle: "個人 Library",
   back: "戻る", localFolder: "ローカルフォルダー", chooseFolder: "フォルダーを選択…", importPrimary: "すべて取り込む", importSelected: "{{count}} 件を取り込んで有効化",
   backend: { codex: "Codex", claude: "Claude", kimi: "Kimi", opencode: "OpenCode" },
   sourceKind: { "local-folder": "ローカル", adopted: "取り込み済み", extension: "拡張" },

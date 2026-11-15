@@ -7,7 +7,6 @@
 export const settingsSkillsEn = {
   refresh: "Refresh Skills", importTitle: "Add Skills",
   description: "Import into your personal Library once, then use enabled Skills from every compatible conversation.",
-  libraryTitle: "Personal Library",
   back: "Back", localFolder: "Local folder", chooseFolder: "Choose a folder…",
   importPrimary: "Import all", importSelected: "Import and enable {{count}}",
   backend: { codex: "Codex", claude: "Claude", kimi: "Kimi", opencode: "OpenCode" },

@@ -12,7 +12,7 @@ import { useSetup } from "@/components/providers/setup-provider";
 import { SettingsButton } from "@/components/settings/settings-layout";
 import { OnboardingAgents } from "@/components/setup/onboarding-agents";
 import { settingsStore } from "@/lib/settings/store/settings-store";
-import { OnboardingActions, OnboardingFrame, onboardingCopyId } from "./frame";
+import { OnboardingActions, OnboardingFrame, onboardingCopyId } from "./shell/frame";
 import { initialOnboardingStep, type OnboardingStep } from "./plan";
 import { FolderStep } from "./steps/folder";
 

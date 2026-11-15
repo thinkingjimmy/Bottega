@@ -49,6 +49,7 @@ export type SettingsOverlaySection =
   | "browser"
   | "tools"
   | "usage"
+  /** Request alias only: background surfaces ask for "dock", selectSettings routes it to the Dock plugin page. Never a rendered overlay section. */
   | "dock"
   | "archive";
 

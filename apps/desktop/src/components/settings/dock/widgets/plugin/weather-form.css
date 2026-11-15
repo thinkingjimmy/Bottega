@@ -1,6 +1,6 @@
 /*
  * [INPUT]: Weather form markup and shared product surface tokens.
- * [OUTPUT]: Search, selected-city and size option states for the Weather form.
+ * [OUTPUT]: Search, selected-city and size option states for the Weather form, with Dock-strip size samples drawn on the live Widget tile.
  * [POS]: Lazy styles for official Weather settings.
  */
 .weather-city-field { display: grid; gap: 8px; }
@@ -63,12 +63,21 @@
 }
 .weather-size-choice input:focus-visible + .weather-size-tile { outline: 2px solid var(--ring); outline-offset: 1px; }
 .weather-size-choice input:disabled + .weather-size-tile { cursor: not-allowed; opacity: .55; }
+/* A slice of the Dock strip: the same 6 DIP inset and tile as the live Widget, so the sample is what the Dock shows. */
 .weather-size-preview {
   display: grid;
   flex: none;
-  place-items: center;
+  padding: 6px;
   overflow: hidden;
-  border-radius: var(--radius-md);
+  border-radius: 18px;
   background: var(--muted);
   color: var(--foreground);
+}
+.weather-size-face {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: light-dark(#fff, #2c2c2e);
+  box-shadow: inset 0 0 0 0.5px light-dark(rgb(0 0 0 / 0.08), rgb(255 255 255 / 0.12)), 0 1px 2px rgb(0 0 0 / 0.12);
 }

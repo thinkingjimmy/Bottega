@@ -5,6 +5,16 @@
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
 
+## 2026-11-15 — v0.4.6
+
+Version 0.4.6 supports macOS on Apple silicon (ARM64) and uses Cloud protocol **27**. [Release and installer](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.6)
+
+- **Use consistent dialogs and settings.** Desktop and Web use the same dialog layout. On narrow screens, dialogs open from the bottom. Retry failed saves from the affected settings row.
+- **Keep your workspace open while you change Project settings.** Open General, Instructions, Apps, Base and Skills in the right panel. Existing settings links still open the matching section.
+- **Open saved Artifacts from Chat.** Use the side panel's Add menu or catalog to reopen an Artifact from the current Chat. Drag the desktop sidebar to its usual width and it snaps into place.
+- **Set up Bottega and browse plugins.** First launch uses a full-window setup with a product preview. The Plugins page shows starter Apps and Widgets alongside what you already use.
+- **See richer Dock Widgets.** Weather uses the public Widget API for its tile and forecast. Widget authors can use the same display layouts and detail panels.
+
 ## 2026-11-13 — v0.4.5
 
 Version 0.4.5 supports macOS on Apple silicon (ARM64) and uses Cloud protocol **27**. [Release and installer](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.4.5)

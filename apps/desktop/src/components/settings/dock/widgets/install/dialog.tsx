@@ -6,11 +6,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
 } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogBody, AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
+import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   SettingsAlert,
   SettingsButton,
@@ -146,10 +144,8 @@ export function WidgetInstallDialog({
         if (!open && !pending) onClose();
       }}
     >
-      <DialogContent
+      <AppDialogContent
         data-widget-install-review=""
-        className="max-h-[85vh] overflow-y-auto"
-        showCloseButton={!pending}
         onEscapeKeyDown={(event) => {
           if (pending) event.preventDefault();
         }}
@@ -158,12 +154,11 @@ export function WidgetInstallDialog({
           onReturnFocus();
         }}
       >
-        <DialogTitle>
-          {t("systemDock.widgets.install.title", { name: review.name })}
-        </DialogTitle>
-        <DialogDescription>
-          {t(review.instances.length?"systemDock.widgets.install.hint":"systemDock.widgets.install.emptyHint")}
-        </DialogDescription>
+        <AppDialogHeader
+          title={t("systemDock.widgets.install.title", { name: review.name })}
+          description={t(review.instances.length?"systemDock.widgets.install.hint":"systemDock.widgets.install.emptyHint")}
+        />
+        <AppDialogBody className="space-y-4">
         {review.instances.length>0&&<ul
           className="space-y-2 rounded-md border p-3"
           aria-label={t("systemDock.widgets.install.instances")}
@@ -250,20 +245,24 @@ export function WidgetInstallDialog({
             ))}
           </div>
         )}
-        <DialogFooter>
-          <SettingsButton
-            variant="outline"
-            disabled={cancelling}
-            onClick={() => {if(installed){onInstalled?.();onClose();}else if(finished)onClose();else void cancel();}}
-          >
-            {t(
-              installed&&onInstalled?"systemDock.widgets.configure":finished
-                ? "systemDock.widgets.install.done"
-                : "systemDock.widgets.cancel",
-            )}
-          </SettingsButton>
+        </AppDialogBody>
+        <AppDialogFooter>
+          {installed && onInstalled ? (
+            <Button size="pill" disabled={cancelling} onClick={() => { onInstalled(); onClose(); }}>
+              {t("systemDock.widgets.configure")}
+            </Button>
+          ) : finished ? (
+            <Button size="pill" disabled={cancelling} onClick={onClose}>
+              {t("systemDock.widgets.install.done")}
+            </Button>
+          ) : (
+            <AppDialogCancel disabled={cancelling} onClick={() => void cancel()}>
+              {t("systemDock.widgets.cancel")}
+            </AppDialogCancel>
+          )}
           {!finished && (
-            <SettingsButton
+            <Button
+              size="pill"
               disabled={pending}
               aria-busy={pending}
               onClick={() => void confirm()}
@@ -275,10 +274,10 @@ export function WidgetInstallDialog({
                     ? "systemDock.widgets.install.update"
                     : "systemDock.widgets.install.confirm",
               )}
-            </SettingsButton>
+            </Button>
           )}
-        </DialogFooter>
-      </DialogContent>
+        </AppDialogFooter>
+      </AppDialogContent>
     </Dialog>
   );
 }

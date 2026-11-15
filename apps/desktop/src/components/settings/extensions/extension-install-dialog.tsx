@@ -7,14 +7,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppDialogBody,
+  AppDialogCancel,
   AppDialogContent,
+  AppDialogFooter,
+  AppDialogHeader,
 } from "@ai-chat/ui/components/ui/app-dialog";
+import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import {
@@ -43,6 +43,7 @@ import {
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { packageCopy } from "@ai-chat/ui/lib/plugin-install/copy";
 import { packageDisclosureCopy, packagePermissionLabels } from "@ai-chat/ui/lib/plugin-install/disclosure";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 
 /* ── 一颗种子分开两个入口 ────────────────────────────────────────
  * 「安装新扩展」与「检查某个已装扩展的更新」在产品语义上是两件事，
@@ -81,7 +82,7 @@ export function ExtensionInstallDialog({
 }) {
   return (
     <Dialog onOpenChange={onOpenChange} open={source !== null}>
-      <AppDialogContent className="sm:max-w-[34rem]">
+      <AppDialogContent>
         {/* 面板独立成组件：Radix 关闭即卸载，于是每次打开都是全新一次安装，
             生命周期本身就是重置，不必手写任何 reset 分支。 */}
         {source && (
@@ -277,21 +278,17 @@ function InstallPanel({
       : "install";
   return (
     <>
-      <DialogHeader className="shrink-0 gap-0 text-left">
-        <DialogTitle className="font-semibold text-lg">
-          {surface ? copy[stage === "source" ? "source" : stage === "update" ? "update" : "review"] : t(`settings.extensions.install.stage.${stage}.title`)}
-        </DialogTitle>
-        <DialogDescription className="mt-2 text-muted-foreground text-xs">
-          {preflight
+      <AppDialogHeader
+        title={surface ? copy[stage === "source" ? "source" : stage === "update" ? "update" : "review"] : t(`settings.extensions.install.stage.${stage}.title`)}
+        description={<>          {preflight
             ? t("settings.extensions.install.summary", {
                 url: preflight.source.normalizedUrl,
                 commit: preflight.source.resolvedCommit.slice(0, 12),
                 files: preflight.fileCount,
                 kilobytes: Math.ceil(preflight.totalBytes / 1024),
               })
-            : surface ? copy.description : t("settings.extensions.install.stage.source.description")}
-        </DialogDescription>
-      </DialogHeader>
+            : surface ? copy.description : t("settings.extensions.install.stage.source.description")}</>}
+      />
 
       <AppDialogBody className="mt-4 space-y-4">
         {preflight ? (
@@ -352,23 +349,28 @@ function InstallPanel({
         )}
       </AppDialogBody>
 
-      <DialogFooter className="mt-5 shrink-0 flex-row justify-end gap-3">
-        <SettingsButton
-          disabled={busy}
-          onClick={preflight ? back : onClose}
-          variant="ghost"
-        >
-          {preflight ? t("settings.extensions.install.back") : t("common.cancel")}
-        </SettingsButton>
-        <SettingsButton
+      <AppDialogFooter
+        leading={
+          preflight ? (
+            <Button size="pill" variant="ghost" disabled={busy} onClick={back}>
+              {t("settings.extensions.install.back")}
+            </Button>
+          ) : undefined
+        }
+      >
+        <AppDialogCancel disabled={busy} onClick={onClose}>
+          {t("common.cancel")}
+        </AppDialogCancel>
+        <Button
+          size="pill"
           disabled={busy || (!preflight && !repoUrl.trim())}
           onClick={() => (preflight ? void commit() : submit())}
         >
-          {t(
-            `settings.extensions.install.stage.${stage}.${busy ? "pending" : "commit"}`
+          {busy && <Spinner />}{t(
+            `settings.extensions.install.stage.${stage}.commit`
           )}
-        </SettingsButton>
-      </DialogFooter>
+        </Button>
+      </AppDialogFooter>
     </>
   );
 }

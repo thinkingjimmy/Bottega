@@ -5,7 +5,9 @@
  */
 import { useState } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import type { CloudAppCatalog } from "../../../../shared/cloud/apps/model";
 type Item = CloudAppCatalog["items"][number];
@@ -22,13 +24,12 @@ export function CloudAppRemovalDialog({ userId, item, onClose }: { userId: strin
     finally { setBusy(false); }
   };
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }}>
-    <DialogContent showCloseButton={!busy} className="max-h-[90dvh] overflow-y-auto">
-      <DialogHeader className="pr-8"><DialogTitle>{t("cloud.appRemoval.title", { name: item.name })}</DialogTitle>
-        <DialogDescription>{t("cloud.appRemoval.details")}</DialogDescription></DialogHeader>
+    <AppDialogContent className="max-h-[90dvh]">
+      <AppDialogHeader title={t("cloud.appRemoval.title", { name: item.name })} description={t("cloud.appRemoval.details")}/>
       {failed && <p role="alert" className="text-sm text-destructive">{t("cloud.appRemoval.failed")}</p>}
-      <DialogFooter><Button variant="ghost" disabled={busy} onClick={onClose}>{t("common.cancel")}</Button>
-        <Button disabled={busy || !item.localInstallation} onClick={() => void remove()}>{t(busy ? "cloud.appRemoval.removing" : "cloud.appRemoval.confirm")}</Button>
-      </DialogFooter>
-    </DialogContent>
+      <AppDialogFooter><AppDialogCancel disabled={busy} onClick={onClose}>{t("common.cancel")}</AppDialogCancel>
+        <Button size="pill" disabled={busy || !item.localInstallation} onClick={() => void remove()}>{busy && <Spinner />}{t("cloud.appRemoval.confirm")}</Button>
+      </AppDialogFooter>
+    </AppDialogContent>
   </Dialog>;
 }

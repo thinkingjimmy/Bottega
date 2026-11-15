@@ -30,7 +30,7 @@ export function KeyboardShortcutsSection({ children }: Pick<ComponentProps<typeo
     <ShortcutSettings
       copy={copy}
       apple={isApplePlatform()}
-      error={snapshot.error}
+      error={snapshot.error ? { title: copy.loadFailed, details: snapshot.error } : null}
       capture={captureBinding}
       hasOverrides={Object.keys(overrides ?? {}).length > 0}
       rows={SHORTCUT_IDS.map((id) => ({

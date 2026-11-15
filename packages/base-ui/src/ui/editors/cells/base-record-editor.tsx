@@ -7,8 +7,10 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { useCoarsePointer } from "@ai-chat/ui/hooks/use-mobile";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { cellValue, createBaseCellContext, isBaseAttachmentValue, type BaseCellValue, type BaseColumn, type BaseRow } from "@ai-chat/base-core/model/bases-ipc";
 import { BASE_ATTACHMENT_BYTE_LIMIT } from "@ai-chat/base-core/attachments/gallery-attachments";
 import { useAppTranslation } from "../../platform/i18n";
@@ -132,10 +134,9 @@ function RecordDialog({ columns: currentColumns, firstColumnId, record, initialV
   useEffect(() => draftSession?.register?.(draftScopeId, async () => { if (formRef.current) await save(formRef.current, true); }));
   const requiredImage = !record && Boolean(firstColumnId) && ordered[0]?.type === "attachment" && !files[ordered[0].id] && !isBaseAttachmentValue(values[ordered[0].id]);
   return <>
-    <Dialog open onOpenChange={changeOpen}><DialogContent sheetOnNarrow className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl"
+    <Dialog open onOpenChange={changeOpen}><AppDialogContent size="lg" className="max-h-[calc(100dvh-2rem)]"
       onOpenAutoFocus={event => { if (coarse) event.preventDefault(); }}>
-      <DialogHeader><DialogTitle>{t(record ? "bases.record.editTitle" : "bases.record.title")}</DialogTitle>
-        <DialogDescription>{t("bases.record.description")}</DialogDescription></DialogHeader>
+      <AppDialogHeader title={t(record ? "bases.record.editTitle" : "bases.record.title")} description={t("bases.record.description")}/>
       {retained && <p role="status" className="text-sm text-muted-foreground">{retained.notice}</p>}
       <form ref={formRef} onSubmit={event => { event.preventDefault(); if (retained) void retained.save(); else void save(event.currentTarget); }} onChangeCapture={markDirty} className="space-y-5">
         <BaseUIProvider value={fieldPlatform}><div className="space-y-4 py-2">{ordered.map(column => {
@@ -158,13 +159,12 @@ function RecordDialog({ columns: currentColumns, firstColumnId, record, initialV
           <progress aria-label={t("bases.record.uploading")} value={progress.bytes} max={Math.max(1, progress.total)} className="w-full" />
           <Button type="button" variant="outline" onClick={() => controller.current?.abort()}>{t("bases.record.cancelUpload")}</Button></div>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <DialogFooter className="sticky bottom-0 bg-background pt-3">
-          {retained?.keep && <Button type="button" variant="ghost" disabled={busy} onClick={retained.keep.run}>{retained.keep.label}</Button>}
-          <Button type="button" variant="outline" disabled={busy} onClick={() => changeOpen(false)}>{t("common.cancel")}</Button>
-          <Button type="submit" disabled={busy || requiredImage || (retained ? retained.saveDisabled : disabled || draftPort?.locked)}>{busy ? t("bases.record.saving") : retained?.saveLabel ?? t("common.save")}</Button>
-        </DialogFooter>
+        <AppDialogFooter leading={retained?.keep && <Button type="button" size="pill" variant="ghost" disabled={busy} onClick={retained.keep.run}>{retained.keep.label}</Button>}>
+          <AppDialogCancel type="button" disabled={busy} onClick={() => changeOpen(false)}>{t("common.cancel")}</AppDialogCancel>
+          <Button type="submit" size="pill" disabled={busy || requiredImage || (retained ? retained.saveDisabled : disabled || draftPort?.locked)}>{busy && <Spinner />}{retained?.saveLabel ?? t("common.save")}</Button>
+        </AppDialogFooter>
       </form>
-    </DialogContent></Dialog>
+    </AppDialogContent></Dialog>
     <ConfirmationDialog open={confirmLeave} title={t("bases.record.leaveTitle")} description={t("bases.record.leaveDescription")}
       confirmLabel={t("bases.record.discard")} cancelLabel={t("common.cancel")} onOpenChange={setConfirmLeave} onConfirm={close} />
   </>;

@@ -26,9 +26,9 @@ export async function readOfficialWidget(usage: DockUsage, itemId: string, widge
   signal.throwIfAborted();
   if (widget.pluginId === "bottega-ai-usage") return readUsageWidget(usage, itemId, usageConfiguration(widget.configuration), view);
   const value = await weatherOwner().read({ configuration: widget.configuration }, signal);
-  const { weather, detail } = value;
+  const { observation, detail } = value;
   const values = detail.reading.values;
-  return { city: weather.city, temperature: weather.temperature, code: weather.code, condition: values.condition,
-    today: weather.today, upcoming: weather.upcoming, updatedAt: detail.reading.updatedAt,
+  return { city: observation.city, temperature: observation.temperature, code: observation.code, condition: values.condition,
+    today: observation.today, upcoming: observation.upcoming, updatedAt: detail.reading.updatedAt,
     ...(view === "detail" ? { feelsLike: values["feels-like"], humidity: values.humidity, timeZone: detail.timeZone } : {}) };
 }

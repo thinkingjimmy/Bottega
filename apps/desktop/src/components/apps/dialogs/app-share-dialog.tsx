@@ -11,17 +11,17 @@ import { AppCompatibilityRequiredError } from "@/lib/apps/apps-client";
 import type { AppCompatibilityFailure } from "../../../../shared/app-host/contract";
 import { useEffect, useState } from "react";
 import {
+  AppDialogAlert,
   AppDialogBody,
+  AppDialogCancel,
   AppDialogContent,
+  AppDialogFooter,
+  AppDialogHeader,
   DialogChoice,
 } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
@@ -166,7 +166,7 @@ export function AppShareDialog({
         }
       }}
     >
-      <AppDialogContent className="sm:max-w-2xl">
+      <AppDialogContent size="lg">
         {compatibility ? (
           <CompatibilityReminder
             failure={compatibility}
@@ -175,14 +175,10 @@ export function AppShareDialog({
           />
         ) : (
           <>
-            <DialogHeader className="mb-5 shrink-0 gap-0 text-left">
-              <DialogTitle className="text-xl/7 font-semibold">
-                {t("apps.share.title")}
-              </DialogTitle>
-              <DialogDescription className="mt-3 text-[15px]/[1.4]">
-                {t("apps.share.description")}
-              </DialogDescription>
-            </DialogHeader>
+            <AppDialogHeader
+              title={t("apps.share.title")}
+              description={t("apps.share.description")}
+            />
             <AppDialogBody className="flex flex-col gap-4">
               {detecting ? (
                 <p
@@ -297,23 +293,10 @@ export function AppShareDialog({
                   )}
                 </div>
               )}
-              {error && (
-                <p className="text-[13px]/[1.45] text-destructive" role="alert">
-                  {error}
-                </p>
-              )}
+              {error && <AppDialogAlert>{error}</AppDialogAlert>}
             </AppDialogBody>
-            <DialogFooter className="mt-5 shrink-0 sm:gap-3">
-              <Button
-                className="text-muted-foreground hover:text-foreground"
-                disabled={busy}
-                onClick={() => onOpenChange(false)}
-                size="pill"
-                type="button"
-                variant="ghost"
-              >
-                {t("common.cancel")}
-              </Button>
+            <AppDialogFooter>
+              <AppDialogCancel disabled={busy} onClick={() => onOpenChange(false)} />
               {preview && (
                 <Button
                   disabled={busy}
@@ -335,7 +318,7 @@ export function AppShareDialog({
                 {busy && <Spinner />}
                 {primary.label}
               </Button>
-            </DialogFooter>
+            </AppDialogFooter>
           </>
         )}
       </AppDialogContent>

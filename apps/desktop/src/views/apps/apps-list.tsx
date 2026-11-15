@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on parent-owned surface visibility, the shared Dock settings store, lazy Widget management and localized Dock section, React/router navigation/progress and rejected-destination state, i18n, AppsProvider, shared App catalog/card presentation, Tabs, a Widget action portal, AddAppDialog, PresetShelf/PresetInstallDialog, Sheet and PageShell.
+ * [INPUT]: Depends on parent-owned surface visibility, the shared Dock settings store, lazy Widget management and localized Dock section, React/router navigation/progress and rejected-destination state, i18n, AppsProvider, shared App catalog/card presentation, Tabs, a Widget action portal, AddAppDialog opened from the Add menu or the GitHub row, the Mac App Store presentation (apps-store), PresetInstallDialog, Sheet and PageShell.
  * [OUTPUT]: Provides AppsListView with localized category tabs and add actions below the page header, an enabled-only Widget catalog, Cloud Dev portable entries, loading cards, explicit local installation and rejected App navigation evidence. Preset authorization leads to canonical App detail while Web installs show progress. Owns one Dock subscription for tab availability and independent App shortcuts.
  * [POS]: apps/desktop/src/views/apps; Apps route composition; local installations, portable cloud entries and first-party acquisition retain their existing domain owners
  */
@@ -9,14 +9,14 @@ import { CompatibilityRequests } from "@/components/apps/compatibility/requests"
 import { CloudAppsCatalog } from "@/components/apps/cloud/catalog";
 import type { AppCompatibilityFailure } from "../../../shared/app-host/contract";
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import { AddAppHint } from "@/components/apps/cards/add-app-hint";
 import { AddAppDialog } from "@/components/apps/install/add-app-dialog";
+import { StoreSection } from "@/components/apps/cards/store";
+import { AppsAddMenu, AppsMoreToTry, AppsStarterStore } from "./apps-store";
 import { AppCard } from "@/components/apps/cards/app-card";
 import { AppProgressDialog } from "@/components/apps/dialogs/app-progress-dialog";
 import { isWorkingState } from "@/components/apps/app-state";
 import {
   PresetInstallDialog,
-  PresetShelf,
 } from "@/components/apps/install/preset-app-shelf";
 import { PageShell } from "@/components/page-shell";
 import {
@@ -125,7 +125,6 @@ export function EmptyAppsPanel({
       title={t(warning ? "apps.listUnavailable" : "apps.empty")}
       description={t(warning ? "apps.listUnavailableLead" : "apps.emptyLead")}
       warning={warning}
-      hint={<AddAppHint />}
     >
       {children}
     </AppCatalogEmpty>
@@ -243,6 +242,8 @@ export function AppsListView({ surfaceVisible = true }: { surfaceVisible?: boole
     acknowledgeSidebarStatus();
   }, [acknowledgeSidebarStatus, sidebarStatus]);
 
+  const [gitHubSignal, setGitHubSignal] = useState(0);
+  const openGitHub = () => setGitHubSignal(value => value + 1);
   const appCatalog = <>
     {window.cloudApps && <CloudAppsCatalog />}
     <CompatibilityRequests
@@ -252,53 +253,67 @@ export function AppsListView({ surfaceVisible = true }: { surfaceVisible?: boole
     {loading ? (
       <AppCatalogSkeleton label={t("apps.loading")} />
     ) : apps.length === 0 ? (
-      <EmptyAppsPanel warning={listWarning}>
-        <PresetShelf onSelect={openPreset} />
-      </EmptyAppsPanel>
+      listWarning ? <EmptyAppsPanel warning={listWarning} /> : <AppsStarterStore onSelect={openPreset} onInstallFromGitHub={openGitHub} />
     ) : (
-      <AppCatalogGrid>
-        {apps.map((app) => (
-          <AppCard key={app.record.id} app={app} dock={dock} onOpenProgress={openProgress} />
-        ))}
-      </AppCatalogGrid>
+      <>
+        <StoreSection title={t("apps.catalog.yours")}>
+          <AppCatalogGrid>
+            {apps.map((app) => (
+              <AppCard key={app.record.id} app={app} dock={dock} onOpenProgress={openProgress} />
+            ))}
+          </AppCatalogGrid>
+        </StoreSection>
+        <AppsMoreToTry onSelect={openPreset} />
+      </>
     )}
   </>;
 
+  const pluginsTitle = pluginContextCopy(i18n.language).plugins;
   return (
     <>
       <Tabs value={selectedTab} onValueChange={selectTab} className="h-full min-h-0 gap-0">
-        <PageShell title={pluginContextCopy(i18n.language).plugins} icon={<LayoutGrid />}>
-          <div className="flex h-full min-h-0 flex-col">
-            <div data-app-catalog-toolbar="" className="mx-4 mt-2 flex min-h-11 shrink-0 items-center gap-2">
-              {dockEnabled && (
-                <TabsList
-                  aria-label={t("apps.catalog.filter")}
-                  className="relative isolate min-h-11 bg-transparent p-0 before:absolute before:inset-x-0 before:inset-y-2 before:-z-10 before:rounded-lg before:bg-muted/70"
-                >
-                  {([['apps', t('common.apps')], ['widgets', t('apps.catalog.widgets')]] as const).map(([value, label]) => (
-                    <TabsTrigger
-                      key={value}
-                      value={value}
-                      className="relative isolate min-h-11 border-0 px-3 text-xs font-medium transition-colors before:absolute before:inset-x-1 before:inset-y-2.5 before:-z-10 before:rounded-md data-active:bg-transparent data-active:before:bg-background data-active:before:shadow-sm dark:data-active:bg-transparent"
-                    >
-                      {label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              )}
-              <div
-                ref={selectedTab === "widgets" ? setWidgetActionsContainer : undefined}
-                className="ml-auto flex shrink-0 items-center"
-              >
-                {selectedTab === "apps" && (
-                  <AddAppDialog
-                    onInstallStarted={openProgress}
-                    resumeRequestId={repoResumeId}
-                    onResumeClosed={() => setRepoResumeId(undefined)}
-                  />
-                )}
-              </div>
+        {/* With Dock on, the category switch is the page header itself: one 48 px bar holds the segmented control and the
+            add action, so no title strip or second toolbar takes vertical space. Dock off keeps the ordinary titled header. */}
+        <PageShell
+          title={dockEnabled ? undefined : pluginsTitle}
+          icon={dockEnabled ? undefined : <LayoutGrid />}
+          className={dockEnabled ? "[--page-shell-header-height:3rem]" : undefined}
+          leading={dockEnabled ? (
+            <TabsList
+              data-app-catalog-tabs=""
+              variant="line"
+              aria-label={t("apps.catalog.filter")}
+              className="relative isolate w-fit shrink-0 gap-0 group-data-horizontal/tabs:h-11 before:absolute before:inset-x-0 before:inset-y-1 before:-z-10 before:rounded-lg before:bg-muted/70"
+            >
+              {([["apps", t("common.apps")], ["widgets", t("apps.catalog.widgets")]] as const).map(([value, label]) => (
+                <TabsTrigger key={value} value={value}
+                  className="isolate min-w-24 px-5 text-sm after:hidden before:absolute before:inset-x-0.5 before:inset-y-1.5 before:-z-10 before:rounded-md data-active:before:bg-background data-active:before:shadow-sm">
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          ) : undefined}
+          actions={
+            <div
+              data-app-catalog-actions=""
+              ref={selectedTab === "widgets" ? setWidgetActionsContainer : undefined}
+              className="flex shrink-0 items-center"
+            >
+              {selectedTab === "apps" && <>
+                <AppsAddMenu onInstallFromGitHub={openGitHub} />
+                <AddAppDialog
+                  hideTrigger
+                  openSignal={gitHubSignal}
+                  onInstallStarted={openProgress}
+                  resumeRequestId={repoResumeId}
+                  onResumeClosed={() => setRepoResumeId(undefined)}
+                />
+              </>}
             </div>
+          }
+        >
+          <div className="flex h-full min-h-0 flex-col">
+            {dockEnabled && <h1 className="sr-only">{pluginsTitle}</h1>}
             <AppCatalogBody>
               {navigationError && (
                 <p

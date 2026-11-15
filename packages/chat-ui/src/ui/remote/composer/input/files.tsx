@@ -8,7 +8,8 @@ import { ImageIcon, ImageOffIcon, PencilIcon } from "lucide-react";
 import { AttachmentTile, AttachmentGroup } from "@ai-chat/ui/components/ui/attachment";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { PromptInputHeader } from "@ai-chat/ui/components/ai-elements/prompt-input";
-import { Dialog, DialogContent, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogContent, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useSaveLink } from "@ai-chat/ui/lib/save-blob";
@@ -61,11 +62,11 @@ export function RemoteDraftFiles({ draft, locale, disabled, unsupported, remove,
       <span className="min-w-0 flex-1 break-words">{file.file.name} · {draftFileFailure(file, copy)}</span>
       <Button type="button" variant="outline" size="pill" disabled={disabled} onClick={() => retry(file)}>{copy.retry}</Button>
     </div>)}
-    <Dialog open={Boolean(shown)} onOpenChange={open => { if (!open) { setLightbox(null); onPreview(null); } }}><DialogContent><DialogTitle>{shown?.file.name}</DialogTitle>
+    <Dialog open={Boolean(shown)} onOpenChange={open => { if (!open) { setLightbox(null); onPreview(null); } }}><AppDialogContent size="xl" showCloseButton><AppDialogHeader title={shown?.file.name}/>
       {shown && isImageFile(shown) && <img src={shown.preview} alt={shown.file.name} className="max-h-[70dvh] w-full object-contain" />}
       {shown?.pluginSource && !editable(shown.id) && <p role="status">{t("sketch.versionRequired")}</p>}
       {shown && <PreviewSave key={shown.preview} url={shown.preview} name={shown.file.name} label={copy.download} />}
-    </DialogContent></Dialog>
+    </AppDialogContent></Dialog>
   </>;
 }
 /* Keyed by file so a failure sentence never outlives the preview it belongs to. */

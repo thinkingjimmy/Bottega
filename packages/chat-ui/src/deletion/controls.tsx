@@ -6,7 +6,9 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import type { ChatDeletionController } from "./session";
 import { chatDeletionCopy } from "./copy";
 export function ChatDeletion({ head, session, locale, connected, disabled = false, deleted = false, durable = false, initiallyOpen = false, hideTrigger = false, blocked = null, onUnresolvedChange, onDismiss }: {
@@ -43,12 +45,12 @@ export function ChatDeletion({ head, session, locale, connected, disabled = fals
       <Button variant="outline" disabled={disabled || !canSubmit || !conflictReady} onClick={() => setReview(head)}>{copy.review}</Button>
       <Button variant="outline" onClick={() => void keep()}>{copy.keep}</Button></div></div>}
     <Dialog open={review !== null && !removed} onOpenChange={open => { if (!open && !busy) dismiss(); }}>
-      <DialogContent showCloseButton={!busy}><DialogHeader><DialogTitle>{copy.title}</DialogTitle><DialogDescription>{copy.detail}</DialogDescription></DialogHeader>
+      <AppDialogContent><AppDialogHeader title={copy.title} description={copy.detail}/>
         <p>{review?.chat.title ?? copy.unnamed}</p>
-        <DialogFooter><Button size="pill" variant="outline" disabled={busy} onClick={dismiss}>{copy.cancel}</Button>
+        <AppDialogFooter><AppDialogCancel disabled={busy} onClick={dismiss}>{copy.cancel}</AppDialogCancel>
           <Button size="pill" variant="destructive" disabled={disabled || !canSubmit || busy || state.stage === "failed" || !review}
-            onClick={() => { if (review) void finish(session.submit(review)); }}>{busy ? copy.deleting : copy.action}</Button></DialogFooter>
-      </DialogContent>
+            onClick={() => { if (review) void finish(session.submit(review)); }}>{busy && <Spinner />}{copy.action}</Button></AppDialogFooter>
+      </AppDialogContent>
     </Dialog>
   </section>;
 }

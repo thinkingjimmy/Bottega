@@ -14,8 +14,6 @@ export const weatherZhCN={
   "cancelCityChange": "取消更换",
   "noCities": "未找到城市。",
   "today": "今天",
-  "dailyRange": "最高 {{high}}°C，最低 {{low}}°C",
-  "forecastUnavailable": "暂无预报",
   "sizeCurrent": "当前天气",
   "sizeToday": "当前天气和今日最高、最低温",
   "sizeForecast": "当前天气和未来三天预报",

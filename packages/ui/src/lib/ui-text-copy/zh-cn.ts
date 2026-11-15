@@ -5,6 +5,7 @@
  */
 export const uiTextZhCn = {
   cancel: "取消",
+  retry: "重试",
   uploadFiles: "上传文件",
   loadingRichContent: "正在加载富内容",
   loading: "加载中",

@@ -6,7 +6,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoaderCircle, Sparkles } from "lucide-react";
-import { useSearchParams } from "react-router";
 import { PROJECT_UNAVAILABLE, type Project } from "../../../../../shared/ipc/workspace/projects-ipc";
 import type { SkillInfo, SkillsListResult } from "../../../../../shared/ipc/agent/skills-ipc";
 import { useSetup } from "@/components/providers/setup-provider";
@@ -38,9 +37,8 @@ function projectSkillUnion(results: readonly SkillsListResult[], projectId: stri
   );
 }
 
-export function ProjectSkillsSettings({ project }: { project: Project }) {
+export function ProjectSkillsSettings({ project, packageFilter }: { project: Project; packageFilter?: string }) {
   const { t } = useAppTranslation();
-  const [searchParams] = useSearchParams();
   const setup = useSetup();
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,7 +98,7 @@ export function ProjectSkillsSettings({ project }: { project: Project }) {
   const skillImport = useSkillImport({ onImported: () => void load() });
   const noWorkspace = workspaceUnavailable || project.workspaceBinding.kind === "none";
   const needle = query.trim().toLocaleLowerCase();
-  const packageIdentity = searchParams.get("package");
+  const packageIdentity = packageFilter ?? null;
   const showSearch = Boolean(skills.length || packageIdentity || query);
   const shown = skills.filter((skill) =>
     (!packageIdentity || skill.extensionInstallIdentity === packageIdentity) &&

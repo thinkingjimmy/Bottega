@@ -5,7 +5,8 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { artifactFenceSchema, type ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import type { WorkspaceRead } from "@ai-chat/cloud-protocol/artifacts/design/model";
 import type { ArtifactHost } from "../context";
@@ -33,12 +34,12 @@ export function ProjectImportDialog({ host, fence, close }: { host: ArtifactHost
     } catch { if (!signal.aborted) setError(true); }
     finally { active.current = false; if (!signal.aborted) setBusy(false); }
   };
-  return <Dialog open onOpenChange={open => { if (!open && !busy) close(); }}><DialogContent aria-busy={busy} className="max-w-[min(480px,calc(100vw-24px))]">
-    <DialogHeader><DialogTitle>{copy.title}</DialogTitle><DialogDescription>{copy.description}</DialogDescription></DialogHeader>
+  return <Dialog open onOpenChange={open => { if (!open && !busy) close(); }}><AppDialogContent aria-busy={busy}>
+    <AppDialogHeader title={copy.title} description={copy.description}/>
     {!nativePicker && !fence && <><input ref={picker} hidden style={{display:"none"}} type="file" accept=".zip,application/zip" aria-label={copy.choose} disabled={busy || pending} onChange={event => { const selected = event.target.files?.[0]; if (selected) { request.current = crypto.randomUUID(); setFile(selected); setError(false); } }} /><Button type="button" variant="outline" disabled={busy || pending} onClick={()=>picker.current?.click()}>{copy.choose}</Button><p className="text-xs text-muted-foreground">{copy.limit}</p></>}
     {(fence || file) && <p className="truncate text-sm">{fence?.title ?? file?.name}</p>}
     {busy && <div role="status" className="space-y-2 text-sm"><p>{copy.busy}</p><progress aria-label={copy.busy} className="w-full" /></div>}
     {pending && <p role="status" className="text-sm">{copy.pending}</p>}{error && <p role="alert" className="text-sm text-destructive">{copy.failed}</p>}
-    <DialogFooter><Button type="button" variant="outline" disabled={busy} onClick={close}>{copy.cancel}</Button><Button type="button" disabled={busy || !nativePicker && !fence && !file} onClick={() => void perform()}>{pending ? copy.retry : nativePicker ? copy.choose : copy.import}</Button></DialogFooter>
-  </DialogContent></Dialog>;
+    <AppDialogFooter><AppDialogCancel type="button" disabled={busy} onClick={close}>{copy.cancel}</AppDialogCancel><Button size="pill" type="button" disabled={busy || !nativePicker && !fence && !file} onClick={() => void perform()}>{pending ? copy.retry : nativePicker ? copy.choose : copy.import}</Button></AppDialogFooter>
+  </AppDialogContent></Dialog>;
 }

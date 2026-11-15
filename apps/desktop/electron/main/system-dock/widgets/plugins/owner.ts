@@ -1,12 +1,12 @@
 /**
- * [INPUT]: Depends on unified bounded plugin catalog summaries with selected full Widget details, accepted revisions/live activation identities, city configuration and forecast validation, the Dock layout CAS store, bounded summaries/native details and isolated Surface leases.
- * [OUTPUT]: Manages plugin Widget definitions and instances, package readiness, native Weather summaries and scoped isolated cards.
+ * [INPUT]: Depends on unified bounded plugin catalog summaries with selected full Widget details, accepted revisions/live activation identities, city configuration, the Dock layout CAS store, bounded summary envelopes/native details and isolated Surface leases.
+ * [OUTPUT]: Manages plugin Widget definitions and instances, package readiness, versioned public summary envelopes and scoped isolated cards.
  * [POS]: Unified Dock plugin owner; runtime code, configuration and business data have separate identities and lifetimes.
  */
 import { pluginWidgetDetailSchema, type PluginWidgetDetail } from '../../../../../shared/system-dock/widgets/plugin/detail';
-import { WEATHER_PLUGIN_ID, weatherConfigurationSchema, weatherFaceSchema } from '../../../../../shared/system-dock/widgets/weather';
+import { WEATHER_PLUGIN_ID, weatherConfigurationSchema } from '../../../../../shared/system-dock/widgets/weather';
 import { weatherDefinitionCopy } from '../../../../../shared/system-dock/widgets/weather/labels';
-import { describeWeather } from '../../../../../shared/system-dock/widgets/weather/copy';
+import { summaryDescription } from '../../../../../shared/system-dock/widgets/presentation';
 import { readyOfficialWidget } from "../../../plugins/platform/official-widgets/identity";
 import { isOfficialWidgetId, nativeWidgetType, officialDefinitionId, officialWidgetIds, OFFICIAL_WIDGETS, type OfficialWidgetId } from "../../../../../shared/system-dock/widgets/catalog/official";
 import { entryLabel } from "../../projection";
@@ -20,7 +20,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { PluginDockCopyTargets, PluginWidgetCopyInput } from "./copy-targets";
 import { z } from "zod";
-import { dockSummaryNodeSchema, DOCK_SUMMARY_LIMITS, summaryDimensions } from "@bottega/contracts/plugins/dock/summary";
+import { DOCK_SUMMARY_LIMITS, dockSummaryEnvelopeSchema, summaryDimensions, type DockDetailDocument } from "@bottega/contracts/plugins/dock/summary";
 import type { UnifiedPluginPlatform } from "../../../plugins/platform/service";
 import type { UnifiedPluginSurfaceGateway } from "../../../plugins/platform/gateway";
 import type { DockConfigStore } from "../../store/config-store";
@@ -36,7 +36,7 @@ type Integration = { platform: Pick<UnifiedPluginPlatform, "get" | "list" | "act
   invoke?(input: { pluginId: string; revision: string; activationId: string; method: string; input: unknown; signal: AbortSignal }): Promise<unknown> };
 type Ports = { userData: string; config: DockConfigStore; integration(): Integration | null; changed(): void; masked(): boolean; locale?(): Parameters<typeof entryLabel>[0];
   usage?(): DockUsage; officialDirectory?(): OfficialWidgetDirectory; bundled?(id: OfficialWidgetId): boolean };
-type Summary = { detail?: PluginWidgetDetail; key: string; face: CustomWidgetFace; at: number; updatedAt: number | null; flight?: Promise<void>; controller: AbortController };
+type Summary = { detail?: PluginWidgetDetail; document?: DockDetailDocument; key: string; face: CustomWidgetFace; at: number; updatedAt: number | null; flight?: Promise<void>; controller: AbortController };
 function needsSetup(widget: PluginDockWidget) {
   if (widget.pluginId === WEATHER_PLUGIN_ID) return !weatherConfigurationSchema.safeParse(widget.configuration).success;
   return Boolean(nativeWidgetType(widget.pluginId, widget.contributionId) && !nativeDockWidget(widget));
@@ -238,8 +238,8 @@ export class PluginDockWidgets {
   }
   detail(item: WidgetItem, edge: "bottom" | "left" | "right"): CustomWidgetDetail {
     const cached = this.summaries.get(item.id), face = this.face(item, edge), widget = this.widget(item);
-    const detail = widget && !this.ports.masked() && cached?.key === this.key(widget) ? cached?.detail : undefined;
-    return {itemId:item.id,name:item.label??"",face,data:detail&&face.state==='ready'?[{...detail,reading:{...detail.reading,...(face.summaryError?{state:'stale' as const}:{})}}]:[],
+    const detail = widget && !this.ports.masked() && cached?.key === this.key(widget) ? cached : undefined;
+    return {itemId:item.id,name:item.label??"",face,document:detail?.document,data:detail?.detail&&face.state==='ready'?[{...detail.detail,reading:{...detail.detail.reading,...(face.summaryError?{state:'stale' as const}:{})}}]:[],
       updatedAt:this.ports.masked() ? null : cached?.updatedAt??null,surface:null,actions:[]};
   }
   setVisible(surface: DockSurface, widgets: readonly { itemId: string; widget: DockWidget }[], windowId?: number) {
@@ -308,7 +308,7 @@ export class PluginDockWidgets {
     const key = this.key(item.widget), prior = this.summaries.get(itemId);
     if (prior?.flight || !force && prior?.key === key && Date.now() - prior.at < (hostWeather ? 900_000 : summary?.refreshMs ?? 60_000)) return;
     const retained = prior?.key === key && prior.face.state === "ready" && prior.face.summary ? prior : undefined;
-    const controller = new AbortController(), entry: Summary = { detail: retained?.detail, key, at: Date.now(), updatedAt: retained?.updatedAt ?? null, controller,
+    const controller = new AbortController(), entry: Summary = { detail: retained?.detail, document: retained?.document, key, at: Date.now(), updatedAt: retained?.updatedAt ?? null, controller,
       face: retained ? { ...retained.face, refreshing: true } : { type: "custom", size: item.widget.size, state: "loading", summary: null, description: null, readings: {}, refreshing: true } };
     this.summaries.set(itemId, entry);
     entry.flight = (async () => {
@@ -318,14 +318,18 @@ export class PluginDockWidgets {
           ? await weatherOwner().read({ configuration: item.widget.configuration, force }, signal)
           : await this.integration().invoke!({ pluginId: item.widget.pluginId, revision: definition.revision!.revisionId, activationId: definition.activationId!, method: summary!.method,
           input: { instanceId: item.widget.instanceId, configuration: structuredClone(item.widget.configuration), force }, signal });
-        if (Buffer.byteLength(JSON.stringify(value)) > DOCK_SUMMARY_LIMITS.bytes) throw new Error("Plugin Widget summary exceeds budget");
-        const raw = value && typeof value === "object" && "summary" in value ? (value as { summary: unknown }).summary : value;
-        const parsed = dockSummaryNodeSchema.parse(raw);
-        const detail=value&&typeof value==='object'&&'detail'in value?pluginWidgetDetailSchema.parse(value.detail):undefined;
-        const weather = item.widget.pluginId === WEATHER_PLUGIN_ID && value && typeof value === 'object' && 'weather' in value
-          ? weatherFaceSchema.parse(value.weather) : undefined;
-        const description = weather ? describeWeather(weather, item.widget.size, this.ports.locale?.() ?? 'en') : null;
-        if (!controller.signal.aborted && this.summaries.get(itemId) === entry) { entry.detail=detail; entry.updatedAt = Date.now(); entry.face = { ...entry.face, state: "ready", summary: parsed, weather, description, refreshing: false, summaryError: undefined, summaryErrorCode: undefined }; }
+        const publicResult = hostWeather && value && typeof value === "object"
+          ? (({ observation: _observation, ...rest }) => rest)(value as { observation?: unknown } & Record<string, unknown>) : value;
+        if (Buffer.byteLength(JSON.stringify(publicResult)) > DOCK_SUMMARY_LIMITS.bytes) throw new Error("Plugin Widget summary exceeds budget");
+        const envelope = dockSummaryEnvelopeSchema.parse(publicResult);
+        const declared = "type" in envelope ? envelope : envelope.summary;
+        const layouts = "type" in declared ? undefined : declared;
+        const parsed = ("type" in declared ? declared : declared[item.widget.size]) ?? null;
+        const readings = "type" in envelope ? {} : envelope.readings ?? {};
+        const document = "type" in envelope ? undefined : envelope.document;
+        const detail = "type" in envelope || envelope.detail === undefined ? undefined : pluginWidgetDetailSchema.parse(envelope.detail);
+        const description = parsed ? summaryDescription(parsed, readings, this.ports.locale?.() ?? "en") : null;
+        if (!controller.signal.aborted && this.summaries.get(itemId) === entry) { entry.detail=detail; entry.document=document; entry.updatedAt = Date.now(); entry.face = { ...entry.face, state: "ready", summary: parsed, layouts, readings, description, refreshing: false, summaryError: undefined, summaryErrorCode: undefined }; }
       } catch (cause) { if (!controller.signal.aborted) {
         const code=/WEATHER_(?:RATE_LIMITED|NETWORK_FAILED|RESPONSE_INVALID)/.exec(cause instanceof Error ? cause.message : '')?.[0];
         entry.face={...entry.face,state:retained?'ready':'failed',refreshing:false,summaryError:retained?true:undefined,summaryErrorCode:code};

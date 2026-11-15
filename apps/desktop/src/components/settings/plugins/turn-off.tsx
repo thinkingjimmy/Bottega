@@ -50,14 +50,15 @@ export function usePluginSwitch({ bridge, workbench, locale, computerName, plugi
   computerName?: string;
   /** The latest catalog read: a change ends whatever kept a plugin busy. */
   plugins: readonly PluginView[] | null;
-}): { state: CardState; failed: string | null; toggle(plugin: PluginView, enabled: boolean): void; dialog: ReactNode } {
+}): { state: CardState; failed: { message: string; retry: { plugin: PluginView; enabled: boolean } } | null; toggle(plugin: PluginView, enabled: boolean): void; dialog: ReactNode } {
   const copy = workbench.plugins;
   const [confirm, setConfirm] = useState<{ plugin: PluginView; impact: PluginDisableImpact } | null>(null);
   const [pending, setPending] = useState<CardState["pending"]>(null);
   /* The card whose turn-off impact is being read; it cannot be clicked twice either. */
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [notes, setNotes] = useState<CardState["notes"]>({});
-  const [failed, setFailed] = useState<string | null>(null);
+  /* A failed switch keeps the op it came from so the alert's Retry can run it again. */
+  const [failed, setFailed] = useState<{ message: string; retry: { plugin: PluginView; enabled: boolean } } | null>(null);
   const changing = useRef(false);
   // A catalog change is the end of whatever kept a plugin busy: its switch opens again (nothing retries on its own).
   const [previous, setPrevious] = useState(plugins);
@@ -75,7 +76,7 @@ export function usePluginSwitch({ bridge, workbench, locale, computerName, plugi
       const code = errorMessage(error);
       setConfirm(null);
       if (code === "plugin-busy" || code === "plugin-reinstall-required") setNotes(current => ({ ...current, [plugin.id]: code === "plugin-busy" ? "busy" : "reinstall" }));
-      else setFailed(formatWorkbench(copy.switchFailed, { name: nameOf(plugin) }));
+      else setFailed({ message: formatWorkbench(copy.switchFailed, { name: nameOf(plugin) }), retry: { plugin, enabled } });
     }
     finally { changing.current = false; setPending(null); }
   };
@@ -84,7 +85,7 @@ export function usePluginSwitch({ bridge, workbench, locale, computerName, plugi
     if (!bridge || previewing) return;
     setPreviewing(plugin.id);
     try { setConfirm({ plugin, impact: await bridge.disableImpact(plugin.id) }); }
-    catch { setFailed(formatWorkbench(copy.switchFailed, { name: nameOf(plugin) })); }
+    catch { setFailed({ message: formatWorkbench(copy.switchFailed, { name: nameOf(plugin) }), retry: { plugin, enabled } }); }
     finally { setPreviewing(null); }
   };
   const name = confirm ? nameOf(confirm.plugin) : "";

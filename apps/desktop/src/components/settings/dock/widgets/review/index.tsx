@@ -4,7 +4,10 @@
  * [POS]: Shared source/version review; no form changes a running instance or grants another instance access.
  */
 import {useRef,useState} from 'react';
-import {Dialog,DialogContent,DialogTitle,DialogDescription,DialogFooter} from '@ai-chat/ui/components/ui/dialog';
+import {Dialog} from '@ai-chat/ui/components/ui/dialog';
+import {Button} from '@ai-chat/ui/components/ui/button';
+import {AppDialogBody,AppDialogCancel,AppDialogContent,AppDialogFooter,AppDialogHeader} from '@ai-chat/ui/components/ui/app-dialog';
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import {defaultDockSettings} from '@bottega/contracts/plugins/dock/settings';
 import {useAppTranslation} from '@/components/providers/preferences/i18n-provider';
 import {SettingsAlert,SettingsButton} from '@/components/settings/settings-layout';
@@ -28,13 +31,15 @@ export function WidgetUpdateReviewDialog({preview,initial,onSubmit,onClose,onApp
  };
  if(form)return <WidgetConfiguration preview={form} draft={drafts[form.itemId!]!} onDraft={draft=>setDrafts(previous=>({...previous,[form.itemId!]:draft}))} kind="review" onClose={()=>setForm(null)} onReturnFocus={()=>requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>(`[data-widget-update-item="${form.itemId}"] button`)?.focus())}
   onSubmit={async input=>{const next=await window.systemDockSettings!.stageWidgetUpdate({...input,itemId:form.itemId!,expectedMappingRevision:form.mappingRevision});setReview(next);operation.current=null;setResult(null);return'success';}}/>;
- return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose();}}><DialogContent showCloseButton={!busy} className="max-h-[85vh] overflow-y-auto" onCloseAutoFocus={event=>{event.preventDefault();onReturnFocus();}} onEscapeKeyDown={event=>{if(busy)event.preventDefault();}}>
-  <DialogTitle>{t('systemDock.widgets.review.title')}</DialogTitle><DialogDescription>{t('systemDock.widgets.review.hint')}</DialogDescription>
+ return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose();}}><AppDialogContent size="lg" onCloseAutoFocus={event=>{event.preventDefault();onReturnFocus();}} onEscapeKeyDown={event=>{if(busy)event.preventDefault();}}>
+  <AppDialogHeader title={t('systemDock.widgets.review.title')} description={t('systemDock.widgets.review.hint')}/>
+  <AppDialogBody className="space-y-4">
   <ul className="grid gap-3">{review.items.map(item=><li key={item.itemId} data-widget-update-item={item.itemId} className="flex items-center justify-between gap-3 rounded-md border p-3">
    <div className="min-w-0 text-sm"><p className="truncate">{item.name}</p><p className="text-xs text-muted-foreground">{t(item.configurationRequired?'systemDock.widgets.review.configuration':item.authorizationRequired?'systemDock.widgets.review.authorization':item.reviewed?'systemDock.widgets.review.reviewed':'systemDock.widgets.review.ready')}</p></div>
    <SettingsButton variant="outline" disabled={busy} onClick={()=>void open(item.itemId)}>{t('systemDock.widgets.configure')}</SettingsButton>
   </li>)}</ul>
   {(failed||result)&&<SettingsAlert>{t(result==='conflict'?'systemDock.widgets.conflict':result==='pending'?'systemDock.widgets.commitPending':'systemDock.widgets.applyFailed')}</SettingsAlert>}
-  <DialogFooter><SettingsButton variant="outline" disabled={busy} onClick={onClose}>{t('systemDock.widgets.cancel')}</SettingsButton><SettingsButton disabled={busy||!review.complete||result==='conflict'} aria-busy={busy} onClick={()=>void apply()}>{t(busy?'systemDock.widgets.applying':preview.instanceIds.length===1?'systemDock.widgets.applyOne':'systemDock.widgets.applyMany',{count:preview.instanceIds.length})}</SettingsButton></DialogFooter>
- </DialogContent></Dialog>;
+  </AppDialogBody>
+  <AppDialogFooter><AppDialogCancel disabled={busy} onClick={onClose}>{t('systemDock.widgets.cancel')}</AppDialogCancel><Button size="pill" disabled={busy||!review.complete||result==='conflict'} aria-busy={busy} onClick={()=>void apply()}>{busy&&<Spinner/>}{t(preview.instanceIds.length===1?'systemDock.widgets.applyOne':'systemDock.widgets.applyMany',{count:preview.instanceIds.length})}</Button></AppDialogFooter>
+ </AppDialogContent></Dialog>;
 }

@@ -6,7 +6,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DockBarItem } from "../../../../../../shared/system-dock/ipc";
 import type { WidgetCatalogSnapshot } from "../../../../../../shared/system-dock/widgets/catalog";
-import { itemExtent, metricItem } from "../../../../../../shared/system-dock/metrics";
+import { DOCK_METRICS, itemExtent, metricItem } from "../../../../../../shared/system-dock/metrics";
 import { DockWidgetFace } from "@/system-dock/common/faces";
 import { dockItemName, type DockT } from "@/system-dock/common/format";
 import { catalogCardBridge } from "./client";
@@ -18,7 +18,7 @@ export function WidgetCatalogPreview({ item, presentation, active, ready, observ
 }) {
   const slot = useRef<HTMLDivElement>(null), [scale, setScale] = useState(1);
   const edge = presentation.edge, extent = itemExtent(metricItem(item), edge);
-  const cross = item.widget?.type === 'custom' && item.widget.officialWidget !== 'bottega-ai-usage' ? 68 : 48;
+  const cross = item.widget ? DOCK_METRICS.barHeight : DOCK_METRICS.item;
   const width = edge === 'bottom' ? extent : cross, height = edge === 'bottom' ? cross : extent;
   useEffect(() => {
     const node = slot.current; if (!node || !active) return;

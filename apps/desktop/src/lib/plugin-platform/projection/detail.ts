@@ -11,9 +11,10 @@ const message=(cause:unknown)=>cause instanceof Error?cause.message:String(cause
 export function usePluginDetail(requestedId:string|null|undefined){
   const pluginId=requestedId&&/^[A-Za-z0-9_-]{1,128}$/.test(requestedId)?requestedId:null;
   const [state,setState]=useState<{plugin:UnifiedPluginCatalogItem|null;id:string|null;error:string;busy:boolean}>({plugin:null,id:null,error:'',busy:false});
+  const [attempt,setAttempt]=useState(0);
   useEffect(()=>{const bridge=pluginPlatformBridge();if(!bridge||!pluginId)return;let live=true,generation=0;
     const load=()=>{const request=++generation;setState(previous=>({...previous,busy:true}));void bridge.get(pluginId).then(plugin=>{if(live&&request===generation)setState({plugin,id:pluginId,error:'',busy:false});},cause=>{if(live&&request===generation)setState({plugin:null,id:pluginId,error:message(cause),busy:false});});};
     load();const release=bridge.onChanged(load);return()=>{live=false;generation++;release();};
-  },[pluginId]);
-  return{plugin:state.id===pluginId?state.plugin:null,error:state.id===pluginId?state.error:'',busy:!!pluginId&&(state.id!==pluginId||state.busy)};
+  },[pluginId,attempt]);
+  return{plugin:state.id===pluginId?state.plugin:null,error:state.id===pluginId?state.error:'',busy:!!pluginId&&(state.id!==pluginId||state.busy),retry:()=>setAttempt(value=>value+1)};
 }

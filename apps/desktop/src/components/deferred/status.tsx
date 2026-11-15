@@ -4,7 +4,8 @@
  * [POS]: Shared renderer feedback for demand-loaded settings and plugin panels.
  */
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogContent, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 export function DeferredStatus({ failed, retry, reloadRequired = false }: { failed: boolean; retry(): void; reloadRequired?: boolean }) {
   const { t } = useAppTranslation();
@@ -15,9 +16,9 @@ export function DeferredStatus({ failed, retry, reloadRequired = false }: { fail
 }
 export function DeferredDialog({ title, failed, retry, onClose, reloadRequired }: { title: string; failed: boolean; retry(): void; onClose(): void; reloadRequired?: boolean }) {
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-    <DialogContent aria-describedby={undefined}>
-      <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+    <AppDialogContent showCloseButton aria-describedby={undefined}>
+      <AppDialogHeader title={title}/>
       <DeferredStatus failed={failed} retry={retry} reloadRequired={reloadRequired} />
-    </DialogContent>
+    </AppDialogContent>
   </Dialog>;
 }

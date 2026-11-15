@@ -5,9 +5,9 @@
  */
 
 import { useId, useState } from "react";
-import { CheckIcon, ChevronRightIcon, CopyIcon, ScrollTextIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon, CopyIcon, RotateCcw, ScrollTextIcon, Trash2, Wrench } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { DialogChoice } from "@ai-chat/ui/components/ui/app-dialog";
+import { DialogChoice, DialogChoiceGroup } from "@ai-chat/ui/components/ui/app-dialog";
 import {
   Card,
   CardContent,
@@ -104,29 +104,36 @@ export function AppFailureCard({
             <div className="grid gap-2">
               {canRetry && (
                 <DialogChoice
-                  size="sm"
+                  variant="featured"
                   badge={t("apps.failure.recommended")}
+                  icon={<RotateCcw />}
                   title={t(retry.titleKey)}
                   detail={t(retry.detailKey)}
                   onClick={onRetry}
                 />
               )}
-              {pendingImport && (
-                <DialogChoice
-                  size="sm"
-                  tone="danger"
-                  title={t("apps.failure.choice.cancel.title")}
-                  detail={t("apps.failure.choice.cancel.detail")}
-                  onClick={onCancel}
-                />
-              )}
-              {site && (
-                <DialogChoice
-                  size="sm"
-                  title={t("apps.failure.choice.repair.title")}
-                  detail={t(repairDetailKey[site])}
-                  onClick={onRepair}
-                />
+              {(pendingImport || site) && (
+                <DialogChoiceGroup label={canRetry ? t("apps.failure.otherOptions") : undefined}>
+                  {pendingImport && (
+                    <DialogChoice
+                      variant="plain"
+                      tone="danger"
+                      icon={<Trash2 />}
+                      title={t("apps.failure.choice.cancel.title")}
+                      detail={t("apps.failure.choice.cancel.detail")}
+                      onClick={onCancel}
+                    />
+                  )}
+                  {site && (
+                    <DialogChoice
+                      variant="plain"
+                      icon={<Wrench />}
+                      title={t("apps.failure.choice.repair.title")}
+                      detail={t(repairDetailKey[site])}
+                      onClick={onRepair}
+                    />
+                  )}
+                </DialogChoiceGroup>
               )}
             </div>
           )}

@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogCancel, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { updateStore } from "@/lib/platform/update-client";
@@ -46,9 +46,9 @@ export function CompatibilityReminder({ failure, onClose, onRetry, appName, busy
   const navigate = useNavigate();
   const upgrade = failure.code === "APP_HOST_UPDATE_REQUIRED" && Boolean(failure.requestId);
   const recheck = (
-    <Button className={HIT} disabled={busy} onClick={onRetry} variant={upgrade ? "outline" : "default"}>
+    <Button className={HIT} size="pill" disabled={busy} onClick={onRetry} variant={upgrade ? "outline" : "default"}>
       {busy && <Spinner className="size-3.5" />}
-      {t(busy ? "appHost.rechecking" : "appHost.recheck")}
+      {t("appHost.recheck")}
     </Button>
   );
   return (
@@ -56,29 +56,27 @@ export function CompatibilityReminder({ failure, onClose, onRetry, appName, busy
       {/* 播报覆盖描述与证据带两层：版本号从散文里搬走了，但它们仍然是这次
           失败最要紧的事实，不能顺手掉出朗读范围。 */}
       <div aria-live="polite" className="flex flex-col gap-4" role="status">
-        <DialogHeader>
-          <DialogTitle>{t(upgrade ? "appHost.title" : "appHost.invalidTitle")}</DialogTitle>
-          {/* Radix 把 aria-describedby 指向这一个节点，故说明句只能有一份；
-              其余处境说明是它的兄弟，靠外面这层 live region 一并被念到。 */}
-          <DialogDescription className="break-words whitespace-normal">
-            {t(REASON_KEYS[failure.code], { name: appName ?? failure.candidate.appName })}
-          </DialogDescription>
-          {upgrade && (
-            <p className="text-xs/relaxed text-muted-foreground">{t("appHost.resumeAfterUpgrade")}</p>
-          )}
-          {failure.candidate.hasUsableVersion && (
-            <p className="text-xs/relaxed text-muted-foreground">{t("appHost.oldVersionUsable")}</p>
-          )}
-        </DialogHeader>
+        {/* Radix 把 aria-describedby 指向这一个节点，故说明句只能有一份；
+            其余处境说明是它的兄弟，靠外面这层 live region 一并被念到。 */}
+        <AppDialogHeader
+          title={t(upgrade ? "appHost.title" : "appHost.invalidTitle")}
+          description={t(REASON_KEYS[failure.code], { name: appName ?? failure.candidate.appName })}
+        />
+        {upgrade && (
+          <p className="text-xs/relaxed text-muted-foreground">{t("appHost.resumeAfterUpgrade")}</p>
+        )}
+        {failure.candidate.hasUsableVersion && (
+          <p className="text-xs/relaxed text-muted-foreground">{t("appHost.oldVersionUsable")}</p>
+        )}
         <FailureFacts failure={failure} />
       </div>
-      <DialogFooter>
-        <Button className={HIT} disabled={busy} onClick={onClose} variant="ghost">
+      <AppDialogFooter>
+        <AppDialogCancel className={HIT} disabled={busy} onClick={onClose}>
           {t("appHost.cancel")}
-        </Button>
+        </AppDialogCancel>
         {recheck}
         {upgrade && (
-          <Button className={HIT} disabled={busy} onClick={() => {
+          <Button className={HIT} size="pill" disabled={busy} onClick={() => {
             onClose();
             updateStore.ensureLoaded();
             void updateStore.checkForApp(failure.requestId!);
@@ -87,7 +85,7 @@ export function CompatibilityReminder({ failure, onClose, onRetry, appName, busy
             {t("appHost.upgrade")}
           </Button>
         )}
-      </DialogFooter>
+      </AppDialogFooter>
     </div>
   );
 }

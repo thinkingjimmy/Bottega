@@ -9,7 +9,6 @@ import type { settingsSkillsEn } from "./en";
 export const settingsSkillsFr: typeof settingsSkillsEn = {
   refresh: "Actualiser les Skills", importTitle: "Ajouter des Skills",
   description: "Importez une fois dans votre Library personnelle, puis utilisez les Skills activés dans chaque conversation compatible.",
-  libraryTitle: "Library personnelle",
   back: "Retour", localFolder: "Dossier local", chooseFolder: "Choisir un dossier…", importPrimary: "Tout importer", importSelected: "Importer et activer {{count}}",
   backend: { codex: "Codex", claude: "Claude", kimi: "Kimi", opencode: "OpenCode" },
   sourceKind: { "local-folder": "Local", adopted: "Importé", extension: "Extension" },

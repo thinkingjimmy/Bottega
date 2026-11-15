@@ -5,14 +5,13 @@
  */
 
 import type { ReactNode } from "react";
-import { Bug, ExternalLink, ScrollText } from "lucide-react";
+import { Bug, ScrollText } from "lucide-react";
 import { SettingsPage } from "@/components/page-shell";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import {
-  SettingsButton,
   SettingsCanvas,
+  SettingsLinkRow,
   SettingsList,
-  SettingsRow,
 } from "@/components/settings/settings-layout";
 import { openExternal } from "@/lib/agent/agent-client";
 import { ISSUES_URL, REPOSITORY_URL } from "@/lib/platform/report-issue";
@@ -25,26 +24,24 @@ function GitHubMark() {
   </svg>;
 }
 
-type Link = { key: string; label: string; description: string; action: string; icon: ReactNode; url: string };
+type Link = { key: string; label: string; description: string; icon: ReactNode; url: string };
 
 export function CommunitySettingsView() {
   const { t } = useAppTranslation();
   const links: Link[] = [
     { key: "github", label: t("settings.community.github"), description: t("settings.community.githubDescription"),
-      action: t("settings.community.viewOnGithub"), icon: <GitHubMark />, url: REPOSITORY_URL },
+      icon: <GitHubMark />, url: REPOSITORY_URL },
     { key: "issues", label: t("settings.community.issues"), description: t("settings.community.issuesDescription"),
-      action: t("settings.community.openIssues"), icon: <Bug />, url: ISSUES_URL },
+      icon: <Bug />, url: ISSUES_URL },
     { key: "releases", label: t("settings.community.releaseNotes"), description: t("settings.community.releaseNotesDescription"),
-      action: t("settings.community.viewReleases"), icon: <ScrollText />, url: RELEASE_URL },
+      icon: <ScrollText />, url: RELEASE_URL },
   ];
   return (
     <SettingsPage title={t("settings.community.title")} description={t("settings.community.description")}>
       <SettingsCanvas>
         <SettingsList>
-          {links.map((link) => <SettingsRow key={link.key} label={link.label} description={link.description}
-            control={<SettingsButton variant="outline" onClick={() => void openExternal(link.url)}>
-              {link.icon}{link.action}<ExternalLink className="text-muted-foreground" />
-            </SettingsButton>} />)}
+          {links.map((link) => <SettingsLinkRow key={link.key} label={link.label} description={link.description}
+            onSelect={() => void openExternal(link.url)} />)}
         </SettingsList>
       </SettingsCanvas>
     </SettingsPage>

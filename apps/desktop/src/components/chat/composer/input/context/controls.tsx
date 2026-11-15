@@ -4,7 +4,6 @@
  * [POS]: Composer context shell; RichInput remains mounted in its existing parent through every selection and menu load.
  */
 import {lazy,Suspense,useState} from 'react';
-import {Link} from 'react-router';
 import {ChevronDown,Folder,GitBranch,LockKeyhole,MessageSquare,Puzzle,Settings,SlidersHorizontal,Sparkles} from 'lucide-react';
 import type {PluginModeSelection} from '@bottega/contracts/plugins/platform';
 import {Button} from '@ai-chat/ui/components/ui/button';
@@ -15,7 +14,7 @@ import {useAppTranslation} from '@/components/providers/preferences/i18n-provide
 import {usePluginModes} from '@/lib/plugin-platform/projection/modes';
 import {pluginContextCopy} from '@/lib/plugin-platform/context-copy';
 import {useComposerState} from '@/lib/chat/state/composer/chat-composer-store';
-import {projectSettingsRoute} from '@/lib/chat/drafts/draft-route';
+import {useProjectSettingsPane} from '@/components/providers/navigation/project-settings-pane';
 import type {ChatSessionController} from '../../../runtime/use-chat-session';
 import {composerContextButtonClass} from '../chat-project-selector';
 const ChatBranchSelector=lazy(()=>import('../../agents/chat-branch-selector').then(module=>({default:module.ChatBranchSelector})));
@@ -46,6 +45,7 @@ export function LockedChatMode({ controller }: { controller: ChatSessionControll
 }
 export function DraftContextControls({controller,remote,ownerLabel,onBranchBusy,disabled}:{controller:ChatSessionController['composer'];remote:boolean;ownerLabel:string|null;onBranchBusy:(busy:boolean)=>void;disabled:boolean}){
   const {i18n,t}=useAppTranslation(),copy=pluginContextCopy(i18n.language),state=useComposerState(controller.chatId),[open,setOpen]=useState(false);
+  const paneNavigation=useProjectSettingsPane();
   const selected=controller.turnOptions.mode,name=selected?.pluginId?selected.name:selected?.id==='create'?copy.create:copy.standard,selectedProject=controller.projects.find(item=>item.id===controller.selectedProjectId);
   const ModeIcon=selected?.id==='create'&&!selected.pluginId?Sparkles:SlidersHorizontal;
   return <>
@@ -56,7 +56,7 @@ export function DraftContextControls({controller,remote,ownerLabel,onBranchBusy,
       <PopoverContent className="w-80 p-2" side="top" align="start" collisionPadding={16}><Suspense fallback={<div role="status" aria-label={copy.object} aria-busy className="h-16"/>}><WorkObjectMenuContent controller={controller} remote={remote} onClose={()=>setOpen(false)}/></Suspense></PopoverContent>
     </Popover>
     {controller.selectedProjectId&&<>{remote?<Button className={`${composerContextButtonClass} max-w-56 gap-2`} disabled size="lg" variant="ghost"><GitBranch className="size-4"/><span className="truncate">{ownerLabel}</span></Button>:<Suspense fallback={<Button className={`${composerContextButtonClass} max-w-56 gap-2`} disabled aria-busy size="lg" variant="ghost"><GitBranch className="size-4"/><span className="truncate">{t('common.loading')}</span></Button>}><ChatBranchSelector key={controller.selectedProjectId} projectId={controller.selectedProjectId} disabled={disabled} listBranches={controller.listBranches} checkoutBranch={controller.checkoutBranch} createBranch={controller.createBranch} onBusyChange={onBranchBusy}/></Suspense>}
-      <Button aria-label={t('projectSettings.open')} asChild className="relative ml-auto rounded-full touch-target-44 hover:bg-muted-foreground/10" size="icon-lg" variant="ghost"><Link to={projectSettingsRoute(controller.selectedProjectId)}><Settings/></Link></Button></>}
+      <Button aria-label={t('projectSettings.open')} className="relative ml-auto rounded-full touch-target-44 hover:bg-muted-foreground/10" size="icon-lg" variant="ghost" onClick={()=>paneNavigation?.open({projectId:controller.selectedProjectId!})}><Settings/></Button></>}
     {remote&&state.pluginAuthoring&&<p role="status" className="w-full px-2 text-xs text-muted-foreground">{copy.localOnly}</p>}
   </>;
 }

@@ -6,8 +6,7 @@
 
 import { FolderOpen, LoaderCircle, Sparkles } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { SettingsEmpty, SettingsSection } from "@/components/settings/settings-layout";
-import { Button } from "@ai-chat/ui/components/ui/button";
+import { SettingsButton, SettingsEmpty } from "@/components/settings/settings-layout";
 import type { ManagedSkillSourceView } from "../../../../shared/ipc/agent/unified-skills-ipc";
 
 export function SkillEmptyState({
@@ -30,37 +29,34 @@ export function SkillEmptyState({
     : count
       ? t("settings.skills.emptyLead", { count })
       : t("settings.skills.emptyNothingHint");
+  /* S14: this empty state is the page's only content — the SettingsEmpty owns the
+     heading, so no section chrome wraps it. */
   return (
-    <SettingsSection
-      description={t("settings.skills.description")}
-      title={t("settings.skills.libraryTitle")}
+    <SettingsEmpty
+      aria-busy={scanning || undefined}
+      hint={hint}
+      icon={
+        scanning ? (
+          <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+        ) : (
+          <Sparkles />
+        )
+      }
+      title={t("settings.skills.emptyTitle")}
     >
-      <SettingsEmpty
-        aria-busy={scanning || undefined}
-        hint={hint}
-        icon={
-          scanning ? (
-            <LoaderCircle className="animate-spin motion-reduce:animate-none" />
-          ) : (
-            <Sparkles />
-          )
-        }
-        title={t("settings.skills.emptyTitle")}
-      >
-        {!scanning && (
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <Button disabled={busy} onClick={onChooseFolder} variant="outline">
-              <FolderOpen />
-              {t("settings.skills.chooseFolder")}
-            </Button>
-            {count > 0 && (
-              <Button disabled={busy} onClick={onImportAll}>
-                {t("settings.skills.importPrimary")}
-              </Button>
-            )}
-          </div>
-        )}
-      </SettingsEmpty>
-    </SettingsSection>
+      {!scanning && (
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <SettingsButton onClick={onChooseFolder} variant="outline" disabled={busy}>
+            <FolderOpen />
+            {t("settings.skills.chooseFolder")}
+          </SettingsButton>
+          {count > 0 && (
+            <SettingsButton disabled={busy} onClick={onImportAll}>
+              {t("settings.skills.importPrimary")}
+            </SettingsButton>
+          )}
+        </div>
+      )}
+    </SettingsEmpty>
   );
 }

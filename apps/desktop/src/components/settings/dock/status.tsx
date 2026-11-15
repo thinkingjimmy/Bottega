@@ -35,8 +35,14 @@ const UNSUPPORTED_KEYS: Record<NonNullable<DockCapability["reason"]>, string> = 
 
 export function DockUnsupported({ capability }: { capability: DockCapability }) {
   const { t } = useAppTranslation();
+  /* A platform limit is a muted badge with the reason beside it, not an alert (dock-unsupported). */
   return <SettingsSection title={t("systemDock.settings.unsupportedTitle")}>
-    <SettingsAlert tone="warn">{t(UNSUPPORTED_KEYS[capability.reason ?? "os-version"])} {t("systemDock.settings.unsupportedOther")}</SettingsAlert>
+    <SettingsList>
+      <SettingsRow label={t("systemDock.settings.unsupportedTitle")}
+        badge={<SettingsBadge tone="muted">{t("systemDock.settings.unavailableMac")}</SettingsBadge>}
+        description={`${t(UNSUPPORTED_KEYS[capability.reason ?? "os-version"])} ${t("systemDock.settings.unsupportedOther")}`}
+        control={null} />
+    </SettingsList>
   </SettingsSection>;
 }
 
@@ -87,9 +93,14 @@ export function DockMaster({ snapshot, pending, onTurnOn, showToggle = true }: {
     ? <SettingsButton variant="outline" onClick={() => void store.openRecoverySettings()}>{t("systemDock.settings.openLoginItems")}</SettingsButton>
     : paused ? <SettingsButton disabled={resumeDisabled} onClick={() => void store.resume()}>{resumeLabel}</SettingsButton> : null;
   const inactiveAlert = replace && phase !== "active" && phase !== "preparing" && !paused ? t("systemDock.settings.notReplacingYet") : undefined;
+  /* dock-inactive: attention, not failure — a warn alert whose fix opens the Login Items pane, plus a Retry that re-reads the state. */
+  const inactiveAction = inactiveAlert ? <>
+    <SettingsButton variant="outline" onClick={() => void store.openRecoverySettings()}>{t("systemDock.settings.openLoginItems")}</SettingsButton>
+    <SettingsButton variant="outline" onClick={() => void store.load()}>{t("common.retry")}</SettingsButton>
+  </> : undefined;
   const recoveryPending = snapshot.recovery.pending ? t("systemDock.settings.recoveryPending") : null;
   if (!showToggle) {
-    if (!paused && !approvalRequired) return inactiveAlert ? <SettingsAlert>{inactiveAlert}</SettingsAlert> : null;
+    if (!paused && !approvalRequired) return inactiveAlert ? <SettingsAlert tone="warn" title={inactiveAlert} action={inactiveAction}/> : null;
     return <SettingsList>
       <SettingsRow label={t(PHASE_KEYS[phase])} description={approvalRequired ? why : recoveryPending ?? why} control={continueAction} />
     </SettingsList>;
@@ -98,7 +109,7 @@ export function DockMaster({ snapshot, pending, onTurnOn, showToggle = true }: {
   const recovery = snapshot.recovery.lastResult;
   const notes = [why, recoveryPending, recovery !== "none" ? t(RECOVERY_KEYS[recovery]) : null]
     .filter((note): note is string => note !== null);
-  return <SettingsSection title={title} alert={inactiveAlert}>
+  return <SettingsSection title={title} alert={inactiveAlert} alertTone="warn" alertAction={inactiveAction}>
     <SettingsList>
       <SettingsRow label={t("systemDock.settings.enabledLabel")} htmlFor="dock-enabled"
         badge={<SettingsBadge tone={phase === "active" ? "neutral" : paused ? "warn" : "muted"}>

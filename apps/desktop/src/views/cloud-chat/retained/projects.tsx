@@ -5,7 +5,9 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import type { CloudChatBridge } from "../../../../shared/cloud/chat";
 import type { ProjectDeletionCandidate, ProjectDeletionReview } from "../../../../shared/cloud/projects/deletion";
 import { projectDeletionCopy } from "./project-copy";
@@ -53,18 +55,18 @@ export function ProjectDeletionCandidates({ bridge, locale, online }: { bridge: 
       {item.state !== "deleted" && <Button variant="outline" disabled={!online || busy} onClick={() => { setActionFailed(false); setSelected(item.projectId); }}>{item.state === "pending" ? copy.retry : copy.review}</Button>}
     </li>)}</ul>
     {cursor && <Button variant="outline" onClick={() => setAfterId(cursor)}>{copy.more}</Button>}
-    <Dialog open={Boolean(candidate)} onOpenChange={open => { if (!open && !busy) setSelected(null); }}><DialogContent>
-      <DialogHeader><DialogTitle>{review?.name ?? candidate?.name}</DialogTitle><DialogDescription>{copy.description}</DialogDescription></DialogHeader>
+    <Dialog open={Boolean(candidate)} onOpenChange={open => { if (!open && !busy) setSelected(null); }}><AppDialogContent>
+      <AppDialogHeader title={review?.name ?? candidate?.name} description={copy.description}/>
       {candidate && <p className="text-sm">{copy[candidate.state]}</p>}{loading && <p role="status">{copy.loading}</p>}
       {review && <p className="text-sm">{copy.revision.replace("{revision}", String(review.revision))}</p>}
       <p className="text-sm text-muted-foreground">{copy.retained}</p>
       {actionFailed && <p role="alert" className="text-sm">{copy.error}</p>}
-      <DialogFooter><Button variant="outline" disabled={busy} onClick={() => setSelected(null)}>{copy.close}</Button>
-        {candidate?.state === "pending" ? <Button disabled={!online || busy} onClick={() => void retry(candidate.projectId)}>{busy ? copy.working : copy.retry}</Button> : <>
-          {!review && <Button disabled={!online || loading || busy} onClick={refresh}>{copy.review}</Button>}
-          {review && <><Button variant="outline" disabled={!online || busy} onClick={() => void decide("keep")}>{copy.keep}</Button><Button variant="destructive" disabled={!online || busy} onClick={() => void decide("delete")}>{busy ? copy.working : copy.remove}</Button></>}
+      <AppDialogFooter><AppDialogCancel disabled={busy} onClick={() => setSelected(null)}>{copy.close}</AppDialogCancel>
+        {candidate?.state === "pending" ? <Button size="pill" disabled={!online || busy} onClick={() => void retry(candidate.projectId)}>{busy && <Spinner />}{copy.retry}</Button> : <>
+          {!review && <Button size="pill" disabled={!online || loading || busy} onClick={refresh}>{copy.review}</Button>}
+          {review && <><Button size="pill" variant="outline" disabled={!online || busy} onClick={() => void decide("keep")}>{copy.keep}</Button><Button size="pill" variant="destructive" disabled={!online || busy} onClick={() => void decide("delete")}>{busy && <Spinner />}{copy.remove}</Button></>}
         </>}
-      </DialogFooter>
-    </DialogContent></Dialog>
+      </AppDialogFooter>
+    </AppDialogContent></Dialog>
   </section>;
 }

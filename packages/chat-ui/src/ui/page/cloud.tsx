@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Chat platform facades, confirmed head, host chrome/artifact adapters and panel services.
- * [OUTPUT]: Cloud session adapter supplying shared ChatPage with header, a state-controlled panel trigger slot, conversation, panel and navigation ports, and forwarding a port swap's composer-focus intent.
+ * [OUTPUT]: Cloud session adapter supplying shared ChatPage with a divider-free header, a state-controlled panel trigger, conversation, panel and navigation ports.
  * [POS]: Cloud page adapter; transport, Base authority and navigation effects stay behind platform ports.
  */
 import { ChatPage, ChatPageSessionView, type ChatPageRenderer } from "./chat-page";
@@ -38,7 +38,7 @@ function CloudChatPageContent({ panels, chrome, headerActions, notices, navigati
   const page = <RemoteConversation {...conversation} layout="fill" onDirtyChange={dirty => { setRemoteDirty(dirty); conversation.onDirtyChange?.(dirty); }}
     onOpenSubagent={panel.eligible ? panel.onOpenSubagent : undefined} onOpenPlan={panel.eligible ? panel.onOpenPlan : undefined} expandedPlanId={panel.expandedPlanId}
     onOpenImage={panel.eligible ? panel.onOpenImage : undefined} onOpenWorkspaceFile={panel.eligible && platform.capabilities.files ? panel.onOpenWorkspaceFile : undefined}>
-    {regions => <ChatPageSessionView renderPage={renderPage} regions={{ ...regions, focusComposer }} containerRef={panel.containerRef} takeover={panel.takeover} notices={notices} panel={panel.element} navigation={navigation?.(panel.dirty, panel.dirty || remoteDirty)} header={<WorkspaceHeader {...chrome} icon={<AgentBackendIcon backend={head.chat.agent} className="size-4 shrink-0" />}
+    {regions => <ChatPageSessionView renderPage={renderPage} regions={{ ...regions, focusComposer }} containerRef={panel.containerRef} takeover={panel.takeover} notices={notices} panel={panel.element} navigation={navigation?.(panel.dirty, panel.dirty || remoteDirty)} header={<WorkspaceHeader {...chrome} showDivider={false} icon={<AgentBackendIcon backend={head.chat.agent} className="size-4 shrink-0" />}
           title={head.chat.title ?? <><span aria-hidden className="block h-3 w-32 animate-pulse rounded bg-muted" /><span className="sr-only">{copy.generatingTitle}</span></>}
           actions={<>{panel.eligible && <Button ref={panel.triggerRef} data-slot="side-panel-trigger" size="icon" variant="ghost" className="size-8 max-lg:size-11" aria-label={copy.open} onClick={panel.openShell}><PanelRight className="size-4" /></Button>}{headerActions}</>} />} />}
   </RemoteConversation>;

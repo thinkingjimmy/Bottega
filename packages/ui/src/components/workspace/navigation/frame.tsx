@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Navigation destinations, metadata section models, product identity, host actions, the lightweight computer panel identity and optional native window chrome.
+ * [INPUT]: Navigation destinations, section models, product identity, host actions and optional native chrome and resize gesture.
  * [OUTPUT]: WorkspaceNavigation owns the Bottega header, computer strip, primary routes, ordered groups, settings footer and resize rail. The sidebar uses the wordmark and the phone home page uses the product name as text.
  * [POS]: The single product sidebar view; Electron IPC, browser queries and routing stay in host adapters.
  */
-import type { ComponentProps, ReactElement, ReactNode } from "react";
+import { useId, type ComponentProps, type ReactElement, type ReactNode } from "react";
+import type { HorizontalResizeGesture } from "../../../hooks/use-horizontal-resize";
 import {
   Bell,
   LayoutGrid,
@@ -77,6 +78,7 @@ export type WorkspaceNavigationProps = {
   surface?: "sidebar" | "page";
   width: number;
   onWidthChange(width: number): void;
+  resizeGesture?: HorizontalResizeGesture;
   onMobileCloseAutoFocus?: ComponentProps<
     typeof WorkspaceSidebar
   >["onMobileCloseAutoFocus"];
@@ -103,17 +105,19 @@ export function WorkspaceNavigation({
   surface = "sidebar",
   width,
   onWidthChange,
+  resizeGesture,
   onMobileCloseAutoFocus,
   children,
 }: WorkspaceNavigationProps) {
   const sidebar = useSidebar();
+  const sidebarId = useId();
   const still = inert ? { "aria-disabled": true, tabIndex: -1 } : null;
   const page = surface === "page";
   return (
     <WorkspaceSidebar
       {...(page
         ? { collapsible: "none" as const, className: "min-h-0 w-full flex-1", "data-workspace-navigation-surface": "page" }
-        : { onMobileCloseAutoFocus })}
+        : { id: resizeGesture ? sidebarId : undefined, onMobileCloseAutoFocus })}
     >
       {chrome}
       {replacement}
@@ -252,10 +256,13 @@ export function WorkspaceNavigation({
       {!page && (
         <SidebarRail
           resizable
+          className={resizeGesture ? "workspace-sidebar-resize" : undefined}
+          aria-controls={resizeGesture ? sidebarId : undefined}
           width={width}
           minWidth={WORKSPACE_SIDEBAR_MIN_WIDTH}
           maxWidth={WORKSPACE_SIDEBAR_MAX_WIDTH}
           onWidthChange={onWidthChange}
+          resizeGesture={resizeGesture}
         />
       )}
       {children}

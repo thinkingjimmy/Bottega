@@ -14,8 +14,6 @@ export const weatherJa={
   "cancelCityChange": "変更をキャンセル",
   "noCities": "都市が見つかりません。",
   "today": "今日",
-  "dailyRange": "最高 {{high}}°C、最低 {{low}}°C",
-  "forecastUnavailable": "予報なし",
   "sizeCurrent": "現在の天気",
   "sizeToday": "現在の天気と今日の最高・最低気温",
   "sizeForecast": "現在の天気と今後3日間の予報",

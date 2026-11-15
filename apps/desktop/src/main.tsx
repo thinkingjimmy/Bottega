@@ -1,9 +1,11 @@
 /**
- * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, window context, surface migration, shared feedback toasts, ArchiveCelebrationHost, SketchHost, lazy unified plugin update/page hosts, startup marks, and the build-gated cloud account lifecycle.
- * [OUTPUT]: Provides the module entry, registered side effects, route visibility for Chat and catalog navigation, and independent Skills, Extensions and MCP settings destinations.
+ * [INPUT]: React, routing, styles, product providers, window surfaces, feedback hosts, the desktop sidebar layout and width preference, lazy plugin hosts, startup marks and the cloud account lifecycle.
+ * [OUTPUT]: Provides the renderer entry, route and settings composition, and desktop sidebar preview and persistence.
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
 import { SettingsNavigationContext } from "@/components/providers/navigation/context";
+import { ProjectSettingsPaneProvider, useProjectSettingsPane } from "@/components/providers/navigation/project-settings-pane";
+
 import { ArchiveCelebrationHost } from "@/components/sidebar/archive/archive-celebration";
 import { CompatibilityUpdateDialog } from "@/components/apps/compatibility/update-dialog";
 import { onSetupEvent } from "./lib/settings/setup/setup-client";
@@ -49,6 +51,7 @@ import {
   SidebarTrigger,
 } from "@ai-chat/ui/components/ui/sidebar";
 import { WorkspaceProvider as SidebarProvider, WorkspaceInset as SidebarInset } from "@ai-chat/ui/components/workspace/shell";
+import type { HorizontalResizeGesture, HorizontalResizeLayout } from "@ai-chat/ui/hooks/use-horizontal-resize";
 import { FeedbackToaster, Toaster, toast } from "@ai-chat/ui/components/ui/sonner";
 import { TooltipProvider } from "@ai-chat/ui/components/ui/tooltip";
 import { SketchHost } from "./components/chat/sketch/host/host";
@@ -84,6 +87,7 @@ import {
   type SidebarGroups,
   type SidebarView,
 } from "@/lib/navigation/sidebar/sidebar-layout";
+import { recordSidebarWidth, SIDEBAR_SNAP_DISTANCE } from "@/lib/navigation/sidebar/sidebar-width";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { MessageRendererProvider } from "@ai-chat/ui/components/ai-elements/message/renderer-context";
 import { CHAT_FENCE_RENDERERS } from "@/components/charts/chart-fence-renderers";
@@ -195,11 +199,6 @@ const UsageSettingsView = lazy(() =>
     default: module.UsageSettingsView,
   }))
 );
-const DockSettingsView = lazy(() =>
-  withSection(import("@/views/settings/dock/settings-dock"), "systemDock").then((module) => ({
-    default: module.DockSettingsView,
-  }))
-);
 const ArchiveSettingsView = lazy(() =>
   import("@/views/settings/archive/settings-archive").then((module) => ({
     default: module.ArchiveSettingsView,
@@ -208,6 +207,16 @@ const ArchiveSettingsView = lazy(() =>
 const ProjectSettingsView = lazy(() =>
   withSection(import("@/views/project/project-settings"), "memory").then((module) => ({
     default: module.ProjectSettingsView,
+  }))
+);
+const ProjectInstructionsView = lazy(() =>
+  import("@/views/project/instructions").then((module) => ({
+    default: module.ProjectInstructionsView,
+  }))
+);
+const ProjectSettingsPaneView = lazy(() =>
+  import("@/views/project/pane").then((module) => ({
+    default: module.ProjectSettingsPane,
   }))
 );
 
@@ -281,6 +290,8 @@ function ProductApp() {
     }
   }
   const [sidebarLayout, setSidebarLayout] = useState(readSidebarLayout);
+  const [sidebarOpenPreview, setSidebarOpenPreview] = useState<boolean | null>(null);
+  const sidebarWrapperRef = useRef<HTMLDivElement>(null);
   const sidebarLayoutRef = useRef(sidebarLayout);
 
   /* 覆盖层盖在路由之上，谁在上面谁就是当前档；侧栏只收这一个值。 */
@@ -308,10 +319,10 @@ function ProductApp() {
       ? settingsOrigin.current
       : exit ? { pathname: exit } : null);
     leaveSettingsRoute();
-    const dockPlugin = section === "dock" && workbenchUiEnabled;
+    const dockPlugin = section === "dock";
     setSettingsSection(dockPlugin ? "plugins" : section);
     setUsageAgent(null);
-    setPluginTarget(dockPlugin ? { id: "dock", view: "settings" } : null);
+    setPluginTarget(dockPlugin && workbenchUiEnabled ? { id: "dock", view: "settings" } : null);
     settingsStore.ensureLoaded();
   };
 
@@ -404,6 +415,29 @@ function ProductApp() {
     if (current.width !== width) applySidebarLayout({ width });
   };
 
+  const sidebarResize: HorizontalResizeGesture = {
+    snapPoint: sidebarLayout.widthPreference.snapPoint,
+    snapDistance: SIDEBAR_SNAP_DISTANCE,
+    onPreview: ({ open, width }) => {
+      sidebarWrapperRef.current?.style.setProperty("--sidebar-preview-width", `${width}px`);
+      setSidebarOpenPreview(open === sidebarLayoutRef.current.open ? null : open);
+    },
+    onFinish: (result: HorizontalResizeLayout | null) => {
+      sidebarWrapperRef.current?.style.removeProperty("--sidebar-preview-width");
+      setSidebarOpenPreview(null);
+      if (!result) return;
+      const current = sidebarLayoutRef.current;
+      if (result.open) {
+        applySidebarLayout({
+          ...result,
+          widthPreference: recordSidebarWidth(current.widthPreference, result.width, Date.now()),
+        });
+      } else if (current.open) {
+        applySidebarLayout({ open: false });
+      }
+    },
+  };
+
   const setSidebarView = (view: SidebarView) => {
     const current = sidebarLayoutRef.current;
     if (current.view !== view) applySidebarLayout({ view });
@@ -439,6 +473,7 @@ function ProductApp() {
 
   return (
     <SettingsNavigationContext.Provider value={{ close: closeSettings, openUsage: (trigger, agent) => { settingsReturnFocus.current = trigger; selectSettings("usage"); setUsageAgent(agent ?? null); }, openAgents: () => selectSettings("providers"), openUpdates: () => selectSettings("updates"), openAccount: () => selectSettings("account") }}>
+    <ProjectSettingsPaneProvider>
     <Suspense fallback={null}><PluginUpdateNotices /></Suspense>
     <AppsProvider>
       <HistoryProvider>
@@ -459,12 +494,13 @@ function ProductApp() {
                     {/* ⌘B 收进中央注册表（可改绑），内建监听器必须交权：
                         两处并存会各自 preventDefault，改绑后旧键还活着。 */}
                     <SidebarProvider
+                      ref={sidebarWrapperRef}
                       keyboardShortcut={false}
-                      open={sidebarLayout.open}
+                      open={sidebarOpenPreview ?? sidebarLayout.open}
                       onOpenChange={setSidebarOpen}
                       style={
                         {
-                          "--sidebar-width": `${sidebarLayout.width}px`,
+                          "--sidebar-width": `var(--sidebar-preview-width, ${sidebarLayout.width}px)`,
                         } as CSSProperties
                       }
 
@@ -473,6 +509,7 @@ function ProductApp() {
                         activeSettings={activeSettings}
                         sidebarWidth={sidebarLayout.width}
                         onSidebarWidthChange={setSidebarWidth}
+                        sidebarResize={sidebarResize}
                         groups={sidebarLayout.groups}
                         onGroupOpenChange={setSidebarGroupOpen}
                         view={sidebarLayout.view}
@@ -499,6 +536,8 @@ function ProductApp() {
                         )}
                       />
                       <SidebarInset>
+                        <div className="flex h-full min-h-0 min-w-0">
+                        <div className="h-full min-w-0 flex-1">
                         <Suspense fallback={<ViewLoading />}>
                           <div
                             aria-hidden={settingsSection ? true : undefined}
@@ -542,6 +581,10 @@ function ProductApp() {
                                 path="/projects/:projectId/settings"
                                 element={<ProjectSettingsView />}
                               />
+                              <Route
+                                path="/projects/:projectId/instructions"
+                                element={<ProjectInstructionsView />}
+                              />
                             </Routes>
                           </div>
                           <CompatibilityUpdateDialog />
@@ -556,9 +599,13 @@ function ProductApp() {
                           {settingsSection === "browser" && <BrowserSettingsView />}
                           {settingsSection === "tools" && <McpSettingsView />}
                           {settingsSection === "usage" && <UsageSettingsView focusAgent={usageAgent} />}
-                          {settingsSection === "dock" && <DockSettingsView />}
                           {settingsSection === "archive" && <ArchiveSettingsView />}
                         </Suspense>
+                        </div>
+                        {/* Project Settings pane: hidden (not unmounted) under the
+                            Settings overlay, full width under 900px. */}
+                        <ProjectSettingsPaneHost hidden={settingsOpen} />
+                        </div>
                       </SidebarInset>
                     </SidebarProvider>
                   </TooltipProvider>
@@ -569,7 +616,20 @@ function ProductApp() {
         </ProjectsProvider>
       </HistoryProvider>
     </AppsProvider>
+    </ProjectSettingsPaneProvider>
     </SettingsNavigationContext.Provider>
+  );
+}
+
+/* The pane mounts only while open, inside the provider subtree so the hook
+   resolves; the chunk stays lazy like the other settings views. */
+function ProjectSettingsPaneHost({ hidden }: { hidden: boolean }) {
+  const pane = useProjectSettingsPane()?.pane ?? null;
+  if (!pane) return null;
+  return (
+    <Suspense fallback={null}>
+      <ProjectSettingsPaneView hidden={hidden} />
+    </Suspense>
   );
 }
 

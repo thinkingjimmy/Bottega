@@ -1,12 +1,20 @@
 /**
- * [INPUT]: Depends on browser localStorage, receives incredible versioning of Sidebar layout JSON
- * [OUTPUT]: Provides SidebarLayout/SidebarGroups/SidebarView types, SIDEBAR_MIN_WIDTH/MAX_WIDTH constants, lenient parseSidebarLayout/serializeSidebarLayout, and read/commit persistence functions
+ * [INPUT]: Browser localStorage, versioned layout data, and the desktop sidebar width bounds and preference parser.
+ * [OUTPUT]: Provides sidebar layout types, width bounds, and synchronous layout persistence with optional saved width learning.
  * [POS]: apps/desktop/src/lib/navigation/sidebar; Renderer's persistence boundary for Sidebar layout; commits synchronously so no pending write is lost when the window closes
  */
 
+import {
+  EMPTY_SIDEBAR_WIDTH_PREFERENCE,
+  parseSidebarWidthPreference,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  type SidebarWidthPreference,
+} from "./sidebar-width";
+
+export { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH };
+
 const SIDEBAR_DEFAULT_WIDTH = 256;
-export const SIDEBAR_MIN_WIDTH = 200;
-export const SIDEBAR_MAX_WIDTH = 400;
 
 export type SidebarView = "library" | "activity";
 
@@ -19,6 +27,7 @@ export type SidebarGroups = {
 export type SidebarLayout = {
   open: boolean;
   width: number;
+  widthPreference: SidebarWidthPreference;
   view: SidebarView;
   groups: SidebarGroups;
 };
@@ -35,6 +44,7 @@ const STORAGE_KEY = "ai-chat.sidebar-layout.v1";
 export const DEFAULT_SIDEBAR_LAYOUT: SidebarLayout = {
   open: true,
   width: SIDEBAR_DEFAULT_WIDTH,
+  widthPreference: EMPTY_SIDEBAR_WIDTH_PREFERENCE,
   view: "library",
   groups: { projects: true, bases: true, chats: true },
 };
@@ -52,6 +62,7 @@ function normalizeLayout(layout: SidebarLayout): SidebarLayout {
   return {
     open: layout.open,
     width: clampWidth(Math.round(layout.width)),
+    widthPreference: layout.widthPreference,
     view: layout.view === "activity" ? "activity" : "library",
     groups: {
       projects:
@@ -82,6 +93,7 @@ export function parseSidebarLayout(raw: string | null): SidebarLayout {
     const layout = stored.layout as SidebarLayout;
     return normalizeLayout({
       ...layout,
+      widthPreference: parseSidebarWidthPreference(layout.widthPreference),
       view: layout.view === "activity" ? "activity" : "library",
       groups: layout.groups ?? DEFAULT_SIDEBAR_LAYOUT.groups,
     });
@@ -98,10 +110,10 @@ export function serializeSidebarLayout(layout: SidebarLayout) {
 }
 
 export function readSidebarLayout(
-  storage: SidebarStorage = window.localStorage
+  storage?: SidebarStorage
 ): SidebarLayout {
   try {
-    return parseSidebarLayout(storage.getItem(STORAGE_KEY));
+    return parseSidebarLayout((storage ?? window.localStorage).getItem(STORAGE_KEY));
   } catch {
     return defaultLayout();
   }
@@ -109,19 +121,19 @@ export function readSidebarLayout(
 
 function writeSidebarLayout(
   layout: SidebarLayout,
-  storage: SidebarStorage = window.localStorage
+  storage?: SidebarStorage
 ) {
   try {
-    storage.setItem(STORAGE_KEY, serializeSidebarLayout(layout));
+    (storage ?? window.localStorage).setItem(STORAGE_KEY, serializeSidebarLayout(layout));
   } catch {
-    // localStorage 不可用时保留当前会话状态，不阻断产品。
+    // Keep the in-memory layout when localStorage is unavailable.
   }
 }
 
 export function commitSidebarLayout(
   current: SidebarLayout,
   patch: Partial<SidebarLayout>,
-  storage: SidebarStorage = window.localStorage
+  storage?: SidebarStorage
 ) {
   const next = normalizeLayout({ ...current, ...patch });
   writeSidebarLayout(next, storage);

@@ -9,7 +9,7 @@ export const settingsExtensionsEn = {
     title: "Extensions",
     bridgeMissing: "Extension management is unavailable in this environment (IPC bridge missing)",
     admissionClosed:
-      "An extension is converging to disabled: projection bindings are being revoked, shared artifacts released, sessions with old discovery snapshots restarted, and caches invalidated. New Agent sessions remain paused until convergence completes.",
+      "Turning this extension off. It will be available again in a moment.",
     installedTitle: "Installed extensions",
     installedDescription:
       "Install extensions from GitHub. Skills become available to every Agent immediately.",
@@ -31,10 +31,9 @@ export const settingsExtensionsEn = {
         description:
           "Paste a GitHub repository homepage. The system freezes a commit, admits an Agent Plugins 1.0 package when plugin.json is present, or imports a pure skills/<name>/SKILL.md repository. Confirmation enables its Skills immediately.",
         commit: "Continue",
-        pending: "Resolving source…",
       },
-      install: { title: "Confirm installation", commit: "Confirm install", pending: "Installing…" },
-      update: { title: "Confirm update", commit: "Confirm update", pending: "Updating…" },
+      install: { title: "Confirm installation", commit: "Confirm install" },
+      update: { title: "Confirm update", commit: "Confirm update" },
     },
     resolveFailed: "Failed to resolve source",
     installFailed: "Installation failed",

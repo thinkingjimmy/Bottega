@@ -5,6 +5,7 @@
  */
 export const uiTextEs = {
   cancel: "Cancelar",
+  retry: "Reintentar",
   uploadFiles: "Subir archivos",
   loadingRichContent: "Cargando contenido enriquecido",
   loading: "Cargando",

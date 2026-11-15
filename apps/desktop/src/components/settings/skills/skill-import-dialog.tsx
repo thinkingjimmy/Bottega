@@ -7,14 +7,10 @@
 import { ArrowLeft, FolderOpen } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { SettingsAlert } from "@/components/settings/settings-layout";
-import { AppDialogBody, AppDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
+import { AppDialogBody, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
 import type {
   ManagedSkillAgent,
@@ -51,11 +47,11 @@ export function SkillImportDialog({
   const { t } = useAppTranslation();
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <AppDialogContent>
-        <DialogHeader>
-          <DialogTitle>{t("settings.skills.importTitle")}</DialogTitle>
-          <DialogDescription>{t("settings.skills.description")}</DialogDescription>
-        </DialogHeader>
+      <AppDialogContent size="lg" showCloseButton>
+        <AppDialogHeader
+          title={t("settings.skills.importTitle")}
+          description={t("settings.skills.description")}
+        />
         <AppDialogBody className="space-y-3 py-4">
           {error && <SettingsAlert>{error}</SettingsAlert>}
           {preview ? (
@@ -120,13 +116,13 @@ export function SkillImportDialog({
             </div>
           )}
         </AppDialogBody>
-        <DialogFooter>
+        <AppDialogFooter>
           {preview && (
-            <Button disabled={busy || selected.size === 0} onClick={onImport}>
+            <Button size="pill" disabled={busy || selected.size === 0} onClick={onImport}>
               {t("settings.skills.importSelected", { count: selected.size })}
             </Button>
           )}
-        </DialogFooter>
+        </AppDialogFooter>
       </AppDialogContent>
     </Dialog>
   );

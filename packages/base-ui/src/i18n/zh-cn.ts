@@ -209,7 +209,6 @@ export const basesZhCN: BasesCatalog = {
     uploadCancelled: "上传已取消，你的输入仍然保留。",
     uploading: "正在上传图片…",
     cancelUpload: "取消上传",
-    saving: "正在保存…",
     leaveTitle: "放弃更改？",
     leaveDescription: "此表单中的更改尚未保存。",
     discard: "放弃更改",

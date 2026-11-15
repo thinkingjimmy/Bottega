@@ -72,10 +72,13 @@ export const USAGE_CHANNEL = {
   scanProgress: "usage:scan-progress",
   pricingUpdated: "usage:pricing-updated",
   replayProgress: "usage:replay-progress",
+  revealSource: "usage:reveal-source",
 } as const;
 
 export type UsageBridgeApi = {
   limits?: import("../../usage-limits/types").UsageLimitsBridgeApi;
+  /** Reveals the log folder of a usage source in the system file manager (the Settings issue alert's "Show folder"). */
+  revealSource?: (source: UsageSourceId) => Promise<void>;
   getSummary: (
     target: UsageQueryTarget,
     opts?: { forceRefresh?: boolean }

@@ -87,7 +87,7 @@ export function buildPanel(service: DockService): PanelSnapshot {
     const detail=service.ports.custom?.detail(item,state.edge);if(!detail)return base;
     const panel = service.panelContainer();
     return {...base, liveCards: service.ports.custom?.liveCards?.(panel && !panel.isDestroyed() ? panel.webContents.id : undefined),
-      customWidget: state.privacyMask ? {...detail,name:items.find(value => value.id === item.id)?.label ?? '••••',data:[],updatedAt:null,face:maskFace(detail.face) as typeof detail.face} : detail};
+      customWidget: state.privacyMask ? {...detail,name:items.find(value => value.id === item.id)?.label ?? '••••',document:undefined,data:[],updatedAt:null,face:maskFace(detail.face) as typeof detail.face} : detail};
   }
   if (native.type === "builtin.tasks") return { ...base, tasks: taskDetail(service.ports.tasks, state.privacyMask) };
   const draft = service.nativeWidget(service.drafts.get(item.id) ?? item.widget) ?? native;

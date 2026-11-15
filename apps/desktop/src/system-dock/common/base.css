@@ -1,5 +1,5 @@
 /* [INPUT]: System appearance media queries (color scheme, contrast, forced colors, reduced transparency/motion) and the root `data-reduced-motion` flag set from the bar snapshot.
- * [OUTPUT]: Shared Dock tokens (translucent and solid surfaces, the bar's appearance-matched tint and glass edge, text, hover, focus, caution/danger), resets, glyph sizing with native artwork proportions for the host, and the high-contrast / solid / no-motion treatments for both Dock renderers.
+ * [OUTPUT]: Shared Dock tokens (translucent and solid surfaces, the bar's light glass veil and lit edge, solid Widget tile fallback, text, hover, focus, caution/danger), resets, glyph sizing with native artwork proportions for the host, and the high-contrast / solid / no-motion treatments for both Dock renderers.
  * [POS]: system-dock/common stylesheet imported first by bar and panel entries; surface-specific layout lives in bar.css and panel.css.
  */
 :root {
@@ -21,8 +21,8 @@
   --positive: #1f7a3a;
   --focus: #0a64d6;
   --shadow: 0 10px 30px rgb(0 0 0 / 0.16), 0 0 0 0.5px rgb(0 0 0 / 0.1);
-  /* Bound the brightness of the native glass so small readings keep contrast over the desktop. */
-  --strip-fill: light-dark(#fffe, #111d);
+  /* Only a light veil over the native glass, like the system Dock; Widget tiles carry their own contrast. */
+  --strip-fill: light-dark(rgb(255 255 255 / 0.24), rgb(30 30 32 / 0.26));
   --strip-edge: inset 0 0 0 0.5px rgb(255 255 255 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.35);
   --ring-track: rgb(0 0 0 / 0.12);
   color: var(--text);
@@ -50,10 +50,10 @@
 }
 /* Solid, not translucent: the user asked for less transparency, or main flagged a system whose
    compositor gives this window a solid background anyway (PRD 5.6, macOS 15). */
-@media (prefers-reduced-transparency: reduce) { :root { --surface: var(--surface-solid); --strip-fill: var(--surface-solid); } }
-:root[data-solid] { --surface: var(--surface-solid); --strip-fill: var(--surface-solid); }
+@media (prefers-reduced-transparency: reduce) { :root { --surface: var(--surface-solid); --strip-fill: var(--surface-solid); --widget-tile: var(--surface-solid); } }
+:root[data-solid] { --surface: var(--surface-solid); --strip-fill: var(--surface-solid); --widget-tile: var(--surface-solid); }
 @media (prefers-contrast: more) {
-  :root { --surface: var(--surface-solid); --strip-fill: var(--surface-solid); --line: color-mix(in srgb, var(--text) 55%, transparent); --muted: color-mix(in srgb, var(--text) 82%, transparent);
+  :root { --surface: var(--surface-solid); --strip-fill: var(--surface-solid); --widget-tile: var(--surface-solid); --line: color-mix(in srgb, var(--text) 55%, transparent); --muted: color-mix(in srgb, var(--text) 82%, transparent);
     --hover: color-mix(in srgb, var(--text) 14%, transparent); }
 }
 * { box-sizing: border-box; }
@@ -76,7 +76,7 @@ button:disabled { opacity: 0.45; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 :root[data-reduced-motion] *, :root[data-reduced-motion] *::before, :root[data-reduced-motion] *::after { animation: none !important; transition: none !important; }
 @media (forced-colors: active) {
-  :root { --surface: Canvas; --surface-solid: Canvas; --strip-fill: Canvas; --strip-edge: inset 0 0 0 1px CanvasText; --ring-track: GrayText; --line: CanvasText; --text: CanvasText; --muted: CanvasText; --focus: Highlight;
+  :root { --surface: Canvas; --surface-solid: Canvas; --strip-fill: Canvas; --widget-tile: Canvas; --strip-edge: inset 0 0 0 1px CanvasText; --ring-track: GrayText; --line: CanvasText; --text: CanvasText; --muted: CanvasText; --focus: Highlight;
     --accent: LinkText; --caution: CanvasText; --danger: CanvasText; --hover: Canvas; --selected: Highlight; --shadow: none; }
   button { border: 1px solid ButtonText; }
 }

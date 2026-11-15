@@ -80,8 +80,8 @@ export function UpdatesSettingsView() {
         {requirement && <section className="space-y-3 rounded-lg border p-4" data-testid="app-update-requirement">
           <p className="text-sm" role="status">{t("appHost.requiredContext", { name: requirement.context.candidate.appName, minimum: requirement.context.minBottegaVersion ?? "—", current: update.currentVersion })}</p>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => void navigate(`/apps?compatibility=${encodeURIComponent(requirement.context.requestId ?? "")}`)}>{t("appHost.returnToApp")}</Button>
-            <Button variant="ghost" onClick={() => void updateStore.dismissAppRequirement()}>{t("appHost.dismiss")}</Button>
+            <Button variant="outline" size="pill" onClick={() => void navigate(`/apps?compatibility=${encodeURIComponent(requirement.context.requestId ?? "")}`)}>{t("appHost.returnToApp")}</Button>
+            <Button variant="ghost" size="pill" onClick={() => void updateStore.dismissAppRequirement()}>{t("appHost.dismiss")}</Button>
           </div>
         </section>}
         <section aria-label={t("settings.updates.title")} className="space-y-4">

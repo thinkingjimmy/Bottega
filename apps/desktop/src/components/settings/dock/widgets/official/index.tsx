@@ -4,8 +4,11 @@
  * [POS]: Common Settings/Dock host confirmation; it creates no source Chat, plugin generation or data consumer.
  */
 import {useRef,useState} from 'react';
-import {Dialog,DialogContent,DialogTitle,DialogDescription,DialogFooter} from '@ai-chat/ui/components/ui/dialog';
+import {Dialog} from '@ai-chat/ui/components/ui/dialog';
+import {Button} from '@ai-chat/ui/components/ui/button';
+import {AppDialogBody,AppDialogCancel,AppDialogContent,AppDialogFooter,AppDialogHeader} from '@ai-chat/ui/components/ui/app-dialog';
 import {backendLabel} from '@ai-chat/ui/components/identity/agent';
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import {widgetNameSchema} from '@bottega/contracts/plugins/dock/settings';
 import type {OfficialWidgetForm,OfficialWidget,SubmitOfficialWidget} from '../../../../../../shared/system-dock/widgets/official';
 import type {AgentBackendId} from '../../../../../../shared/ipc/agent/agent-ipc';
@@ -42,11 +45,13 @@ export function OfficialWidgetDialog({form,onClose,onChanged,onReturnFocus}:{for
   try{const receipt=await window.systemDockSettings!.submitOfficialWidget(operation.current);onChanged();if(receipt.status==='applied')onClose();else setFailure(receipt.status==='conflict'?'conflict':'instancePending');}
   catch(error){setFailure(/CONFLICT|EXPIRED/.test(String(error))?'conflict':'applyFailed');}finally{lock.current=false;setBusy(false);}
  };
- return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose();}}><DialogContent showCloseButton={!busy} className="max-h-[85vh] overflow-y-auto" onEscapeKeyDown={event=>{if(busy)event.preventDefault();}} onCloseAutoFocus={event=>{event.preventDefault();onReturnFocus();}}>
-  <DialogTitle>{t('systemDock.widgets.configure')}</DialogTitle><DialogDescription>{t('systemDock.widgets.configurationHint')}</DialogDescription>
+ return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose();}}><AppDialogContent onEscapeKeyDown={event=>{if(busy)event.preventDefault();}} onCloseAutoFocus={event=>{event.preventDefault();onReturnFocus();}}>
+  <AppDialogHeader title={t('systemDock.widgets.configure')} description={t('systemDock.widgets.configurationHint')}/>
+  <AppDialogBody className="space-y-4">
   <label className="grid gap-2 text-sm">{t('systemDock.widgets.name')}<input className="min-h-10 rounded-md border bg-transparent px-3" value={name} disabled={busy} aria-invalid={failure==='invalidName'} onChange={event=>{setName(event.target.value);operation.current=null;setFailure(null);}}/></label>
   <OfficialControls form={form} widget={widget} disabled={busy} onChange={change}/>
   {failure&&<SettingsAlert><span role="alert">{t('systemDock.widgets.'+failure)}</span></SettingsAlert>}
-  <DialogFooter><SettingsButton variant="outline" disabled={busy} onClick={onClose}>{t('systemDock.widgets.cancel')}</SettingsButton><SettingsButton disabled={busy} aria-busy={busy} onClick={()=>void submit()}>{t(busy?'systemDock.widgets.applying':form.itemId?'systemDock.widgets.applyInstance':'systemDock.widgets.add')}</SettingsButton></DialogFooter>
- </DialogContent></Dialog>;
+  </AppDialogBody>
+  <AppDialogFooter><AppDialogCancel disabled={busy} onClick={onClose}>{t('systemDock.widgets.cancel')}</AppDialogCancel><Button size="pill" disabled={busy} aria-busy={busy} onClick={()=>void submit()}>{busy&&<Spinner/>}{t(form.itemId?'systemDock.widgets.applyInstance':'systemDock.widgets.add')}</Button></AppDialogFooter>
+ </AppDialogContent></Dialog>;
 }

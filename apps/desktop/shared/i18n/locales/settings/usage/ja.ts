@@ -19,7 +19,7 @@ export const settingsUsageJa: typeof settingsUsageEn = {
   dailyChart: "過去 {{days}} 日間の日別合計",
   shareOfToday: "今日の全ソース {{total}} の {{percent}}",
   loading: "使用量を読み込み中",
-  readFailed: "ローカルの token 使用量を読み込めませんでした。再試行してください。",
+  readFailed: "ローカルの token 使用量を読み込めませんでした。",
   noDataTitle: "ローカル使用量データはまだありません",
   noDataDetail: "対応する CLI で会話を開始してから、このページを更新してください。",
   pricingTitle: "推定価格",
@@ -29,6 +29,8 @@ export const settingsUsageJa: typeof settingsUsageEn = {
   pricingRefreshAria: "Usage の推定価格を自動更新",
   pricingRefreshSaveFailed: "Usage の価格更新設定を保存できませんでした",
   issues: {
+    showFolder: "フォルダを表示",
+    revealFailed: "ログフォルダーを開けませんでした。",
     sourceUnreadable: "ログを読み取れないため、最近の使用量が欠けている可能性があります。ログフォルダを読み取れるか確認してから更新してください。",
     filesUnreadable_one: "{{formatted}} 件のログファイルを読み取れず、その使用量は集計されていません。更新して再試行してください。続く場合は、ファイルが破損しているか使用中の可能性があります。",
     filesUnreadable_other: "{{formatted}} 件のログファイルを読み取れず、その使用量は集計されていません。更新して再試行してください。続く場合は、ファイルが破損しているか使用中の可能性があります。",

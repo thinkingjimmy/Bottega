@@ -60,7 +60,7 @@ export const memoryLazyEn = {
       "config-write": "Writing runtime configuration", "config-regenerate": "Regenerating runtime configuration", "config-adopt-manual": "Adopting the manual configuration", bootout: "Stopping the service", "wipe-data": "Clearing runtime data", "remove-root": "Deleting the runtime and its data",
     },
     configModified: "{{file}} was modified manually", configModifiedDetail: "Regenerate to restore product management, or adopt manual mode and edit keys/models in the file.", regenerate: "Regenerate", adoptManual: "Adopt manual", manualDetail: "Configuration is manually managed; the product will not rewrite this file.",
-    steps: "Step {{current}}/{{total}}", preparing: "Preparing", upgradeTo: "Upgrade to {{version}}", recheck: "Check again", downloadHint: "Dependencies must be downloaded and may take several minutes", errorLog: "Error log", hideLog: "Hide log", showLog: "View log", configureAction: "Configure extraction model", configDialogTitle: "Configure {{provider}}", retainBlank: "Leave blank to retain the current value", draftRetained: "Closing this dialog or a failed restart keeps this draft in memory. It is cleared only after a successful apply.", submitRestart: "Submit and restart service", savingConfig: "Saving…", configSaveFailed: "Failed to save the extraction model configuration",
+    steps: "Step {{current}}/{{total}}", preparing: "Preparing", upgradeTo: "Upgrade to {{version}}", recheck: "Check again", downloadHint: "Dependencies must be downloaded and may take several minutes", errorLog: "Error log", hideLog: "Hide log", showLog: "View log", configureAction: "Configure extraction model", configDialogTitle: "Configure {{provider}}", retainBlank: "Leave blank to retain the current value", draftRetained: "Closing this dialog or a failed restart keeps this draft in memory. It is cleared only after a successful apply.", submitRestart: "Submit and restart service", configSaveFailed: "Failed to save the extraction model configuration",
     uninstallTitle: "Uninstall {{provider}} managed runtime?", uninstallDescription: "This stops the service, removes login startup, and permanently deletes its managed runtime directory, including all long-term memory data. If active, memory is disabled.", uninstallRetention: "Consent records and chats remain. Reinstall and rebuild to re-extract authorized history within the local retention window.", uninstallConfirm: "Uninstall and delete data", modelTransferAria: "Model download progress", modelTransfer: "{{received}} / {{total}} MiB", modelRecovered: "Model verification failed; downloading a verified copy again.", interruptedInstall: "The install was interrupted before ownership was committed. Retry to replace the partial runtime safely.", versionIntentRecoveryRequired: "The switch to {{version}} was interrupted before a candidate was proven. Repair restores the last-known-good runtime.", versionCandidateAwaitingReadiness: "{{version}} is installed but not yet proven ready. Submit the required configuration to verify and promote it.", identityRepair: "Managed files exist but their install manifest is missing. Repair reconstructs identity from the ownership marker.", identityMissing: "This directory has no product ownership marker and will not be adopted automatically.",
   },
   /* ── 引擎区：安装、升级、配置都归它，选哪个在用也归它 ──────────
@@ -86,11 +86,9 @@ export const memoryLazyEn = {
     connectTitle: "Connect a model", connectDescription: "An OpenAI-compatible model reads the messages you write and extracts what’s worth remembering. The key stays on this Mac.", connectSubmit: "Start Service",
     draftKept: "Closing keeps this draft until it applies successfully.",
     row: {
-      notSetUp: "Not set up",
       installing: "Installing",
       installed: "Installed",
       failed: "Install failed",
-      description: "Remembers what matters from past conversations and brings it back when it’s relevant. Runs a small service on this Mac.",
       installingDescription: "Installing {{provider}} — keeps going in the background. You can finish setting it up later.",
       connectDescription: "{{provider}} {{version}} is installed. Connect a model to start remembering.",
       failedDescription: "{{provider}} didn’t finish installing. Set it up again to retry.",
@@ -98,8 +96,13 @@ export const memoryLazyEn = {
       showProgress: "Show Progress",
       connect: "Connect…",
     },
+
+    guide: {
+      title: "Remember what matters across conversations",
+      description: "Memory runs a small service on this Mac and brings relevant facts back into new chats. You choose the model it uses and what it may read.",
+      action: "Set up Memory…",
+    },
     notes: {
-      title: "Before you start",
       localTerm: "Stays on this Mac",
       localDetail: "The memory inventory never leaves this computer. Runtime and data folders are kept separate.",
       modelTerm: "Needs a model to extract memories",

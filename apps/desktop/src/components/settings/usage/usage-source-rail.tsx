@@ -84,7 +84,7 @@ export function UsageSourceRail({
                 value={source.target}
                 aria-controls={panelId}
                 data-testid={`usage-tab-${source.target}`}
-                className="h-auto flex-none cursor-pointer justify-start gap-2 rounded-none px-4 py-3 text-sm @max-xl:min-w-0 @max-xl:flex-1"
+                className="h-auto flex-none cursor-pointer justify-start gap-2 rounded-none px-4 py-3 text-[13px] font-medium @max-xl:min-w-0 @max-xl:flex-1"
               >
                 {source.icon ? (
                   <AgentBackendIcon backend={source.icon} className="size-4" />

@@ -52,6 +52,7 @@ import { SidebarRowTag, sidebarSubRowClass } from "@ai-chat/ui/components/worksp
 import { useProjects } from "../../../providers/projects-provider";
 import { useBasesNavigation } from "../../../providers/content/bases-provider";
 import { draftRoute, projectSettingsRoute } from "@/lib/chat/drafts/draft-route";
+import { useProjectSettingsPane } from "@/components/providers/navigation/project-settings-pane";
 import { settingsStore } from "@/lib/settings/store/settings-store";
 import { restoreArchiveTargets } from "@/lib/clients/archive-client";
 import {
@@ -182,6 +183,7 @@ export function ProjectItem({
     settingsStore.getSnapshot,
   );
   const navigate = useNavigate();
+  const paneNavigation = useProjectSettingsPane();
   /* 两个问题，两个答案，别混用：activePath 答「哪一行该亮」（设置盖着时
      没有一行该亮），pathname 答「用户此刻真的站在哪条路由上」——归档要
      把人从死路由上挪走，那件事与侧栏亮不亮无关，盖着也得做。 */
@@ -362,7 +364,7 @@ export function ProjectItem({
               renameMenu={renameMenu}
               editable={!unavailable && !remoteApp}
               className={canCreateChat ? "right-7" : ""}
-              onSettings={() => navigate(projectSettingsRoute(project.id))}
+              onSettings={() => paneNavigation?.open({ projectId: project.id })}
             >
                 {canRevealProject(project) && (
                   <DropdownMenuItem

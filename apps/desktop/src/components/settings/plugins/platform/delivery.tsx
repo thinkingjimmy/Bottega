@@ -5,9 +5,10 @@
  */
 import { useEffect,useRef,useState } from 'react';
 import type { PluginUpdateProgress,PluginUpdateReview,UnifiedPluginCatalogItem } from '@bottega/contracts/plugins/platform';
-import { AppDialogBody,AppDialogContent } from '@ai-chat/ui/components/ui/app-dialog';
-import { Dialog,DialogDescription,DialogFooter,DialogHeader,DialogTitle } from '@ai-chat/ui/components/ui/dialog';
-import { SettingsAlert,SettingsButton } from '@/components/settings/settings-layout';
+import { AppDialogBody,AppDialogCancel,AppDialogContent,AppDialogFooter,AppDialogHeader } from '@ai-chat/ui/components/ui/app-dialog';
+import { Dialog } from '@ai-chat/ui/components/ui/dialog';
+import { Button } from '@ai-chat/ui/components/ui/button';
+import { SettingsAlert,SettingsButton,SettingsTechnicalDetails } from '@/components/settings/settings-layout';
 import { pluginPlatformBridge } from '@/lib/plugin-platform/client';
 import { pluginPlatformCopy } from '@/lib/plugin-platform/copy';
 import { useCloudAccount } from '@/lib/cloud/client';
@@ -46,18 +47,18 @@ function PluginDelivery({plugin,locale,accountKey}:DeliveryProps&{accountKey:str
   if(plugin.manifest.source.format!=='bottega'||(!available&&!operation&&!error&&!review))return null;
   return <div className="space-y-3" data-plugin-delivery="">
     {available&&<SettingsButton variant="outline" data-plugin-review-update="" disabled={!bridge||busy||running} onClick={()=>void run(async()=>{const value=await bridge!.reviewUpdate({pluginId:id});if(live.current)setReview(value);})}>{delivery.review}</SettingsButton>}
-    {error&&<SettingsAlert>{error}</SettingsAlert>}
+    {error&&<div className="space-y-2"><p className="text-muted-foreground text-sm">{delivery.failed}</p><SettingsTechnicalDetails details={error}/></div>}
     {operation&&<div className="space-y-2 rounded-md border p-3 text-xs" data-plugin-update-progress={operation} data-plugin-update-state={missing?'unavailable':progress?.state??'reviewed'} aria-live="polite"><p className="font-medium">{missing?copy.unavailable:progress?delivery[progress.state]:delivery.preparing}</p>
       {progress?.bytes!==undefined&&<p className="text-muted-foreground">{new Intl.NumberFormat(locale).format(progress.bytes)}{progress.totalBytes!==undefined?` / ${new Intl.NumberFormat(locale).format(progress.totalBytes)}`:''} {delivery.bytes}</p>}
-      {progress?.error&&<p className="break-words text-destructive">{progress.error}</p>}
+      {progress?.error&&<SettingsTechnicalDetails details={progress.error}/>}
       {running&&<SettingsButton variant="ghost" disabled={busy} onClick={()=>void run(async()=>adopt(await bridge!.cancelUpdate({operationId:operation})))}>{delivery.cancelTransfer}</SettingsButton>}
       {(missing||terminal(progress))&&<SettingsButton variant="ghost" disabled={busy} onClick={()=>{retainOperation(operationScope,null);setOperation(null);setProgress(null);setMissing(false);setError('');}}>{copy.close}</SettingsButton>}
     </div>}
-    <Dialog open={!!review} onOpenChange={open=>{if(!open&&!busy)dismiss();}}><AppDialogContent data-plugin-update-review="" aria-busy={busy}><DialogHeader><DialogTitle>{review?.name}</DialogTitle><DialogDescription>{delivery.reviewNote}</DialogDescription></DialogHeader><AppDialogBody className="space-y-4">
+    <Dialog open={!!review} onOpenChange={open=>{if(!open&&!busy)dismiss();}}><AppDialogContent data-plugin-update-review="" aria-busy={busy}><AppDialogHeader title={review?.name} description={delivery.reviewNote}/><AppDialogBody className="space-y-4">
       {review&&<><dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 break-all text-xs"><dt className="text-muted-foreground">{delivery.revision}</dt><dd>{review.revisionId}</dd><dt className="text-muted-foreground">{delivery.sourceComputer}</dt><dd>{review.sourceInstallationId}</dd><dt className="text-muted-foreground">{delivery.packageSize}</dt><dd>{new Intl.NumberFormat(locale).format(review.bytes)} {delivery.bytes}</dd></dl>
         <ul className="space-y-1 text-sm">{review.contributions.map(item=><li key={`${item.kind}/${item.id}`}>{item.name}<span className="ml-2 text-xs text-muted-foreground">{copy[item.kind==='mode'?'modeKind':item.kind as keyof typeof copy]??item.kind}</span></li>)}</ul>
-        {review.trustRequired&&<SettingsAlert tone="warn">{copy.trustBody}</SettingsAlert>}
-      </>}{error&&<SettingsAlert>{error}</SettingsAlert>}
-    </AppDialogBody><DialogFooter><SettingsButton variant="ghost" data-plugin-update-dismiss="" disabled={busy} onClick={dismiss}>{copy.cancel}</SettingsButton><SettingsButton data-plugin-update-accept="" disabled={busy||!review} onClick={accept}>{review?.trustRequired?delivery.trustApply:delivery.apply}</SettingsButton></DialogFooter></AppDialogContent></Dialog>
+        {review.trustRequired&&<SettingsAlert tone="warn" title={copy.trustBody}/>}
+      </>}{error&&<div className="space-y-2"><p className="text-muted-foreground text-sm">{delivery.failed}</p><SettingsTechnicalDetails details={error}/></div>}
+    </AppDialogBody><AppDialogFooter><AppDialogCancel data-plugin-update-dismiss="" disabled={busy} onClick={dismiss}>{copy.cancel}</AppDialogCancel><Button size="pill" data-plugin-update-accept="" disabled={busy||!review} onClick={accept}>{review?.trustRequired?delivery.trustApply:delivery.apply}</Button></AppDialogFooter></AppDialogContent></Dialog>
   </div>;
 }

@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on Radix Dialog, Button, Lucide, icons, style tools and shared UI text
- * [OUTPUT]: Provides Dialog, DialogTrigger, DialogContent (with opt-in sheetOnNarrow bottom-docked geometry below sm), DialogHeader, DialogFooter, DialogTitle, and DialogDescription with localized close controls
+ * [OUTPUT]: Provides Dialog, DialogTrigger, DialogClose, DialogContent (with opt-in sheetOnNarrow bottom-docked geometry below sm), DialogHeader, DialogFooter, DialogTitle, and DialogDescription with localized close controls. Product dialogs must use AppDialogContent (overlays/app-dialog) — this raw shell is only for exempt surfaces: the command palette, full-window workspace surfaces, and side sheets
  * [POS]: packages/ui/src/components/ui/overlays; The basic layer of the modular dialog box components/ui, unified Electron no-drag with accessible shutdown movements
  */
 
@@ -173,8 +173,11 @@ function DialogDescription({
   )
 }
 
+const DialogClose = DialogPrimitive.Close
+
 export {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,

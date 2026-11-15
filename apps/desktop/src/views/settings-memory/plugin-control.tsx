@@ -4,7 +4,7 @@
  * [POS]: Memory page chrome adapter; available before runtime setup and independent of the service switch in the page body.
  */
 import { useWorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
-import { SettingsAlert } from "@/components/settings/settings-layout";
+import { SettingsAlert, SettingsButton } from "@/components/settings/settings-layout";
 import { PluginControl } from "@/components/settings/plugins/detail/about";
 import { usePluginList } from "@/components/settings/plugins/use-plugins";
 import { usePluginSwitch } from "@/components/settings/plugins/turn-off";
@@ -21,7 +21,9 @@ export function useMemoryPluginControl() {
   const plugin = plugins?.find(item => item.id === "memory");
   return {
     control: plugin ? <PluginControl plugin={plugin} workbench={workbench} switching={switching} onSetup={() => undefined} /> : null,
-    feedback: switching.failed ? <SettingsAlert>{switching.failed}</SettingsAlert> : null,
+    feedback: switching.failed ? <SettingsAlert title={switching.failed.message}
+      action={<SettingsButton variant="outline" onClick={() => { const failed = switching.failed; if (failed) void switching.toggle(failed.retry.plugin, failed.retry.enabled); }}>{workbench.plugins.retry}</SettingsButton>}
+    /> : null,
     dialog: switching.dialog,
   };
 }

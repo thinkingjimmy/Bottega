@@ -11,10 +11,16 @@ import { plausibleTimestamp, sealBuckets, type FileEvents, type UsageBuckets } f
 
 const isJsonl = (name: string) => name.endsWith(".jsonl");
 
+/* The directory "Show folder" opens; every root listClaudeFiles reads lives under it. */
+export function claudeLogsHome(home: string) {
+  return join(home, ".claude");
+}
+
 export async function listClaudeFiles(home: string) {
+  const parent = claudeLogsHome(home);
   const roots = [
-    join(home, ".claude", "projects"),
-    join(home, ".claude", "transcripts"),
+    join(parent, "projects"),
+    join(parent, "transcripts"),
   ];
   return (
     await Promise.all(roots.map((root) => listFilesRecursively(root, isJsonl)))

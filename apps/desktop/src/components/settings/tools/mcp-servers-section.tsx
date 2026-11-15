@@ -10,14 +10,14 @@ import { Input } from "@ai-chat/ui/components/ui/input";
 import { Textarea } from "@ai-chat/ui/components/ui/textarea";
 import {
   AppDialogBody,
+  AppDialogCancel,
   AppDialogContent,
+  AppDialogFooter,
+  AppDialogHeader,
 } from "@ai-chat/ui/components/ui/app-dialog";
+import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
 import type {
   ManualMcpServerView,
@@ -34,7 +34,6 @@ import {
   SettingsIconButton,
   SettingsList,
   SettingsRow,
-  SettingsSection,
   SettingsSwitch,
 } from "@/components/settings/settings-layout";
 import { BackendSupportNote, useToolBackendFacts } from "./backend-support";
@@ -96,7 +95,7 @@ type EnvRow = {
   value: string;
 };
 
-type FormState = {
+export type McpServerFormState = {
   server?: ManualMcpServerView;
   displayName: string;
   enabled: boolean;
@@ -107,7 +106,7 @@ type FormState = {
 
 let rowId = 0;
 const nextRowId = () => ++rowId;
-const blankForm = (): FormState => ({
+export const blankMcpServerForm = (): McpServerFormState => ({
   displayName: "",
   enabled: true,
   command: "",
@@ -115,9 +114,14 @@ const blankForm = (): FormState => ({
   env: [],
 });
 
-export function McpServersSection({ port }: { port: McpServersSectionPort }) {
+export function McpServersSection({ port, draft, onDraftChange }: {
+  port: McpServersSectionPort;
+  /** S14: the single section dropped its heading, so the draft + header primary live on the page view. */
+  draft: McpServerFormState | null;
+  onDraftChange(draft: McpServerFormState | null): void;
+}) {
   const { t } = useAppTranslation();
-  const [draft, setDraft] = useState<FormState | null>(null);
+  const setDraft = onDraftChange;
   const { load } = port;
 
   useEffect(() => {
@@ -127,23 +131,18 @@ export function McpServersSection({ port }: { port: McpServersSectionPort }) {
   const servers = port.snapshot?.servers ?? [];
 
   return (
-    <SettingsSection
-      title={t("settings.tools.mcp.title")}
-      description={t("settings.tools.mcp.globalDescription")}
-      action={
-        /* 表单搬进弹窗后，「已经在填一张表」不再需要在这里防守：
-           模态遮罩替这颗按钮挡住了那次点击，一个分支就此消失。 */
-        <SettingsButton
-          disabled={port.loading || !port.bridgeAvailable}
-          onClick={() => setDraft(blankForm())}
-          variant="outline"
-        >
-          <Plus className="size-4" />
-          {t("settings.tools.mcp.add")}
-        </SettingsButton>
-      }
-      alert={port.error || undefined}
-    >
+    <div className="flex flex-col gap-3">
+      {port.error && (
+        <SettingsAlert
+          tone="danger"
+          title={port.error}
+          action={
+            <SettingsButton variant="outline" onClick={() => void load()}>
+              {t("common.retry")}
+            </SettingsButton>
+          }
+        />
+      )}
       {servers.length ? (
         <SettingsList>
           {servers.map((server) => (
@@ -155,7 +154,18 @@ export function McpServersSection({ port }: { port: McpServersSectionPort }) {
           hint={t("settings.tools.mcp.globalEmptyHint")}
           icon={<Server />}
           title={t("settings.tools.mcp.emptyTitle")}
-        />
+        >
+          <div className="mt-4">
+            <SettingsButton
+              disabled={port.loading || !port.bridgeAvailable}
+              onClick={() => setDraft(blankMcpServerForm())}
+              variant="outline"
+            >
+              <Plus className="size-4" />
+              {t("settings.tools.mcp.add")}
+            </SettingsButton>
+          </div>
+        </SettingsEmpty>
       )}
 
       <McpServerDialog
@@ -164,7 +174,7 @@ export function McpServersSection({ port }: { port: McpServersSectionPort }) {
         save={port.save}
         seed={draft}
       />
-    </SettingsSection>
+    </div>
   );
 }
 
@@ -175,7 +185,7 @@ function McpServerRow({
 }: {
   port: McpServersSectionPort;
   server: ManualMcpServerView;
-  setDraft: (value: FormState) => void;
+  setDraft: (value: McpServerFormState) => void;
 }) {
   const { t } = useAppTranslation();
   const pending = port.pending.has(`server:${server.serverId}`);
@@ -238,14 +248,14 @@ function McpServerDialog({
   save,
 }: {
   /** null 即关闭；serverId 为空是新增，非空是编辑那一台 */
-  seed: FormState | null;
+  seed: McpServerFormState | null;
   onOpenChange: (next: boolean) => void;
   onSaved: () => void;
   save: McpServersSectionPort["save"];
 }) {
   return (
     <Dialog onOpenChange={onOpenChange} open={seed !== null}>
-      <AppDialogContent className="sm:max-w-[34rem]">
+      <AppDialogContent>
         {seed && (
           <McpServerPanel
             onCancel={() => onOpenChange(false)}
@@ -265,7 +275,7 @@ function McpServerPanel({
   onSaved,
   saveServer,
 }: {
-  seed: FormState;
+  seed: McpServerFormState;
   onCancel: () => void;
   onSaved: () => void;
   saveServer: McpServersSectionPort["save"];
@@ -276,7 +286,7 @@ function McpServerPanel({
   const [form, setForm] = useState(seed);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const patch = (value: Partial<FormState>) =>
+  const patch = (value: Partial<McpServerFormState>) =>
     setForm((current) => ({ ...current, ...value }));
 
   const save = async () => {
@@ -320,16 +330,12 @@ function McpServerPanel({
 
   return (
     <>
-      <DialogHeader className="shrink-0 gap-0 text-left">
-        <DialogTitle className="font-semibold text-lg">
-          {seed.server
+      <AppDialogHeader
+        title={seed.server
             ? t("settings.tools.mcp.editTitle")
             : t("settings.tools.mcp.addTitle")}
-        </DialogTitle>
-        <DialogDescription className="mt-2 text-muted-foreground text-xs">
-          {t("settings.tools.mcp.dialogDescription")}
-        </DialogDescription>
-      </DialogHeader>
+        description={<>          {t("settings.tools.mcp.dialogDescription")}</>}
+      />
 
       <AppDialogBody className="mt-4 space-y-4">
         {error && <SettingsAlert>{error}</SettingsAlert>}
@@ -414,14 +420,14 @@ function McpServerPanel({
         </div>
       </AppDialogBody>
 
-      <DialogFooter className="mt-5 shrink-0 flex-row justify-end gap-3">
-        <SettingsButton disabled={busy} onClick={onCancel} variant="ghost">
+      <AppDialogFooter>
+        <AppDialogCancel disabled={busy} onClick={onCancel}>
           {t("common.cancel")}
-        </SettingsButton>
-        <SettingsButton disabled={busy} onClick={() => void save()}>
+        </AppDialogCancel>
+        <Button size="pill" disabled={busy} onClick={() => void save()}>
           {t("common.save")}
-        </SettingsButton>
-      </DialogFooter>
+        </Button>
+      </AppDialogFooter>
     </>
   );
 }
@@ -444,10 +450,10 @@ function Field({
 }
 
 function patchEnv(
-  form: FormState,
+  form: McpServerFormState,
   target: number,
   value: Partial<EnvRow>,
-  patch: (value: Partial<FormState>) => void
+  patch: (value: Partial<McpServerFormState>) => void
 ) {
   patch({
     env: form.env.map((row) => (row.rowId === target ? { ...row, ...value } : row)),
@@ -468,7 +474,7 @@ function envEdits(rows: EnvRow[], t: TFunction): McpSecretEdit[] {
   });
 }
 
-function formFrom(server: Extract<ManualMcpServerView, { transport: "stdio" }>): FormState {
+function formFrom(server: Extract<ManualMcpServerView, { transport: "stdio" }>): McpServerFormState {
   return {
     server,
     displayName: server.displayName,

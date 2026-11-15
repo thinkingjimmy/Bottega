@@ -14,7 +14,6 @@ export const en = {
   risk: "I understand that if this password is lost and no device can still decrypt, content stored only in the cloud may be unrecoverable.",
   inProgress: "Securing sync…",
   unlock: "Unlock",
-  unlocking: "Unlocking…",
   checking: "Checking encrypted sync…",
   remember: "Keep this browser unlocked",
   rememberDescription: "Save an encrypted unlock key on this browser. You can lock it at any time.",

@@ -8,7 +8,8 @@ import type { RecordEntry, RecordOpen, RecordTarget } from "@bottega/contracts/p
 import { PuzzleIcon, SettingsIcon } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@ai-chat/ui/components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogContent, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { useAppTranslation } from "../platform/i18n";
 import type { RecordContribution } from "./record-slots";
 
@@ -46,11 +47,11 @@ export function RecordPluginSlots({ base, entries, disabled, Surface, readResult
   const valid = opened && current?.enabled && current.generationId === opened.input.generationId && opened.input.base.ownerKey === base.ownerKey
     && opened.input.base.ownerInstanceId === base.ownerInstanceId && !disabled;
   return <Dialog open={Boolean(opened)} onOpenChange={open => { if (!open) setOpened(null); }}>
-    <DialogContent className="h-[min(80dvh,680px)] sm:max-w-3xl flex flex-col overflow-hidden">
-      <DialogHeader><DialogTitle>{opened?.entry.records.actions.find(action => action.id === opened.input.actionId)?.title}</DialogTitle></DialogHeader>
+    <AppDialogContent size="lg" showCloseButton className="h-[min(80dvh,680px)] flex flex-col">
+      <AppDialogHeader title={opened?.entry.records.actions.find(action => action.id === opened.input.actionId)?.title}/>
       {valid ? <Surface key={`${opened.input.pluginId}:${opened.input.rowId}`} input={opened.input} entry={current}
         onClose={close} onChanged={changed} /> : <p role="status">{t("bases.plugins.unavailable")}</p>}
-    </DialogContent>
+    </AppDialogContent>
   </Dialog>;
 }
 

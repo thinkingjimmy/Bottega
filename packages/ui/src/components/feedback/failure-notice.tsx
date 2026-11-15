@@ -133,7 +133,7 @@ export function ProductFailureNotice({
             </pre>
             <Button
               aria-label={copied ? labels.copiedDetails : labels.copyDetails}
-              className="relative touch-manipulation touch-target-44 [--touch-target-inset:-8px]"
+              className="relative rounded-full touch-manipulation touch-target-44 [--touch-target-inset:-8px]"
               onClick={() => void copyDiagnostic()}
               size="icon-sm"
               title={copied ? labels.copiedDetails : labels.copyDetails}

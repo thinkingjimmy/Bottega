@@ -19,7 +19,7 @@ export const settingsUsageEs: typeof settingsUsageEn = {
   dailyChart: "Totales diarios de los últimos {{days}} días",
   shareOfToday: "{{percent}} del total de hoy ({{total}}) en todas las fuentes",
   loading: "Cargando el uso",
-  readFailed: "No se pudo leer el uso local de tokens. Inténtalo de nuevo.",
+  readFailed: "No se pudo leer el uso local de tokens.",
   noDataTitle: "Aún no hay datos de uso local",
   noDataDetail: "Inicia una conversación con el CLI correspondiente y actualiza esta página.",
   pricingTitle: "Precios estimados",
@@ -29,6 +29,8 @@ export const settingsUsageEs: typeof settingsUsageEn = {
   pricingRefreshAria: "Actualizar automáticamente los precios estimados de Usage",
   pricingRefreshSaveFailed: "No se pudo guardar el ajuste de actualización de precios",
   issues: {
+    showFolder: "Mostrar carpeta",
+    revealFailed: "No se pudo abrir la carpeta de registros.",
     sourceUnreadable: "No se pudieron leer sus registros, así que puede faltar el uso reciente. Comprueba que su carpeta de registros se pueda leer y actualiza.",
     filesUnreadable_one: "No se pudo leer {{formatted}} archivo de registro, así que su uso no se cuenta. Actualiza para reintentar; si persiste, puede que esté dañado o bloqueado.",
     filesUnreadable_other: "No se pudieron leer {{formatted}} archivos de registro, así que su uso no se cuenta. Actualiza para reintentar; si persiste, puede que estén dañados o bloqueados.",

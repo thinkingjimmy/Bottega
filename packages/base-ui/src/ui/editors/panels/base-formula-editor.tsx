@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, shared Base formula analysis/column name mapping, i18n and Unified Dialog/Button expression monologue, state BaseMutationOutcome judgment type
+ * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, shared Base formula analysis/column name mapping, i18n and the AppDialog shell/parts for the expression editor surface, state BaseMutationOutcome judgment type
  * [OUTPUT]: Provides BaseFormulaEditor, which edits formulas by column name, saves them by columnId, and shows live syntax/unknown-dependency errors and the inferred static result type; editing clears any stale submit error
  * [POS]: Shared Base presentation in ui/editors/panels.
  */
@@ -8,16 +8,14 @@ import { useMemo, useState } from "react";
 import { useAppTranslation } from "../../platform/i18n";
 import {
   AppDialogBody,
+  AppDialogCancel,
   AppDialogContent,
+  AppDialogField,
+  AppDialogFooter,
+  AppDialogHeader,
 } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import {
-  Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
 import type { BaseColumn } from "@ai-chat/base-core/model/bases-ipc";
 import {
   formulaExpressionForStorage,
@@ -96,16 +94,18 @@ export function BaseFormulaEditor({
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <AppDialogContent>
-        <DialogHeader className="text-left">
-          <DialogTitle>{t("bases.formula.title")}</DialogTitle>
-          <DialogDescription>
-            {t("bases.formula.description")}
-          </DialogDescription>
-        </DialogHeader>
+        <AppDialogHeader
+          title={t("bases.formula.title")}
+          description={t("bases.formula.description")}
+        />
         <AppDialogBody className="mt-5 space-y-3">
-          <label className="block space-y-1.5 text-sm">
-            <span className="font-medium">{t("bases.formula.expression")}</span>
+          <AppDialogField
+            label={t("bases.formula.expression")}
+            htmlFor="base-formula-expression"
+            error={visibleError || undefined}
+          >
             <textarea
+              id="base-formula-expression"
               autoFocus
               className="min-h-28 w-full resize-y rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               disabled={busy}
@@ -117,7 +117,7 @@ export function BaseFormulaEditor({
                 setSubmitError("");
               }}
             />
-          </label>
+          </AppDialogField>
           <p className="text-muted-foreground text-xs">
             {t("bases.formula.columns", {
               columns: columns.map((column) => `{${column.name}}`).join(", ") || "—",
@@ -130,23 +130,17 @@ export function BaseFormulaEditor({
               })}
             </p>
           )}
-          {visibleError && (
-            <p role="alert" className="text-destructive text-xs">
-              {visibleError}
-            </p>
-          )}
         </AppDialogBody>
-        <DialogFooter className="mt-5">
-          <Button disabled={busy} onClick={() => onOpenChange(false)} variant="ghost">
-            {t("common.cancel")}
-          </Button>
+        <AppDialogFooter>
+          <AppDialogCancel disabled={busy} />
           <Button
+            size="pill"
             disabled={busy || !expression.trim() || Boolean(analysis && !analysis.parsed.ok)}
             onClick={() => void submit()}
           >
             {t("bases.formula.add")}
           </Button>
-        </DialogFooter>
+        </AppDialogFooter>
       </AppDialogContent>
     </Dialog>
   );

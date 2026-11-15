@@ -19,7 +19,7 @@ export const settingsUsageFr: typeof settingsUsageEn = {
   dailyChart: "Totaux quotidiens des {{days}} derniers jours",
   shareOfToday: "{{percent}} du total du jour ({{total}}), toutes sources confondues",
   loading: "Chargement de l’utilisation",
-  readFailed: "Impossible de lire l’utilisation locale des tokens. Réessayez.",
+  readFailed: "Impossible de lire l’utilisation locale des tokens.",
   noDataTitle: "Aucune donnée d’utilisation locale",
   noDataDetail: "Démarrez une conversation avec le CLI correspondant, puis actualisez cette page.",
   pricingTitle: "Tarification estimée",
@@ -29,6 +29,8 @@ export const settingsUsageFr: typeof settingsUsageEn = {
   pricingRefreshAria: "Actualiser automatiquement les prix estimés d’utilisation",
   pricingRefreshSaveFailed: "Impossible d’enregistrer le réglage d’actualisation des prix",
   issues: {
+    showFolder: "Afficher le dossier",
+    revealFailed: "Impossible d’ouvrir le dossier des journaux.",
     sourceUnreadable: "Impossible de lire ses journaux : l’utilisation récente peut manquer. Vérifiez que son dossier de journaux est lisible, puis actualisez.",
     filesUnreadable_one: "{{formatted}} fichier journal n’a pas pu être lu et son utilisation n’est pas comptée. Actualisez pour réessayer ; si cela persiste, le fichier est peut-être endommagé ou verrouillé.",
     filesUnreadable_other: "{{formatted}} fichiers journaux n’ont pas pu être lus et leur utilisation n’est pas comptée. Actualisez pour réessayer ; si cela persiste, les fichiers sont peut-être endommagés ou verrouillés.",

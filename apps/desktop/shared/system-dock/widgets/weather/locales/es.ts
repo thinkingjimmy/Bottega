@@ -14,8 +14,6 @@ export const weatherEs={
   "cancelCityChange": "Cancelar el cambio",
   "noCities": "No se encontraron ciudades.",
   "today": "Hoy",
-  "dailyRange": "Máxima {{high}} °C, mínima {{low}} °C",
-  "forecastUnavailable": "Sin pronóstico",
   "sizeCurrent": "Condiciones actuales",
   "sizeToday": "Condiciones actuales y máxima y mínima de hoy",
   "sizeForecast": "Condiciones actuales y pronóstico de los próximos tres días",

@@ -1,14 +1,14 @@
 /**
- * [INPUT]: Dock edge preferences, intrinsic widget geometry, selected city and the shared Weather face.
+ * [INPUT]: Dock edge preferences, intrinsic widget geometry, selected city and the shared Weather summary projection.
  * [OUTPUT]: WeatherSizeField with native size radios and local example previews for all three sizes.
  * [POS]: Final field in the official Weather form; samples create no live weather demand.
  */
 import { useId } from 'react';
 import { DOCK_SUMMARY_SIZES, summaryDimensions, type DockSummarySize } from '@bottega/contracts/plugins/dock/geometry';
 import { useAppTranslation } from '@/components/providers/preferences/i18n-provider';
-import { WeatherFace } from '@/system-dock/common/widgets/weather';
+import { DockSummary } from '@/system-dock/common/widgets/summary';
 import type { DockEdge } from '../../../../../../shared/system-dock/local-state';
-import type { WeatherFaceReading } from '../../../../../../shared/system-dock/widgets/weather/forecast';
+import { weatherLayouts, weatherReadings, type WeatherPresentationReading } from '../../../../../../shared/system-dock/widgets/weather/presentation';
 import './weather-form.css';
 
 const LABELS = {
@@ -17,8 +17,9 @@ const LABELS = {
 const DESCRIPTIONS = {
   small: 'systemDock.weather.sizeCurrent', medium: 'systemDock.weather.sizeToday', large: 'systemDock.weather.sizeForecast',
 } as const;
-const EXAMPLE: Omit<WeatherFaceReading, 'city'> = {
-  temperature: 23, code: 2,
+const LAYOUTS = weatherLayouts();
+const EXAMPLE: WeatherPresentationReading = {
+  temperature: 23, code: 2, feelsLike: 24, humidity: 60, observedAt: 0,
   today: { date: '2026-11-11', code: 2, high: 25, low: 18 },
   upcoming: [
     { date: '2026-11-12', code: 0, high: 26, low: 18 },
@@ -36,7 +37,7 @@ export function WeatherSizeField({ value, city, edge, disabled, onChange }: {
 }) {
   const { t, i18n } = useAppTranslation();
   const group = useId();
-  const reading = { ...EXAMPLE, city: city ?? t('systemDock.weather.city') };
+  const readings = weatherReadings(EXAMPLE, city ?? t('systemDock.weather.city'), i18n.language);
 
   return <fieldset disabled={disabled} className="min-w-0">
     <legend className="mb-2 text-sm font-medium">
@@ -52,7 +53,7 @@ export function WeatherSizeField({ value, city, edge, disabled, onChange }: {
           <span className="weather-size-tile">
             <span className="weather-size-preview"
               style={summaryDimensions(size, edge)} aria-hidden="true">
-              <WeatherFace reading={reading} size={size} edge={edge} locale={i18n.language} t={t} />
+              <span className="weather-size-face"><DockSummary node={LAYOUTS[size]} readings={readings} locale={i18n.language} size={size} edge={edge} /></span>
             </span>
             <span id={`${description}-label`} className="text-xs font-medium">{t(LABELS[size])}</span>
           </span>

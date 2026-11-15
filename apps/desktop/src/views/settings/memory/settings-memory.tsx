@@ -314,6 +314,8 @@ export function MemorySettingsView(page: MemoryPageOptions = {}) {
 
   return (
     <MemorySettingsFrame {...page}
+      aboutInHeader={setupDone}
+      showPluginControl={setupDone}
       notice={applyStatus?.state === "failed" ? (
         <div
           role="alert"
@@ -332,7 +334,9 @@ export function MemorySettingsView(page: MemoryPageOptions = {}) {
           </p>
         </div>
       ) : undefined}
-      actions={<>
+      /* S15: refresh welds to the H1 (after the badge) while Memory is set up; a guide-only page
+         owns no header control at all. */
+      adornment={setupDone ? (
         <SettingsIconButton
           variant="ghost"
           label={t("memory.page.refreshHealth")}
@@ -341,11 +345,12 @@ export function MemorySettingsView(page: MemoryPageOptions = {}) {
         >
           <RefreshCw className={loading ? "motion-safe:animate-spin" : ""} />
         </SettingsIconButton>
-      </>}
+      ) : undefined}
     >
       {!setupDone ? (
         <SettingsCanvas>
           <MemoryNotSetUp
+            onAbout={page.onAbout}
             descriptors={providers}
             runtimes={runtimes}
             panels={panels}

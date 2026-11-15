@@ -9,7 +9,7 @@ export const ja: CloudEncryptionCopy = {
   title: "同期ワークスペースをロック解除", description: "デスクトップで設定した同期パスワードを入力してください。", password: "同期パスワード", confirmation: "同期パスワードを確認",
   setPassword: "同期パスワードを設定", setupDescription: "このパスワードは Google アカウントのパスワードとは別です。Bottega も Google も復元できません。",
   risk: "このパスワードを紛失し、復号できる端末が一つも残っていない場合、クラウドにだけある内容は復元できない可能性があることを理解しています。", inProgress: "同期を保護しています…",
-  unlock: "ロック解除", unlocking: "ロック解除中…", checking: "暗号化同期を確認中…", remember: "このブラウザのロック解除を保持",
+  unlock: "ロック解除", checking: "暗号化同期を確認中…", remember: "このブラウザのロック解除を保持",
   rememberDescription: "暗号化した解除キーをこのブラウザに保存します。いつでもロックできます。", remembered: "このブラウザは解除キーを記憶します。", thisPageOnly: "このページのみロック解除されています。",
   saving: "解除キーを保存中…", saveFailed: "現在は解除されていますが、解除キーを保存できませんでした。次回は同期パスワードが必要になる場合があります。", lastInputLost: "バックグラウンドに移る直前の入力を保存できませんでした。書いていたメッセージを確認してください。", lastInputLostDismiss: "閉じる", saveRetry: "解除キーの保存を再試行",
   cachedStorageUnavailable: "安全なローカルストレージを利用できません。アプリを開き直す際に同期パスワードが必要になる場合があります。", cacheUnreadable: "保存された解除キーを読み取れません。同期パスワードを入力してください。",

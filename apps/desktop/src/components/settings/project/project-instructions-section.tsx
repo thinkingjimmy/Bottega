@@ -41,7 +41,7 @@ import { Tabs, TabsList, TabsTrigger } from "@ai-chat/ui/components/ui/tabs";
 type FileMap = Partial<Record<ProjectInstructionsFileId, ProjectInstructionsFile>>;
 type DraftMap = Partial<Record<ProjectInstructionsFileId, string>>;
 
-export function ProjectInstructionsSection({ project }: { project: Project }) {
+export function ProjectInstructionsSection({ project, bare }: { project: Project; bare?: boolean }) {
   const { t } = useAppTranslation();
   const [files, setFiles] = useState<FileMap>({});
   const [drafts, setDrafts] = useState<DraftMap>({});
@@ -87,7 +87,7 @@ export function ProjectInstructionsSection({ project }: { project: Project }) {
   if (project.workspaceBinding.kind === "none") {
     return (
       <SettingsCanvas fill>
-        <SettingsSection title={t("projectSettings.instructions.section")} description={t("projectSettings.instructions.description")}>
+        <SettingsSection title={bare ? undefined : t("projectSettings.instructions.section")} description={t("projectSettings.instructions.description")}>
           <SettingsEmpty icon={<FileText />} title={t("projectSettings.instructions.noWorkspace")} hint={t("projectSettings.instructions.description")} />
         </SettingsSection>
       </SettingsCanvas>
@@ -96,7 +96,7 @@ export function ProjectInstructionsSection({ project }: { project: Project }) {
   if (!bridge) {
     return (
       <SettingsCanvas fill>
-        <SettingsSection title={t("projectSettings.instructions.section")} description={t("projectSettings.instructions.description")}>
+        <SettingsSection title={bare ? undefined : t("projectSettings.instructions.section")} description={t("projectSettings.instructions.description")}>
           <SettingsAlert>{t("projectSettings.instructions.bridgeMissing")}</SettingsAlert>
         </SettingsSection>
       </SettingsCanvas>
@@ -105,7 +105,7 @@ export function ProjectInstructionsSection({ project }: { project: Project }) {
   if (loading || !files[selected]) {
     return (
       <SettingsCanvas fill>
-        <SettingsSection title={t("projectSettings.instructions.section")} description={t("projectSettings.instructions.description")} alert={loadError || undefined}>
+        <SettingsSection title={bare ? undefined : t("projectSettings.instructions.section")} description={t("projectSettings.instructions.description")} alert={loadError || undefined}>
           {/* 读失败后不再谎称「加载中」：alert 已在段头说明结局。 */}
           {!loadError && (
             <SettingsEmpty icon={<FileText />} title={t("projectSettings.instructions.loading")} hint={t("projectSettings.instructions.description")} />
@@ -142,7 +142,7 @@ export function ProjectInstructionsSection({ project }: { project: Project }) {
 
   return (
     <SettingsCanvas fill>
-      <SettingsSection title={t("projectSettings.instructions.section")} description={t("projectSettings.instructions.description")} alert={loadError || undefined}>
+      <SettingsSection title={bare ? undefined : t("projectSettings.instructions.section")} description={t("projectSettings.instructions.description")} alert={loadError || undefined}>
         {workspaceChanged && <SettingsAlert tone="warn">{t("projectSettings.instructions.workspaceChanged")}</SettingsAlert>}
         {appReadOnly && (
           <SettingsAlert tone="warn">

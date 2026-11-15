@@ -1,0 +1,79 @@
+/*
+ * [INPUT]: Depends on the inherited color scheme or the host preview's explicit light/dark scheme, the Widget tile box and edge/size hooks.
+ * [OUTPUT]: Provides a scoped Dock summary palette, macOS widget typography, column/icon geometry and native text colors on every Dock edge.
+ * [POS]: Shared summary skin; authoring previews and the real Dock use identical colors without changing global appearance.
+ */
+.dock-summary-theme {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 4px 10px;
+  overflow: hidden;
+  font: 11px/1.15 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  color: light-dark(#1d1d1f, #f4f4f6);
+  --dock-summary-accent: light-dark(#0a64d6, #4c9dff);
+  --dock-summary-success: light-dark(#1f7a3a, #6fd18b);
+  --dock-summary-warning: light-dark(#a34a00, #ffab5c);
+  --dock-summary-danger: light-dark(#c4262e, #ff7a73);
+  --dock-summary-muted: color-mix(in srgb, currentColor 72%, transparent);
+}
+.dock-summary-theme:is([data-edge="left"], [data-edge="right"]) { padding: 8px 4px; }
+.dock-summary-theme[data-size="small"] { padding: 6px 4px; }
+
+.summary-row, .summary-col { display: flex; }
+.summary-col { flex-direction: column; }
+.dock-summary-theme > :is(.summary-row, .summary-col, .summary-columns) { width: 100%; height: 100%; }
+.dock-summary-theme:is([data-size="small"], [data-edge="left"], [data-edge="right"]) .summary-col { align-items: center; }
+
+.summary-display, .summary-primary, .summary-label, .summary-secondary, .summary-status {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.summary-display { font-size: 24px; font-weight: 500; line-height: 1; letter-spacing: -0.03em; }
+.summary-primary { font-size: 20px; font-weight: 600; line-height: 24px; }
+.summary-label { color: var(--dock-summary-muted); font-size: 10px; font-weight: 500; line-height: 1.15; }
+.summary-secondary { color: var(--dock-summary-muted); font-size: 11px; line-height: 14px; }
+.summary-status { font-size: 11px; line-height: 14px; }
+.dock-summary-theme:is([data-size="small"], [data-edge="left"], [data-edge="right"]) .summary-display { font-size: 20px; }
+.dock-summary-theme[data-size="small"] .summary-label { font-size: 9px; }
+
+.summary-icon { flex: none; width: 16px; height: 16px; }
+.summary-row > .summary-icon { width: 11px; height: 11px; }
+
+.summary-columns { display: flex; flex: 1 1 0; align-self: stretch; align-items: center; min-width: 0; min-height: 0; }
+.summary-column { display: flex; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; min-height: 0; }
+.summary-column-title { max-width: 100%; color: var(--dock-summary-muted); font-size: 10px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.summary-column-range { display: flex; align-items: baseline; justify-content: center; gap: 3px; max-width: 100%; font-size: 12px; font-weight: 500; line-height: 1.1; white-space: nowrap; overflow: hidden; }
+.summary-column-secondary { color: var(--dock-summary-muted); font-size: 11px; }
+.summary-column .summary-icon { width: 16px; height: 16px; }
+
+/* Side Dock rails are 56 DIP wide, so every column reading steps down one size. */
+.dock-summary-theme:is([data-edge="left"], [data-edge="right"]) .summary-column { gap: 1px; }
+.dock-summary-theme:is([data-edge="left"], [data-edge="right"]) .summary-column-title { font-size: 9px; }
+.dock-summary-theme:is([data-edge="left"], [data-edge="right"]) .summary-column .summary-icon { width: 13px; height: 13px; }
+.dock-summary-theme:is([data-edge="left"], [data-edge="right"]) .summary-column-range { font-size: 11px; }
+.dock-summary-theme:is([data-edge="left"], [data-edge="right"]) .summary-column-secondary { font-size: 10px; }
+/* Medium shares one column with the high and the low; step both down so neither clips. */
+.dock-summary-theme[data-edge="bottom"][data-size="medium"] .summary-column-range { gap: 2px; font-size: 11px; }
+.dock-summary-theme[data-edge="bottom"][data-size="medium"] .summary-column-secondary { font-size: 10px; }
+
+@media (forced-colors: active) {
+  .dock-summary-theme {
+    color: CanvasText;
+    --dock-summary-accent: LinkText;
+    --dock-summary-success: CanvasText;
+    --dock-summary-warning: CanvasText;
+    --dock-summary-danger: CanvasText;
+    --dock-summary-muted: CanvasText;
+  }
+  .dock-summary-theme .summary-icon { color: CanvasText; fill: none; }
+}

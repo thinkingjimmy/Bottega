@@ -61,6 +61,7 @@ export const copy = {
       description: "Your message and attachments are saved, and still unsent.",
       retriedTitle: "Retrying the original session failed",
       retriedDescription: "{{backend}} still can't open the saved session. Your message and attachments remain saved and have not been sent.",
+      otherOptions: "Other options",
       recommended: "Recommended",
       sameSession: "Retry the original session",
       sameSessionDetail: "Reconnect to the original session. If it works, the agent keeps everything it knows about this chat.",
@@ -86,7 +87,6 @@ export const copy = {
       pendingTitle: "This turn needs recovery",
       pendingDetail: "Resolve or abandon this turn before sending another message. You can keep browsing.",
       review: "Review recovery",
-      later: "Handle later",
     },
   userInput: {
     countdown: "{{count}}s",

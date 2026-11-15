@@ -5,7 +5,8 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog, DialogTrigger } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogContent, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { viewConfigHitAreaClass } from "../views/view-config-bar";
 import type { BaseSyncIdentity, BaseSyncPresentation, BaseSyncReview, BaseCandidateDetail } from "@ai-chat/base-core/sync/model";
 import { useAppTranslation } from "../platform/i18n";
@@ -23,12 +24,12 @@ export function BaseSyncNotice({ port, identity, value, failed }: Props) {
       {value?.state !== "deleted" && (value?.paused ? ` · ${t("bases.sync.paused")}` : value && !value.connected ? ` · ${t("bases.sync.offline")}` : "")}</p>
     {value && (value.conflicts > 0 || open) && <Dialog open={open} onOpenChange={setOpen}>
       {value.conflicts > 0 && <DialogTrigger asChild><Button size="sm" variant="outline" className={viewConfigHitAreaClass}>{t("bases.sync.reviewCount", { count: value.conflicts })}</Button></DialogTrigger>}
-      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-2xl" onCloseAutoFocus={event => {
+      <AppDialogContent size="lg" showCloseButton className="flex max-h-[calc(100dvh-2rem)] flex-col" onCloseAutoFocus={event => {
         if (!value.conflicts) { event.preventDefault(); statusRef.current?.focus(); }
       }}>
-        <DialogHeader><DialogTitle>{t("bases.sync.title")}</DialogTitle><DialogDescription>{t("bases.sync.description")}</DialogDescription></DialogHeader>
+        <AppDialogHeader title={t("bases.sync.title")} description={t("bases.sync.description")}/>
         {open && <CandidateReview key={`${port.scopeKey}:${identity.ownerKey}:${identity.baseId}`} port={port} identity={identity} />}
-      </DialogContent>
+      </AppDialogContent>
     </Dialog>}
   </div>;
 }

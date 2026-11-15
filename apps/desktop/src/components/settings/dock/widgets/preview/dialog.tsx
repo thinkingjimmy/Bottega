@@ -4,8 +4,9 @@
  * [POS]: Main authoring preview; layout, saved instances, source activation and other grants remain owned by their existing flows.
  */
 import {useCallback,useRef,useState,type CSSProperties} from 'react';
-import {Dialog,DialogTitle,DialogDescription,DialogHeader,DialogFooter} from '@ai-chat/ui/components/ui/dialog';
-import {AppDialogContent,AppDialogBody} from '@ai-chat/ui/components/ui/app-dialog';
+import {Dialog} from '@ai-chat/ui/components/ui/dialog';
+import {Button} from '@ai-chat/ui/components/ui/button';
+import {AppDialogBody,AppDialogContent,AppDialogFooter,AppDialogHeader} from '@ai-chat/ui/components/ui/app-dialog';
 import type {DockSummarySize} from '@bottega/contracts/plugins/dock/geometry';
 import type {WidgetPreview} from '../../../../../../shared/system-dock/widgets/authoring';
 import {useAppTranslation} from '@/components/providers/preferences/i18n-provider';
@@ -27,8 +28,8 @@ export function WidgetPreviewDialog({preview,chatId,instances=[],onClose,onRetur
  const refresh=async()=>{if(lock.current||!value)return;lock.current=true;setBusy(true);setFailure(false);try{await session.control({kind:'refresh',sessionId:value.sessionId});}catch{setFailure(true);}finally{lock.current=false;setBusy(false);}};
  if(configuration&&draft)return <WidgetConfiguration preview={{...preview,itemId:targetId}} draft={draft} onDraft={setDraft} kind="preview" onSubmit={async input=>{await session.start('real',{name:input.name??draft.name,size:input.size,settings:input.settings,bindings:input.bindings,baseConsent:input.baseConsent??false,apiConsent:input.apiConsent??[]},input.operationId);startingReal.current=true;return'success';}} onClose={()=>{configured.current=false;setConfiguration(false);if(!startingReal.current)void session.start('sample').catch(()=>{});}} onReturnFocus={()=>requestAnimationFrame(()=>content.current?.focus())}/>;
  const readings=detail?Object.fromEntries(detail.data.map(source=>[source.id,source.reading])):value?{}:undefined,selectedTheme=value?.theme??'light';
- return <Dialog open onOpenChange={open=>{if(!open)close();}}><AppDialogContent ref={attach} showCloseButton={false} className="sm:max-w-3xl" onCloseAutoFocus={event=>{event.preventDefault();if(!configured.current)onReturnFocus();}}>
-  <DialogHeader><DialogTitle>{t('systemDock.widgets.previewTitle')}</DialogTitle><DialogDescription>{value?t('systemDock.widgets.previewExecution',{computer:value.executionComputer}):t('systemDock.widgets.previewHint')}</DialogDescription></DialogHeader>
+ return <Dialog open onOpenChange={open=>{if(!open)close();}}><AppDialogContent ref={attach} size="xl" onCloseAutoFocus={event=>{event.preventDefault();if(!configured.current)onReturnFocus();}}>
+  <AppDialogHeader title={t('systemDock.widgets.previewTitle')} description={value?t('systemDock.widgets.previewExecution',{computer:value.executionComputer}):t('systemDock.widgets.previewHint')}/>
   <div data-widget-live-preview="" data-widget-preview-session={value?.sessionId} data-preview-state={value?.state??'loading'} className="flex min-h-0 flex-1 flex-col gap-3">
    {preview.instanceIds.length>1&&<label className="mt-3 grid gap-1 text-sm">{t('systemDock.widgets.previewTarget')}<select disabled={busy||session.loading} value={targetId} onChange={event=>{setDraft(null);setTarget(event.target.value);}} className="min-h-9 rounded border bg-transparent px-2">{preview.instanceIds.map(id=><option key={id} value={id}>{instances.find(instance=>instance.id===id)?.name??preview.name}</option>)}</select></label>}
    <WidgetSummaryPreview dock={preview.dock} edge={edge} size={size} onEdge={setEdge} onSize={setSize} readings={readings} example={value?.mode!=='real'} theme={selectedTheme} onTheme={theme=>{if(value)void session.control({kind:'theme',sessionId:value.sessionId,theme}).catch(()=>{});}}/>
@@ -41,9 +42,9 @@ export function WidgetPreviewDialog({preview,chatId,instances=[],onClose,onRetur
    {value?.announcement&&<p role="status" className="text-xs text-muted-foreground">{t('systemDock.widgets.previewAction')}</p>}
    {detail&&<div className="flex flex-wrap gap-2">{detail.actions.map(action=><SettingsButton key={action.ref} variant="outline" disabled={busy} onClick={()=>void session.control({kind:'action',sessionId:value!.sessionId,ref:action.ref}).catch(()=>{})}>{action.label}</SettingsButton>)}</div>}
    {(failure||session.failed)&&<SettingsAlert>{t('systemDock.widgets.previewFailed')}</SettingsAlert>}
-   <DialogFooter className="flex-wrap gap-2 pt-3"><SettingsButton variant="outline" onClick={close}>{t('systemDock.widgets.previewClose')}</SettingsButton><SettingsButton variant="outline" disabled={busy||session.loading||value?.state==='closed'} onClick={()=>void real()}>{t('systemDock.widgets.previewUseReal')}</SettingsButton>
-    {value?.mode==='real'&&<SettingsButton disabled={busy||value.state!=='active'} aria-busy={busy} onClick={()=>void refresh()}>{t('systemDock.widgets.previewRefresh')}</SettingsButton>}
-   </DialogFooter>
+   <AppDialogFooter><Button size="pill" onClick={close}>{t('systemDock.widgets.previewClose')}</Button><Button size="pill" variant="outline" disabled={busy||session.loading||value?.state==='closed'} onClick={()=>void real()}>{t('systemDock.widgets.previewUseReal')}</Button>
+    {value?.mode==='real'&&<Button size="pill" variant="outline" disabled={busy||value.state!=='active'} aria-busy={busy} onClick={()=>void refresh()}>{t('systemDock.widgets.previewRefresh')}</Button>}
+   </AppDialogFooter>
   </div>
  </AppDialogContent></Dialog>;
 }

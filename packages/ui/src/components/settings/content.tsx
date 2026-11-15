@@ -7,6 +7,8 @@
 import type { ComponentProps, ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "@ai-chat/ui/lib/utils";
+import { useUiText } from "@ai-chat/ui/lib/ui-text";
+import { SettingsButton } from "@ai-chat/ui/components/settings/controls";
 
 export function SettingsSurface({
   className,
@@ -17,7 +19,7 @@ export function SettingsSurface({
     <div
       {...props}
       className={cn(
-        "overflow-hidden rounded-lg bg-card ring-1 ring-foreground/10",
+        "overflow-hidden rounded-[0.875rem] bg-card ring-1 ring-foreground/10",
         className
       )}
     >
@@ -43,6 +45,7 @@ export function SettingsRow({
   description,
   control,
   tone = "default",
+  error,
 }: {
   leading?: ReactNode;
   label: string;
@@ -52,7 +55,12 @@ export function SettingsRow({
   description?: ReactNode;
   control: ReactNode;
   tone?: "default" | "destructive";
+  /* Save failure (S20 r3): the description is replaced by one destructive 12px
+     line and a ghost Retry pill sits before the control; the row keeps its
+     height. The caller reverts the control value. */
+  error?: { message: ReactNode; onRetry(): void; retryLabel?: ReactNode };
 }) {
+  const retryText = useUiText("retry", "Retry");
   const labelClassName = cn(
     "font-medium text-[13px] leading-5",
     tone === "destructive" && "text-destructive"
@@ -71,7 +79,15 @@ export function SettingsRow({
           )}
           {badge}
         </div>
-        {description && (
+        {error ? (
+          <p
+            role="alert"
+            id={htmlFor ? `${htmlFor}-description` : undefined}
+            className="mt-0.5 wrap-anywhere text-destructive text-xs leading-normal"
+          >
+            {error.message}
+          </p>
+        ) : description && (
           <p
             id={htmlFor ? `${htmlFor}-description` : undefined}
             className={cn(
@@ -83,7 +99,14 @@ export function SettingsRow({
           </p>
         )}
       </div>
-      <div className="shrink-0 max-md:[&_[data-slot=select-trigger]]:min-h-11 pointer-coarse:[&_[data-slot=select-trigger]]:min-h-11">{control}</div>
+      <div className="flex shrink-0 items-center gap-2 max-md:[&_[data-slot=select-trigger]]:min-h-11 pointer-coarse:[&_[data-slot=select-trigger]]:min-h-11">
+        {error && (
+          <SettingsButton type="button" variant="ghost" onClick={error.onRetry}>
+            {error.retryLabel ?? retryText}
+          </SettingsButton>
+        )}
+        {control}
+      </div>
     </div>
   );
 }
@@ -125,6 +148,7 @@ export function SettingsLinkRow({
   return (
     <button
       type="button"
+      data-slot="settings-link-row"
       onClick={onSelect}
 
       className="flex w-full cursor-pointer touch-manipulation items-center justify-between gap-6 px-4 py-3 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset motion-reduce:transition-none"
@@ -201,7 +225,7 @@ export function SettingsEmpty({
   return (
     <div
       {...props}
-      className="rounded-lg border border-dashed px-6 py-8 text-center"
+      className="rounded-[0.875rem] border border-dashed px-6 py-8 text-center"
     >
       <span
         aria-hidden="true"

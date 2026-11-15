@@ -1,30 +1,27 @@
 /**
  * [INPUT]: No runtime dependencies
- * [OUTPUT]: Provides settingsBrowserEn — Settings › Browser text for Chrome sign-in detection, profile/domain import preview, and failure states — and the structural shape its translated leaves derive from
+ * [OUTPUT]: Provides settingsBrowserEn — Settings › Browser text for the setup guide, Chrome sign-in detection, profile/domain import preview, and failure states — and the structural shape its translated leaves derive from
  * [POS]: English leaf of shared/i18n/locales/settings/browser; Chrome profile, domain name and underlying diagnostic source remain untranslated
  */
 
 export const settingsBrowserEn = {
-  sectionTitle: "Import sign-in state from Chrome",
-  loginState: "Chrome sign-in state",
   detecting: "Detecting Chrome…",
-  detectingAria: "Detecting Chrome",
-  readyDescription:
-    "Choose a profile and domains before importing. Chrome data is read-only and will not be modified.",
   noProfiles: "Google Chrome or a usable profile was not found.",
   detectFailed: "Could not detect Chrome profiles.",
   platformUnavailable: "Chrome sign-in import is not available in this preview build.",
-  startImport: "Start import",
-  startImportAria: "Start importing Chrome sign-in state",
-  learnMore: "Learn more",
-  capability: {
-    persistentTitle: "Sign in once and keep the session",
-    persistentDetail:
-      "You can sign in directly in the embedded Browser even if you skip import. Cookies persist across tabs and app restarts, and the Agent inherits the same session.",
-    limitedTitle: "Passwords, extensions, and bookmarks are not imported",
-    limitedDetail:
-      "Electron does not expose Chrome's password manager or full extension APIs, and bookmarks are not used for Agent browsing. This avoids moving sensitive data without a practical benefit.",
+  guideTitle: "Use your Chrome sign-ins in Bottega",
+  guideDescription:
+    "Import the sign-in state of chosen sites so Agents can browse as you. You pick the profile and the sites before anything is imported.",
+  guideAction: "Import from Chrome…",
+  facts: {
+    readOnlyTitle: "Read-only",
+    readOnlyDetail: "Chrome is not modified.",
+    localTitle: "Stays on this Mac",
+    localDetail: "Cookies are never uploaded.",
+    keychainTitle: "Keychain access",
+    keychainDetail: "macOS asks once; denying does not affect Chrome.",
   },
+  lastImport: "Last import",
   result: "Imported {{imported}} / skipped {{skipped}} / failed {{failed}}",
   resultFallback:
     "Some sites could not be imported. Sign in once in Browser to keep the session and share it with the Agent.",

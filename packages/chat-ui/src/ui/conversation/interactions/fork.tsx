@@ -5,7 +5,9 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConversationForkIcon } from "@ai-chat/ui/components/conversation/actions";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
+import { AppDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { errorMessage, failureCode } from "@ai-chat/ui/lib/errors";
 import type { ComposerTranslate } from "../../composer/controls/copy/translation";
@@ -171,17 +173,10 @@ export function ForkChatDialog({
   const busy = busyMode !== null;
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent
-        className="w-[min(calc(100%-2rem),420px)] gap-0 rounded-[22px] p-5 shadow-2xl sm:max-w-[420px]"
-        overlayClassName="bg-black/15 backdrop-blur-[1px]"
-        showCloseButton={false}
+      <AppDialogContent showCloseButton
       >
-        <DialogHeader>
-          <DialogTitle className="text-xl/7 font-semibold tracking-[-0.025em]">{t("chat.fork.title")}</DialogTitle>
-          <DialogDescription className="sr-only">
-            {t("chat.fork.description", { title: context.summary.title ?? t("chat.newTask") })}
-          </DialogDescription>
-        </DialogHeader>
+        <AppDialogHeader title={t("chat.fork.title")} description={t("chat.fork.description", { title: context.summary.title ?? t("chat.newTask") })}
+        />
         <div className="mt-4 grid gap-0">
           <ForkChoice
             busy={busyMode === "same-workspace"}
@@ -206,7 +201,7 @@ export function ForkChatDialog({
             title={t("chat.fork.newWorktree")}
           />
         </div>
-      </DialogContent>
+      </AppDialogContent>
     </Dialog>
   );
 }

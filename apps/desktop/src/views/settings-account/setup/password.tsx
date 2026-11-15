@@ -5,6 +5,7 @@
  */
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { validatePassword } from "@ai-chat/cloud-crypto";
+import { Button } from "@ai-chat/ui/components/ui/button";
 import { StepDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { getCloudEncryptionCopy } from "@ai-chat/ui/lib/cloud-copy/encryption";
@@ -12,7 +13,7 @@ import { cloudHandshakeFailed, type CloudAccountState } from "../../../../shared
 import { syncEncryptionErrorSchema } from "../../../../shared/cloud/encryption";
 import { requiresSyncSetup, type SyncReview } from "../../../../shared/cloud/sync";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { SettingsAlert, SettingsButton } from "@/components/settings/settings-layout";
+import { SettingsAlert, } from "@/components/settings/settings-layout";
 import { cloudAccountClient, cloudAccountSource } from "@/lib/cloud/client";
 import { gateCreateSubmit } from "../encryption/create-draft";
 import { EncryptionFields } from "../encryption/fields";
@@ -130,9 +131,9 @@ export function PasswordStep({ state, onClose }: { state: CloudAccountState; onC
     description={<span id="sync-setup-description"><span role={busy ? "status" : undefined}>{lead}</span></span>}
     onPointerDownOutside={event => event.preventDefault()} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}
     actions={<>
-      <SettingsButton type="button" variant="ghost" onClick={busy ? abandon : onClose}>{t("cloud.cancel")}</SettingsButton>
-      {needsRetry && discoveryRetry ? <SettingsButton type="button" disabled={!ready} onClick={retryInspection}>{t("cloud.retry")}</SettingsButton> :
-        <SettingsButton type="submit" form={formId} disabled={disabled} aria-disabled={draftHeld || undefined} className={draftHeld ? "opacity-50" : undefined}>{busy && <Spinner className="size-3.5" />}{t(needsRetry ? "cloud.retry" : "cloud.setup.enable")}</SettingsButton>}
+      <Button type="button" size="pill" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={busy ? abandon : onClose}>{t("cloud.cancel")}</Button>
+      {needsRetry && discoveryRetry ? <Button type="button" size="pill" variant="outline" disabled={!ready} onClick={retryInspection}>{t("cloud.retry")}</Button> :
+        <Button type="submit" size="pill" form={formId} disabled={disabled} aria-disabled={draftHeld || undefined} className={draftHeld ? "opacity-50" : undefined}>{busy && <Spinner className="size-3.5" />}{t(needsRetry ? "cloud.retry" : "cloud.setup.enable")}</Button>}
     </>}>
     <form ref={form} id={formId} onSubmit={confirm} className="space-y-3">
       {alert && <SettingsAlert>{alert}</SettingsAlert>}

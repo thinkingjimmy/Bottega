@@ -4,7 +4,7 @@
 
 Bottega 把 Agent 对话视为一个可持续、本地工作空间的控制面。产品由以下核心能力域构成。
 
-本文描述 **0.4.5／协议 27** 的源码能力。安装包可用性与实际验收范围以[最新稳定 Release](https://github.com/thinkingjimmy/Bottega/releases/latest)为准。
+本文描述 **0.4.6／协议 27** 的源码能力。安装包可用性与实际验收范围以[最新稳定 Release](https://github.com/thinkingjimmy/Bottega/releases/latest)为准。
 
 ## Multi-agent
 

@@ -43,7 +43,7 @@ const buttonVariants = cva(
            tailwind-merge 只认得出 position 组里的成员，className 里后写的
            absolute 因此仍然胜出，不会被它打回文档流。 */
         pill:
-          "relative h-8 min-w-[4.75rem] touch-target-44 gap-1.5 rounded-full px-5 text-sm font-normal [&_svg:not([class*='size-'])]:size-4",
+          "relative h-8 min-w-[4.75rem] touch-target-44 gap-1.5 rounded-full px-5 text-sm font-medium [&_svg:not([class*='size-'])]:size-4",
         icon: "size-7 [&_svg:not([class*='size-'])]:size-3.5",
         "icon-xs": "size-5 rounded-sm [&_svg:not([class*='size-'])]:size-2.5",
         "icon-sm": "size-6 [&_svg:not([class*='size-'])]:size-3",

@@ -1,0 +1,103 @@
+/*
+ * [INPUT]: Product theme variables (--background, --sidebar, --border, --foreground, --muted-foreground, --accent, --primary) and the .dark root class.
+ * [OUTPUT]: Onboarding scene styles: wallpaper and veil, the one entrance curve, and the static product window with its Agent-step camera move.
+ * [POS]: views/onboarding/shell; imported by frame.tsx so it ships in the lazy onboarding chunk (DOM tests stub it via tests/interop/styles.mjs), and consumed by frame.tsx and preview.tsx only. Window geometry is copied from the website hero (hero/shell.css, surface.css, composer.css).
+ */
+.onboarding-scene { --op-ease: cubic-bezier(0.16, 1, 0.3, 1); --op-column: 420px; --op-inset: 72px;
+  position: relative; isolation: isolate; display: flex; flex-direction: column; height: 100svh; min-width: 0; overflow: hidden;
+  background: var(--background); color: var(--foreground); }
+.onboarding-brand { position: relative; z-index: 10; display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 16px;
+  height: 104px; padding: 44px 32px 0 var(--op-inset); font-size: 15px; user-select: none; -webkit-app-region: drag; }
+.onboarding-brand > div:first-child { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.onboarding-mark { width: 28px; height: 28px; flex-shrink: 0; border-radius: 23%; object-fit: contain; }
+.onboarding-no-drag { -webkit-app-region: no-drag; }
+.onboarding-language[data-slot="select-trigger"] { height: 32px; padding: 0 12px; border-radius: 9999px; font-size: 13px; box-shadow: none;
+  background: color-mix(in oklab, var(--background) 55%, transparent); backdrop-filter: blur(12px); }
+.onboarding-scroll { position: relative; z-index: 10; display: flex; flex: 1; flex-direction: column; min-height: 0; overflow-y: auto; padding: 0 32px 0 var(--op-inset); }
+.onboarding-column { display: flex; flex-direction: column; width: 100%; max-width: 380px; margin: auto 0; padding: 32px 0; }
+.onboarding-header { display: flex; flex-direction: column; gap: 12px; }
+.onboarding-title { font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em; text-wrap: balance; }
+.onboarding-lede { font-size: 14px; line-height: 1.65; color: var(--muted-foreground); text-wrap: pretty; }
+.onboarding-body { display: flex; flex-direction: column; gap: 12px; margin-top: 24px; }
+.onboarding-wallpaper { position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; object-position: 62% 100%; pointer-events: none; }
+/* Solid ground under the text column, open sky behind the product. */
+.onboarding-veil { position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(90deg, var(--background) 0, var(--background) var(--op-column),
+    color-mix(in oklab, var(--background) 55%, transparent) calc(var(--op-column) + 80px), transparent calc(var(--op-column) + 180px)); }
+.onboarding-rise { animation: op-rise .7s var(--op-ease) both; }
+.onboarding-rise.onboarding-body { animation-delay: 60ms; }
+
+/* ---------- static product window ---------- */
+.onboarding-preview { position: absolute; inset: 0; z-index: 0; pointer-events: none; animation: op-rise .85s var(--op-ease) .1s both;
+  --op-shadow: 0 0 0 1px rgb(0 0 0 / 8%), 0 2px 6px rgb(0 0 0 / 6%), 0 44px 90px -30px rgb(0 0 0 / 35%); }
+.dark .onboarding-preview { --op-shadow: 0 0 0 1px rgb(255 255 255 / 10%), 0 2px 6px rgb(0 0 0 / 30%), 0 44px 90px -30px rgb(0 0 0 / 80%); }
+.op-window { position: absolute; left: 500px; top: 108px; width: max(820px, calc(100% - 460px)); height: max(640px, calc(100% - 68px));
+  display: flex; overflow: hidden; border-radius: 12px; background: var(--background); color: var(--foreground); box-shadow: var(--op-shadow);
+  font-size: 12px; transform-origin: 0 0; transition: transform .9s var(--op-ease); }
+/* The Agent step is a camera move, not a new picture: the same window, closer, on the column where every Chat shows its Agent.
+   332px is the centre of the Projects and Chats rows inside the sidebar; they centre in the band below the 104px brand row,
+   which the mask keeps clear so the zoomed window never runs under the logo or the language picker. */
+.onboarding-preview[data-step="agent"] { mask-image: linear-gradient(to bottom, transparent 104px, #000 168px); }
+.onboarding-preview[data-step="agent"] .op-window { transform: translate(40px, calc(50svh + 52px - 108px - 1.5 * 332px)) scale(1.5); }
+.onboarding-preview[data-step="agent"] .op-row[data-spot] { animation: op-spot 1.1s ease-in-out calc(.8s + var(--spot) * .14s) both; }
+
+.op-side { flex: none; width: 232px; display: flex; flex-direction: column; background: var(--sidebar); border-right: 1px solid var(--border); }
+.op-traffic { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; color: var(--muted-foreground); }
+.op-traffic i { width: 11px; height: 11px; border-radius: 9999px; background: #ff5f57; }
+.op-traffic i:nth-child(2) { background: #febc2e; } .op-traffic i:nth-child(3) { background: #28c840; }
+.op-traffic svg { margin-left: 12px; }
+.op-brand { display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 12px 0 10px; color: var(--muted-foreground); }
+.op-brand b { margin-right: auto; font-size: 18px; font-weight: 600; letter-spacing: -.02em; color: var(--foreground); }
+.op-group { padding: 0 2px 4px; } .op-scroll { flex: 1; min-height: 0; overflow: hidden; padding: 0 2px; } .op-foot { padding: 4px 2px 6px; }
+.op-label { display: flex; align-items: center; height: 32px; padding: 0 8px; font-size: 12px; color: var(--muted-foreground); }
+.op-row { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 8px; font-size: 12px; }
+.op-row[data-sub] { padding-left: 24px; } .op-row[data-dim] { color: var(--muted-foreground); }
+.op-row[data-on] { background: var(--accent); font-weight: 500; }
+.op-mark { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex: none; }
+.op-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+.op-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.op-head { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-bottom: 1px solid var(--border); color: var(--muted-foreground); }
+.op-head > span { font-size: 14px; font-weight: 500; color: var(--foreground); white-space: nowrap; }
+.op-chat { flex: 1; min-height: 0; overflow: hidden; max-width: 640px; padding: 20px 24px 8px; display: flex; flex-direction: column; gap: 14px; }
+.op-chat > :first-child { margin-top: auto; }
+.op-bubble { margin-left: auto; max-width: 74%; border-radius: 12px; background: var(--accent); padding: 11px 14px; font-size: 14px; line-height: 1.5; }
+.op-worked { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); color: var(--muted-foreground); font-size: 14px; }
+.op-reply { font-size: 14px; line-height: 1.62; }
+.op-plan { padding: 16px; border: 1px solid var(--border); border-radius: 18px; }
+.op-plan-head { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted-foreground); }
+.op-plan-body { position: relative; max-height: 150px; overflow: hidden; padding-top: 12px; font-size: 14px; line-height: 1.62; }
+.op-plan-body h3 { margin: 0 0 10px; font-size: 18px; font-weight: 600; letter-spacing: -.012em; }
+.op-plan-body h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+.op-plan-body ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+.op-plan-body li { position: relative; padding-left: 18px; }
+.op-plan-body li::before { content: ""; position: absolute; left: 5px; top: 10px; width: 4px; height: 4px; border-radius: 9999px; background: var(--muted-foreground); }
+.op-chat code { padding: 1px 5px; border-radius: 5px; background: var(--accent); font-family: var(--font-mono, ui-monospace, monospace); font-size: .86em; }
+.op-fade { position: absolute; inset: auto 0 0; height: 80px; background: linear-gradient(to bottom, transparent, var(--background) 78%); }
+.op-status { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.op-orb { width: 12px; height: 12px; border-radius: 9999px; background: radial-gradient(circle at 34% 30%, #dbe6f0 0%, #8ea9c4 45%, #5b7f9e 100%);
+  animation: op-orb 1.6s ease-in-out infinite; }
+.op-shimmer { font-size: 14px; color: transparent; background: linear-gradient(90deg, var(--muted-foreground) 40%, var(--foreground) 50%, var(--muted-foreground) 60%) 0 0 / 200% 100%;
+  -webkit-background-clip: text; background-clip: text; animation: op-shimmer 2s linear infinite; }
+.op-composer { flex: none; max-width: 600px; margin: 0 16px 16px; border: 1px solid var(--border); border-radius: 18px; }
+.op-field { padding: 13px 14px 6px; font-size: 14px; color: var(--muted-foreground); }
+.op-tools { display: flex; align-items: center; gap: 4px; padding: 0 8px 8px; }
+.op-tool { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 6px; font-size: 14px; color: var(--muted-foreground); }
+.op-tools .text-foreground { color: var(--foreground); }
+.op-send { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 9999px; background: var(--primary); color: var(--primary-foreground); }
+
+/* A window too narrow for two columns keeps the question alone on the ground. */
+@media (max-width: 900px) {
+  .onboarding-scene { --op-inset: 32px; }
+  .onboarding-column { max-width: 520px; }
+  .onboarding-preview { display: none; }
+  .onboarding-veil { background: var(--background); }
+}
+
+@keyframes op-rise { from { opacity: 0; transform: translateY(18px); } }
+@keyframes op-spot { 45% { background: color-mix(in oklab, var(--foreground) 12%, transparent); } }
+@keyframes op-shimmer { from { background-position: 200% 0; } to { background-position: 0 0; } }
+@keyframes op-orb { 50% { transform: scale(.82); opacity: .75; } }
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-rise, .onboarding-preview, .onboarding-preview *, .op-window { animation: none !important; transition: none !important; }
+}

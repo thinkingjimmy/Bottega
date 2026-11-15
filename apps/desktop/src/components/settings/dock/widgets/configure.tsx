@@ -4,7 +4,10 @@
  * [POS]: Shared main-window Widget form; source application and instance configuration retain separate submission owners.
  */
 import {useRef,useState} from 'react';
-import {Dialog,DialogContent,DialogTitle,DialogDescription,DialogFooter} from '@ai-chat/ui/components/ui/dialog';
+import {Dialog} from '@ai-chat/ui/components/ui/dialog';
+import {Button} from '@ai-chat/ui/components/ui/button';
+import {AppDialogBody,AppDialogCancel,AppDialogContent,AppDialogFooter,AppDialogHeader} from '@ai-chat/ui/components/ui/app-dialog';
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import {defaultDockSettings,validateDockSettings,widgetNameSchema,type DockSettings} from '@bottega/contracts/plugins/dock/settings';
 import type {DockSummarySize} from '@bottega/contracts/plugins/dock/geometry';
 import type {WidgetApplyInput,WidgetPreview} from '../../../../../shared/system-dock/widgets/authoring';
@@ -35,8 +38,9 @@ export function WidgetConfiguration({preview,draft,onDraft,onSubmit,onClose,onRe
   catch(failure){setFailureCode(String(failure).includes('CONFLICT')||String(failure).includes('EXPIRED')?'conflict':'applyFailed');}
   finally{lock.current=false;setBusy(false);}
  };
- return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose();}}><DialogContent showCloseButton={!busy} className="max-h-[85vh] overflow-y-auto" onCloseAutoFocus={event=>{event.preventDefault();onReturnFocus();}} onEscapeKeyDown={event=>{if(busy)event.preventDefault();}}>
-  <DialogTitle>{t('systemDock.widgets.configure')}</DialogTitle><DialogDescription>{t(kind==='preview'?'systemDock.widgets.previewConsentHint':'systemDock.widgets.configurationHint')}</DialogDescription>
+ return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose();}}><AppDialogContent onCloseAutoFocus={event=>{event.preventDefault();onReturnFocus();}} onEscapeKeyDown={event=>{if(busy)event.preventDefault();}}>
+  <AppDialogHeader title={t('systemDock.widgets.configure')} description={t(kind==='preview'?'systemDock.widgets.previewConsentHint':'systemDock.widgets.configurationHint')}/>
+  <AppDialogBody className="space-y-4">
   <label className="grid gap-2 text-sm">{t('systemDock.widgets.name')}<input value={draft.name} disabled={busy} readOnly={kind==='review'} aria-invalid={invalidName} onChange={event=>change({...draft,name:event.target.value})} className="min-h-10 rounded-md border bg-transparent px-3" /></label>
   {preview.dock.sizes.length>1&&<label className="grid gap-2 text-sm">{t('systemDock.settings.size')}<select disabled={busy} value={draft.size} onChange={event=>change({...draft,size:event.target.value as DockSummarySize})} className="min-h-10 rounded-md border bg-transparent px-3">{preview.dock.sizes.map(size=><option key={size} value={size}>{t(size==='small'?'systemDock.widgets.sizeSmall':size==='medium'?'systemDock.widgets.sizeMedium':'systemDock.widgets.sizeLarge')}</option>)}</select></label>}
   <WidgetSettingsFields fields={preview.dock.settings} values={draft.settings} disabled={busy} invalid={invalid} onChange={settings=>change({...draft,settings})} />
@@ -45,6 +49,7 @@ export function WidgetConfiguration({preview,draft,onDraft,onSubmit,onClose,onRe
   {hasApi&&<WidgetApiConfiguration key={apiKey} previewId={preview.previewId} targetId={preview.itemId??undefined} settings={apiSettings} consent={draft.apiConsent??[]} disabled={busy} onConsent={apiConsent=>change({...draft,apiConsent})} onReady={setApiReady}/>}
   <p className="text-xs text-muted-foreground">{t('systemDock.widgets.executionHere')}</p>
   {(failureCode||invalidName||invalidBase||invalidApi||invalid.length>0)&&<SettingsAlert>{t(invalidName?'systemDock.widgets.invalidName':invalid.length?'systemDock.widgets.invalidSettings':invalidBase?'systemDock.widgets.base.invalid':invalidApi?'systemDock.widgets.api.invalid':failureCode==='conflict'?'systemDock.widgets.conflict':failureCode==='commitPending'?(kind==='source'?'systemDock.widgets.commitPending':'systemDock.widgets.instancePending'):'systemDock.widgets.applyFailed')}</SettingsAlert>}
-  <DialogFooter><SettingsButton variant="outline" disabled={busy} onClick={onClose}>{t('systemDock.widgets.cancel')}</SettingsButton><SettingsButton disabled={busy} aria-busy={busy} onClick={()=>void submit()}>{t(busy?(kind==='preview'?'systemDock.widgets.previewStarting':'systemDock.widgets.applying'):kind==='preview'?'systemDock.widgets.previewStartReal':kind==='review'?'systemDock.widgets.review.save':kind==='source'?'systemDock.widgets.saveAndAdd':kind==='add'?'systemDock.widgets.add':'systemDock.widgets.applyInstance')}</SettingsButton></DialogFooter>
- </DialogContent></Dialog>;
+  </AppDialogBody>
+  <AppDialogFooter><AppDialogCancel disabled={busy} onClick={onClose}>{t('systemDock.widgets.cancel')}</AppDialogCancel><Button size="pill" disabled={busy} aria-busy={busy} onClick={()=>void submit()}>{busy&&<Spinner/>}{t(kind==='preview'?'systemDock.widgets.previewStartReal':kind==='review'?'systemDock.widgets.review.save':kind==='source'?'systemDock.widgets.saveAndAdd':kind==='add'?'systemDock.widgets.add':'systemDock.widgets.applyInstance')}</Button></AppDialogFooter>
+ </AppDialogContent></Dialog>;
 }

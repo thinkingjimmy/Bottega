@@ -142,6 +142,7 @@ export const workspaceCopy = {
     "restoreEntity": "{{title}} を復元",
     "deleteEntity": "{{title}} を削除",
     "importedDeleteUnavailable": "インポート履歴は読み取り専用のため、Bottega で完全に削除できません。",
+        "loadFailed": "アーカイブ済みの項目を読み込めませんでした。",
     "toast": {
       "archivedChat": "Chat をアーカイブしました",
       "archivedProject": "Project をアーカイブしました",
@@ -151,6 +152,7 @@ export const workspaceCopy = {
     }
   },
   "browserArchive": {
+    "sourceFailed": (source: string) => `${source}を読み込めませんでした。`,
     "sectionTitle": "Chat と Project",
     "description": "アーカイブした Chat、Project、インポート履歴がここに残ります。項目を開くと内容を確認できます。",
     "emptyTitle": "アーカイブは空です",

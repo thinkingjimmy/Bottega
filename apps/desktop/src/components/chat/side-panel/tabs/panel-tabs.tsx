@@ -1,6 +1,6 @@
 /**
- * [INPUT]: React tabs, shared localized panel copy, session eligibility, session-only Artifact tabs and close guards, durable slots, Browser tabs, App authorization, Base projections and image pins
- * [OUTPUT]: One Base/App/Browser/Image/Subagent/Artifact tablist with guarded Artifact navigation, active-only preview leases, tab-hosted full view and work switching with localized recovery
+ * [INPUT]: Shared panel copy, native Artifact transcript pages, session eligibility and close guards, durable slots, Browser tabs, App authorization, Base projections and image pins
+ * [OUTPUT]: One Base/App/Browser/Image/Subagent/Artifact tablist with a saved Artifact picker, guarded navigation and active-only preview leases
  * [POS]: apps/desktop/src/components/chat/side-panel/tabs; Native panel data/effect adapter; shared PanelHost owns tab chrome and retained regions
  */
 
@@ -18,6 +18,8 @@ import { PanelHost, type PanelLeaf } from "@ai-chat/chat-ui/side-panel/frame";
 import { ArtifactTab, isArtifactTab, rememberArtifactTab, useArtifactTabs, useArtifactTabGuard, useArtifactTabChrome } from "@ai-chat/chat-ui/artifact-tabs";
 import { artifactCopy, useArtifactHost } from "@ai-chat/chat-ui/artifacts";
 import { sidePanelCopy } from "@ai-chat/chat-ui/side-panel-copy";
+import { ArtifactPicker } from "@ai-chat/chat-ui/side-panel/artifact-picker";
+import { readNativeArtifactPages } from "../catalog/artifacts";
 const BaseWorkbench = lazy(() => import("@/components/bases/base-workbench").then(module => ({ default: module.BaseWorkbench })));
 import {
   useBaseSnapshots,
@@ -133,6 +135,8 @@ export function PanelTabs({
   useLayoutEffect(() => registerClose?.(() => navigate(onClose)), [navigate, onClose, registerClose]);
   const [availableApps, setAvailableApps] = useState<AvailableAttachedApp[]>([]);
   const [addAppOpen, setAddAppOpen] = useState(false);
+  const [artifactPickerTrigger, setArtifactPickerTrigger] = useState<HTMLButtonElement | null>(null);
+  const readArtifacts = useCallback((signal: AbortSignal) => readNativeArtifactPages(chatId, incarnationId, signal), [chatId, incarnationId]);
   const refreshApps = useCallback(async () => {
     if (!productRef) return [];
     const apps = await loadAvailableApps(
@@ -236,7 +240,8 @@ export function PanelTabs({
     if (id !== "browser") return openPanel(id);
     navigate(() => { browser.createTab(); panelSlotStore.activate(slotKey, "browser"); });
   };
-  const catalogDisabled = (id: PanelRegion) => {
+  const catalogDisabled = (id: PanelRegion | "artifact") => {
+    if (id === "artifact") return !productRef || !artifactHost;
     if (!panelEligibility(context, regionCapability(id)).allowed) return true;
     return id === "browser"
       ? browser.snapshot.tabs.length >= BROWSER_TAB_LIMIT
@@ -247,8 +252,8 @@ export function PanelTabs({
     if (result.allowed) return undefined;
     return t(`chat.sidePanel.eligibility.${result.reason}`);
   };
-  const catalogDisabledReason = (id: PanelRegion) =>
-    eligibilityReason(regionCapability(id));
+  const catalogDisabledReason = (id: PanelRegion | "artifact") =>
+    id === "artifact" ? undefined : eligibilityReason(regionCapability(id));
 
   /* 处女 slot 的默认落点。写在派生之后而非组件顶部：dep 数组是 render 期
      求值的普通数组，baseExists 在它上面才声明，放回顶部就是 TDZ 崩。 */
@@ -472,9 +477,6 @@ export function PanelTabs({
       close: () => browser.closeTab(tab.tabId),
     })),
   ];
-  // 无人选中时（首帧、或激活区域正在退位）仍要留一个键盘入口，否则整条 tablist 不可达。
-
-
   const closeAt = (index: number) => {
     const item = items[index]!;
     const rest = items.filter((_, position) => position !== index);
@@ -551,13 +553,21 @@ export function PanelTabs({
       labelledBy: browser.snapshot.selectedTabId ? `panel-tab-${browser.snapshot.selectedTabId}-trigger` : undefined,
       view: <BrowserPanel controller={browser} visible={activeTabId === "browser"} /> }] : []),
   ];
+  const catalogActions = {
+    disabledFor: catalogDisabled,
+    disabledReasonFor: catalogDisabledReason,
+    onOpen: openFromCatalog,
+    onOpenApp: () => setAddAppOpen(true),
+    onOpenArtifact: setArtifactPickerTrigger,
+  };
   return <PanelHost native extraActions={isArtifactTab(activeTabId) ? artifactChrome.actions : undefined} close={() => navigate(onClose)} copy={{ close: t("chat.sidePanel.closePanel") }} actions={activeHeaderActions}
     items={items} refs={tabRefs} onCloseTab={closeAt} tabsLabel={t("chat.sidePanel.tabsAriaLabel")} closeTabLabel={t("chat.sidePanel.closeTab")}
     active={activeTabId} leaves={leaves}
-    add={<AddPanelMenu appsDisabled={!productRef} disabledFor={catalogDisabled} disabledReasonFor={catalogDisabledReason}
-      onOpen={openFromCatalog} onOpenApp={() => setAddAppOpen(true)} />}
-    empty={baseResolved && <PanelTabsEmpty disabledFor={catalogDisabled} disabledReasonFor={catalogDisabledReason} onOpen={openFromCatalog} onOpenApp={() => setAddAppOpen(true)} />}
-    footer={<>{closeFailed && <p role="alert" className="p-3 text-sm text-destructive">{artifactCopy(artifactHost?.locale ?? "en").failed}</p>}{productRef && (
+    add={<AddPanelMenu {...catalogActions} appsDisabled={!productRef} />}
+    empty={baseResolved && <PanelTabsEmpty {...catalogActions} />}
+    footer={<>
+      {artifactPickerTrigger && <ArtifactPicker copy={panelCopy} trigger={artifactPickerTrigger} read={readArtifacts} close={() => setArtifactPickerTrigger(null)} />}
+      {closeFailed && <p role="alert" className="p-3 text-sm text-destructive">{artifactCopy(artifactHost?.locale ?? "en").failed}</p>}{productRef && (
         <AppAuthorizationDialog
           mode="add"
           onCommitted={async (appId) => {

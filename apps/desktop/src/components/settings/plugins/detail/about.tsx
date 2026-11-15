@@ -11,9 +11,9 @@
 import { ProviderNativeTools } from "../platform/provider-tools";
 import type { ReactNode } from "react";
 import { PluginRequirement, PluginStage } from "./metadata";
-import { Lock, Settings, TriangleAlert } from "lucide-react";
+import { Settings, TriangleAlert } from "lucide-react";
 import { formatWorkbench, type WorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
-import { SettingsButton, SettingsIconButton, SettingsSwitch } from "@/components/settings/settings-layout";
+import { SettingsBadge, SettingsButton, SettingsIconButton, SettingsSwitch } from "@/components/settings/settings-layout";
 import { backendLabel } from "@/lib/agent/agent-backends";
 import { PluginHistoryList } from "@/components/gui-history/list";
 import type { PluginDetail, PluginView, PluginsBridge } from "@ai-chat/cloud-protocol/contracts/plugins/catalog";
@@ -29,9 +29,10 @@ export function PluginControl({ plugin, workbench, switching, onSetup }: { plugi
   const copy = workbench.plugins;
   const name = pluginText(plugin.name, workbench);
   if (!plugin.turnOff.allowed) {
-    return <span className="inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-muted-foreground text-xs" data-plugin-fixed="">
-      <Lock aria-hidden className="size-3.5" />{plugin.turnOff.reason === "always-on" ? copy.alwaysOn : plugin.turnOff.reason === "project-scoped" ? copy.projectScopedBadge
-        : formatWorkbench(copy.nativeManagedBy, { agent: backendLabel(plugin.managedBy ?? "") })}</span>;
+    /* S17: the detail header wears the same muted reason badge the card carries in its switch slot. */
+    return <span className="inline-flex h-8 items-center" data-plugin-fixed="">
+      <SettingsBadge tone="muted">{plugin.turnOff.reason === "always-on" ? copy.builtIn : plugin.turnOff.reason === "project-scoped" ? copy.projectScopedBadge
+        : formatWorkbench(copy.nativeManagedBy, { agent: backendLabel(plugin.managedBy ?? "") })}</SettingsBadge></span>;
   }
   if (!plugin.enabled && plugin.turnOn.mode === "setup") {
     return <SettingsButton variant="outline" disabled={plugin.availability.state === "unsupported"} onClick={() => onSetup(plugin)}>

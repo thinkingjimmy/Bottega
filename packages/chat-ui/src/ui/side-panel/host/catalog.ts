@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Shared catalog vocabulary, current singleton slots and host visibility/capability policy.
- * [OUTPUT]: Host-filtered catalog entries and Platform capability predicates.
+ * [OUTPUT]: Host-filtered catalog entries including the reusable Artifact picker and Platform capability predicates.
  * [POS]: Shared directory policy; images can only enter through proven transcript identities.
  */
 import { PANEL_CATALOG } from "../catalog";

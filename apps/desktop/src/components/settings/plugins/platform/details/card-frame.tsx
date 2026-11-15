@@ -17,11 +17,11 @@ type Props = Omit<ComponentProps<'div'>, 'children' | 'onClick'> & {
 };
 
 export function PluginCardFrame({ name, publisher, summary, icon, control, footer, onOpen, className, ...attributes }: Props) {
-  return <div {...attributes} data-plugin-card="" className={cn('group/card relative flex min-w-0 flex-col gap-2 rounded-md border bg-card p-3 transition-[border-color,box-shadow] hover:border-foreground/20 hover:shadow-sm has-[[data-card-open]:focus-visible]:ring-2 has-[[data-card-open]:focus-visible]:ring-ring/50 motion-reduce:transition-none', className)}>
+  return <div {...attributes} data-plugin-card="" className={cn('group/card relative flex min-w-0 flex-col gap-2 rounded-[0.875rem] border bg-card p-3 transition-[border-color,box-shadow] hover:border-foreground/20 hover:shadow-sm has-[[data-card-open]:focus-visible]:ring-2 has-[[data-card-open]:focus-visible]:ring-ring/50 motion-reduce:transition-none', className)}>
     <div className="flex min-h-9 min-w-0 shrink-0 items-center gap-2.5">
       {icon}
       <span className="flex min-w-0 flex-1 flex-col">
-        <button type="button" data-card-open="" onClick={onOpen} className="min-w-0 cursor-pointer truncate text-left text-[13px] font-semibold leading-5 outline-none after:absolute after:inset-0 after:cursor-pointer after:rounded-md after:content-['']">{name}</button>
+        <button type="button" data-card-open="" onClick={onOpen} className="min-w-0 cursor-pointer truncate text-left text-[13px] font-semibold leading-5 outline-none after:absolute after:inset-0 after:cursor-pointer after:rounded-[0.875rem] after:content-['']">{name}</button>
         <span className="truncate text-xs text-muted-foreground">{publisher}</span>
       </span>
       {control && <span className="pointer-events-none relative z-10 flex min-h-5 max-w-1/2 shrink-0 items-center self-start">{control}</span>}

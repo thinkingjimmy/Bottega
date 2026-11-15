@@ -5,7 +5,8 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import type { CloudAccountState } from "../../../../shared/ipc/settings/cloud-ipc";
 import { cloudAccountClient } from "@/lib/cloud/client";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
@@ -43,14 +44,13 @@ export function CredentialRecovery({ state, onFailure }: { state: CloudAccountSt
     {state.canDiscardSavedLogin && <SettingsButton variant="outline" disabled={busy} onClick={() => { void inspect(); }}>{t("cloud.discardSavedLogin")}</SettingsButton>}
     <SettingsButton variant="ghost" disabled={busy} onClick={() => { void run("openCloudAccount"); }}>{t("cloud.openCloudAccount")}</SettingsButton>
     <Dialog open={open} onOpenChange={next => { if (!busy) { setOpen(next); if (!next) setFailed(null); } }}>
-      <DialogContent showCloseButton={!busy} onOpenAutoFocus={event => { event.preventDefault(); cancelRef.current?.focus(); }}
+      <AppDialogContent onOpenAutoFocus={event => { event.preventDefault(); cancelRef.current?.focus(); }}
         onEscapeKeyDown={event => { if (busy) event.preventDefault(); }} onPointerDownOutside={event => { if (busy) event.preventDefault(); }}>
-        <DialogHeader><DialogTitle>{t("cloud.discardSavedLoginTitle")}</DialogTitle>
-          <DialogDescription>{t("cloud.discardSavedLoginDescription")}</DialogDescription></DialogHeader>
+        <AppDialogHeader title={t("cloud.discardSavedLoginTitle")} description={t("cloud.discardSavedLoginDescription")}/>
         {failed && <p ref={failureRef} tabIndex={-1} role="alert" className="text-sm text-destructive">{failed === "expired" ? t("cloud.discardSavedLoginExpired") : t("cloud.discardSavedLoginFailed")}</p>}
-        <DialogFooter><Button ref={cancelRef} variant="outline" disabled={busy} onClick={() => setOpen(false)}>{t("cloud.cancel")}</Button>
-          <Button variant="destructive" disabled={busy} onClick={() => { void (review ? confirm() : inspect()); }}>{failed === "removal" || !review ? t("cloud.retry") : t("cloud.discardSavedLoginConfirm")}</Button></DialogFooter>
-      </DialogContent>
+        <AppDialogFooter><AppDialogCancel ref={cancelRef} disabled={busy} onClick={() => setOpen(false)}>{t("cloud.cancel")}</AppDialogCancel>
+          <Button size="pill" variant="destructive" disabled={busy} onClick={() => { void (review ? confirm() : inspect()); }}>{failed === "removal" || !review ? t("cloud.retry") : t("cloud.discardSavedLoginConfirm")}</Button></AppDialogFooter>
+      </AppDialogContent>
     </Dialog>
   </>;
 }

@@ -18,10 +18,16 @@ import { plausibleTimestamp, sealBuckets } from "./usage-merge";
 const isRollout = (name: string) =>
   name.startsWith("rollout-") && name.endsWith(".jsonl");
 
+/* The directory "Show folder" opens; every root listCodexFiles reads lives under it. */
+export function codexLogsHome(home: string) {
+  return join(home, ".codex");
+}
+
 export async function listCodexFiles(home: string) {
+  const parent = codexLogsHome(home);
   const roots = [
-    join(home, ".codex", "sessions"),
-    join(home, ".codex", "archived_sessions"),
+    join(parent, "sessions"),
+    join(parent, "archived_sessions"),
   ];
   return (
     await Promise.all(roots.map((root) => listFilesRecursively(root, isRollout)))

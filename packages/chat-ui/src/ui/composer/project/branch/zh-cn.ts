@@ -21,7 +21,6 @@ export const branchZhCn = {
     name: "分支名称",
     placeholder: "new-branch",
     close: "关闭",
-    creating: "正在创建…",
     createAndCheckout: "创建并切换",
     more: "更多分支",
   retry: "重试",

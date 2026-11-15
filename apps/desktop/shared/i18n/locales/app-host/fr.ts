@@ -16,7 +16,6 @@ export const appHostFr = {
   "upgrade": "Mettre Bottega à jour",
   "cancel": "Pas maintenant",
   "recheck": "Vérifier à nouveau",
-  "rechecking": "Vérification…",
   "resumeAfterUpgrade": "Après la mise à jour, vous pourrez terminer cette installation depuis la liste des Apps.",
   "versionYours": "La vôtre",
   "versionRequired": "Requise",

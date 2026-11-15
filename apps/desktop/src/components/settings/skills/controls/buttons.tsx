@@ -13,7 +13,7 @@ export function SkillRefreshButton({ busy, onRefresh }: { busy: boolean; onRefre
   return (
     <Button
       aria-label={t("settings.skills.refresh")}
-      className="relative touch-target-44 [--touch-target-inset:-6px]"
+      className="relative rounded-full touch-target-44 [--touch-target-inset:-6px]"
       disabled={busy}
       onClick={onRefresh}
       size="icon-lg"
@@ -28,7 +28,7 @@ export function SkillRefreshButton({ busy, onRefresh }: { busy: boolean; onRefre
 export function SkillAddButton({ disabled, onAdd }: { disabled: boolean; onAdd(): void }) {
   const { t } = useAppTranslation();
   return (
-    <Button disabled={disabled} onClick={onAdd} size="lg" type="button">
+    <Button disabled={disabled} onClick={onAdd} size="pill" type="button">
       <Plus aria-hidden="true" />
       {t("settings.skills.importTitle")}
     </Button>

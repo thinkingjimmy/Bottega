@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React and Radix slots, the shared Button, ArrowLeft and theme utilities.
- * [OUTPUT]: WorkspaceBackLink, WorkspaceHeader, WorkspacePage, panelChromeClassName and crossHeaderPanelStyle.
+ * [OUTPUT]: WorkspaceBackLink, WorkspaceHeader with an optional divider, WorkspacePage with an optional header-height override, panelChromeClassName and crossHeaderPanelStyle.
  * [POS]: Router-independent page chrome with boxed no-drag controls shared by desktop and browser. The title
  *        icon is a 16px slot whose svg rule reaches a wrapped mark (a span around an svg) as well as a direct
  *        svg, and wins over the mark's own size-full, so a logo stripped of width and height cannot paint at 300×150.
@@ -21,17 +21,18 @@ export function WorkspaceBackLink({ className, children, ...props }: ComponentPr
 type WorkspaceHeaderProps = {
   title?: ReactNode; icon?: ReactNode; titleAdornment?: ReactNode; leading?: ReactNode;
   center?: ReactNode; actions?: ReactNode; rail?: ReactNode; chrome?: "browser" | "native";
-  collapsedInset?: "compact" | "mac";
+  collapsedInset?: "compact" | "mac"; showDivider?: boolean;
 };
-export function WorkspaceHeader({ title, icon, titleAdornment, leading, center, actions, rail, chrome = "browser", collapsedInset }: WorkspaceHeaderProps) {
-  return <><header ref={toastClearanceRef} data-toast-clearance="" className={cn("relative flex h-[var(--page-shell-header-height,2.5rem)] min-h-10 shrink-0 items-center gap-2 px-4 max-md:min-h-12 max-md:px-2", chrome === "native" && "[-webkit-app-region:drag]", center && "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]", title && !rail && "border-b", collapsedInset === "mac" ? "pl-[8.5rem]" : collapsedInset === "compact" && "pl-12")}>
+export function WorkspaceHeader({ title, icon, titleAdornment, leading, center, actions, rail, chrome = "browser", collapsedInset, showDivider = true }: WorkspaceHeaderProps) {
+  return <><header ref={toastClearanceRef} data-toast-clearance="" className={cn("relative flex h-[var(--page-shell-header-height,2.5rem)] min-h-10 shrink-0 items-center gap-2 px-4 max-md:min-h-12 max-md:px-2", chrome === "native" && "[-webkit-app-region:drag]", center && "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]", showDivider && title && !rail && "border-b", collapsedInset === "mac" ? "pl-[8.5rem]" : collapsedInset === "compact" && "pl-12")}>
     {collapsedInset === "mac" && <><span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-28 [-webkit-app-region:no-drag]" /><span aria-hidden className="absolute top-1/2 left-[7.5rem] h-5 w-px -translate-y-1/2 bg-border" /></>}
     {/* Electron needs a real rectangle to exclude controls from the draggable header. */}
     <div className="flex min-w-0 items-center gap-2">{leading && <span className="flex shrink-0 items-center [-webkit-app-region:no-drag]">{leading}</span>}{title && <div className="flex min-w-0 items-center gap-2">{icon && <span aria-hidden className="flex size-4 shrink-0 items-center justify-center overflow-hidden [&_svg]:size-4!">{icon}</span>}<h1 className="truncate text-sm font-medium">{title}</h1>{titleAdornment && <span className="flex shrink-0 items-center [-webkit-app-region:no-drag]">{titleAdornment}</span>}</div>}</div>
     {center && <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">{center}</div>}
     <div className="ml-auto flex min-w-0 items-center justify-end gap-2 [-webkit-app-region:no-drag]">{actions}</div>
-  </header>{rail && <div ref={toastClearanceRef} data-toast-clearance="" className="shrink-0 border-b">{rail}</div>}</>;
+  </header>{rail && <div ref={toastClearanceRef} data-toast-clearance="" className={cn("shrink-0", showDivider && "border-b")}>{rail}</div>}</>;
 }
-export function WorkspacePage({ children, ...header }: WorkspaceHeaderProps & { children: ReactNode }) {
-  return <div className="flex h-full min-h-0 flex-col [--page-shell-header-height:2.5rem]"><WorkspaceHeader {...header} /><div className="min-h-0 flex-1">{children}</div></div>;
+/** className may override `--page-shell-header-height` when the header itself holds 44 px controls. */
+export function WorkspacePage({ children, className, ...header }: WorkspaceHeaderProps & { children: ReactNode; className?: string }) {
+  return <div className={cn("flex h-full min-h-0 flex-col [--page-shell-header-height:2.5rem]", className)}><WorkspaceHeader {...header} /><div className="min-h-0 flex-1">{children}</div></div>;
 }

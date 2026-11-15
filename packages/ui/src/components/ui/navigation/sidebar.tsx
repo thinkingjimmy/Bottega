@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, Radix Slot, class-variance-authority, lucide-react, host-injected UI text, the mobile/horizontal-resize hooks, and the button/sheet/skeleton/tooltip primitives
- * [OUTPUT]: Provides SidebarProvider (built-in Cmd/Ctrl+B listener, opt-out via keyboardShortcut={false} for hosts with a central dispatcher), containers, groupings, menus, submenus, Rail and the corresponding action/badge/skeleton row
+ * [OUTPUT]: Provides SidebarProvider, containers, menu primitives and a rail with opt-in snap and accessible keyboard resizing.
  * [POS]: packages/ui/src/components/ui/navigation; The basic layer of shared side-by-side packages/ui provides only structure, status and default vision, with business layout and navigation terminology covered by consumers
  */
 
@@ -9,7 +9,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { Slot } from "radix-ui"
 
 import { useIsMobile } from "@ai-chat/ui/hooks/use-mobile"
-import { useHorizontalResize } from "@ai-chat/ui/hooks/use-horizontal-resize"
+import { useHorizontalResize, type HorizontalResizeGesture } from "@ai-chat/ui/hooks/use-horizontal-resize"
 import { cn } from "@ai-chat/ui/lib/utils"
 import { useUiText } from "@ai-chat/ui/lib/ui-text"
 import { Button } from "@ai-chat/ui/components/ui/button"
@@ -296,6 +296,7 @@ type SidebarRailProps = React.ComponentProps<"button"> & {
   minWidth?: number
   maxWidth?: number
   onWidthChange?: (width: number) => void
+  resizeGesture?: HorizontalResizeGesture
 }
 
 function SidebarRail({
@@ -305,6 +306,8 @@ function SidebarRail({
   minWidth,
   maxWidth,
   onWidthChange,
+  resizeGesture,
+  onKeyDown,
   onClick,
   onPointerDown,
   onPointerMove,
@@ -313,7 +316,7 @@ function SidebarRail({
   onLostPointerCapture,
   ...props
 }: SidebarRailProps) {
-  const { open, setOpen, toggleSidebar } = useSidebar()
+  const { open, setOpen, toggleSidebar, isMobile } = useSidebar()
   const toggleLabel = useUiText("toggleSidebar", "Toggle Sidebar")
   const resizeLabel = useUiText("resizeSidebar", "Resize sidebar")
   const resizeHint = useUiText(
@@ -326,25 +329,44 @@ function SidebarRail({
     typeof minWidth === "number" &&
     typeof maxWidth === "number" &&
     typeof onWidthChange === "function"
+  const keyboardResize = canResize && Boolean(resizeGesture) && !isMobile
   const resize = useHorizontalResize({
-    enabled: canResize,
+    enabled: canResize && (!resizeGesture || !isMobile),
     open,
     setOpen,
     width: width ?? 0,
     minWidth: minWidth ?? 0,
     maxWidth: maxWidth ?? 0,
     onWidthChange,
+    gesture: resizeGesture,
   })
 
   if (canResize && !open && !resize.active) return null
 
   return (
     <button
+      type="button"
       data-sidebar="rail"
       data-slot="sidebar-rail"
       data-resizing={resize.active ? "true" : undefined}
+      data-snapped={resize.snapped ? "true" : undefined}
+      role={keyboardResize ? "separator" : undefined}
       aria-label={canResize ? resizeLabel : toggleLabel}
-      tabIndex={-1}
+      aria-orientation={keyboardResize ? "vertical" : undefined}
+      aria-valuemin={keyboardResize ? minWidth : undefined}
+      aria-valuemax={keyboardResize ? maxWidth : undefined}
+      aria-valuenow={keyboardResize ? resize.previewWidth ?? width : undefined}
+      tabIndex={keyboardResize ? 0 : -1}
+      onKeyDown={(event) => {
+        onKeyDown?.(event)
+        if (!keyboardResize || resize.active || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
+        event.preventDefault()
+        const side = event.currentTarget.closest<HTMLElement>("[data-side]")?.dataset.side
+        const grow = event.key === (side === "right" ? "ArrowLeft" : "ArrowRight")
+        const step = event.shiftKey ? 40 : 8
+        onWidthChange(Math.min(maxWidth, Math.max(minWidth, width + (grow ? step : -step))))
+      }}
       onClick={(event) => {
         onClick?.(event)
         if (event.defaultPrevented) return

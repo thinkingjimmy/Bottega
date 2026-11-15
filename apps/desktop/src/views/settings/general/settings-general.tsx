@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, I18n/Setup providers, AgentFailureNotice, PresenceSettings, ArchiveConfettiRow, FolderRow, DangerZone, shared SettingsPreferenceSelect, settings controls/store, Provider purpose catalog, SettingsPage, and UI primitives.
- * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle/TitleAgentLabel with theme/language, system typography, presence, Bottega folder and Chat section info tips, Chat relay/title/read-access settings with retained unsupported selections and inline first-message fallback explanation, and the Danger zone.
+ * [INPUT]: Depends on React, I18n/Setup providers, AgentFailureNotice, PresenceSettings, ArchiveConfettiRow, FolderRow, LanguageSelect, DangerZone, shared SettingsPreferenceSelect, settings controls/store, Provider purpose catalog, SettingsPage, and UI primitives.
+ * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/CrossChatReadToggle/TitleAgentLabel with theme/language, system typography, presence, Bottega folder and Chat section info tips, Chat relay/title/read-access settings with retained unsupported selections and inline first-message fallback explanation, and the Danger zone.
  * [POS]: apps/desktop/src/views/settings/general; Settings layer's default view; holds no settings snapshot of its own — subscribes to settingsStore and pulls the per-backend model catalog on demand
  */
 
@@ -9,6 +9,7 @@ import { PresenceSettings } from "@/components/settings/presence/section";
 import { ArchiveConfettiRow } from "@/components/settings/general/archive-confetti-row";
 import { FolderProgress } from "@/components/settings/general/folder-progress";
 import { FolderRow } from "@/components/settings/general/folder-row";
+import { LanguageSelect } from "@/components/settings/general/language-select";
 import { DangerZone } from "@/components/settings/general/danger-zone";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useSetup } from "@/components/providers/setup-provider";
@@ -20,10 +21,10 @@ import {
   SettingsRow,
   SettingsSection,
   SettingsSwitch,
+  SettingsTechnicalDetails,
 } from "@/components/settings/settings-layout";
 import { SettingsPage } from "@/components/page-shell";
 import { AgentFailureNotice } from "@/components/agent-failure-notice";
-import { RefreshCw } from "lucide-react";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import {
   AgentBackendIcon,
@@ -41,7 +42,6 @@ import {
 } from "@/lib/settings/client/settings-client";
 import { settingsStore } from "@/lib/settings/store/settings-store";
 import type { AppSettings, ThemePreference } from "../../../../shared/ipc/settings/settings-ipc";
-import type { LanguagePreference } from "@ai-chat/ui/lib/locale";
 import {
   type BackendInfo,
   type BackendModelInfo,
@@ -58,20 +58,6 @@ const THEME_OPTIONS: Array<{ labelKey: string; value: ThemePreference }> = [
   { labelKey: "common.auto", value: "auto" },
   { labelKey: "common.light", value: "light" },
   { labelKey: "common.dark", value: "dark" },
-];
-
-export const LANGUAGE_OPTIONS: Array<{
-  emoji: string;
-  label?: string;
-  labelKey?: "settings.general.autoDetect";
-  value: LanguagePreference;
-}> = [
-  { emoji: "🌐", labelKey: "settings.general.autoDetect", value: "auto" },
-  { emoji: "🇨🇳", label: "简体中文", value: "zh-CN" },
-  { emoji: "🇺🇸", label: "English", value: "en" },
-  { emoji: "🇯🇵", label: "日本語", value: "ja" },
-  { emoji: "🇫🇷", label: "Français", value: "fr" },
-  { emoji: "🇪🇸", label: "Español", value: "es" },
 ];
 
 /* 稳定空目录引用：目录未就绪时避免逐 render 新建数组击穿 useMemo */
@@ -351,35 +337,6 @@ export function ThemeSelect({ theme }: { theme: ThemePreference | null }) {
   );
 }
 
-export function LanguageSelect({
-  language,
-}: {
-  language: LanguagePreference | null;
-}) {
-  const { t } = useAppTranslation();
-  if (!language) return <Skeleton className="h-8 w-48 shrink-0" />;
-  return (
-    <SettingsPreferenceSelect
-      id="language-preference"
-      label={t("settings.general.language")}
-      value={language}
-      options={LANGUAGE_OPTIONS.map((option) => ({
-        value: option.value,
-        emoji: option.emoji,
-        label: option.labelKey ? t(option.labelKey) : option.label!,
-      }))}
-      onValueChange={(value) => {
-        const option = LANGUAGE_OPTIONS.find((entry) => entry.value === value);
-        if (option)
-          void settingsStore.update(
-            { language: option.value },
-            t("settings.general.saveLanguageFailed"),
-          );
-      }}
-    />
-  );
-}
-
 export function GeneralSettingsView() {
   const { t } = useAppTranslation();
   const [revealError, setRevealError] = useState("");
@@ -431,19 +388,28 @@ export function GeneralSettingsView() {
           <SettingsSection
             title={t("settings.general.chatHomeLocation")}
             info={t("settings.general.chatHomeDescription")}
-            alert={revealError || chatHomesRootError || error}
-            action={
+            alert={
+              error
+                ? t("settings.general.settingsLoadFailed")
+                : revealError || chatHomesRootError
+                  ? t("settings.general.folderActionFailed")
+                  : undefined
+            }
+            alertAction={
               error ? (
                 <SettingsButton
                   variant="outline"
                   onClick={settingsStore.retrySettings}
                 >
-                  <RefreshCw />
-                  {t("settings.general.settingsRetry")}
+                  {t("common.retry")}
                 </SettingsButton>
               ) : undefined
             }
           >
+            {(revealError || chatHomesRootError || error) && (
+              /* Rule 4: the raw cause stays verbatim under the disclosure (S20). */
+              <SettingsTechnicalDetails details={revealError || chatHomesRootError || error} />
+            )}
             <FolderProgress progress={folderProgress} />
             <SettingsList>
               <FolderRow folder={settings?.chatHomesRoot ?? null} loading={!settings} onError={setRevealError} />

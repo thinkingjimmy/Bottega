@@ -14,8 +14,6 @@ export const weatherEn={
   "cancelCityChange": "Cancel city change",
   "noCities": "No cities found.",
   "today": "Today",
-  "dailyRange": "High {{high}}°C, low {{low}}°C",
-  "forecastUnavailable": "No forecast",
   "sizeCurrent": "Current conditions",
   "sizeToday": "Current conditions and today’s high and low",
   "sizeForecast": "Current conditions and the next three days",

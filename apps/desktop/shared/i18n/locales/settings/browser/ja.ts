@@ -7,26 +7,23 @@
 import type { settingsBrowserEn } from "./en";
 
 export const settingsBrowserJa: typeof settingsBrowserEn = {
-  sectionTitle: "Chrome からログイン状態をインポート",
-  loginState: "Chrome のログイン状態",
   detecting: "Chrome を検出中…",
-  detectingAria: "Chrome を検出中",
-  readyDescription:
-    "profile とドメインを選んでからインポートします。Chrome のデータは読み取り専用で、変更されません。",
   noProfiles: "Google Chrome または利用可能な profile が見つかりません。",
   detectFailed: "Chrome profile を検出できませんでした。",
   platformUnavailable: "このプレビュー版では Chrome ログインの取り込みは利用できません。",
-  startImport: "インポートを開始",
-  startImportAria: "Chrome のログイン状態のインポートを開始",
-  learnMore: "詳細",
-  capability: {
-    persistentTitle: "一度ログインすればセッションを維持",
-    persistentDetail:
-      "インポートを省略しても内蔵 Browser で直接ログインできます。Cookie はタブとアプリ再起動をまたいで保持され、Agent も同じセッションを利用します。",
-    limitedTitle: "パスワード、拡張機能、ブックマークは対象外",
-    limitedDetail:
-      "Electron は Chrome のパスワードマネージャーや完全な拡張 API を提供せず、ブックマークも Agent の閲覧には使いません。不要な機密データの移動を避けます。",
+  guideTitle: "Bottega で Chrome のサインイン状態を使う",
+  guideDescription:
+    "選択したサイトのサインイン状態を読み込み、Agent があなたとしてブラウズできるようにします。読み込み前にプロファイルとサイトを選べます。",
+  guideAction: "Chrome から読み込む…",
+  facts: {
+    readOnlyTitle: "読み取り専用",
+    readOnlyDetail: "Chrome は変更されません。",
+    localTitle: "この Mac に留まる",
+    localDetail: "Cookie はアップロードされません。",
+    keychainTitle: "キーチェーンへのアクセス",
+    keychainDetail: "macOS の確認は一度だけ。拒否しても Chrome には影響しません。",
   },
+  lastImport: "前回の読み込み",
   result: "インポート {{imported}} / スキップ {{skipped}} / 失敗 {{failed}}",
   resultFallback:
     "一部のサイトをインポートできませんでした。Browser で一度ログインすれば、セッションが保持され Agent にも引き継がれます。",

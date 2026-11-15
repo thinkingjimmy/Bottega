@@ -11,7 +11,8 @@ export const DOCK_METRICS = {
   /* Glyphs fill the 48 DIP slot. gap 1 leaves the icon art's own margin as the visible gutter. */
   item: 48, gap: 1, padding: 10, separator: 13, overflowButton: 36, emptyCta: 208,
   widget: { "builtin.ai-limits": 136, "builtin.ai-activity": 116, "builtin.tasks": 128 } as Record<string, number>,
-  sidebarWidget: { setup: 64, single: 68, activity: 60, ring: 36, gap: 6, padding: 8, more: 20, maximum: 148 },
+  /* Side extents include the 3 DIP Widget tile inset at both ends (faces.css). */
+  sidebarWidget: { setup: 70, single: 74, activity: 66, ring: 36, gap: 6, padding: 14, more: 20, maximum: 154 },
   sidebarEmptyCta: 132,
   barHeight: 68, handleWidth: 132, handleHeight: 10, bottomMargin: 2, sideMargin: 16,
   /* The corner macOS gives a frameless window's native material (measured at 17 pt on macOS 26); the strip's lit

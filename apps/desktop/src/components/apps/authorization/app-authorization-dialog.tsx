@@ -18,14 +18,10 @@ import {
   Check,
   LoaderCircle,
 } from "lucide-react";
-import { AppDialogBody, AppDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
+import { AppDialogBody, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
 import { cn } from "@ai-chat/ui/lib/utils";
 import {
@@ -288,26 +284,24 @@ function AppAuthorizationDialogSession({
       <AppDialogContent
         {...(selecting ? {} : { "aria-describedby": undefined })}
         aria-busy={busy || loading || undefined}
-        className={cn("p-0", mode === "add" && "sm:max-w-xl")}
+        showCloseButton
+        size="lg" className={cn("p-0")}
         onEscapeKeyDown={(event) => {
           if (busy) event.preventDefault();
         }}
       >
-        <DialogHeader className="shrink-0 gap-0 px-5 pt-5 text-left">
-          <DialogTitle className="wrap-anywhere pr-8">
-            {selecting
-              ? t("apps.authorization.selectTitle")
-              : t("apps.authorization.settingsTitle", {
-                  name: selected?.name ?? "App",
-                })}
-          </DialogTitle>
-          {selecting && (
-            <DialogDescription className="mt-1 text-pretty">
-              {t(stableTarget.kind === "chat"
+        <AppDialogHeader className="shrink-0 gap-0 px-5 pt-5"
+          title={selecting
+            ? t("apps.authorization.selectTitle")
+            : t("apps.authorization.settingsTitle", {
+                name: selected?.name ?? "App",
+              })}
+          description={selecting
+            ? t(stableTarget.kind === "chat"
                 ? "apps.authorization.selectDescriptionChat"
-                : "apps.authorization.selectDescriptionProject")}
-            </DialogDescription>
-          )}
+                : "apps.authorization.selectDescriptionProject")
+            : undefined}
+        />
           {mode === "add" && (
             <>
               {/* 「第 1 步，共 2 步」只报数：它不说这两步分别要做什么，也没有
@@ -346,7 +340,6 @@ function AppAuthorizationDialogSession({
               </div>
             </>
           )}
-        </DialogHeader>
 
         <AppDialogBody className="mx-0 mt-3 px-5 pb-4">
           {loading ? (
@@ -534,9 +527,9 @@ function AppAuthorizationDialogSession({
           )}
         </AppDialogBody>
 
-        <DialogFooter className="shrink-0 flex-row flex-wrap items-center gap-2 border-t bg-muted/40 px-5 py-3">
+        <AppDialogFooter band className="px-5">
           {mode === "add" && !selecting && !savedAppId && (
-            <Button disabled={busy} onClick={() => setStep("select")} size="lg" variant="ghost">
+            <Button disabled={busy} onClick={() => setStep("select")} size="pill" variant="ghost">
               <ArrowLeft />
               {t("apps.authorization.back")}
             </Button>
@@ -546,7 +539,7 @@ function AppAuthorizationDialogSession({
               className="text-destructive hover:bg-destructive/10 hover:text-destructive"
               disabled={busy}
               onClick={() => void setScopeState("disabled")}
-              size="lg"
+              size="pill"
               variant="ghost"
             >
               {stableTarget.kind === "chat"
@@ -556,7 +549,7 @@ function AppAuthorizationDialogSession({
           )}
           <div className="ml-auto flex flex-wrap justify-end gap-2">
             {editActions?.scopeRecord && (
-              <Button disabled={busy} onClick={() => void setScopeState("clear")} size="lg" variant="outline">
+              <Button disabled={busy} onClick={() => void setScopeState("clear")} size="pill" variant="outline">
                 {stableTarget.kind === "chat"
                   ? t("apps.authorization.restoreInheritance")
                   : t("apps.authorization.restoreGlobal")}
@@ -566,29 +559,28 @@ function AppAuthorizationDialogSession({
               <Button
                 disabled={!selectedId || busy}
                 onClick={() => setStep("authorize")}
-                size="lg"
+                size="pill"
               >
                 {t("apps.authorization.next")}
               </Button>
             ) : savedAppId ? (
-              <Button disabled={busy} onClick={() => void retryFinish()} size="lg">
+              <Button disabled={busy} onClick={() => void retryFinish()} size="pill">
                 {t("apps.authorization.retryRefresh")}
               </Button>
             ) : (
-              <Button disabled={!selected || busy} onClick={() => void save()} size="lg">
-                {busy
-                  ? t("apps.authorization.saving")
-                  : mode === "add"
-                    ? t(
-                        stableTarget.kind === "chat"
-                          ? "apps.authorization.addToChat"
-                          : "apps.authorization.addToProject"
-                      )
-                    : t("apps.authorization.save")}
+              <Button disabled={!selected || busy} onClick={() => void save()} size="pill">
+                {busy && <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+                {mode === "add"
+                  ? t(
+                      stableTarget.kind === "chat"
+                        ? "apps.authorization.addToChat"
+                        : "apps.authorization.addToProject"
+                    )
+                  : t("apps.authorization.save")}
               </Button>
             )}
           </div>
-        </DialogFooter>
+        </AppDialogFooter>
       </AppDialogContent>
     </Dialog>
   );

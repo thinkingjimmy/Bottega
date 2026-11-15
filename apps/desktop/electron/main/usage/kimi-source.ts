@@ -9,8 +9,13 @@ import { jsonlLines } from "../persistence/jsonl-lines";
 import { listFilesRecursively } from "./source-files";
 import { plausibleTimestamp, sealBuckets, type FileEvents, type UsageBuckets } from "./usage-merge";
 
+/* The directory "Show folder" opens; it is also the only root listKimiFiles reads. */
+export function kimiLogsHome(home: string) {
+  return join(home, ".kimi-code", "sessions");
+}
+
 export async function listKimiFiles(home: string) {
-  const root = join(home, ".kimi-code", "sessions");
+  const root = kimiLogsHome(home);
   const files = await listFilesRecursively(root, (name) => name === "wire.jsonl");
   return files
     .filter((path) => {

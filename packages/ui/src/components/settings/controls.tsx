@@ -6,6 +6,7 @@
 
 import {
   useId,
+  useState,
   type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
@@ -49,11 +50,12 @@ export function SettingsButton({
   className,
   ...props
 }: Omit<ComponentProps<typeof Button>, "size">) {
+  /* S22 — pill = action: 32px pill, 13px/500, padding 0 14px. */
   return (
     <Button
       type="button"
       {...props}
-      className={cn("h-8 px-3", className)}
+      className={cn("h-8 rounded-full px-3.5 text-[13px] font-medium", className)}
       size="lg"
     />
   );
@@ -89,7 +91,7 @@ export function SettingsIconButton({
       aria-label={label}
       size="lg"
       className={cn(
-        "relative size-8 touch-manipulation px-0 touch-target-44 [--touch-target-inset:-4px]",
+        "relative size-8 touch-manipulation rounded-full px-0 touch-target-44 [--touch-target-inset:-4px]",
         className
       )}
     />
@@ -117,13 +119,50 @@ export function SettingsLabelAction({
       size="lg"
       className={cn(
 
-        "-ml-1 relative size-8 touch-manipulation px-0 text-muted-foreground",
+        "-ml-1 relative size-8 touch-manipulation rounded-full px-0 text-muted-foreground",
         "touch-target-44 [--touch-target-inset:-6px]",
         "hover:bg-transparent hover:text-muted-foreground dark:hover:bg-transparent",
         "[@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted [@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground [@media(hover:hover)_and_(pointer:fine)]:dark:hover:bg-muted/50",
         className
       )}
     />
+  );
+}
+
+export function SettingsTechnicalDetails({
+  details,
+  label = "Technical details",
+  copyLabel = "Copy",
+  copiedLabel = "Copied",
+}: {
+  /** The raw error text, kept verbatim for support. */
+  details: string;
+  label?: string;
+  copyLabel?: string;
+  copiedLabel?: string;
+}) {
+  /* Rule 4: plain language first — raw errno/IPC text lives only under this disclosure (S20). */
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(details);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* Clipboard can refuse (permissions); the text stays visible for manual copy. */
+    }
+  };
+  return (
+    <SettingsDisclosure label={label}>
+      <pre className="max-h-48 overflow-auto rounded-lg bg-muted/50 p-3 font-mono text-muted-foreground text-xs whitespace-pre-wrap break-all">
+        {details}
+      </pre>
+      <div className="mt-2">
+        <SettingsButton type="button" variant="ghost" onClick={() => void copy()}>
+          {copied ? copiedLabel : copyLabel}
+        </SettingsButton>
+      </div>
+    </SettingsDisclosure>
   );
 }
 

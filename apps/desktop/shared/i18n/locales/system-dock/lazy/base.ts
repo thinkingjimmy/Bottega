@@ -6,6 +6,7 @@
 export const systemDockBaseEn={
   "widgets": {
     directory: {"title": "Browse Widgets", "install": "Install"},
+    store: {"inDock": "In your Dock", "more": "More widgets", "all": "Widgets", "seeAll": "See all", "featureTitle": "Weather in your Dock", "featureLead": "Current conditions for any city. Pick small, medium or large, and see the next three days at a glance.", "addWeather": "Add Weather", "add": "Add", "build": "Build with your Agent…", "buildHint": "Describe a widget and start a chat", "browseHint": "Official widgets from Bottega"},
     catalog: {"title": "Widgets in your Dock", "count": "{{count}}", "empty": "No Widgets in your Dock yet.", "more": "More Widget actions", "manage": "Manage saved Widgets"},
     "summaryRefreshFailed": "Could not refresh the summary. The previous summary is kept.",
     "api": {
@@ -99,7 +100,6 @@ export const systemDockBaseEn={
     "previewReal": "Real data",
     "previewUseReal": "Use real data",
     "previewStartReal": "Start real preview",
-    "previewStarting": "Starting preview…",
     "previewClose": "Close preview",
     "previewHint": "Review the summary and details. This preview does not change your Dock Widgets.",
     "previewConsentHint": "Read access applies only to this preview. Saving needs a separate confirmation.",
@@ -237,7 +237,6 @@ export const systemDockBaseEn={
     "applyOne": "Apply to 1 Widget",
     "applyMany": "Apply to {{count}} Widgets",
     "saveVersion": "Save version",
-    "applying": "Applying…",
     "applyFailed": "The changes could not be completed. Your choices are kept. Try again.",
     "commitPending": "Widget version saved. Dock changes are pending.",
     "conflict": "The version or Dock layout changed. Review a new preview before you apply.",
@@ -484,6 +483,7 @@ export const systemDockBaseEn={
     "preamble": "App shortcuts and usage widgets at the screen edge. Keep the system Dock or replace it after confirmation.",
     "loadFailed": "Couldn’t load Dock settings.",
     "unsupportedTitle": "Bottega Dock isn’t available",
+    "unavailableMac": "Not available on this Mac",
     "unsupportedPlatform": "Bottega Dock is only available on macOS.",
     "unsupportedVersion": "Dock supports macOS 26 and 27 on Apple silicon. Other macOS versions are not supported.",
     "unsupportedArchitecture": "Bottega Dock requires a Mac with Apple silicon.",
@@ -536,7 +536,6 @@ export const systemDockBaseEn={
     "impactLogin": "Opening Bottega at login is a separate choice in General settings.",
     "acknowledge": "I understand what changes",
     "turnOnConfirm": "Turn On",
-    "turningOn": "Turning On…",
     "switchConfirm": "Replace System Dock",
     "confirmFailed": "Couldn’t turn on Bottega Dock. Try again.",
     "previewChanged": "Your Dock layout changed while you were reviewing it (for example on another Mac). Check the updated preview, then confirm again.",

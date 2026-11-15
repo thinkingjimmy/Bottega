@@ -14,7 +14,7 @@ import { FolderProgress } from "@/components/settings/general/folder-progress";
 import { SettingsAlert, SettingsButton } from "@/components/settings/settings-layout";
 import { settingsStore } from "@/lib/settings/store/settings-store";
 import type { LibrarySuggestion } from "../../../../shared/ipc/settings/settings-ipc";
-import { OnboardingActions } from "../frame";
+import { OnboardingActions } from "../shell/frame";
 
 type Choice = "suggested" | "choose";
 

@@ -1,15 +1,14 @@
 /**
- * [INPUT]: Depends on React, the i18n provider, SettingsPage and Settings primitives, the Dock settings store, and the settings/dock sections.
- * [OUTPUT]: Provides DockSettingsView, reusable DockSettingsContent for the plugin detail, and DockPluginSetupDialog. The Display section groups mode and placement. Focus return refreshes background approval. The page includes setup, sync decisions and localized command failures.
- * [POS]: apps/desktop/src/views/settings/dock; Settings layer's legacy Dock page and the Dock plugin's settings content; main applies every command and reports the authoritative outcome.
+ * [INPUT]: Depends on React, the i18n provider and Settings primitives, the Dock settings store, and the settings/dock sections.
+ * [OUTPUT]: Provides DockSettingsContent for the plugin detail page and DockPluginSetupDialog for the catalog card. The Display section groups mode and placement. Focus return refreshes background approval. The content includes setup, sync decisions and localized command failures.
+ * [POS]: apps/desktop/src/views/settings/dock; the Dock plugin's settings content, hosted by views/settings/plugins and components/plugins; main applies every command and reports the authoritative outcome.
  */
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { SettingsPage } from "@/components/page-shell";
-import { SettingsAlert, SettingsButton, SettingsCanvas } from "@/components/settings/settings-layout";
+import { SettingsAlert, SettingsButton } from "@/components/settings/settings-layout";
 import { dockSettingsStore, type DockSettingsCommand } from "@/lib/platform/system-dock-settings-client";
 import { DockLayoutSection } from "@/components/settings/dock/layout-section";
 import { DockAppearance, DockBehavior, DockDisplaySettings } from "@/components/settings/dock/preferences";
@@ -24,13 +23,6 @@ const FAILURE_KEYS: Record<DockSettingsCommand, string> = {
   disable: "systemDock.settings.failedDisable", resume: "systemDock.settings.failedResume",
   reset: "systemDock.settings.failedReset", resolve: "systemDock.settings.failedResolve", import: "systemDock.settings.failedImport",
 };
-
-export function DockSettingsView() {
-  const { t } = useAppTranslation();
-  return <SettingsPage title={t("systemDock.settings.title")}>
-    <SettingsCanvas><DockSettingsContent /></SettingsCanvas>
-  </SettingsPage>;
-}
 
 function useDockSettings() {
   const state = useSyncExternalStore(dockSettingsStore.subscribe, dockSettingsStore.getSnapshot);
@@ -50,14 +42,14 @@ export function DockSettingsContent({ plugin = false }: { plugin?: boolean }) {
   const snapshot = state.snapshot;
   if (plugin && !window.systemDockSettings) return null;
   return <div className="space-y-8" data-dock-settings="">
-    {state.failed && state.failed !== "setup" && <SettingsAlert>
-      <span className="flex flex-wrap items-center justify-between gap-2">{t(FAILURE_KEYS[state.failed])}
-        <SettingsButton variant="ghost" onClick={() => dockSettingsStore.dismissFailure()}>{t("common.close")}</SettingsButton></span>
-    </SettingsAlert>}
-    {!snapshot ? state.loadFailed ? <SettingsAlert>
-      <span className="flex flex-wrap items-center justify-between gap-2">{t("systemDock.settings.loadFailed")}
-        <SettingsButton variant="outline" onClick={() => dockSettingsStore.load()}>{t("common.retry")}</SettingsButton></span>
-    </SettingsAlert> : <Skeleton data-testid="dock-settings-loading" className="h-40 w-full rounded-lg" /> : <>
+    {state.failed && state.failed !== "setup" && <SettingsAlert title={t(FAILURE_KEYS[state.failed])}
+      action={<>
+        <SettingsButton variant="outline" onClick={() => void dockSettingsStore.load()}>{t("common.retry")}</SettingsButton>
+        <SettingsButton variant="ghost" onClick={() => dockSettingsStore.dismissFailure()}>{t("common.close")}</SettingsButton>
+      </>}/>}
+    {!snapshot ? state.loadFailed ? <SettingsAlert title={t("systemDock.settings.loadFailed")}
+      action={<SettingsButton variant="outline" onClick={() => dockSettingsStore.load()}>{t("common.retry")}</SettingsButton>}
+    /> : <Skeleton data-testid="dock-settings-loading" className="h-40 w-full rounded-lg" /> : <>
       {!snapshot.capability.supported ? <DockUnsupported capability={snapshot.capability} /> : <>
         <DockMaster snapshot={snapshot} pending={state.pending} showToggle={!plugin} onTurnOn={() => setSetup("full")} />
         <DockDisplaySettings state={state} onSwitchToReplace={() => {
@@ -80,10 +72,9 @@ export function DockPluginSetupDialog({ onExit }: { onExit(): void }) {
   const { t } = useAppTranslation();
   const state = useDockSettings();
   const snapshot = state.snapshot;
-  if (!snapshot) return state.loadFailed ? <SettingsAlert>
-    <span className="flex flex-wrap items-center justify-between gap-2">{t("systemDock.settings.loadFailed")}
-      <SettingsButton variant="outline" onClick={() => dockSettingsStore.load()}>{t("common.retry")}</SettingsButton></span>
-  </SettingsAlert> : null;
+  if (!snapshot) return state.loadFailed ? <SettingsAlert title={t("systemDock.settings.loadFailed")}
+    action={<SettingsButton variant="outline" onClick={() => dockSettingsStore.load()}>{t("common.retry")}</SettingsButton>}
+  /> : null;
   if (!snapshot.capability.supported) return <DockUnsupported capability={snapshot.capability} />;
   return <DockSetupDialog capability={snapshot.capability} layoutInitialized={snapshot.layoutInitialized} flow="full" onExit={onExit} />;
 }

@@ -16,7 +16,7 @@ export const en = {
   "staleBody": "{{app}} was updated on {{computer}}. Reload to use it.",
   "missingTitle": "{{app}} hasn’t finished syncing",
   "missingBody": "Some files from {{computer}} haven’t arrived yet. Try again in a moment.",
-  "tryAgain": "Try again",
+  "tryAgain": "Retry",
   "unsupportedTitle": "Open {{app}} on your computer",
   "unsupportedBody": "This App uses an older format that can’t run on the web.",
   "offlineTitle": "{{computer}} is offline",

@@ -8,7 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsFr: typeof appsEn = {
-  catalog: { filter: "Type de plugin", widgets: "Widgets" },
+  catalog: { filter: "Type de plugin", widgets: "Widgets", yours: "Vos Apps", starter: "Apps pour commencer", more: "À essayer aussi", feature: "Commencez avec {{name}}", get: "Obtenir", open: "Ouvrir", githubTitle: "Depuis un dépôt GitHub", githubSubtitle: "Installer une App partagée", pasteLink: "Coller le lien", addFromGithub: "Installer depuis GitHub…", addFromGithubHint: "Collez le lien d’un dépôt", build: "Créer avec votre Agent…", buildHint: "Décrivez un outil et lancez une discussion" },
   dock: {
     pin: "Épingler au Dock",
     unpin: "Retirer du Dock",
@@ -81,7 +81,6 @@ export const appsFr: typeof appsEn = {
     savedRefreshFailed: "Les permissions sont enregistrées, mais le panneau n’a pas pu être actualisé.",
     saveFailed: "Échec de l’enregistrement de l’autorisation",
     retryRefresh: "Réessayer l’actualisation",
-    saving: "Enregistrement…",
     addToProject: "Ajouter au Project",
     addToChat: "Ajouter au Chat",
     save: "Enregistrer",
@@ -130,11 +129,8 @@ export const appsFr: typeof appsEn = {
       probeFailed: "Impossible de vérifier ce dépôt. Réessayez. Si le problème persiste, contactez son auteur.",
     },
     addFailed: "Impossible d’ajouter l’App",
-    checking: "Vérification…",
     recheck: "Vérifier à nouveau",
     openAgentSettings: "Ouvrir les réglages Agent",
-    preflighting: "Précontrôle sécurisé…",
-    submitting: "Envoi…",
     downloadAndInstall: "Télécharger et installer",
     blockedDisclosure: "Un Agent d’exécution installe, répare et lance cette App sans surveillance sur cet appareil. Le backend doit implémenter l’adaptateur de maintenance et franchir sa porte de capacité ; une limite non imposable n’est disponible qu’après acceptation explicite d’une exception de risque enregistrée.",
     blockedReadyHint: "Cette entrée s’ouvre automatiquement lorsqu’un Agent franchit la porte de capacité ou possède une exception explicite.",
@@ -178,6 +174,7 @@ export const appsFr: typeof appsEn = {
   },
   failure: {
     recommended: "Recommandé",
+    otherOptions: "Autres options",
     phaseTitle: {
       clone: "Échec du téléchargement des sources",
       manifest: "Échec de la lecture du manifeste de l’App",

@@ -227,6 +227,15 @@
     {
       "date": "2026-11-03",
       "reason": "Policy v2: record the eager external packages of every preload and Node closure from a production build of main @ a1c1f34c5 plus the v2 gate (out-budget, flavour production). Baselines unchanged. Surfaces with eager packages: main/index: @agentclientprotocol/sdk, http-proxy, i18next, nanoid, parse5, react; main/builtin-tools-server: ajv, ajv-formats; main/codec-host-entry: sharp; main/app-gui-compiler-entry: @tailwindcss/node, @tailwindcss/oxide, esbuild, typescript; every other preload and Node surface loads none."
+    },
+    {
+      "date": "2026-11-14",
+      "reason": "Dock Widget visual redesign (approved by Jimmy 2026-11-14): macOS-style inset Widget tile with press/open/drag/highlight states, a lighter glass veil and a solid-tile fallback. Only renderer/system-dock-bar/css moves, from 8,134 to the measured 9,377 raw (3,298 gzip, 2,758 br) after compacting the new selectors; the pre-change build already measured 8,282 raw. No other baseline changes.",
+      "surfaces": {
+        "renderer/system-dock-bar/css": {
+          "raw": 9377
+        }
+      }
     }
   ],
   "surfaces": {
@@ -256,9 +265,9 @@
     },
     "renderer/system-dock-bar/css": {
       "baseline": {
-        "raw": 8134,
-        "gzip": 2716,
-        "brotli": 2289
+        "raw": 9377,
+        "gzip": 3298,
+        "brotli": 2758
       },
       "twoByteChunks": 0
     },

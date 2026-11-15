@@ -1,6 +1,16 @@
 /**
  * [INPUT]: Shared workspace row styles.
- * [OUTPUT]: Desktop row style entry.
+ * [OUTPUT]: Shared row styles and desktop resize rail feedback.
  * [POS]: Desktop stylesheet adapter.
  */
 @import "@ai-chat/ui/workspace-row.css";
+
+.workspace-sidebar-resize {
+  transition: none;
+  -webkit-app-region: no-drag;
+}
+
+.workspace-sidebar-resize:is(:focus-visible, [data-snapped]) {
+  outline: none;
+  background: linear-gradient(var(--sidebar-ring), var(--sidebar-ring)) center / 2px 100% no-repeat;
+}

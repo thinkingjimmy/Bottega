@@ -9,7 +9,7 @@ export const zhCN: CloudEncryptionCopy = {
   title: "解锁同步工作区", description: "请输入在桌面端设置的同步密码。", password: "同步密码", confirmation: "确认同步密码",
   setPassword: "设置同步密码", setupDescription: "此密码独立于 Google 账号密码，Bottega 和 Google 都无法替你找回。",
   risk: "我了解：如果丢失此密码，且没有任何设备仍能解密，仅存在云端的内容可能无法恢复。", inProgress: "正在保护同步内容…",
-  unlock: "解锁", unlocking: "正在解锁…", checking: "正在检查加密同步…", remember: "保持此浏览器解锁",
+  unlock: "解锁", checking: "正在检查加密同步…", remember: "保持此浏览器解锁",
   rememberDescription: "在此浏览器保存加密的解锁密钥，你随时可以重新锁定。", remembered: "此浏览器将记住解锁密钥。", thisPageOnly: "仅在当前页面保持解锁。",
   saving: "正在保存解锁密钥…", saveFailed: "当前已解锁，但解锁密钥未能保存。下次可能仍需输入同步密码。", lastInputLost: "应用进入后台前最后输入的内容没能保存，请检查正在写的消息。", lastInputLostDismiss: "知道了", saveRetry: "重试保存解锁密钥",
   cachedStorageUnavailable: "安全本地存储不可用。重新打开应用时，可能需要再次输入同步密码。", cacheUnreadable: "无法读取已保存的解锁密钥，请输入同步密码继续。",

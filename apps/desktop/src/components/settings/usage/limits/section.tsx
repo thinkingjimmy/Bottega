@@ -5,7 +5,6 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { FolderOpen, LogIn, RefreshCw } from "lucide-react";
-import { toast } from "@ai-chat/ui/components/ui/sonner";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
@@ -13,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ai-chat/ui/components
 import { AgentBackendIcon, backendLabel } from "@/lib/agent/agent-backends";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { useSettingsNavigation } from "@/components/providers/navigation/context";
-import { SettingsBadge, SettingsButton, SettingsSurface } from "@/components/settings/settings-layout";
+import { SettingsAlert, SettingsBadge, SettingsButton, SettingsSurface } from "@/components/settings/settings-layout";
 import { UsageInfoTip } from "@/components/settings/usage/usage-info-tip";
 import { useUsageLimits, useUsageLimitsDemand } from "@/lib/usage-limits/hooks";
 import { usageLimitsStore } from "@/lib/usage-limits/store";
@@ -83,7 +82,9 @@ function AgentLimits({ agent, now, customRoute, signIn }: { agent: AgentUsageLim
      automatic backoff in nextRetryAt never holds a person back, so it must not grey the button out either. */
   const cooldown = agent.lastAttemptAt !== null && now - agent.lastAttemptAt < LIMITS_TIMING.manualMs
     || agent.reasonCode === "rate-limited" && agent.nextRetryAt !== null && now < agent.nextRetryAt;
-  const reveal = () => void usageLimitsStore.revealRouteConfig(agent.backend).catch(() => toast.error(t("settings.usage.limits.showRouteConfigFailed")));
+  /* Reveal failure is said inline where the button lives, never as a toast (usage-limits-reveal-fail). */
+  const [revealFailed, setRevealFailed] = useState(false);
+  const reveal = () => void usageLimitsStore.revealRouteConfig(agent.backend).then(() => setRevealFailed(false)).catch(() => setRevealFailed(true));
   /* While the Agent is busy the read waits for it (their shared sign-in) and the reading stays shown with nothing said over it;
      the greyed refresh is the one control that needs its reason. */
   const waiting = agent.fetchState === "deferred" ? t("settings.usage.limits.summaryDeferred") : undefined;
@@ -93,7 +94,7 @@ function AgentLimits({ agent, now, customRoute, signIn }: { agent: AgentUsageLim
       title={t("settings.usage.limits.details")}
       /* Refresh qualifies the data, so it sits on the title with the time it was checked; the right corner holds only the fix. */
       titleAction={<>
-        <Button type="button" variant="ghost" size="icon-sm" disabled={loading || cooldown || waiting !== undefined} title={waiting}
+        <Button type="button" variant="ghost" size="icon-sm" className="rounded-full" disabled={loading || cooldown || waiting !== undefined} title={waiting}
           aria-label={[t("settings.usage.limits.refresh", { agent: backendLabel(agent.backend) }), waiting].filter(Boolean).join(" · ")} onClick={() => void usageLimitsStore.refresh(agent.backend)}>
           <RefreshCw aria-hidden="true" className={`size-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} />
         </Button>
@@ -119,10 +120,15 @@ function AgentLimits({ agent, now, customRoute, signIn }: { agent: AgentUsageLim
         {!pools.length && loading && <Skeleton className="h-11 w-full rounded-md" />}
         {!pools.length && !status && <p className="text-xs text-muted-foreground">{t("settings.usage.limits.noWindows")}</p>}
       </div>
-      {/* Keep the live region mounted so a refresh can announce its result. */}
-      <div role="status" aria-live="polite" className={status && (pools.length > 0 || loading) ? "mt-3" : undefined}>
-        {status && <p className={`text-xs leading-relaxed ${agent.fetchState === "error" && (agent.availability === "available" || agent.availability === "unavailable") ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}>{status}</p>}
-      </div>
+      {revealFailed && <p role="alert" className="mt-3 text-destructive text-xs leading-relaxed">{t("settings.usage.limits.showRouteConfigFailed")}</p>}
+      {/* A fetch that failed is a warn alert with a Retry (rule 3), not an amber status line; every other verdict stays a status line. */}
+      {agent.fetchState === "error" && status ? (
+        <SettingsAlert tone="warn" className="mt-3" title={status} action={<SettingsButton variant="outline" onClick={() => void usageLimitsStore.refresh(agent.backend)}>{t("common.retry")}</SettingsButton>} />
+      ) : (
+        <div role="status" aria-live="polite" className={status && (pools.length > 0 || loading) ? "mt-3" : undefined}>
+          {status && <p className="text-xs leading-relaxed text-muted-foreground">{status}</p>}
+        </div>
+      )}
     </UsageRegion>
   </article>;
 }
@@ -146,7 +152,7 @@ function QuotaTab({ agent, now, customRoute }: { agent: AgentUsageLimits; now: n
   /* The tab carries the short verdict (its accessible name stays a name); the panel below says the whole of it and its fix. */
   const verdict = quotaStatus(agent, now, t, customRoute) !== null ? quotaSummary(agent, now, t) : null;
   return <TabsTrigger value={agent.backend} data-testid={`quota-tab-${agent.backend}`} data-availability={agent.availability}
-    className="h-auto flex-none cursor-pointer justify-start gap-2 rounded-none px-4 py-3 text-sm @max-xl:min-w-0 @max-xl:flex-1">
+    className="h-auto flex-none cursor-pointer justify-start gap-2 rounded-none px-4 py-3 text-[13px] font-medium @max-xl:min-w-0 @max-xl:flex-1">
     <AgentBackendIcon backend={agent.backend} className="size-4" />
     <span className="min-w-0 truncate">{backendLabel(agent.backend)}</span>
     {pending ? <Skeleton className="h-4 w-10 shrink-0 rounded-full @max-xl:hidden" /> : <span

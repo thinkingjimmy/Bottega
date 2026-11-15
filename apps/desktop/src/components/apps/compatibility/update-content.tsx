@@ -6,7 +6,8 @@
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { AppCompatibilityRequiredError,applyAppCompatibility,resumeAppCompatibility } from "@/lib/apps/apps-client";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Dialog,DialogContent,DialogDescription,DialogFooter,DialogHeader,DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { useState } from "react";
 import type { AppCompatibilityFailure } from "../../../../shared/app-host/contract";
@@ -32,12 +33,12 @@ export default function CompatibilityUpdateContent({ initial, returnFocus }: { i
     } finally { setBusy(false); }
   };
   return <Dialog open={Boolean(failure)} onOpenChange={(open) => { if (!open && !busy) setFailure(null); }}>
-    <DialogContent className="max-h-[85dvh] overflow-y-auto" onCloseAutoFocus={(event) => { event.preventDefault(); returnFocus?.focus(); }}>
+    <AppDialogContent className="max-h-[85dvh]" onCloseAutoFocus={(event) => { event.preventDefault(); returnFocus?.focus(); }}>
       {failure && (ready ? <>
-        <DialogHeader><DialogTitle>{failure.candidate.appName}</DialogTitle><DialogDescription>{t(failure.candidate.hasUsableVersion ? "appHost.oldVersionUsable" : "appHost.resume")}</DialogDescription></DialogHeader>
-        <DialogFooter><Button variant="outline" disabled={busy} onClick={() => setFailure(null)}>{t("appHost.cancel")}</Button><Button disabled={busy} onClick={() => void run(true)}>{t("appHost.resume")}</Button></DialogFooter>
+        <AppDialogHeader title={failure.candidate.appName} description={t(failure.candidate.hasUsableVersion ? "appHost.oldVersionUsable" : "appHost.resume")}/>
+        <AppDialogFooter><AppDialogCancel disabled={busy} onClick={() => setFailure(null)}>{t("appHost.cancel")}</AppDialogCancel><Button size="pill" disabled={busy} onClick={() => void run(true)}>{t("appHost.resume")}</Button></AppDialogFooter>
       </> : <CompatibilityReminder failure={failure} busy={busy} onClose={() => setFailure(null)} onRetry={() => void run()} />)}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    </DialogContent>
+    </AppDialogContent>
   </Dialog>;
 }

@@ -1,7 +1,7 @@
 "use client";
 /**
- * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, i18n, Sidebar UI, product providers, shared WorkspaceNavigation/SettingsNavigation and ComputerSwitcher, active App targets, footer affordances, cloud projections and the Sidebar notice dialog.
- * [OUTPUT]: Provides AppSidebar, including the MCP entry in Settings Integrations.
+ * [INPUT]: Base contracts, React, i18n, product providers, shared navigation and computer switcher, desktop resize gesture, active App targets, cloud projections and sidebar feedback.
+ * [OUTPUT]: Provides AppSidebar with desktop resize and the MCP entry in Settings Integrations.
  * [POS]: App and Widget card catalog entry plus declared ready page navigation; sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  * Memory status follows its plugin item when the workbench UI is enabled; the footer uses the same destination.
  */
@@ -34,6 +34,7 @@ import {
 } from "@ai-chat/ui/components/settings/navigation";
 import { ComputerSwitcher } from "@ai-chat/ui/components/account/computer-switcher";
 import { WorkspaceNavigation } from "@ai-chat/ui/components/workspace/navigation/frame";
+import type { HorizontalResizeGesture } from "@ai-chat/ui/hooks/use-horizontal-resize";
 import type { NavigationSectionModel } from "@ai-chat/ui/components/workspace/navigation/section";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { useProjectSection } from "./project/section/project-section";
@@ -89,6 +90,7 @@ type AppSidebarProps = {
   activeSettings: SettingsDestination | null;
   sidebarWidth: number;
   onSidebarWidthChange: (width: number) => void;
+  sidebarResize?: HorizontalResizeGesture;
   groups: SidebarGroups;
   onGroupOpenChange: (group: keyof SidebarGroups, open: boolean) => void;
   view: SidebarView;
@@ -279,6 +281,7 @@ function AppSidebarContent({
   activeSettings,
   sidebarWidth,
   onSidebarWidthChange,
+  sidebarResize,
   groups,
   onGroupOpenChange,
   view,
@@ -414,10 +417,6 @@ function AppSidebarContent({
           ? [settingItem("account", t("cloud.syncSettings"), <RefreshCw />)]
           : []),
         settingItem("shortcuts", t("common.keyboardShortcuts"), <Keyboard />),
-        // Workbench builds route Dock through its plugin; flag-off builds keep the standalone page.
-        ...(window.systemDockSettings && !workbenchLabels
-          ? [settingItem("dock", t("systemDock.settings.title"), <PanelBottom />)]
-          : []),
         settingItem("updates", t("settings.updates.title"), <Download />),
         settingItem("community", t("settings.community.title"), <Users />),
       ],
@@ -487,6 +486,7 @@ function AppSidebarContent({
         <WorkspaceNavigation
           width={sidebarWidth}
           onWidthChange={onSidebarWidthChange}
+          resizeGesture={sidebarResize}
           chrome={
             isApplePlatform() && (
               <div className="h-10 shrink-0 [-webkit-app-region:drag]" />

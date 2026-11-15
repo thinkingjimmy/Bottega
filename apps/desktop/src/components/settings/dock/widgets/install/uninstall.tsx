@@ -4,16 +4,11 @@
  * [POS]: Custody management UI; source, layout, package paths and cleanup authority stay with Main.
  */
 import { useRef, useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { Button } from "@ai-chat/ui/components/ui/button";
+import { AppDialogBody, AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import {
   SettingsAlert,
-  SettingsButton,
 } from "@/components/settings/settings-layout";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import type {
@@ -110,10 +105,9 @@ export function WidgetUninstallDialog({
         if (!open && !busy) onClose();
       }}
     >
-      <DialogContent
+      <AppDialogContent
         data-widget-uninstall-review={mode}
-        className="max-h-[85vh] overflow-y-auto"
-        showCloseButton={!busy}
+
         onEscapeKeyDown={(event) => {
           if (busy) event.preventDefault();
         }}
@@ -122,8 +116,11 @@ export function WidgetUninstallDialog({
           onReturnFocus();
         }}
       >
-        <DialogTitle>{t(`${copy}.title`, { name: review.name })}</DialogTitle>
-        <DialogDescription>{t(`${copy}.hint`)}</DialogDescription>
+        <AppDialogHeader
+          title={t(`${copy}.title`, { name: review.name })}
+          description={t(`${copy}.hint`)}
+        />
+        <AppDialogBody className="space-y-4">
         {review.instances.length > 0 && (
           <ul
             className="space-y-2 rounded-md border p-3"
@@ -143,25 +140,30 @@ export function WidgetUninstallDialog({
             <span role="alert">{t(`${copy}.pending`)}</span>
           </SettingsAlert>
         )}
-        <DialogFooter>
-          <SettingsButton variant="outline" disabled={busy} onClick={onClose}>
-            {t(
-              removed
-                ? "systemDock.widgets.install.done"
-                : "systemDock.widgets.cancel",
-            )}
-          </SettingsButton>
+        </AppDialogBody>
+        <AppDialogFooter>
+          {removed ? (
+            <Button size="pill" disabled={busy} onClick={onClose}>
+              {t("systemDock.widgets.install.done")}
+            </Button>
+          ) : (
+            <AppDialogCancel disabled={busy} onClick={onClose}>
+              {t("systemDock.widgets.cancel")}
+            </AppDialogCancel>
+          )}
           {!removed && (
-            <SettingsButton
+            <Button
+              size="pill"
+              variant="destructive"
               disabled={busy}
               aria-busy={busy}
               onClick={() => void confirm()}
             >
               {t(requested ? "common.retry" : `${copy}.confirm`)}
-            </SettingsButton>
+            </Button>
           )}
-        </DialogFooter>
-      </DialogContent>
+        </AppDialogFooter>
+      </AppDialogContent>
     </Dialog>
   );
 }

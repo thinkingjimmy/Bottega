@@ -4,13 +4,13 @@
  * [POS]: General › Bottega folder row; the main process validates and performs the move, this component only asks and confirms.
  */
 import { useState } from "react";
-import { FolderInput, FolderOpen } from "lucide-react";
-import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
+import { FolderOpen } from "lucide-react";
+import { AppDialogAlert, ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { useAppTranslation, useSystemFileManagerRevealLabel } from "@/components/providers/preferences/i18n-provider";
 import type { LibraryMovePlan } from "../../../../shared/ipc/settings/settings-ipc";
-import { SettingsButton, SettingsRow } from "../settings-layout";
+import { SettingsButton, SettingsIconButton, SettingsRow, SettingsTechnicalDetails } from "../settings-layout";
 
 export function FolderRow({ folder, loading, onError }: {
   folder: string | null;
@@ -47,14 +47,13 @@ export function FolderRow({ folder, loading, onError }: {
       htmlFor="choose-chat-homes-root"
       description={loading ? <Skeleton className="h-3 w-72" /> :
         <span className="font-mono text-xs break-all">{folder ?? t("settings.general.notSelected")}</span>}
-      control={<div className="flex flex-wrap gap-2">
-        <SettingsButton id="choose-chat-homes-root" aria-label={revealLabel} variant="outline" disabled={!folder}
+      control={<div className="flex flex-wrap items-center gap-2">
+        <SettingsIconButton id="choose-chat-homes-root" variant="outline" disabled={!folder}
+          label={revealLabel}
           onClick={() => { onError(""); void window.settings?.revealLibrary?.().catch((cause) => onError(errorMessage(cause))); }}>
-          <FolderOpen className="size-3.5" />
-          {revealLabel}
-        </SettingsButton>
+          <FolderOpen className="size-4" />
+        </SettingsIconButton>
         <SettingsButton variant="outline" disabled={!folder || planning} onClick={() => void choose()}>
-          <FolderInput className="size-3.5" />
           {t("settings.general.moveFolder")}
         </SettingsButton>
       </div>}
@@ -69,7 +68,10 @@ export function FolderRow({ folder, loading, onError }: {
           <div><dt className="text-muted-foreground">{t("settings.general.moveFolderTo")}</dt><dd className="font-mono text-foreground break-all">{plan.to}</dd></div>
         </dl>
         <p className="text-sm">{t("settings.general.moveFolderRestart")}</p>
-        {moveError && <p role="alert" className="text-destructive text-sm">{moveError}</p>}
+        {moveError && <div className="space-y-2">
+          <AppDialogAlert className="mt-0" tone="danger" title={t("settings.general.moveFolderFailed")} />
+          <SettingsTechnicalDetails details={moveError} />
+        </div>}
       </div>}
       confirmLabel={t("settings.general.moveFolderConfirm")}
       initialFocus="confirm"

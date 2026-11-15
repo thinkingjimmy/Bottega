@@ -53,6 +53,7 @@ import { prefetchWhenIdle } from "@/lib/platform/idle-prefetch";
 import { memoryStore } from "@/lib/memory/memory-store";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { useLocation } from "react-router";
+import { useProjectSettingsPane } from "@/components/providers/navigation/project-settings-pane";
 import { windowContext } from "@/lib/platform/window-surfaces-client";
 import type {
   ChatForkViewContext,
@@ -158,13 +159,17 @@ export function ChatViewFrame({
 }: ChatViewFrameProps) {
   const location = useLocation();
   const { t } = useAppTranslation();
+  /* 项目设置占的就是这条第三列：它在期间侧栏要让位，收掉即原样还回——
+     呈现层改开关，controller.sidePanel 里攒着的状态一概不动。 */
+  const projectSettingsPane = useProjectSettingsPane()?.pane != null;
   const memory = useSyncExternalStore(
     memoryStore.subscribe,
     memoryStore.getSnapshot,
     memoryStore.getSnapshot
   );
   const { containerRef: layoutRootRef, geometry: panelGeometry, widthChange: commitPanelWidth } = usePanelLayout(nativePanelWidths);
-  const artifactHost = useDesktopArtifactHost(controller, layoutRootRef, enableSidePanel);
+  const sidePanelEnabled = enableSidePanel && !projectSettingsPane;
+  const artifactHost = useDesktopArtifactHost(controller, layoutRootRef, sidePanelEnabled);
   const conversationId = controller.transcript.chatId;
   const panelContext = controller.sidePanel.context;
   const openTabs = controller.sidePanel.openTabs;
@@ -177,11 +182,11 @@ export function ChatViewFrame({
        panel is open — but the first reply and the first panel do. Fetch them
        once the main thread is idle so neither wait is paid in front of the user. */
     const cancels = [prefetchWhenIdle(loadTranscriptChunk)];
-    if (enableSidePanel) cancels.push(prefetchWhenIdle(loadSidePanelChunk));
+    if (sidePanelEnabled) cancels.push(prefetchWhenIdle(loadSidePanelChunk));
     return () => {
       for (const cancel of cancels) cancel();
     };
-  }, [enableSidePanel]);
+  }, [sidePanelEnabled]);
 
   useEffect(() => {
     if (!enableSidePanel || !matchesSidePanelRequest(sidePanelRequest, panelContext)) {
@@ -197,7 +202,7 @@ export function ChatViewFrame({
     sidePanelRequest,
   ]);
   const sidePanelState =
-    enableSidePanel && controller.sidePanel.state.kind !== "none"
+    sidePanelEnabled && controller.sidePanel.state.kind !== "none"
       ? controller.sidePanel.state
       : null;
   const [retainedSidePanelState, setRetainedSidePanelState] =
@@ -261,7 +266,7 @@ export function ChatViewFrame({
   const nativeCommandTitles = useMemo(() => new Map(conversationMessages.flatMap(message =>
     (message.parts ?? []).flatMap(part => part.type === "tool" && part.tool === "command" ? [[part.itemId, part.title] as const] : []))), [conversationMessages]);
   return (
-    <NativeCommandRuntimeProvider chatId={conversationId} incarnationId={controller.transcript.incarnationId ?? null} titles={nativeCommandTitles}><ArtifactHostProvider value={artifactHost}><ChatPageSessionView renderPage={renderPage} header={header} notices={<><Suspense fallback={null}><PluginSourceStatus chatId={conversationId}/></Suspense>{notices}</>} className={header ? "[--page-shell-header-height:2.5rem]" : undefined} containOverflow={Boolean(header)} containerRef={layoutRootRef} panel={enableSidePanel && visibleSidePanelState && (
+    <NativeCommandRuntimeProvider chatId={conversationId} incarnationId={controller.transcript.incarnationId ?? null} titles={nativeCommandTitles}><ArtifactHostProvider value={artifactHost}><ChatPageSessionView renderPage={renderPage} header={header} notices={<><Suspense fallback={null}><PluginSourceStatus chatId={conversationId}/></Suspense>{notices}</>} className={header ? "[--page-shell-header-height:2.5rem]" : undefined} containOverflow={Boolean(header)} containerRef={layoutRootRef} panel={sidePanelEnabled && visibleSidePanelState && (
         <Suspense fallback={null}>
           <SidePanel crossHeader={!header} open={Boolean(sidePanelState)} state={visibleSidePanelState} width={panelGeometry.width} minWidth={panelGeometry.minWidth} maxWidth={panelGeometry.maxWidth}
             onWidthChange={commitPanelWidth} onClose={controller.sidePanel.close} subagents={controller.sidePanel.subagents} galleryProjection={galleryProjection} />
@@ -270,7 +275,7 @@ export function ChatViewFrame({
         emptyView: <ChatEmptyState composer={controller.composer} description={emptyDescription} title={emptyTitle} />,
         fallback: existingChat ? <ChatTranscriptSkeleton /> : <TranscriptPlaceholder />,
         transcript: <MessageFileLinkProvider onOpen={enableSidePanel ? controller.sidePanel.openLocalFile : undefined}><ChatTranscript key={`${conversationId}:${controller.transcript.incarnationId ?? "pending"}`}
-          controller={controller.transcript} existingChat={existingChat} enableSidePanel={enableSidePanel} expandedPlanId={expandedPlanId}
+          controller={controller.transcript} existingChat={existingChat} enableSidePanel={sidePanelEnabled} expandedPlanId={expandedPlanId}
           importSegment={importSegment} forkContext={forkContext} onClosePlan={controller.sidePanel.close} showOutline={!visibleSidePanelState}
           routeSearch={location.search} surfaceVisible={surfaceVisible} /></MessageFileLinkProvider>,
       }} status={
@@ -292,7 +297,7 @@ export function ChatViewFrame({
         ) : composerWrapper(
           <ChatComposer
             controller={controller.composer}
-            enableSidePanel={enableSidePanel}
+            enableSidePanel={sidePanelEnabled}
             focusOnReady={focusComposer}
             managedWorktree={managedWorktree}
           />

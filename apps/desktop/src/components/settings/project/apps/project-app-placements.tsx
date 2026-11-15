@@ -128,8 +128,8 @@ export function ProjectAppPlacements({ project }: { project: Project }) {
     }
   };
 
-  const addButton = (
-    <SettingsButton onClick={() => setAddOpen(true)}>
+  const addButton = (variant?: "outline") => (
+    <SettingsButton onClick={() => setAddOpen(true)} variant={variant}>
       <Plus className="size-4" />
       {t("apps.authorization.selectTitle")}
     </SettingsButton>
@@ -137,7 +137,7 @@ export function ProjectAppPlacements({ project }: { project: Project }) {
 
   return (
     <SettingsSection
-      action={rows.length > 0 ? addButton : undefined}
+      action={rows.length > 0 ? addButton() : undefined}
       description={t("projectSettings.general.appsDescription")}
       title={t("projectSettings.general.appsSection")}
     >
@@ -203,7 +203,7 @@ export function ProjectAppPlacements({ project }: { project: Project }) {
           hint={
             <>
               {t("projectSettings.general.placements.emptyHint")}
-              <span className="mt-3 block">{addButton}</span>
+              <span className="mt-3 block">{addButton("outline")}</span>
             </>
           }
           icon={<PanelsTopLeft />}

@@ -40,6 +40,7 @@ export const settingsShortcutsEn = {
   },
   saveFailed: "Failed to save the shortcut",
   restoreFailed: "Failed to restore default shortcuts",
+  loadFailed: "Keyboard shortcuts could not be loaded.",
 };
 
 type SettingsShortcutsCatalog = typeof settingsShortcutsEn;
@@ -80,6 +81,7 @@ export const settingsShortcutsZhCN: SettingsShortcutsCatalog = {
   },
   saveFailed: "快捷键保存失败",
   restoreFailed: "恢复默认快捷键失败",
+  loadFailed: "无法加载键盘快捷键。",
 };
 
 export const settingsShortcutsJa: SettingsShortcutsCatalog = {
@@ -118,6 +120,7 @@ export const settingsShortcutsJa: SettingsShortcutsCatalog = {
   },
   saveFailed: "ショートカットの保存に失敗しました",
   restoreFailed: "既定のショートカットへの復元に失敗しました",
+  loadFailed: "キーボードショートカットを読み込めませんでした。",
 };
 
 export const settingsShortcutsFr: SettingsShortcutsCatalog = {
@@ -159,6 +162,7 @@ export const settingsShortcutsFr: SettingsShortcutsCatalog = {
   },
   saveFailed: "Échec de l’enregistrement du raccourci",
   restoreFailed: "Échec du rétablissement des raccourcis par défaut",
+  loadFailed: "Les raccourcis clavier n’ont pas pu être chargés.",
 };
 
 export const settingsShortcutsEs: SettingsShortcutsCatalog = {
@@ -200,6 +204,7 @@ export const settingsShortcutsEs: SettingsShortcutsCatalog = {
   },
   saveFailed: "No se pudo guardar el atajo",
   restoreFailed: "No se pudieron restablecer los atajos predeterminados",
+  loadFailed: "No se pudieron cargar los atajos de teclado.",
 };
 
 export function getShortcutCopy(locale: string) {

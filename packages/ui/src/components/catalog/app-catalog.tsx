@@ -1,6 +1,6 @@
 /**
  * [INPUT]: React content slots, shared Card/Skeleton/Scroller primitives and the catalog icon.
- * [OUTPUT]: AppCatalogBody, AppCatalogGrid, AppCatalogSkeleton and AppCatalogEmpty.
+ * [OUTPUT]: AppCatalogBody, AppCatalogGrid, AppCatalogSkeleton and AppCatalogEmpty (a left-aligned title, lead and optional hint line above its examples; the warning state stays a centred notice).
  * [POS]: Native and browser Apps page content; loading, empty and settled states share one layout.
  */
 import type { ReactNode } from "react";
@@ -87,26 +87,18 @@ export function AppCatalogEmpty({
           <div className="mt-3 text-muted-foreground text-xs">{warning}</div>
         </div>
       ) : (
-        <>
-          {hint}
-          <section className="my-auto w-full py-10">
-            <div className="mx-auto flex max-w-4xl flex-col items-center text-center">
-              <LayoutGrid
-                aria-hidden
-                className="size-8 text-muted-foreground"
-              />
-              <h2 className="mt-3 font-heading font-semibold text-base">
-                {title}
-              </h2>
-              {description && (
-                <p className="mt-1.5 max-w-md text-muted-foreground text-sm">
-                  {description}
-                </p>
-              )}
-              {children && <div className="mt-7 w-full">{children}</div>}
-            </div>
-          </section>
-        </>
+        /* A quiet, left-aligned start that lines up with the example grid below it, instead of a centred
+           hero floating above a left-aligned grid. The page header already carries the add action. */
+        <section className="w-full max-w-5xl pt-2 pb-10">
+          <h2 className="font-heading font-semibold text-[15px]">{title}</h2>
+          {description && (
+            <p className="mt-1 max-w-prose text-pretty text-muted-foreground text-sm">
+              {description}
+            </p>
+          )}
+          {hint && <p className="mt-6 mb-3 text-muted-foreground text-xs">{hint}</p>}
+          {children && <div className={hint ? undefined : "mt-6"}>{children}</div>}
+        </section>
       )}
     </div>
   );

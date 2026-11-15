@@ -689,6 +689,7 @@ contextBridge.exposeInMainWorld("usage", {
   },
   getSummary: (target, options) =>
     ipcRenderer.invoke(USAGE_CHANNEL.getSummary, target, options),
+  revealSource: (source) => ipcRenderer.invoke(USAGE_CHANNEL.revealSource, source),
   onScanProgress: (callback) => {
     const unsubscribe = subscribe<UsageScanProgress>(
       USAGE_CHANNEL.scanProgress

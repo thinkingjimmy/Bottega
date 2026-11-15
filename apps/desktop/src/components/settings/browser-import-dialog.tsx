@@ -8,8 +8,12 @@ import { useEffect, useMemo, useState } from "react";
 import { LoaderCircleIcon } from "lucide-react";
 import {
   AppDialogBody,
+  AppDialogCancel,
   AppDialogContent,
+  AppDialogFooter,
+  AppDialogHeader,
 } from "@ai-chat/ui/components/ui/app-dialog";
+import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   SettingsAlert,
   SettingsButton,
@@ -18,10 +22,6 @@ import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import {
   Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
 import {
   Select,
@@ -69,7 +69,7 @@ export function BrowserImportDialog({
 }) {
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <AppDialogContent className="sm:max-w-[34rem]">
+      <AppDialogContent size="lg">
         {/* 面板内容独立成组件：Radix 关闭即卸载，于是每次打开都是全新一次导入。
             生命周期本身就是重置，不必再手写任何 reset 分支。 */}
         <ImportPanel
@@ -188,14 +188,10 @@ function ImportPanel({
 
   return (
     <>
-      <DialogHeader className="shrink-0 gap-0 text-left">
-        <DialogTitle className="font-semibold text-lg">
-          {t("settings.browser.dialogTitle")}
-        </DialogTitle>
-        <DialogDescription className="mt-2 text-muted-foreground text-xs">
-          {t("settings.browser.dialogDescription")}
-        </DialogDescription>
-      </DialogHeader>
+      <AppDialogHeader
+        title={t("settings.browser.dialogTitle")}
+        description={t("settings.browser.dialogDescription")}
+      />
 
       <AppDialogBody className="mt-4 space-y-4">
         <div className="flex items-center justify-between gap-4">
@@ -326,15 +322,15 @@ function ImportPanel({
         </p>
       </AppDialogBody>
 
-      <DialogFooter className="mt-5 shrink-0 flex-row justify-end gap-3">
-        <SettingsButton
+      <AppDialogFooter>
+        <AppDialogCancel
           disabled={importing}
           onClick={onCancel}
-          variant="ghost"
         >
           {t("common.cancel")}
-        </SettingsButton>
-        <SettingsButton
+        </AppDialogCancel>
+        <Button
+          size="pill"
           disabled={
             importing || domainsState.kind !== "ready" || selectedCount === 0
           }
@@ -342,8 +338,8 @@ function ImportPanel({
         >
           {importing && <LoaderCircleIcon className="animate-spin" />}
           {t("settings.browser.importAction")}
-        </SettingsButton>
-      </DialogFooter>
+        </Button>
+      </AppDialogFooter>
     </>
   );
 }

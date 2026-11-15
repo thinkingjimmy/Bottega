@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on host Base actions and the deferred canonical Base-plugin promotion entry.
+ * [INPUT]: Host Base actions, the shared panel action style and the deferred Base-plugin promotion entry.
  * [OUTPUT]: Provides Base tab menu actions only for a mounted Base panel.
  * [POS]: On-demand side-panel catalog action boundary.
  */
@@ -7,7 +7,7 @@ import { SaveAsAppDialog } from "@/components/apps/dialogs/save-as-app";
 import {
 useBaseAppActions
 } from "@/components/bases/chrome/base-header-actions";
-import { baseTabActionButtonClass } from "@ai-chat/base-ui/ui/chrome/base-tab-chrome";
+import { tabActionClass } from "@ai-chat/ui/components/workspace/side-panel/tabs";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import {
 DropdownMenu,
@@ -48,7 +48,7 @@ export default function BaseTabMenu({
         <DropdownMenuTrigger asChild>
           <button
             aria-label={t("chat.sidePanel.moreBaseActions")}
-            className={baseTabActionButtonClass}
+            className={tabActionClass}
             onClick={(event) => event.stopPropagation()}
             title={t("chat.sidePanel.more")}
             type="button"
@@ -58,7 +58,7 @@ export default function BaseTabMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-36">
           {app ? (
-            <DropdownMenuItem asChild>
+            <DropdownMenuItem asChild className="hover:bg-accent">
               <Link to={`/apps/${app.id}`}>
                 <ExternalLinkIcon />
                 {t("chat.sidePanel.openApp")}
@@ -66,6 +66,7 @@ export default function BaseTabMenu({
             </DropdownMenuItem>
           ) : saveChatId ? (
             <DropdownMenuItem
+              className="hover:bg-accent"
               disabled={busy || !ready}
               onSelect={() => setSaveOpen(true)}
             >
@@ -74,6 +75,7 @@ export default function BaseTabMenu({
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuItem
+            className="hover:bg-accent"
             disabled={busy || !ready}
             onSelect={() => void exportCsv()}
           >

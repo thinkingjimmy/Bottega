@@ -14,16 +14,13 @@ import { Download } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   AppDialogBody,
+  AppDialogCancel,
   AppDialogContent,
+  AppDialogFooter,
+  AppDialogHeader,
 } from "@ai-chat/ui/components/ui/app-dialog";
 import { Card, CardDescription, CardHeader, CardTitle } from "@ai-chat/ui/components/ui/card";
-import {
-  Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { useApps } from "@/components/providers/content/apps-provider";
@@ -66,7 +63,7 @@ const PRESET_COPY_KEYS = {
   { nameKey: string; descriptionKey: string }
 >;
 
-function localizedPreset(
+export function localizedPreset(
   t: ReturnType<typeof useAppTranslation>["t"],
   presetId: PresetAppId
 ) {
@@ -274,7 +271,7 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
-      <AppDialogContent className="sm:max-w-[36rem]" data-testid="preset-detail" onCloseAutoFocus={(event) => { event.preventDefault(); returnFocus.current?.focus(); }}>
+      <AppDialogContent size="lg" data-testid="preset-detail" onCloseAutoFocus={(event) => { event.preventDefault(); returnFocus.current?.focus(); }}>
         {/* 图标离开标题：标题只留名字，可访问名不再夹着一个读不出来的字符，
             而那颗 emoji 单独成块反倒比塞在句首更像它自己。pr 给右上角的 × 让位。 */}
         {/* 正文是唯一会滚的层，头尾各留一条满幅细线：没有它，长 README 会从
@@ -282,19 +279,16 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
             -mx-5 是把 AppDialogContent 的内边距抵消掉——细线要横贯整个表面，
             缩在正文列里那条线就成了装饰而非边界。 */}
         {stage.kind === "compatibility" ? <CompatibilityReminder failure={stage.failure} appName={copy.name} onClose={close} onRetry={() => void retryProbe()} /> : <>
-        <DialogHeader className="-mx-5 shrink-0 gap-0 border-b px-5 pr-8 pb-4 text-left">
+        <div className="-mx-5 shrink-0 border-b px-5 pr-8 pb-4">
           <div className="flex items-start gap-3">
             <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted text-2xl">{preset.icon}</span>
-            <div className="min-w-0">
-              <DialogTitle className="text-lg/6 font-semibold">
-                {t("apps.installAuthorizationTitle", { name: copy.name })}
-              </DialogTitle>
-              <DialogDescription className="mt-1 text-sm/5">
-                {t("apps.installAuthorizationDescription")}
-              </DialogDescription>
-            </div>
+            <AppDialogHeader
+              className="min-w-0"
+              title={t("apps.installAuthorizationTitle", { name: copy.name })}
+              description={t("apps.installAuthorizationDescription")}
+            />
           </div>
-        </DialogHeader>
+        </div>
         {stage.kind === "probing" ? (
           <AppDialogBody className="-mx-5 px-5 py-5">
             <div className="grid min-h-48 place-items-center" role="status"><Spinner className="size-5" /><span className="sr-only">{t("apps.presetProbing")}</span></div>
@@ -373,13 +367,13 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
             </div>
           </AppDialogBody>
         ) : null}
-        <DialogFooter className="-mx-5 shrink-0 flex-row justify-end gap-2 border-t px-5 pt-4">
-          <Button disabled={stage.kind === "installing"} onClick={close} variant="ghost">{t("apps.presetCancel")}</Button>
-          <Button data-testid="preset-install-action" disabled={stage.kind !== "ready" || !ready} onClick={() => void confirmInstall()}>
+        <AppDialogFooter>
+          <AppDialogCancel disabled={stage.kind === "installing"} onClick={close}>{t("apps.presetCancel")}</AppDialogCancel>
+          <Button size="pill" data-testid="preset-install-action" disabled={stage.kind !== "ready" || !ready} onClick={() => void confirmInstall()}>
             {stage.kind === "installing" ? <Spinner className="size-3" /> : <Download />}
-            {stage.kind === "installing" ? t("apps.presetInstalling") : t("apps.presetAllowAndInstall")}
+            {t("apps.presetAllowAndInstall")}
           </Button>
-        </DialogFooter>
+        </AppDialogFooter>
         </>}
       </AppDialogContent>
     </Dialog>

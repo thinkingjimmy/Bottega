@@ -35,7 +35,7 @@
     "./components/ai-elements/rich-input": "./src/components/ai-elements/rich/rich-input.tsx",
     "./components/ai-elements/shimmer": "./src/components/ai-elements/feedback/shimmer.tsx",
     "./components/ai-elements/thinking-shimmer": "./src/components/ai-elements/feedback/thinking-shimmer.tsx",
-    "./components/ui/app-dialog": "./src/components/ui/overlays/app-dialog.tsx",
+    "./components/ui/app-dialog": "./src/components/ui/overlays/app-dialog/index.tsx",
     "./components/ui/attachment": "./src/components/ui/feedback/attachment.tsx",
     "./components/ui/button": "./src/components/ui/controls/button.tsx",
     "./components/ui/calendar": "./src/components/ui/controls/calendar.tsx",

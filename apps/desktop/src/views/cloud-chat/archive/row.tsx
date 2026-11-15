@@ -7,12 +7,8 @@ import { lazy, Suspense, useState } from "react";
 import { Link } from "react-router";
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogContent, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { AgentBackendIcon } from "@/lib/agent/agent-backends";
 import { intlLocale } from "@/lib/appearance/i18n-locale";
@@ -63,16 +59,14 @@ export function MirrorArchiveRow({
         }
       />
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[85dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{title}</DialogTitle>
-          </DialogHeader>
+        <AppDialogContent size="lg" showCloseButton className="max-h-[85dvh]">
+          <AppDialogHeader title={title}/>
           {open && (
             <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
               <Facts chatId={item.head.chat.id} />
             </Suspense>
           )}
-        </DialogContent>
+        </AppDialogContent>
       </Dialog>
     </>
   );

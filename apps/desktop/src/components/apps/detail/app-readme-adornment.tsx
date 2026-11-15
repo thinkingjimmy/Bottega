@@ -115,14 +115,14 @@ export function ReadmeDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {children}
-      <AppDialogContent className="sm:max-w-3xl">
+      <AppDialogContent size="xl" showCloseButton>
         {/* README 自带标题层级：H1 就是它的名字。弹窗再摆一个可见 header，
             同一句话就有了两个声音，且小号 chrome 标题压在大号正文标题上，
             读起来像面包屑而非标题。故 header 只留给读屏器——Radix 要求
             Content 有可访问名，视觉标题让给正文，重复自然消失。 */}
         <DialogHeader className="sr-only">
-          <DialogTitle>{appName}</DialogTitle>
-          <DialogDescription>{t("apps.readme.description")}</DialogDescription>
+          <DialogTitle className="text-xl/7 font-semibold">{appName}</DialogTitle>
+          <DialogDescription className="text-[15px]">{t("apps.readme.description")}</DialogDescription>
         </DialogHeader>
         {/* mt 是给右上角那颗 × 让位，而且必须让纵向、不能让横向。
             header 降成 sr-only 后正文层顶到了最上面，滚动沟槽的头一段正好从

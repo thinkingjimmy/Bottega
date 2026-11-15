@@ -61,6 +61,7 @@ export const copy = {
       description: "你的消息和附件都已保存，也还没有发送出去。",
       retriedTitle: "重试原来的会话失败了",
       retriedDescription: "{{backend}} 仍然无法打开已保存的会话。你的消息和附件仍已保存，尚未发送。",
+      otherOptions: "其他选项",
       recommended: "推荐",
       sameSession: "重试原来的会话",
       sameSessionDetail: "再连一次原来的会话。成功后 Agent 保留这个 Chat 的全部上下文。",
@@ -86,7 +87,6 @@ export const copy = {
       pendingTitle: "这一轮等待恢复",
       pendingDetail: "恢复或放弃这一轮后，才能发送新消息。你可以继续浏览。",
       review: "查看恢复选项",
-      later: "稍后处理",
     },
   userInput: {
     countdown: "{{count}} 秒",

@@ -11,15 +11,14 @@ import { ConversionStatus, useConversionReview } from "./cloud-review";
 import { useNavigate } from "react-router";
 import {
   AppDialogBody,
+  AppDialogCancel,
   AppDialogContent,
+  AppDialogFooter,
+  AppDialogHeader,
 } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
@@ -173,14 +172,10 @@ function OpenSaveAsAppDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <AppDialogContent aria-busy={busy || conversion.checking}>
-        <DialogHeader className="mb-5 shrink-0 gap-0 text-left">
-          <DialogTitle className="text-xl/7 font-semibold">
-            {t("apps.saveAs.title")}
-          </DialogTitle>
-          <DialogDescription className="mt-3 text-[15px]/[1.4]">
-            {copy.promotionDescription}
-          </DialogDescription>
-        </DialogHeader>
+        <AppDialogHeader
+          title={t("apps.saveAs.title")}
+          description={copy.promotionDescription}
+        />
         <AppDialogBody className="flex flex-col gap-4">
           {frozen && errorNode}
           <label className="flex flex-col gap-1.5">
@@ -229,17 +224,8 @@ function OpenSaveAsAppDialog({
           {conversion.failed && <p role="alert" className="text-destructive text-sm">{t("apps.saveAs.cloud.reviewFailed")}</p>}
           {!frozen && errorNode}
         </AppDialogBody>
-        <DialogFooter className="mt-5 shrink-0 sm:gap-3">
-          <Button
-            className="text-muted-foreground hover:text-foreground"
-            disabled={busy}
-            onClick={() => onOpenChange(false)}
-            size="pill"
-            type="button"
-            variant="ghost"
-          >
-            {t("common.cancel")}
-          </Button>
+        <AppDialogFooter>
+          <AppDialogCancel disabled={busy} onClick={() => onOpenChange(false)} />
           <Button
             disabled={busy || conversion.checking || !name.trim() || conversion.review?.state === "conflicted"}
             onClick={() => conversion.failed ? void conversion.refresh() : void submit()}
@@ -248,7 +234,7 @@ function OpenSaveAsAppDialog({
             {busy && <Spinner />}
             {conversion.review || conversion.failed ? t("apps.saveAs.cloud.retry") : attempt?.appId ? copy.openPlugin : t("apps.saveAs.submit")}
           </Button>
-        </DialogFooter>
+        </AppDialogFooter>
       </AppDialogContent>
     </Dialog>
   );

@@ -16,7 +16,6 @@ export const appHostEn = {
   "upgrade": "Update Bottega",
   "cancel": "Not now",
   "recheck": "Check again",
-  "rechecking": "Checking…",
   "resumeAfterUpgrade": "After the update you can finish this installation from the Apps list.",
   "versionYours": "Yours",
   "versionRequired": "Requires",

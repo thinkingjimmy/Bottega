@@ -6,10 +6,12 @@
 import { useRef,useState } from 'react';
 import { ChevronDown,FolderOpen,Plus,SquarePen } from 'lucide-react';
 import { Input } from '@ai-chat/ui/components/ui/input';
-import { AppDialogContent,ConfirmationDialog } from '@ai-chat/ui/components/ui/app-dialog';
-import { Dialog,DialogDescription,DialogFooter,DialogHeader,DialogTitle } from '@ai-chat/ui/components/ui/dialog';
+import { AppDialogCancel,AppDialogContent,AppDialogFooter,AppDialogHeader,ConfirmationDialog } from '@ai-chat/ui/components/ui/app-dialog';
+import { Dialog } from '@ai-chat/ui/components/ui/dialog';
+import { Button } from '@ai-chat/ui/components/ui/button';
 import { DropdownMenu,DropdownMenuContent,DropdownMenuItem,DropdownMenuTrigger } from '@ai-chat/ui/components/ui/dropdown-menu';
 import { focusIsLost } from '@ai-chat/ui/lib/focus-return';
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { SettingsAlert,SettingsButton } from '@/components/settings/settings-layout';
 import { pluginPlatformBridge } from '@/lib/plugin-platform/client';
 import { pluginPlatformCopy } from '@/lib/plugin-platform/copy';
@@ -34,9 +36,9 @@ export function PluginAddMenu({locale,onNew,onInstalled}:{locale:string;onNew:()
         <DropdownMenuItem data-unified-plugin-install="" onSelect={()=>{setError('');setOpen(true);}}><FolderOpen aria-hidden />{copy.install}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-    <Dialog open={open} onOpenChange={value=>{if(!busy)setOpen(value);}}><AppDialogContent onCloseAutoFocus={returnFocus}><DialogHeader><DialogTitle>{copy.install}</DialogTitle><DialogDescription>{copy.directory}</DialogDescription></DialogHeader>
+    <Dialog open={open} onOpenChange={value=>{if(!busy)setOpen(value);}}><AppDialogContent onCloseAutoFocus={returnFocus}><AppDialogHeader title={copy.install} description={copy.directory}/>
       <Input aria-label={copy.directory} placeholder="/path/to/plugin" value={directory} onChange={event=>setDirectory(event.target.value)} disabled={busy}/>{error&&<SettingsAlert>{error}</SettingsAlert>}
-      <DialogFooter><SettingsButton variant="ghost" disabled={busy} onClick={()=>setOpen(false)}>{copy.cancel}</SettingsButton><SettingsButton disabled={busy||!directory.trim()} onClick={()=>void install()}>{busy?copy.loading:copy.installAction}</SettingsButton></DialogFooter>
+      <AppDialogFooter><AppDialogCancel disabled={busy} onClick={()=>setOpen(false)}>{copy.cancel}</AppDialogCancel><Button size="pill" disabled={busy||!directory.trim()} onClick={()=>void install()}>{busy&&<Spinner/>}{copy.installAction}</Button></AppDialogFooter>
     </AppDialogContent></Dialog>
     <ConfirmationDialog open={trust} busy={busy} title={copy.trust} description={<div className="space-y-3"><p>{copy.trustBody}</p><p className="break-all">{copy.sourceInfo}: {source||directory}</p>{error&&<SettingsAlert>{error}</SettingsAlert>}</div>} confirmLabel={copy.continue} onOpenChange={value=>{if(!busy){setTrust(value);if(!value)setError('');}}} onCloseAutoFocus={returnFocus} onConfirm={()=>void install(true)}/>
   </>;

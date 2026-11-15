@@ -1,18 +1,19 @@
 /**
  * [INPUT]: Depends on the main Widget add bridge, shared actual Dock instance/default previews and native configuration-required states, strict Unicode names, accessible Dialog and localized official definitions.
- * [OUTPUT]: Package-backed add choices, native previews and management for saved Widget definitions.
+ * [OUTPUT]: Package-backed add choices, native previews and management for saved Widget definitions, in the shared AppDialog shell with a scrolling body.
  * [POS]: Shared Settings picker; cancellation before submission changes no layout or Chat.
  */
 import {useRef,useState,type ReactNode} from 'react';
 import {nativeWidgetType,officialDefinitionId} from '../../../../../shared/system-dock/widgets/catalog/official';
 import {Plus} from 'lucide-react';
 import type {DockBarItem} from '../../../../../shared/system-dock/ipc';
-import {Button} from '@ai-chat/ui/components/ui/button';
 import type {WidgetCatalogSnapshot} from '../../../../../shared/system-dock/widgets/catalog';
 import {WidgetCatalogPreview} from './catalog/preview';
-import {Dialog,DialogContent,DialogTitle,DialogDescription,DialogFooter} from '@ai-chat/ui/components/ui/dialog';
+import {Dialog} from '@ai-chat/ui/components/ui/dialog';
+import {Button} from '@ai-chat/ui/components/ui/button';
+import {AppDialogBody,AppDialogCancel,AppDialogContent,AppDialogFooter,AppDialogHeader} from '@ai-chat/ui/components/ui/app-dialog';
 import {useAppTranslation} from '@/components/providers/preferences/i18n-provider';
-import {SettingsAlert,SettingsButton} from '@/components/settings/settings-layout';
+import {SettingsAlert} from '@/components/settings/settings-layout';
 import type {WidgetAccountDefinition} from '../../../../../shared/system-dock/widgets/install/types';
 import type {WidgetDefinitionView,WidgetManagementSnapshot} from '../../../../../shared/system-dock/widgets/authoring';
 import type {WidgetInstanceForm} from '../../../../../shared/system-dock/widgets/management';
@@ -57,20 +58,22 @@ export function WidgetPicker({snapshot,onClose,onPersonal,onOfficial,onInstall,o
         ...(selected.sourceInstallationId?{sourceInstallationId:selected.sourceInstallationId}:{})}));
     }catch{setFailed(true);}finally{lock.current=false;setBusy(false);}
   };
-  return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose();}}><DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl" showCloseButton={!busy} onEscapeKeyDown={event=>{if(busy)event.preventDefault();}}>
-    <DialogTitle>{t('systemDock.widgets.addExisting')}</DialogTitle><DialogDescription>{t('systemDock.widgets.add')}</DialogDescription>
-    <fieldset disabled={busy} className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">{choices.map(value=>{
+  return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose();}}><AppDialogContent size="lg" aria-describedby={undefined} onEscapeKeyDown={event=>{if(busy)event.preventDefault();}}>
+    <AppDialogHeader title={t('systemDock.widgets.addExisting')}/>
+    <AppDialogBody className="space-y-5">
+    <fieldset disabled={busy} className="grid grid-cols-1 gap-x-5 gap-y-5 sm:grid-cols-2">{choices.map(value=>{
       const instance=snapshot.instances.find(item=>item.definitionId===value.definitionId&&(!value.sourceInstallationId||item.sourceInstallationId===value.sourceInstallationId));
       const live=presentation.snapshot?.items.find(item=>item.id===instance?.id)??presentation.snapshot?.defaults.find(item=>item.definitionId===value.definitionId)?.item,item=live??setupPreview(value);
-      return <article key={value.id} data-widget-choice={value.id} className="widget-catalog-card"><div className="relative rounded-[20px]" style={{boxShadow:choice===value.id?'0 0 0 2px var(--ring)':'none'}}>
+      return <article key={value.id} data-widget-choice={value.id} className="widget-catalog-card"><div className="relative rounded-2xl" style={{boxShadow:choice===value.id?'0 0 0 2px var(--ring)':'none'}}>
         {presentation.snapshot?<WidgetCatalogPreview item={item} presentation={presentation.snapshot} active={presentation.active} ready={live?presentation.ready.has(item.id):true} observe={live?presentation.observe:noPreviewDemand} now={presentation.now} t={t}/>:<div className="widget-catalog-preview" role="status"><span className="text-xs text-muted-foreground">{t('common.loading')}</span></div>}
-        <button type="button" disabled={!value.available||busy} className="absolute inset-0 cursor-pointer rounded-[20px] focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2" aria-label={value.name} onClick={()=>setChoice(value.id)}/>
+        <button type="button" disabled={!value.available||busy} className="absolute inset-0 cursor-pointer rounded-2xl focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2" aria-label={value.name} onClick={()=>setChoice(value.id)}/>
         <div className="widget-catalog-actions"><Button type="button" className="widget-catalog-action" variant="secondary" size="icon" disabled={!value.available||busy} aria-label={`${t('systemDock.widgets.add')}: ${value.name}`} onClick={()=>void add(value.id)}><Plus/></Button></div>
       </div><label className="mt-3 flex min-h-8 cursor-pointer items-start gap-2 px-0.5"><input type="radio" className="mt-0.5" name="dock-widget-definition" disabled={!value.available||busy} checked={choice===value.id} onChange={()=>setChoice(value.id)}/><span className="min-w-0"><span className="block text-sm font-medium">{value.name}</span>{value.description&&<span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">{value.description}</span>}{!value.available&&<span className="block text-xs text-muted-foreground">{t(value.installation==='disabled'?'systemDock.widgets.states.paused':value.installation==='needs-install'?'systemDock.widgets.states.needs-install':'systemDock.widgets.noSavedVersion')}</span>}</span></label></article>;
     })}</fieldset>
     {!choices.length&&<p role="status">{t('systemDock.widgets.noMatches')}</p>}
     {management&&<details className="space-y-3"><summary className="cursor-pointer text-xs text-muted-foreground">{t('systemDock.widgets.catalog.manage')}</summary><div className="max-h-60 space-y-3 overflow-y-auto">{management}</div></details>}
     {failed&&<SettingsAlert><span role="alert">{t('systemDock.widgets.addFailed')}</span></SettingsAlert>}
-    <DialogFooter><SettingsButton variant="outline" disabled={busy} onClick={onClose}>{t('systemDock.widgets.cancel')}</SettingsButton><SettingsButton disabled={busy||!choices.some(value=>value.id===choice&&value.available)} onClick={()=>void add()}>{t('systemDock.widgets.continue')}</SettingsButton></DialogFooter>
-  </DialogContent></Dialog>;
+    </AppDialogBody>
+    <AppDialogFooter><AppDialogCancel disabled={busy} onClick={onClose}>{t('systemDock.widgets.cancel')}</AppDialogCancel><Button size="pill" disabled={busy||!choices.some(value=>value.id===choice&&value.available)} onClick={()=>void add()}>{t('systemDock.widgets.continue')}</Button></AppDialogFooter>
+  </AppDialogContent></Dialog>;
 }

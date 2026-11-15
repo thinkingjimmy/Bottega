@@ -7,25 +7,23 @@
 import type { settingsBrowserEn } from "./en";
 
 export const settingsBrowserZhCN: typeof settingsBrowserEn = {
-  sectionTitle: "从 Chrome 导入登录态",
-  loginState: "Chrome 登录态",
   detecting: "正在检测 Chrome…",
-  detectingAria: "正在检测 Chrome",
-  readyDescription: "选择 profile 与域名后再导入。Chrome 数据只读，不会被修改。",
   noProfiles: "未发现 Google Chrome 或可用 profile。",
   detectFailed: "无法检测 Chrome profiles。",
   platformUnavailable: "当前预览版本尚不支持 Chrome 登录态导入。",
-  startImport: "开始导入",
-  startImportAria: "开始导入 Chrome 登录态",
-  learnMore: "了解更多",
-  capability: {
-    persistentTitle: "登录一次，长期继承",
-    persistentDetail:
-      "即使跳过导入，也可直接在内嵌 Browser 登录；Cookie 会跨 tab 与应用重启保存，Agent 后续访问自动继承。",
-    limitedTitle: "不导入密码、扩展与书签",
-    limitedDetail:
-      "Electron 没有 Chrome 密码管理器与完整扩展 API；书签不参与 Agent 浏览。避免搬运敏感数据却得不到实际功能。",
+  guideTitle: "在 Bottega 使用你的 Chrome 登录态",
+  guideDescription:
+    "导入所选站点的登录态，让 Agent 以你的身份浏览。导入前可选择 profile 与站点。",
+  guideAction: "从 Chrome 导入…",
+  facts: {
+    readOnlyTitle: "只读",
+    readOnlyDetail: "不会修改 Chrome。",
+    localTitle: "留在本机",
+    localDetail: "Cookie 不会上传。",
+    keychainTitle: "Keychain 访问",
+    keychainDetail: "macOS 仅询问一次；拒绝不影响 Chrome。",
   },
+  lastImport: "上次导入",
   result: "已导入 {{imported}} / 跳过 {{skipped}} / 失败 {{failed}}",
   resultFallback:
     "部分站点未能导入。直接在 Browser 中登录一次即可长期保留，Agent 也会继承同一会话。",

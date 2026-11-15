@@ -9,17 +9,16 @@ import type { MemoryConfigPanel } from "../../../../../shared/ipc/content/memory
 import { memoryBackendCopy } from "../../../../../shared/ipc/content/memory-ipc";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import {
+  AppDialogAlert,
   AppDialogBody,
   AppDialogContent,
+  AppDialogFooter,
+  AppDialogHeader,
   ConfirmationDialog,
 } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { cn } from "@ai-chat/ui/lib/utils";
@@ -160,20 +159,16 @@ export function MemoryRuntimeConfigDialog({
             onSubmit();
           }}
         >
-          <DialogHeader className="shrink-0 gap-0 text-left">
-            <DialogTitle className="font-semibold text-xl/7">
-              {t("memory.runtime.configDialogTitle", {
-                provider: copy?.panel.title ?? panel.title,
-              })}
-            </DialogTitle>
-            {/* 说明跟着密钥走：这句「只保存在本机」从前印在设置页上一块
-                常驻区里，而人是在这张表单里交出密钥的。承诺要待在动手的
-                那一刻，且各家运行时的保管方式本就不同（0600 ov.conf 与
-                LaunchAgent），descriptor 自带的那句比一句通用文案更准。 */}
-            <DialogDescription className="mt-2 text-[15px]/[1.4]">
-              {copy?.panel.description ?? panel.description}
-            </DialogDescription>
-          </DialogHeader>
+          {/* 说明跟着密钥走：这句「只保存在本机」从前印在设置页上一块
+              常驻区里，而人是在这张表单里交出密钥的。承诺要待在动手的
+              那一刻，且各家运行时的保管方式本就不同（0600 ov.conf 与
+              LaunchAgent），descriptor 自带的那句比一句通用文案更准。 */}
+          <AppDialogHeader
+            title={t("memory.runtime.configDialogTitle", {
+              provider: copy?.panel.title ?? panel.title,
+            })}
+            description={copy?.panel.description ?? panel.description}
+          />
 
           <AppDialogBody className="mt-4 space-y-4 pr-1">
             <MemoryConfigFields
@@ -184,20 +179,13 @@ export function MemoryRuntimeConfigDialog({
               autoFocusFirst={allowAutoFocus}
               onChange={onChange}
             />
-            {error && (
-              <p
-                role="alert"
-                className="rounded-md bg-destructive/10 px-3 py-2 text-destructive text-xs ring-1 ring-destructive/20"
-              >
-                {error}
-              </p>
-            )}
+            {error && <AppDialogAlert>{error}</AppDialogAlert>}
             <p className="text-muted-foreground text-xs">
               {t("memory.runtime.draftRetained")}
             </p>
           </AppDialogBody>
 
-          <DialogFooter className="mt-4 shrink-0 flex-row justify-end gap-3">
+          <AppDialogFooter>
             <Button
               type="button"
               variant="ghost"
@@ -214,11 +202,9 @@ export function MemoryRuntimeConfigDialog({
               className="min-w-[7rem]"
             >
               {busy && <Loader2 className="motion-safe:animate-spin" />}
-              {busy
-                ? t("memory.runtime.savingConfig")
-                : t("memory.runtime.submitRestart")}
+              {t("memory.runtime.submitRestart")}
             </Button>
-          </DialogFooter>
+          </AppDialogFooter>
         </form>
       </AppDialogContent>
     </Dialog>

@@ -4,13 +4,14 @@
  * [POS]: Signed-out half of the Sync settings setup page; it never receives credential authority. The quiet row invites sign-in: the web and the phone can control this computer afterwards, and nothing uploads until the first sync is confirmed. An account is what unlocks the password step.
  */
 import { useRef, useState } from "react";
+import { Button } from "@ai-chat/ui/components/ui/button";
 import { StepDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
 import { Dialog } from "@ai-chat/ui/components/ui/dialog";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { accountDeletionCopy } from "@ai-chat/ui/lib/account-deletion-copy";
 import type { CloudAccountState } from "../../../../shared/ipc/settings/cloud-ipc";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { SettingsAlert, SettingsBadge, SettingsButton, SettingsRow } from "@/components/settings/settings-layout";
+import { SettingsAlert, SettingsBadge, SettingsButton, SettingsRow, SettingsTechnicalDetails } from "@/components/settings/settings-layout";
 import { cloudAccountClient } from "@/lib/cloud/client";
 import { CloudCleanupButton } from "../sync-cleanup";
 import { CredentialRecovery } from "./credential-recovery";
@@ -51,7 +52,8 @@ export function SignIn({ state }: { state: CloudAccountState }) {
   const status = state.signOutPending ? t("cloud.status.signing-out") : QUIET_STATUSES.has(state.status) ? null :
     state.status === "deleted" ? accountDeletionCopy(i18n.language).deleted : t(`cloud.status.${state.status}`);
   const description = state.signOutPending ? <span role="status">{status}</span>
-    : error ? <><span role="alert">{error}</span>{restartHint && <> {t("cloud.secureStorageRestart")}</>}</>
+    /* acct-signin-error: the machine code rides under Technical details; the sentence stays plain. */
+    : error ? <><span role="alert">{error}</span>{restartHint && <> {t("cloud.secureStorageRestart")}</>}{state.error && <SettingsTechnicalDetails details={state.error} />}</>
       : status ? <span role="status">{status}</span> : t("cloud.signedOutDescription");
   const attention = Boolean(error) || state.status === "suspended";
   const row = unavailable ?? {
@@ -78,15 +80,15 @@ export function SignIn({ state }: { state: CloudAccountState }) {
         onPointerDownOutside={event => event.preventDefault()}
         actions={<>
           {/* An unconfirmed cancellation is the one cancelling state the user can still act on: let them ask again. */}
-          <SettingsButton variant="ghost" disabled={!canCancel} onClick={() => run("cancelLogin")}>{t("cloud.cancel")}</SettingsButton>
+          <Button size="pill" variant="ghost" className="text-muted-foreground hover:text-foreground" disabled={!canCancel} onClick={() => run("cancelLogin")}>{t("cloud.cancel")}</Button>
           {/* Only offered once the server has refused at least one cancel: dropping the local record is the last exit. */}
-          {state.cancelUnconfirmed && <SettingsButton variant="outline" disabled={busy.has("abandonLogin")} onClick={() => run("abandonLogin")}>{t("cloud.abandonLogin")}</SettingsButton>}
-          {!pending && state.error && !cancelling && <SettingsButton variant="outline" disabled={busy.has("startLogin")} onClick={() => run("startLogin")}>{t("cloud.retry")}</SettingsButton>}
-          {state.canRetryLoginSave && <SettingsButton variant="outline" disabled={busy.has("retryLoginSave") || cancelling} onClick={() => run("retryLoginSave")}>{t("cloud.retrySecureSave")}</SettingsButton>}
-          {state.error === "installation-already-active" && <SettingsButton variant="outline" disabled={busy.has("openCloudAccount")} onClick={() => run("openCloudAccount")}>{t("cloud.openCloudAccount")}</SettingsButton>}
-          {browser && <SettingsButton variant="outline" disabled={busy.has("reopenLogin") || cancelling} onClick={() => run("reopenLogin")}>{t("cloud.openBrowser")}</SettingsButton>}
+          {state.cancelUnconfirmed && <Button size="pill" variant="outline" disabled={busy.has("abandonLogin")} onClick={() => run("abandonLogin")}>{t("cloud.abandonLogin")}</Button>}
+          {!pending && state.error && !cancelling && <Button size="pill" variant="outline" disabled={busy.has("startLogin")} onClick={() => run("startLogin")}>{t("cloud.retry")}</Button>}
+          {state.canRetryLoginSave && <Button size="pill" variant="outline" disabled={busy.has("retryLoginSave") || cancelling} onClick={() => run("retryLoginSave")}>{t("cloud.retrySecureSave")}</Button>}
+          {state.error === "installation-already-active" && <Button size="pill" variant="outline" disabled={busy.has("openCloudAccount")} onClick={() => run("openCloudAccount")}>{t("cloud.openCloudAccount")}</Button>}
+          {browser && <Button size="pill" variant="outline" disabled={busy.has("reopenLogin") || cancelling} onClick={() => run("reopenLogin")}>{t("cloud.openBrowser")}</Button>}
         </>}>
-        {(failed || recoveryFailed) && <SettingsAlert>{t("cloud.actionFailed")}</SettingsAlert>}
+        {(failed || recoveryFailed) && <SettingsAlert title={t("cloud.actionFailed")} />}
         <LoginProgress state={state} busy={busy} link={link} />
         {(state.canDiscardSavedLogin || state.canRetryCredentialStorage) && <div className="flex flex-wrap gap-2">{recovery}</div>}
       </StepDialogContent>}

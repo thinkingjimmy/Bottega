@@ -205,7 +205,6 @@ export const basesEn = {
     uploadCancelled: "Upload canceled. Your input is still here.",
     uploading: "Uploading image…",
     cancelUpload: "Cancel upload",
-    saving: "Saving…",
     leaveTitle: "Discard your changes?",
     leaveDescription: "The changes in this form have not been saved.",
     discard: "Discard changes",

@@ -5,6 +5,7 @@
  */
 export const uiTextJa = {
   cancel: "キャンセル",
+  retry: "再試行",
   uploadFiles: "ファイルをアップロード",
   loadingRichContent: "リッチコンテンツを読み込み中",
   loading: "読み込み中",

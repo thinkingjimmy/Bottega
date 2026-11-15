@@ -1,0 +1,8 @@
+/* [INPUT]: The `data-icon` vocabulary names emitted by SummaryIcon and the surface's muted token.
+ * [OUTPUT]: Fixed semantic weather tints: amber sun, blue precipitation, muted cloud and fog, with a light fill.
+ * [POS]: Imported by icons.tsx so every surface that draws a summary icon (Dock face, panel document, previews) gets the same colours.
+ */
+.summary-icon:is([data-icon="sun"], [data-icon="cloud-sun"], [data-icon="cloud"], [data-icon="fog"], [data-icon="drizzle"], [data-icon="rain"], [data-icon="snow"], [data-icon="showers"], [data-icon="thunder"]) { fill: color-mix(in srgb, currentColor 16%, transparent); }
+.summary-icon:is([data-icon="sun"], [data-icon="cloud-sun"]) { color: light-dark(#8f5100, #ffbd68); }
+.summary-icon:is([data-icon="drizzle"], [data-icon="rain"], [data-icon="snow"], [data-icon="showers"], [data-icon="thunder"]) { color: light-dark(#245c91, #9bcafa); }
+.summary-icon:is([data-icon="cloud"], [data-icon="fog"]) { color: var(--dock-summary-muted, var(--muted)); }

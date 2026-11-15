@@ -24,6 +24,7 @@ import type {
 } from "../../../../shared/ipc/workspace/archive-ipc";
 import {
   executePurge,
+  listArchive,
   previewPurge,
   restoreArchiveTargets,
 } from "@/lib/clients/archive-client";
@@ -36,7 +37,7 @@ import {
   type ArchiveListItem,
 } from "./settings-archive-list";
 import { SettingsPage } from "@/components/page-shell";
-import { SettingsButton } from "@/components/settings/settings-layout";
+import { SettingsAlert, SettingsButton, SettingsTechnicalDetails } from "@/components/settings/settings-layout";
 import {
   ArchiveContent,
   ArchiveEmpty,
@@ -405,20 +406,44 @@ export function ArchiveSettingsView() {
 
   // 与侧栏同名：这一页收 Chat、Project 与导入历史，items 才盖得住
   return (
-    <SettingsPage title={t("common.archivedItems")}>
+    <SettingsPage
+      title={t("common.archivedItems")}
+      description={t("archive.description")}
+    >
       <ArchiveContent
-        before={<RetainedContentEntry />}
-        title={t("archive.sectionTitle")}
-        description={t("archive.description")}
-        alert={error || history?.warning}
+        before={
+          <>
+            <RetainedContentEntry />
+            {error && (
+              /* The store hands back a raw message: a plain sentence and Retry here, the raw text under Technical details (archive-alert). */
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-muted-foreground text-sm">
+                    {t("archive.loadFailed")}
+                  </p>
+                  <SettingsButton
+                    variant="outline"
+                    onClick={() => void run(listArchive)}
+                  >
+                    {t("common.retry")}
+                  </SettingsButton>
+                </div>
+                <SettingsTechnicalDetails details={error} />
+              </div>
+            )}
+          </>
+        }
+        alert={history?.warning}
       >
         {cloud.error && (
-          <p role="alert">
-            {cloudCopy.unavailable}{" "}
-            <SettingsButton onClick={cloud.retry}>
-              {t("common.retry")}
-            </SettingsButton>
-          </p>
+          <SettingsAlert
+            title={cloudCopy.unavailable}
+            action={
+              <SettingsButton variant="outline" onClick={cloud.retry}>
+                {t("common.retry")}
+              </SettingsButton>
+            }
+          />
         )}
         {cloud.loading && <p role="status">{t("common.loading")}</p>}
         {items.length === 0 ? (

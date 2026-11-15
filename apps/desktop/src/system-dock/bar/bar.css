@@ -1,5 +1,5 @@
 /* [INPUT]: Common Dock tokens, the strip's inline metrics (zoom, gap, padding, height) and item data attributes (area, status, open, dragging, shifted).
- * [OUTPUT]: Three-edge handle and tinted glass strip, fixed-axis slots, hover/highlight, status/busy/running indicators, drag previews, a shared 40 px divider length, overflow and empty CTA.
+ * [OUTPUT]: Three-edge handle and lightly veiled glass strip, fixed-axis slots, hover/highlight, Widget tile lift/press/open/drag states, status/busy/running indicators, drag previews, a shared 40 px divider length, overflow and empty CTA.
  * [POS]: system-dock/bar stylesheet; widths come from shared metrics inline, so this file only draws — it never changes a slot's footprint.
  */
 .dock { display: flex; align-items: flex-end; justify-content: center; width: 100vw; height: 100vh; }
@@ -36,6 +36,15 @@
 .item:active { background: var(--pressed); }
 .item[data-dragging] { z-index: 2; background: var(--pressed); transition: background-color 120ms ease-out; }
 .item[data-removing] { opacity: 0.35; cursor: no-drop; }
+/* Widgets behave like macOS widgets: the tile itself responds, never a grey slot behind it. */
+.item.widget, .strip .item.widget:hover { background: none; box-shadow: none; animation: none; }
+.widget .widget-tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--pressed); opacity: 0; transition: opacity 120ms; pointer-events: none; }
+.widget:active .widget-tile { scale: 0.96; }
+.widget:active .widget-tile::after, .widget[data-open] .widget-tile::after { opacity: 1; }
+.widget[data-dragging] .widget-tile { box-shadow: 0 8px 20px rgb(0 0 0 / 0.22); }
+.widget[data-highlight] .widget-tile { box-shadow: 0 0 0 2px var(--accent); }
+.widget .item-badge { top: 2px; right: 2px; }
+.widget[aria-busy="true"]::after { inset: 6px; }
 .separator { flex: none; display: grid; place-items: center; }
 .separator::after { content: ""; width: 1px; height: var(--divider-length); background: var(--line); }
 .overflow { display: grid; place-items: center; flex: none; height: 36px; border-radius: 10px; color: var(--muted); }

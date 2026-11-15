@@ -7,26 +7,23 @@
 import type { settingsBrowserEn } from "./en";
 
 export const settingsBrowserFr: typeof settingsBrowserEn = {
-  sectionTitle: "Importer la session depuis Chrome",
-  loginState: "Session Chrome",
   detecting: "Détection de Chrome…",
-  detectingAria: "Détection de Chrome",
-  readyDescription:
-    "Choisissez un profil et des domaines avant l’importation. Les données Chrome sont en lecture seule et ne seront pas modifiées.",
   noProfiles: "Google Chrome ou un profil utilisable est introuvable.",
   detectFailed: "Impossible de détecter les profils Chrome.",
   platformUnavailable: "L’import de connexion Chrome n’est pas disponible dans cette version d’aperçu.",
-  startImport: "Commencer l’importation",
-  startImportAria: "Commencer à importer la session Chrome",
-  learnMore: "En savoir plus",
-  capability: {
-    persistentTitle: "Se connecter une fois et conserver la session",
-    persistentDetail:
-      "Même sans importation, vous pouvez vous connecter dans le Browser intégré. Les Cookies persistent entre les onglets et les redémarrages, et l’Agent utilise la même session.",
-    limitedTitle: "Mots de passe, extensions et favoris non importés",
-    limitedDetail:
-      "Electron n’expose ni le gestionnaire de mots de passe Chrome ni toutes ses API d’extension, et les favoris ne servent pas à l’Agent. Les données sensibles inutiles ne sont donc pas déplacées.",
+  guideTitle: "Utilisez vos sessions Chrome dans Bottega",
+  guideDescription:
+    "Importez l’état de connexion des sites choisis pour que les Agents naviguent comme vous. Vous choisissez le profil et les sites avant toute importation.",
+  guideAction: "Importer depuis Chrome…",
+  facts: {
+    readOnlyTitle: "Lecture seule",
+    readOnlyDetail: "Chrome n’est pas modifié.",
+    localTitle: "Reste sur ce Mac",
+    localDetail: "Les cookies ne sont jamais téléversés.",
+    keychainTitle: "Accès au trousseau",
+    keychainDetail: "macOS demande une seule fois ; refuser n’affecte pas Chrome.",
   },
+  lastImport: "Dernière importation",
   result: "Importés {{imported}} / ignorés {{skipped}} / échecs {{failed}}",
   resultFallback:
     "Certains sites n’ont pas pu être importés. Connectez-vous une fois dans Browser pour conserver la session et la partager avec l’Agent.",

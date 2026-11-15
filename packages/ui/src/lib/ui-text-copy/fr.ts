@@ -5,6 +5,7 @@
  */
 export const uiTextFr = {
   cancel: "Annuler",
+  retry: "Réessayer",
   uploadFiles: "Téléverser des fichiers",
   loadingRichContent: "Chargement du contenu enrichi",
   loading: "Chargement",

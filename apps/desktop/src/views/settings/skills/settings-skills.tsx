@@ -10,6 +10,8 @@ import { SettingsPage } from "@/components/page-shell";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import {
   SettingsAlert,
+  SettingsBadge,
+  SettingsButton,
   SettingsCanvas,
   SettingsList,
 } from "@/components/settings/settings-layout";
@@ -148,11 +150,23 @@ export function SkillsSettingsView() {
   return (
     <SettingsPage
       title={t("common.skills")}
+      description={
+        /* S14: the lone section's description merges into the page description;
+           只读不是失败：warn 徽章贴着标题说明状态，一句话解释落到页面描述（skills-readonly）。 */
+        snapshot?.availability.kind === "read-only"
+          ? `${t("settings.skills.description")} · ${t("settings.skills.readOnly")} · ${skillReasonText(t, snapshot.availability.reason)}`
+          : t("settings.skills.description")
+      }
       titleAdornment={
-        <SkillRefreshButton
-          busy={busy}
-          onRefresh={() => void run(async () => setSnapshot(await listUnifiedSkills(true)))}
-        />
+        <>
+          <SkillRefreshButton
+            busy={busy}
+            onRefresh={() => void run(async () => setSnapshot(await listUnifiedSkills(true)))}
+          />
+          {snapshot?.availability.kind === "read-only" && (
+            <SettingsBadge tone="warn">{t("settings.skills.readOnly")}</SettingsBadge>
+          )}
+        </>
       }
       actions={
         <SkillAddButton disabled={busy || readOnly} onAdd={() => void skillImport.openDialog()} />
@@ -160,10 +174,18 @@ export function SkillsSettingsView() {
     >
       <SettingsCanvas>
         <div className="space-y-4">
-          {error && <SettingsAlert>{error}</SettingsAlert>}
-          {snapshot?.availability.kind === "read-only" && (
-            <SettingsAlert tone="warn">
-              {t("settings.skills.readOnly")}: {skillReasonText(t, snapshot.availability.reason)}
+          {error && (
+            <SettingsAlert
+              action={
+                <SettingsButton
+                  variant="outline"
+                  onClick={() => void run(async () => setSnapshot(await listUnifiedSkills(true)))}
+                >
+                  {t("common.retry")}
+                </SettingsButton>
+              }
+            >
+              {error}
             </SettingsAlert>
           )}
           {snapshot?.personalLibraryEmpty && !packageIdentity ? (

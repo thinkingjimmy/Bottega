@@ -8,6 +8,7 @@ import { GlobeIcon, LaptopIcon, SmartphoneIcon } from "lucide-react";
 import { Button } from "../ui/controls/button";
 import { Input } from "../ui/controls/input";
 import { ConfirmationDialog } from "../ui/overlays/app-dialog";
+import { Spinner } from "../ui/feedback/spinner";
 import { SettingsList, SettingsRow, SettingsBadge } from "../settings/content";
 import { SettingsButton } from "../settings/controls";
 import { relativeMoment } from "./moment";
@@ -64,12 +65,12 @@ function DeviceRow({ device, ...props }: DeviceListProps & { device: AccountDevi
     {editing && <form className="flex flex-wrap items-end gap-2 px-4 pb-4" onSubmit={event => { event.preventDefault(); run("rename"); }}>
       <div className="min-w-0 flex-1 space-y-2"><label htmlFor={inputId} className="text-sm">{t("cloud.deviceName")}</label>
         <Input id={inputId} value={name} onChange={event => setName(event.target.value)} required maxLength={40} autoFocus className="text-base" disabled={busy} /></div>
-      <Button type="submit" disabled={disabled || busy || !name.trim()}>{busy ? t("cloud.saving") : t("cloud.save")}</Button>
+      <Button type="submit" disabled={disabled || busy || !name.trim()}>{busy && <Spinner />}{t("cloud.save")}</Button>
       <Button type="button" variant="ghost" disabled={busy} onClick={() => setEditing(false)}>{t("cloud.cancel")}</Button>
     </form>}
     {failed && !revoke && <p role="alert" className="px-4 pb-4 text-destructive text-sm">{t("cloud.actionFailed")}</p>}
     <ConfirmationDialog open={revoke} onOpenChange={setRevoke} title={t("cloud.revokeTitle")} busy={busy} confirmTone="destructive"
-      description={failed ? t("cloud.actionFailed") : t("cloud.revokeDescription")} confirmLabel={busy ? t("cloud.revoking") : t("cloud.revoke")}
+      description={failed ? t("cloud.actionFailed") : t("cloud.revokeDescription")} confirmLabel={t("cloud.revoke")}
       cancelLabel={t("cloud.cancel")} onConfirm={() => { if (!busy) run("revoke"); }} />
   </div>;
 }

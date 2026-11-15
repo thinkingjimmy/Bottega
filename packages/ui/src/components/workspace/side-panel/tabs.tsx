@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Host-projected tabs with optional title content, selection/close commands and localized labels.
- * [OUTPUT]: SidePanelTabs with roving keyboard navigation and shared tab chrome; a tab without a close command carries no close control, and the strip's own flow is overridable.
+ * [OUTPUT]: SidePanelTabs with roving keyboard navigation, visible inline actions and a close control that replaces the leading icon on hover, keyboard focus or touch.
  * [POS]: Shared tablist; hosts retain ownership of tab identities and close succession.
  */
 import { useRef, type KeyboardEvent, type ReactNode, type RefObject } from "react";
@@ -13,7 +13,7 @@ export type SidePanelTab = {
   /** Omitted by a tablist whose tabs are a fixed set — a computer is not something the viewer closes. */
   close?(): void;
 };
-export const tabActionClass = "relative touch-target-44 cursor-pointer rounded-sm p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/tab-chrome:opacity-100 data-[state=open]:opacity-100 no-hover:opacity-100 pointer-coarse:p-1.5 disabled:pointer-events-none";
+export const tabActionClass = "relative touch-target-44 cursor-pointer rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:p-1.5 disabled:pointer-events-none";
 export const tabShellClass = (active: boolean) => cn("group/tab-chrome flex max-w-40 cursor-pointer items-center rounded-md pr-1 pl-2 text-xs transition-colors", active ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/50");
 export function SidePanelTabs({ items, label, closeLabel, onClose, refs, className }: { items: SidePanelTab[]; label: string; closeLabel?: string; onClose?(index: number): void; refs?: RefObject<Map<string, HTMLDivElement>>; className?: string }) {
   const localRefs = useRef(new Map<string, HTMLDivElement>()), tabRefs = refs ?? localRefs;
@@ -85,23 +85,31 @@ export function SidePanelTabs({ items, label, closeLabel, onClose, refs, classNa
                 tabIndex={item.key === rovingKey ? 0 : -1}
                 title={item.hint}
               >
-                {item.icon}
+                {(item.close ?? onClose) ? (
+                  <span className="relative grid size-4 shrink-0 place-items-center pointer-coarse:w-11">
+                    <button
+                      aria-label={item.closeLabel}
+                      className={cn(
+                        tabActionClass,
+                        "peer pointer-events-none absolute inset-0 z-10 grid place-items-center p-0 opacity-0 transition-opacity pointer-coarse:p-0",
+                        "group-hover/tab-chrome:pointer-events-auto group-hover/tab-chrome:opacity-100",
+                        "focus-visible:pointer-events-auto focus-visible:opacity-100 no-hover:pointer-events-auto no-hover:opacity-100"
+                      )}
+                      data-slot="side-panel-tab-close"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        closeAt(index);
+                      }}
+                      title={closeLabel}
+                      type="button"
+                    >
+                      <XIcon className="size-3" />
+                    </button>
+                    <span aria-hidden className="transition-opacity group-hover/tab-chrome:opacity-0 peer-focus-visible:opacity-0 no-hover:opacity-0">{item.icon}</span>
+                  </span>
+                ) : item.icon}
                 <span className="truncate">{item.labelContent ?? item.label}</span>
                 {item.actions}
-                {(item.close ?? onClose) && (
-                  <button
-                    aria-label={item.closeLabel}
-                    className={tabActionClass}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeAt(index);
-                    }}
-                    title={closeLabel}
-                    type="button"
-                  >
-                    <XIcon className="size-3" />
-                  </button>
-                )}
               </div>
             ))}
           </div>

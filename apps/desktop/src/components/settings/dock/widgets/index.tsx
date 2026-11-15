@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Source-action availability from the canonical Widget catalog; Depends on the Dock management bridge, normal Chat routes, existing confirmation primitives, the shared actual Dock renderer, bounded visible preview transport and localized Widget copy/ready-only retarget state.
- * [OUTPUT]: Dock Widget instance grid, toolbar Add/New destinations and configuration forms, package management and local repair, with native shortcut routing.
+ * [OUTPUT]: Mac App Store–style Widget page (In your Dock grid, More widgets rows with See all, and a Weather feature banner when empty), toolbar Browse/Build destinations and configuration forms, package details in a dialog over the catalog, package management and local repair, with native shortcut routing.
  * [POS]: Enabled Dock's Widget management tab; its source operations only set a durable authoring intent; first send allocates the source Project.
  */
 import {lazy,Suspense,useCallback,useEffect,useRef,useState} from 'react';
@@ -14,6 +14,12 @@ import {WidgetCatalogPreview} from './catalog/preview';
 import {useWidgetCatalog} from './catalog/client';
 import {useNow} from '@/system-dock/common/bridge';
 import './catalog/styles.css';
+import { Activity, Gauge, LayoutGrid as GridIcon, ListTodo, Sun } from 'lucide-react';
+import { StoreFeature, StoreGrid, StorePill, StoreRow, StoreSection } from '@/components/apps/cards/store';
+import { DockSummary } from '@/system-dock/common/widgets/summary';
+import { WEATHER_PLUGIN_ID } from '../../../../../shared/system-dock/widgets/weather';
+import { weatherLayouts, weatherReadings, type WeatherPresentationReading } from '../../../../../shared/system-dock/widgets/weather/presentation';
+import './plugin/weather-form.css';
 import {PluginWidgetFormDialog} from './plugin/form';
 import type {PluginWidgetForm} from '../../../../../shared/system-dock/widgets/plugin';
 import {requestSettingsSection} from '@/lib/settings/navigation/settings-navigation';
@@ -38,6 +44,7 @@ import type {OfficialWidgetForm} from '../../../../../shared/system-dock/widgets
 const WidgetDirectoryDialog=lazy(()=>import('./catalog/directory').then(module=>({default:module.WidgetDirectoryDialog})));
 const WidgetUninstallDialog=lazy(()=>import('./install/uninstall').then(module=>({default:module.WidgetUninstallDialog})));
 const WidgetInstallDialog=lazy(()=>import('./install/dialog').then(module=>({default:module.WidgetInstallDialog})));
+const WidgetPluginDetailsDialog=lazy(()=>import('./catalog/details').then(module=>({default:module.WidgetPluginDetailsDialog})));
 const WidgetVersionsDialog=lazy(()=>import('./versions').then(module=>({default:module.WidgetVersionsDialog})));
 const OfficialWidgetDialog=lazy(()=>import('./official').then(module=>({default:module.OfficialWidgetDialog})));
 export function DockWidgetsSection({active=true,actionsContainer}:{active?:boolean;actionsContainer?:HTMLElement|null}){
@@ -48,7 +55,7 @@ export function DockWidgetsSection({active=true,actionsContainer}:{active?:boole
   const [retirementReview,setRetirementReview]=useState<WidgetRetirementReview|null>(null),[pendingAdd,setPendingAdd]=useState<WidgetAccountDefinition|null>(null);
   const [uninstallReview,setUninstallReview]=useState<WidgetUninstallReview|null>(null);
   const [installReview,setInstallReview]=useState<WidgetInstallReview|null>(null);
-  const [versionId,setVersionId]=useState<string|null>(null);
+  const [versionId,setVersionId]=useState<string|null>(null),[details,setDetails]=useState<{pluginId:string;itemId:string}|null>(null);
   const [officialForm,setOfficialForm]=useState<OfficialWidgetForm|null>(null);
   const [initialChoice,setInitialChoice]=useState<string|undefined>();
   const [pluginForm,setPluginForm]=useState<PluginWidgetForm|null>(null);
@@ -159,7 +166,7 @@ export function DockWidgetsSection({active=true,actionsContainer}:{active?:boole
     else if(request.kind==='edit')void open(instance.definitionId);
     else if(request.kind==='fork')void customize(instance.id);
     else if(request.kind==='versions'){
-      if(instance.pluginId)requestSettingsSection({section:'plugins',plugin:instance.pluginId});
+      if(instance.pluginId??instance.officialWidget)setDetails({pluginId:instance.pluginId??instance.officialWidget!,itemId:instance.id});
       else setVersionId(instance.definitionId);
     }
     else if(request.kind==='remove')void change(instance,true);
@@ -172,26 +179,46 @@ export function DockWidgetsSection({active=true,actionsContainer}:{active?:boole
   const managedDefinitions=snapshot?.definitions.filter(definition=>definition.pluginId||definition.customizable!==false)??[];
   const order=new Map(presentation.snapshot?.items.map((item,index)=>[item.id,index]));
   const instances=[...(snapshot?.instances??[])].sort((a,b)=>(order.get(a.id)??Infinity)-(order.get(b.id)??Infinity));
-  const addMenu=<WidgetAddMenu busy={busy||!snapshot} onBrowse={presentation.snapshot?.officialDirectory?()=>browse(true):undefined} onAdd={()=>{refresh();setInitialChoice(undefined);setPicker(true);}} onNew={()=>void open()}/>;
+  const addMenu=<WidgetAddMenu busy={busy||!snapshot} onBrowse={presentation.snapshot?.officialDirectory?()=>browse(true):undefined} onNew={()=>void open()}/>;
+  const seeAll=<button type="button" className="store-see-all" data-widget-see-all="" disabled={busy||!snapshot} onClick={()=>{refresh();setInitialChoice(undefined);setPicker(true);}}>{t('systemDock.widgets.store.seeAll')}</button>;
+  // Page rows open the same per-package forms as the picker; only ready package Widgets are listed here.
+  const addable=(snapshot?.definitions??[]).filter(definition=>definition.pluginId&&definition.contributionId&&definition.activeGenerationId!==null&&definition.installation!=='disabled'&&definition.installation!=='needs-install'&&(definition.instanceCount===0||definition.pluginId===WEATHER_PLUGIN_ID));
+  // Single-instance readings already in the Dock are not offered again; Weather can be added once per city.
+  const addDefinition=async(definition:typeof addable[number])=>{
+    if(lock.current||!window.systemDockSettings)return;lock.current=true;setBusy(true);setFailed(false);
+    try{const definitionId=nativeWidgetType(definition.pluginId!,definition.contributionId!);
+      if(definitionId)setOfficialForm(await window.systemDockSettings.officialWidgetPreview({definitionId}));
+      else setPluginForm(await window.systemDockSettings.pluginWidgetForm({pluginId:definition.pluginId!,contributionId:definition.contributionId!}));
+    }catch{setFailed(true);}finally{lock.current=false;setBusy(false);}
+  };
+  const weather=addable.find(definition=>definition.pluginId===WEATHER_PLUGIN_ID);
+  const storeRows=(list:typeof addable)=><StoreGrid>{list.map(definition=><StoreRow key={definition.id} data-widget-store-add={definition.id} wall icon={<WidgetStoreIcon pluginId={definition.pluginId!}/>} title={definition.name} subtitle={definition.description}
+    action={<StorePill disabled={busy} aria-label={`${t('systemDock.widgets.store.add')}: ${definition.name}`} onClick={()=>void addDefinition(definition)}>{t('systemDock.widgets.store.add')}</StorePill>}/>)}</StoreGrid>;
   if(!snapshot&&!state.failed)return <AppCatalogSkeleton label={t('common.loading')}/>;
-  return <section data-dock-widgets="" className="widget-catalog space-y-6">
+  return <section data-dock-widgets="" className="widget-catalog flex flex-col gap-6">
     {actionsContainer?createPortal(addMenu,actionsContainer):<div className="flex justify-end">{addMenu}</div>}
-    <div className="flex items-center justify-between gap-4 text-xs text-muted-foreground"><h2 className="font-medium">{t('systemDock.widgets.catalog.title')}</h2><span>{t('systemDock.widgets.catalog.count',{count:instances.length})}</span></div>
     {(failed||state.failed||presentation.failed)&&<SettingsAlert><span role="alert">{t('systemDock.widgets.failed')}</span><SettingsButton variant="ghost" onClick={()=>{state.refresh();presentation.refresh();}}>{t('common.retry')}</SettingsButton></SettingsAlert>}
     {instanceResult&&<SettingsAlert><span role="alert">{t(instanceResult==='conflict'?'systemDock.widgets.conflict':'systemDock.widgets.instancePending')}</span></SettingsAlert>}
     {snapshot?.retirements?.map(value=><SettingsAlert key={value.operationId}><p>{value.name}: {t('systemDock.widgets.definitionDelete.pending')}</p><SettingsButton disabled={busy} variant="outline" onClick={()=>void retryDeletion(value.operationId)}>{t('common.retry')}</SettingsButton></SettingsAlert>)}
-    {instances.length?<div className="widget-catalog-grid">{instances.map(instance=>{
+    {instances.length?<>
+      <StoreSection title={t('systemDock.widgets.store.inDock')}><div className="widget-catalog-grid">{instances.map(instance=>{
       const item=presentation.snapshot?.items.find(value=>value.id===instance.id);
       return <WidgetInstanceCard key={instance.id} instance={instance} definitionName={definitionName(instance.definitionId,instance.sourceInstallationId)} busy={busy}
         bundled={Boolean(instance.officialWidget&&!(directoryAvailable&&isDistributedWidgetId(instance.officialWidget)))} wide={item?.widget?.type==='custom'&&item.widget.size!=='small'&&presentation.snapshot?.edge==='bottom'}
         preview={item&&presentation.snapshot?<WidgetCatalogPreview item={item} presentation={presentation.snapshot} active={active&&!picker&&!directory} ready={presentation.ready.has(item.id)} observe={presentation.observe} now={now} t={t}/>:<div className="widget-catalog-preview"><span className="text-xs text-muted-foreground">{t(presentation.failed?'systemDock.item.unavailable':'common.loading')}</span></div>}
         onConfigure={button=>void configure(instance.id,button)} onInstall={button=>void install(instance.id,button)} onEdit={()=>void open(instance.definitionId)} onCopy={()=>void customize(instance.id)}
-        onVersions={()=>{if(instance.pluginId||instance.officialWidget)requestSettingsSection({section:'plugins',plugin:instance.pluginId??instance.officialWidget});else setVersionId(instance.definitionId);}} onChange={remove=>void change(instance,remove)}>
+        onDetails={()=>{const pluginId=instance.pluginId??instance.officialWidget;if(pluginId)setDetails({pluginId,itemId:instance.id});else setVersionId(instance.definitionId);}} onChange={remove=>void change(instance,remove)}>
         <WidgetDeliveryStatus deliveries={snapshot?.deliveries?.filter(value=>value.definitionId===instance.definitionId)??[]} onChanged={refresh}/>
         {item?.widget?.type==='custom'&&item.widget.summaryError&&<p role="status" className="mt-2 text-xs text-muted-foreground">{t('systemDock.widgets.summaryRefreshFailed')}</p>}
         {instance.copyTarget&&<div data-widget-copy-state={instance.copyTarget.status} role={instance.copyTarget.status==='error'?'alert':'status'} className={instance.copyTarget.status==='error'?'mt-2 text-xs text-destructive':'mt-2 text-xs text-muted-foreground'}><p>{t(instance.copyTarget.status==='error'?'systemDock.widgets.copyFailed':'systemDock.widgets.copyPending')}</p>{instance.copyTarget.error&&<p className="mt-1 line-clamp-3 break-words">{instance.copyTarget.error}</p>}<SettingsButton variant="ghost" onClick={()=>requestSettingsSection({section:'plugins',plugin:instance.copyTarget!.pluginId})}>{t('systemDock.widgets.copyDetails')}</SettingsButton></div>}
       </WidgetInstanceCard>;
-    })}</div>:snapshot?<div className="grid justify-items-center gap-4 py-16 text-center"><p className="text-sm text-muted-foreground">{t('systemDock.widgets.catalog.empty')}</p><SettingsButton variant="outline" disabled={busy} onClick={()=>{refresh();setInitialChoice(undefined);setPicker(true);}}>{t('systemDock.widgets.addExisting')}</SettingsButton></div>:null}
+    })}</div></StoreSection>
+      {addable.length>0&&<StoreSection title={t('systemDock.widgets.store.more')} action={seeAll}>{storeRows(addable)}</StoreSection>}
+    </>:snapshot?<>
+      {weather&&<StoreFeature tone="wall" title={t('systemDock.widgets.store.featureTitle')} description={t('systemDock.widgets.store.featureLead')}
+        art={<WeatherSamples/>} action={<StorePill tone="solid" data-widget-store-feature="" disabled={busy} onClick={()=>void addDefinition(weather)}>{t('systemDock.widgets.store.addWeather')}</StorePill>}/>}
+      <StoreSection title={t('systemDock.widgets.store.all')} action={seeAll}>{storeRows(addable.filter(definition=>definition!==weather))}</StoreSection>
+    </>:null}
     {directory&&<Suspense fallback={null}><WidgetDirectoryDialog subject={directory===true?null:directory} onClose={()=>setDirectory(null)}
       onChanged={()=>{refresh();presentation.refresh();}} onAdd={configureInstalled} onReturnFocus={restoreFocus}/></Suspense>}
     {retirementReview&&<Suspense fallback={null}><WidgetUninstallDialog mode="definition" review={retirementReview} onClose={()=>setRetirementReview(null)} onChanged={refresh} onReturnFocus={restoreFocus}/></Suspense>}
@@ -219,6 +246,18 @@ export function DockWidgetsSection({active=true,actionsContainer}:{active?:boole
     {officialForm&&<Suspense fallback={null}><OfficialWidgetDialog key={officialForm.previewId} form={officialForm} onClose={()=>setOfficialForm(null)} onChanged={state.refresh} onReturnFocus={restoreFocus}/></Suspense>}
     {pluginForm&&<PluginWidgetFormDialog key={`${pluginForm.pluginId}/${pluginForm.contributionId}/${pluginForm.itemId??"new"}`} form={pluginForm} edge={presentation.snapshot?.edge??'bottom'} onClose={()=>setPluginForm(null)} onChanged={state.refresh} onReturnFocus={restoreFocus}/>}
     {form&&<WidgetInstanceFormDialog key={form.previewId} form={form} onClose={()=>setForm(null)} onChanged={state.refresh} onReturnFocus={restoreFocus} />}
+    {details&&<Suspense fallback={null}><WidgetPluginDetailsDialog key={details.pluginId} pluginId={details.pluginId} item={presentation.snapshot?.items.find(value=>value.id===details.itemId)} mask={presentation.snapshot?.privacyMask??false} now={now} onClose={()=>{setDetails(null);restoreFocus();}}/></Suspense>}
     {versionId&&<Suspense fallback={null}><WidgetVersionsDialog key={versionId} definitionId={versionId} onClose={()=>setVersionId(null)} onChanged={state.refresh} onReturnFocus={restoreFocus}/></Suspense>}
   </section>;
+}
+
+const STORE_ICONS={'bottega-weather':Sun,'bottega-ai-limits':Gauge,'bottega-ai-usage':Activity,'bottega-tasks':ListTodo} as const;
+function WidgetStoreIcon({pluginId}:{pluginId:string}){const Icon=STORE_ICONS[pluginId as keyof typeof STORE_ICONS]??GridIcon;return <Icon aria-hidden="true"/>;}
+const LAYOUTS=weatherLayouts();
+const SAMPLE:WeatherPresentationReading={temperature:24,code:1,feelsLike:25,humidity:55,observedAt:0,today:{date:'2026-11-15',code:1,high:26,low:18},upcoming:[{date:'2026-11-16',code:0,high:27,low:19},{date:'2026-11-17',code:61,high:28,low:20},{date:'2026-11-18',code:3,high:29,low:21}]};
+/** The Weather banner shows the one widget it adds, in every size, with the real Dock face. */
+function WeatherSamples(){
+  const {t,i18n}=useAppTranslation(),readings=weatherReadings(SAMPLE,t('systemDock.weather.city'),i18n.language);
+  return <>{(['small','medium','large'] as const).map(size=><span key={size} aria-hidden="true" className="weather-size-face" style={{width:{small:56,medium:124,large:192}[size],height:56}}>
+    <DockSummary node={LAYOUTS[size]} readings={readings} locale={i18n.language} size={size} edge="bottom"/></span>)}</>;
 }

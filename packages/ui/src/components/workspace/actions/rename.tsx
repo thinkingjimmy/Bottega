@@ -13,14 +13,10 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { AppDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
+import { AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
@@ -174,14 +170,7 @@ function SidebarRenameForm({
         }}
       >
         <form onSubmit={submit}>
-          <DialogHeader className="text-left">
-            <DialogTitle className="text-xl/7 font-semibold">
-              {title}
-            </DialogTitle>
-            <DialogDescription className="mt-3 text-[15px]/[1.4]">
-              {description}
-            </DialogDescription>
-          </DialogHeader>
+          <AppDialogHeader title={title} description={description}/>
           <label className="sr-only" htmlFor={inputId}>
             {title}
           </label>
@@ -200,7 +189,7 @@ function SidebarRenameForm({
             onChange={(event) => setDraft(event.target.value)}
           />
           {feedback}
-          <DialogFooter className="mt-5 flex-row justify-end gap-3">
+          <AppDialogFooter>
             <Button
               type="button"
               variant="ghost"
@@ -218,7 +207,7 @@ function SidebarRenameForm({
               {busy && <Spinner aria-hidden />}
               {copy.save}
             </Button>
-          </DialogFooter>
+          </AppDialogFooter>
         </form>
     </AppDialogContent>
   );

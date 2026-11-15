@@ -1,0 +1,44 @@
+/* [INPUT]: Product theme tokens and the StoreFeature/StoreSection/StoreRow markup.
+ * [OUTPUT]: Mac App Store–style banner, section titles, two-column hairline rows and pill actions, light and dark.
+ * [POS]: Lazy stylesheet of the Plugins page; loads with the Apps route, outside the eager index CSS.
+ */
+.store-feature { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 32px; padding: 32px 36px; border-radius: 16px;
+  --store-tint: #cdebd6; background: linear-gradient(120deg, color-mix(in oklch, var(--store-tint) 45%, var(--background)), var(--store-tint)); color: oklch(0.28 0.06 150); }
+.dark .store-feature { background: linear-gradient(120deg, color-mix(in oklch, var(--store-tint) 12%, var(--background)), color-mix(in oklch, var(--store-tint) 26%, var(--background))); color: oklch(0.94 0.03 150); }
+.store-feature[data-tone="wall"] { color: #fff; text-shadow: 0 1px 2px rgb(0 0 0 / .16); background: radial-gradient(120% 140% at 0% 0%, #6f9fe0 0%, #a98fd6 45%, #f2b48f 100%); }
+.dark .store-feature[data-tone="wall"] { background: radial-gradient(120% 140% at 0% 0%, #1d3360 0%, #3d2a5c 50%, #6b3a37 100%); }
+.store-feature h2 { max-width: 18ch; font-size: 26px; font-weight: 700; line-height: 1.15; letter-spacing: -0.015em; text-wrap: balance; }
+.store-feature p { max-width: 46ch; margin: 8px 0 18px; font-size: 14px; opacity: .8; text-wrap: pretty; }
+.store-feature-art { display: flex; align-items: center; gap: 8px; text-shadow: none; }
+.store-feature-art .store-icon { width: 112px; height: 112px; border-radius: 26px; font-size: 58px; background: var(--background); box-shadow: 0 8px 24px rgb(0 0 0 / .12), inset 0 0 0 .5px rgb(0 0 0 / .06); }
+
+.store-section { margin-top: 32px; } .store-section:first-child { margin-top: 0; }
+.store-section > header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 4px; }
+.store-section > header h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.store-see-all { color: light-dark(#0a64d6, #4c9dff); font-size: 13px; font-weight: 500; }
+
+.store-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); column-gap: 36px; margin: 0; padding: 0; list-style: none; }
+/* The hairline runs under the text and action only, like the Mac App Store; never above a section's first row. */
+.store-row { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 10px 0; }
+.store-row > div, .store-row > .store-pill { align-self: stretch; }
+.store-row > div { display: grid; align-content: center; min-width: 0; border-bottom: .5px solid var(--border); }
+.store-row > .store-pill { align-self: center; }
+.store-row h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.store-row p { margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); font-size: 12px; }
+.store-row p[data-tone="busy"] { color: light-dark(#8a5a00, #ffbd68); }
+.store-row:last-child > div { border-bottom-color: transparent; }
+.store-icon { display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border-radius: 13px; font-size: 28px;
+  --store-tint: var(--muted); background: var(--store-tint); box-shadow: inset 0 0 0 .5px color-mix(in oklch, var(--foreground) 8%, transparent); }
+.dark .store-icon { background: color-mix(in oklch, var(--store-tint) 16%, var(--muted)); }
+.store-icon[data-dashed] { background: none; box-shadow: none; border: 1px dashed color-mix(in oklch, var(--muted-foreground) 55%, transparent); color: var(--muted-foreground); }
+.store-icon[data-wall] { background: radial-gradient(120% 140% at 0% 0%, #8fb3e6, #c3a9e0 55%, #f4c3a3); color: #1d1d1f; }
+.store-icon svg { width: 24px; height: 24px; }
+
+.store-pill { min-width: 64px; height: 28px; padding: 0 14px; border-radius: 14px; background: var(--muted); color: light-dark(#0a64d6, #4c9dff); font-size: 13px; font-weight: 600; cursor: pointer; }
+.store-pill[data-tone="plain"] { color: var(--foreground); font-weight: 500; }
+.store-pill[data-tone="solid"] { height: 30px; padding: 0 18px; border-radius: 15px; background: #0a64d6; color: #fff; }
+.store-pill:hover:not(:disabled) { background: color-mix(in oklch, var(--muted) 80%, var(--foreground) 8%); }
+.store-pill[data-tone="solid"]:hover:not(:disabled) { background: #0a58bd; }
+.store-pill:disabled { opacity: .45; cursor: default; }
+.store-pill:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+@media (max-width: 720px) { .store-feature { grid-template-columns: 1fr; } .store-feature-art { display: none; } }

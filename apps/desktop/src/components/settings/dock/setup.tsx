@@ -8,8 +8,10 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Check, LoaderCircle } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
+import { Button } from "@ai-chat/ui/components/ui/button";
 import { StepDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
 import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { SettingsAlert, SettingsButton, SettingsChoiceRow } from "../settings-layout";
 import { dockSettingsStore } from "@/lib/platform/system-dock-settings-client";
 import type { DockCapability, DockSetupPreview } from "../../../../shared/system-dock/ipc";
@@ -133,22 +135,22 @@ function SetupFlow({ capability, layoutInitialized, consentOnly, onExit }: { cap
   const index = consentOnly || step.kind === "mode" ? 1 : step.kind === "impact" ? total : Math.min(2, total);
   const title = consentOnly || step.kind === "loading" && step.mode === "replace" ? TITLE_KEYS.impact
     : step.kind === "loading" && layoutExists && !copyRequested ? TITLE_KEYS.mode : TITLE_KEYS[step.kind];
-  const confirmLabel = busy ? t("systemDock.settings.turningOn") : t(consentOnly ? "systemDock.settings.switchConfirm" : "systemDock.settings.turnOnConfirm");
+  const confirmLabel = t(consentOnly ? "systemDock.settings.switchConfirm" : "systemDock.settings.turnOnConfirm");
   /* Escape used to dismiss the dialog while the Dock was being turned on, hiding the outcome of a takeover in flight (F-22). */
   return <StepDialogContent aria-live="off" onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }}
     onInteractOutside={(event) => { if (busy) event.preventDefault(); }} title={t(title)}
     description={step.kind === "impact" ? t("systemDock.settings.replacementLayout") : undefined}
     progress={{ index, total, label: t("systemDock.settings.step", { index, total }) }}
-    back={!consentOnly && (step.kind === "impact" || step.kind === "layout" && copyRequested) ? <SettingsButton variant="ghost" disabled={busy}
+    back={!consentOnly && (step.kind === "impact" || step.kind === "layout" && copyRequested) ? <Button size="pill" variant="ghost" disabled={busy}
       onClick={() => {
         release(); setCopyRequested(false); setStep({ kind: "mode", mode: step.mode });
-      }}>{t("common.back")}</SettingsButton> : undefined}
+      }}>{t("common.back")}</Button> : undefined}
     actions={<>
-      {step.kind === "mode" && <SettingsButton disabled={busy} onClick={() => void start(step.mode)}>{step.mode === "coexist" && layoutExists ? confirmLabel : t("systemDock.settings.continue")}</SettingsButton>}
+      {step.kind === "mode" && <Button size="pill" disabled={busy} onClick={() => void start(step.mode)}>{busy && <Spinner />}{step.mode === "coexist" && layoutExists ? confirmLabel : t("systemDock.settings.continue")}</Button>}
       {step.kind === "layout" && <>
-        <SettingsButton disabled={busy} onClick={() => void finish("coexist", step.preview, step.selected)}>{confirmLabel}</SettingsButton>
+        <Button size="pill" disabled={busy} onClick={() => void finish("coexist", step.preview, step.selected)}>{confirmLabel}</Button>
       </>}
-      {step.kind === "impact" && <SettingsButton disabled={!acknowledged || busy} onClick={() => void finish("replace", step.preview, step.selected)}>{confirmLabel}</SettingsButton>}
+      {step.kind === "impact" && <Button size="pill" disabled={!acknowledged || busy} onClick={() => void finish("replace", step.preview, step.selected)}>{confirmLabel}</Button>}
     </>}>
       {error && <SettingsAlert>{error}</SettingsAlert>}
       {step.kind === "mode" && <div role="radiogroup" aria-label={t("systemDock.settings.modeTitle")} className="divide-inset rounded-lg ring-1 ring-foreground/10">

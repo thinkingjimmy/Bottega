@@ -6,7 +6,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { useSetup } from "@/components/providers/setup-provider";
 import { firstProviderId, maintenanceCapableBackends } from "@/lib/agent/agent-backends";
@@ -55,11 +57,11 @@ function InstallForm({ userId, appId, name, update, online, onClose, onRetry }: 
     finally { setBusy(false); }
   };
   return <Dialog open onOpenChange={value => { if (!value && !busy) onClose(); }}>
-    <DialogContent className="flex max-h-[90dvh] flex-col sm:max-w-2xl" onInteractOutside={event => { if (busy) event.preventDefault(); }}>
-      <DialogHeader className="shrink-0 pr-8">
-        <DialogTitle>{t((review?.update ?? update) ? "cloud.appInstall.updateTitle" : "cloud.appInstall.installTitle", { name })}</DialogTitle>
-        <DialogDescription>{t("cloud.appInstall.consent")}</DialogDescription>
-      </DialogHeader>
+    <AppDialogContent size="lg" className="flex max-h-[90dvh] flex-col" onInteractOutside={event => { if (busy) event.preventDefault(); }}>
+      <AppDialogHeader
+        title={t((review?.update ?? update) ? "cloud.appInstall.updateTitle" : "cloud.appInstall.installTitle", { name })}
+        description={t("cloud.appInstall.consent")}
+      />
       <div className="min-h-0 space-y-4 overflow-y-auto px-1">
         {!online ? <p role="status">{t("cloud.appInstall.online")}</p> : compatibility ? <>
           <p role="status">{t(`appHost.${compatibility.code}`, { name, minimum: compatibility.minBottegaVersion ?? "—", current: compatibility.currentVersion ?? "—" })}</p>
@@ -80,13 +82,13 @@ function InstallForm({ userId, appId, name, update, online, onClose, onRetry }: 
           </fieldset>
         </>}
       </div>
-      <DialogFooter className="shrink-0 gap-2">
-        <Button variant="ghost" disabled={busy} onClick={onClose}>{t("common.cancel")}</Button>
-        {(failed || compatibility) && <Button variant="outline" disabled={busy || !online} onClick={onRetry}>{t("cloud.appInstall.refresh")}</Button>}
-        {review && <Button disabled={busy || !online || !selected || !toolsReady || !appRequirementsSatisfied(requirements, config)} onClick={() => void confirm()}>
-          {t(busy ? "cloud.appInstall.installing" : review.update ? "cloud.appInstall.confirmUpdate" : "cloud.appInstall.confirmInstall")}
+      <AppDialogFooter>
+        <AppDialogCancel disabled={busy} onClick={onClose}>{t("common.cancel")}</AppDialogCancel>
+        {(failed || compatibility) && <Button size="pill" variant="outline" disabled={busy || !online} onClick={onRetry}>{t("cloud.appInstall.refresh")}</Button>}
+        {review && <Button size="pill" disabled={busy || !online || !selected || !toolsReady || !appRequirementsSatisfied(requirements, config)} onClick={() => void confirm()}>
+          {busy && <Spinner />}{t(review.update ? "cloud.appInstall.confirmUpdate" : "cloud.appInstall.confirmInstall")}
         </Button>}
-      </DialogFooter>
-    </DialogContent>
+      </AppDialogFooter>
+    </AppDialogContent>
   </Dialog>;
 }

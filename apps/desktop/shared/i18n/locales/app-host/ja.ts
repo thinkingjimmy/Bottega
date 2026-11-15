@@ -16,7 +16,6 @@ export const appHostJa = {
   "upgrade": "Bottega を更新",
   "cancel": "今はインストールしない",
   "recheck": "再確認",
-  "rechecking": "確認中…",
   "resumeAfterUpgrade": "更新後、Apps 一覧からこのインストールを続行できます。",
   "versionYours": "現在",
   "versionRequired": "必要",

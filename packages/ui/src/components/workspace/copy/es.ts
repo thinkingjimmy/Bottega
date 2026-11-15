@@ -142,6 +142,7 @@ export const workspaceCopy = {
     "restoreEntity": "Restaurar {{title}}",
     "deleteEntity": "Eliminar {{title}}",
     "importedDeleteUnavailable": "El historial importado es de solo lectura y no se puede eliminar permanentemente en Bottega.",
+        "loadFailed": "No se pudieron cargar los elementos archivados.",
     "toast": {
       "archivedChat": "Chat archivado",
       "archivedProject": "Project archivado",
@@ -151,6 +152,7 @@ export const workspaceCopy = {
     }
   },
   "browserArchive": {
+    "sourceFailed": (source: string) => `No se pudieron cargar ${source}.`,
     "sectionTitle": "Chats y Projects",
     "description": "Los Chats, Projects e historiales importados archivados permanecen aquí. Abre un elemento para consultar su contenido.",
     "emptyTitle": "El archivo está vacío",

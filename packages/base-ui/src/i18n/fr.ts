@@ -198,7 +198,6 @@ export const basesFr: BasesCatalog = {
     uploadCancelled: "Envoi annulé. Votre saisie est conservée.",
     uploading: "Envoi de l’image…",
     cancelUpload: "Annuler l’envoi",
-    saving: "Enregistrement…",
     leaveTitle: "Abandonner vos modifications ?",
     leaveDescription: "Les modifications de ce formulaire ne sont pas enregistrées.",
     discard: "Abandonner les modifications",

@@ -61,6 +61,7 @@ export const copy = {
       description: "Votre message et ses pièces jointes sont enregistrés et n'ont pas encore été envoyés.",
       retriedTitle: "La reprise de la session d'origine a échoué",
       retriedDescription: "{{backend}} ne parvient toujours pas à ouvrir la session enregistrée. Votre message et ses pièces jointes restent enregistrés et n’ont pas été envoyés.",
+      otherOptions: "Autres options",
       recommended: "Recommandé",
       sameSession: "Réessayer la session d'origine",
       sameSessionDetail: "Se reconnecter à la session d'origine. Si cela fonctionne, l'agent conserve tout ce qu'il sait de ce chat.",
@@ -86,7 +87,6 @@ export const copy = {
       pendingTitle: "Ce tour attend une récupération",
       pendingDetail: "Récupérez ou abandonnez ce tour avant d’envoyer un autre message. Vous pouvez continuer à consulter vos Chats.",
       review: "Options de récupération",
-      later: "Traiter plus tard",
     },
   userInput: {
     countdown: "{{count}} s",

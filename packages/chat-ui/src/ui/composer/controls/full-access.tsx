@@ -15,15 +15,13 @@ import { useComposerTranslation } from "./copy/translation";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   AppDialogBody,
+  AppDialogCancel,
   AppDialogContent,
+  AppDialogFooter,
+  AppDialogHeader,
 } from "@ai-chat/ui/components/ui/app-dialog";
-import {
-  Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { cn } from "@ai-chat/ui/lib/utils";
 
 /* Keep capability identity independent of the localized disclosure copy. */
@@ -92,16 +90,17 @@ export function FullAccessDialog({
           cancelRef.current?.focus();
         }}
       >
-        <DialogHeader className="shrink-0 gap-0 text-left">
-          <DialogTitle className="flex items-center gap-2.5 text-xl/7 font-semibold">
+        <AppDialogHeader
+          className="shrink-0"
+          title={<span className="flex items-center gap-2.5">
             <TriangleAlert className="size-5 shrink-0 stroke-[1.75]" />
             {t("permission.fullAccess.title")}
-          </DialogTitle>
-          <DialogDescription className="mt-3.5 text-[15px]/[1.4] text-muted-foreground">
+          </span>}
+          description={<>
             {scopeLabel && <span className="mb-2 block font-medium text-foreground">{scopeLabel}</span>}
             {t("permission.fullAccess.description")}
-          </DialogDescription>
-        </DialogHeader>
+          </>}
+        />
 
         <AppDialogBody>
         <div className="mt-3.5 rounded-[1.1rem] bg-muted/75 px-4 py-1">
@@ -153,32 +152,20 @@ export function FullAccessDialog({
         )}
         </AppDialogBody>
 
-        <DialogFooter className="mt-3.5 shrink-0 flex-row justify-end gap-3">
-          <Button
-            ref={cancelRef}
-            type="button"
-            variant="secondary"
-            disabled={busy}
-            className="h-9 min-w-22 cursor-pointer rounded-full px-5 text-sm font-normal disabled:cursor-not-allowed"
-            onClick={onCancel}
-          >
-            {t("common.cancel")}
-          </Button>
+        <AppDialogFooter>
+          <AppDialogCancel ref={cancelRef} disabled={busy} onClick={onCancel} />
           <Button
             type="button"
             variant="destructive"
+            size="pill"
             disabled={busy}
-            className="h-9 min-w-28 cursor-pointer rounded-full border-destructive/15 px-5 text-sm font-normal disabled:cursor-not-allowed"
+            className="border-destructive/15"
             onClick={onConfirm}
           >
-            <TriangleAlert className="size-4 stroke-[1.75]" />
-            {t(
-              busy
-                ? "permission.fullAccess.confirming"
-                : "permission.fullAccess.confirm"
-            )}
+            {busy ? <Spinner /> : <TriangleAlert className="size-4 stroke-[1.75]" />}
+            {t("permission.fullAccess.confirm")}
           </Button>
-        </DialogFooter>
+        </AppDialogFooter>
       </AppDialogContent>
     </Dialog>
   );

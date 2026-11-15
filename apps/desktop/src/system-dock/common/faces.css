@@ -1,9 +1,18 @@
-/* [INPUT]: Actual Dock face components and inherited semantic Dock tokens.
- * [OUTPUT]: Scoped builtin/custom face geometry shared by the Dock and catalog previews on every edge.
- * [POS]: Presentation-only common stylesheet; no application resets or strip chrome.
+/* [INPUT]: Actual Dock face components, inherited semantic Dock tokens and an optional host `--widget-tile` override.
+ * [OUTPUT]: Scoped macOS-style frosted Widget tile (6 DIP edge / 3 DIP neighbour inset, continuous corner, lit rim, tile-local muted ink) and builtin/custom face geometry shared by the Dock and catalog previews on every edge.
+ * [POS]: Presentation-only common stylesheet; no application resets or strip chrome. Bar interaction states for the tile live in bar.css.
  */
 @scope (.dock-widget-face) {
-:scope { width: 100%; height: 100%; min-width: 0; }
+/* The slot keeps its full Dock footprint. The tile sits 6 DIP from the strip edges and 3 DIP from its neighbours,
+   so two tiles read as a 6 DIP-spaced pair, like macOS desktop widgets. */
+:scope { display: grid; width: 100%; height: 100%; min-width: 0; padding: 6px 3px; color: var(--text); font: 13px/1.35 system-ui; }
+:scope:not([data-edge="bottom"]) { padding: 3px 6px; }
+/* Frosted, not paper: a translucent layer over the native glass with a lit rim, like macOS desktop widgets.
+   72 % white (light) and 82 % graphite (dark) keep 4.5:1 for muted and caution ink over black or white desktops; solid under reduced transparency via --widget-tile. */
+.widget-tile { position: relative; display: grid; place-items: center; min-width: 0; overflow: hidden; border-radius: 12px;
+  --muted: color-mix(in srgb, var(--text) 72%, transparent); --caution: light-dark(#7a3800, #ffab5c);
+  background: linear-gradient(#fff1, #fff0 60%), var(--widget-tile, light-dark(#ffffffb8, #2e2e32d1));
+  box-shadow: inset 0 0 0 .5px light-dark(#fff8, #fff2), 0 .5px 1.5px #0000001f; transition: scale 140ms; }
 .face { display: flex; width: 100%; height: 100%; padding: 4px 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .face-glyph { width: 14px; height: 14px; }
 .face-value { display: inline-flex; align-items: center; font-weight: 600; font-size: 13px; }

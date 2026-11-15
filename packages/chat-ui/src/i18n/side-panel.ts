@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Five-language desktop panel vocabulary and browser-specific capability states.
- * [OUTPUT]: Typed sidePanelCopy for shells, localized Artifact fallback labels, catalogs, Base retargeting, subagents and image previews.
+ * [OUTPUT]: Typed sidePanelCopy for shells, the Artifact picker and fallback labels, catalogs, Base retargeting, subagents and image previews.
  * [POS]: Shared panel presentation vocabulary for desktop and Web hosts.
  */
 const en = {
@@ -38,7 +38,9 @@ const en = {
   "keep": "Keep viewing the previous Base",
   "generatingTitle": "Generating title",
   "artifactFallback": "Artifact",
+  "artifactPicker": { "loading": "Loading artifacts…", "empty": "No artifacts in this chat yet.", "failed": "Could not load artifacts." },
   "catalog": {
+    "artifact": { "label": "Artifact", "hint": "Browse artifacts from this chat" },
     "base": {
       "label": "Base",
       "hint": "Collect structured data created by this conversation"
@@ -110,7 +112,9 @@ const zh: SidePanelCopy = {
   "keep": "继续查看旧库",
   "generatingTitle": "正在生成标题",
   "artifactFallback": "产物",
+  "artifactPicker": { "loading": "正在加载产物…", "empty": "此对话还没有产物。", "failed": "无法加载产物。" },
   "catalog": {
+    "artifact": { "label": "Artifact", "hint": "查看此对话中的产物" },
     "base": {
       "label": "Base",
       "hint": "结构化收集本次对话沉淀的数据"
@@ -181,7 +185,9 @@ const ja: SidePanelCopy = {
   "keep": "以前の Base を表示し続ける",
   "generatingTitle": "タイトルを生成中",
   "artifactFallback": "成果物",
+  "artifactPicker": { "loading": "成果物を読み込み中…", "empty": "このチャットにはまだ成果物がありません。", "failed": "成果物を読み込めませんでした。" },
   "catalog": {
+    "artifact": { "label": "成果物", "hint": "このチャットの成果物を表示" },
     "base": {
       "label": "Base",
       "hint": "この会話で生まれた構造化データを収集"
@@ -252,7 +258,9 @@ const fr: SidePanelCopy = {
   "keep": "Continuer à voir l’ancienne Base",
   "generatingTitle": "Génération du titre",
   "artifactFallback": "Artefact",
+  "artifactPicker": { "loading": "Chargement des artefacts…", "empty": "Cette conversation ne contient encore aucun artefact.", "failed": "Impossible de charger les artefacts." },
   "catalog": {
+    "artifact": { "label": "Artefacts", "hint": "Voir les artefacts de cette conversation" },
     "base": {
       "label": "Base",
       "hint": "Collecter les données structurées produites par cette conversation"
@@ -323,7 +331,9 @@ const es: SidePanelCopy = {
   "keep": "Seguir viendo la Base anterior",
   "generatingTitle": "Generando título",
   "artifactFallback": "Artefacto",
+  "artifactPicker": { "loading": "Cargando artefactos…", "empty": "Este chat aún no tiene artefactos.", "failed": "No se pudieron cargar los artefactos." },
   "catalog": {
+    "artifact": { "label": "Artefactos", "hint": "Consulta los artefactos de este chat" },
     "base": {
       "label": "Base",
       "hint": "Recopila los datos estructurados creados por esta conversación"

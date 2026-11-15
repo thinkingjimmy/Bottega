@@ -5,7 +5,8 @@
  */
 import { useEffect, useState } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogContent, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { recoveryCopy } from "@ai-chat/chat-ui/recovery-copy";
 import { useCloudAccount } from "@/lib/cloud/client";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
@@ -49,11 +50,11 @@ export function RetainedContentCatalog({ bridge, locale }: { bridge: CloudChatBr
     {loading && <p role="status" className="text-sm">{copy.loading}</p>}
     {failed && <p role="alert" className="text-sm">{copy.error} <Button variant="outline" onClick={() => setRetry(value => value + 1)}>{copy.retry}</Button></p>}
     {cursor && <Button variant="outline" disabled={loading} onClick={() => setAfterId(cursor)}>{copy.more}</Button>}
-    <Dialog open={Boolean(selected)} onOpenChange={open => { if (!open) setSelected(null); }}><DialogContent className="flex h-[80svh] max-w-3xl flex-col overflow-hidden">
-      <DialogHeader><DialogTitle>{selected?.title || copy.unnamed}</DialogTitle><DialogDescription>{copy.description}</DialogDescription></DialogHeader>
+    <Dialog open={Boolean(selected)} onOpenChange={open => { if (!open) setSelected(null); }}><AppDialogContent size="xl" showCloseButton className="flex h-[80svh] flex-col">
+      <AppDialogHeader title={selected?.title || copy.unnamed} description={copy.description}/>
       {selected && (selected.kind === "metadata" ? <MetadataCandidate key={selected.archiveId} entry={selected} bridge={bridge} locale={locale} /> :
         <BranchTranscript key={selected.archiveId} archive={summary(selected)} bridge={bridge} locale={locale} copy={recoveryCopy(locale)} />)}
-    </DialogContent></Dialog>
+    </AppDialogContent></Dialog>
   </section>;
 }
 function MetadataCandidate({ entry, bridge, locale }: { entry: Entry; bridge: CloudChatBridge; locale: string }) {

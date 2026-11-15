@@ -142,6 +142,7 @@ export const workspaceCopy = {
     "restoreEntity": "恢复 {{title}}",
     "deleteEntity": "删除 {{title}}",
     "importedDeleteUnavailable": "导入历史是只读内容，无法在 Bottega 内永久删除。",
+        "loadFailed": "无法加载已归档的项目。",
     "toast": {
       "archivedChat": "已归档聊天",
       "archivedProject": "已归档 Project",
@@ -151,6 +152,7 @@ export const workspaceCopy = {
     }
   },
   "browserArchive": {
+    "sourceFailed": (source: string) => `无法加载${source}。`,
     "sectionTitle": "Chat 与 Project",
     "description": "归档的 Chat、Project 与导入历史保留在这里。打开一项即可查看内容。",
     "emptyTitle": "归档为空",

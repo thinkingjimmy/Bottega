@@ -142,6 +142,7 @@ export const workspaceCopy = {
     "restoreEntity": "Restore {{title}}",
     "deleteEntity": "Delete {{title}}",
     "importedDeleteUnavailable": "Imported history is read-only and cannot be permanently deleted in Bottega.",
+        "loadFailed": "Archived items could not be loaded.",
     "toast": {
       "archivedChat": "Archived chat",
       "archivedProject": "Archived project",
@@ -151,6 +152,7 @@ export const workspaceCopy = {
     }
   },
   "browserArchive": {
+    "sourceFailed": (source: string) => `${source} could not be loaded.`,
     "sectionTitle": "Chats and Projects",
     "description": "Archived Chats, Projects and imported history stay here. Open an item to view its contents.",
     "emptyTitle": "Archive is empty",

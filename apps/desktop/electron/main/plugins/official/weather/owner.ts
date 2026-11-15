@@ -6,6 +6,7 @@
 import {weatherConfigurationSchema,weatherControlSchema,WEATHER_REFRESH_MS,type WeatherControlResult} from '../../../../../shared/system-dock/widgets/weather';
 import {weatherCopy} from '../../../../../shared/system-dock/widgets/weather/copy';
 import { weatherConditionKey, type WeatherFaceReading } from '../../../../../shared/system-dock/widgets/weather/forecast';
+import { weatherDocument, weatherLayouts, weatherReadings } from '../../../../../shared/system-dock/widgets/weather/presentation';
 import {readWeather,searchWeatherCities,type WeatherObservation,type WeatherRequest} from './provider';
 export class WeatherOwner{
  private readonly controls=new Map<string,AbortController>();
@@ -29,9 +30,9 @@ export class WeatherOwner{
   const key=JSON.stringify([point.latitude,point.longitude]),prior=this.cache.get(key);
   const value=!input.force&&prior&&Date.now()-prior.at<WEATHER_REFRESH_MS?prior.value:await this.fetch(key,point,signal);
   signal.throwIfAborted();if(!prior||prior.value!==value){if(this.cache.size>=64)this.cache.delete(this.cache.keys().next().value!);this.cache.set(key,{at:Date.now(),value});}
-  const condition=copy[weatherConditionKey(value.code)],label=point.name;
-  const weather:WeatherFaceReading={city:label,temperature:value.temperature,code:value.code,today:value.today,upcoming:value.upcoming};
-  return{weather,summary:{type:'column',gap:2,children:[{type:'label',text:{kind:'literal',value:label.slice(0,80)}},{type:'primary',text:{kind:'literal',value:`${Math.round(value.temperature)}°C`}},{type:'secondary',text:{kind:'literal',value:condition}}]},
+  const condition=copy[weatherConditionKey(value.code)],label=point.name,locale=this.locale();
+  const observation:WeatherFaceReading={city:label,temperature:value.temperature,code:value.code,today:value.today,upcoming:value.upcoming};
+  return{observation,summary:weatherLayouts(),readings:weatherReadings(value,label,locale),document:weatherDocument(value,locale),
    detail:{id:'weather',kind:'api',label,reading:{state:'ready',updatedAt:value.observedAt,values:{temperature:value.temperature,'feels-like':value.feelsLike,humidity:value.humidity,condition,'observed-at':value.observedAt}},
     fields:[{id:'temperature',label:copy.temperature,type:'number',path:['temperature'],unit:'°C'},{id:'feels-like',label:copy.feelsLike,type:'number',path:['feels-like'],unit:'°C'},{id:'humidity',label:copy.humidity,type:'number',path:['humidity'],unit:'%'},{id:'condition',label:copy.condition,type:'text',path:['condition']},{id:'observed-at',label:copy.observedAt,type:'date',path:['observed-at'],timeFormat:'unix-ms'}],
     attribution:{label:copy.attribution,url:'https://open-meteo.com/'},timeZone:value.timeZone}};

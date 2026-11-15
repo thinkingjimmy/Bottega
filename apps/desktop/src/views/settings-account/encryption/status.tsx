@@ -6,8 +6,10 @@
 import { useRef, useState, type FormEvent } from "react";
 import { validatePassword } from "@ai-chat/cloud-crypto";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { getCloudEncryptionCopy } from "@ai-chat/ui/lib/cloud-copy/encryption";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import type { SyncEncryptionState } from "../../../../shared/cloud/encryption";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { SettingsButton } from "@/components/settings/settings-layout";
@@ -33,13 +35,13 @@ export function UnlockEncryptionButton({ state, disabled }: { state: SyncEncrypt
   };
   return <>
     <SettingsButton disabled={disabled || !state.canUnlock} onClick={() => { validation.resetErrors(); setOpen(true); }}>{copy.unlock}</SettingsButton>
-    <Dialog open={open} onOpenChange={value => { if (!value) cancel(); }}><DialogContent>
-      <DialogHeader><DialogTitle>{copy.title}</DialogTitle><DialogDescription>{copy.description}</DialogDescription></DialogHeader>
+    <Dialog open={open} onOpenChange={value => { if (!value) cancel(); }}><AppDialogContent>
+      <AppDialogHeader title={copy.title} description={copy.description}/>
       <form ref={form} onSubmit={submit} className="space-y-5">
         <EncryptionFields mode="unlock" disabled={busy} errors={validation.errors} onEdit={validation.editField} />
-        <DialogFooter><Button type="button" variant="outline" onClick={cancel}>{copy.cancel}</Button>
-          <Button type="submit" disabled={busy || !state.canUnlock}>{busy ? copy.unlocking : copy.unlock}</Button></DialogFooter>
+        <AppDialogFooter><AppDialogCancel type="button" onClick={cancel}>{copy.cancel}</AppDialogCancel>
+          <Button type="submit" size="pill" disabled={busy || !state.canUnlock}>{busy && <Spinner />}{copy.unlock}</Button></AppDialogFooter>
       </form>
-    </DialogContent></Dialog>
+    </AppDialogContent></Dialog>
   </>;
 }

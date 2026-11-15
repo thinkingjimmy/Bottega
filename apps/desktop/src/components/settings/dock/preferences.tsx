@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on React, the desktop i18n provider, Settings primitives, the shared Select control and a native range, the Dock settings store with optimistic preferences, and the Dock local-state defaults.
- * [OUTPUT]: Provides `DockDisplaySettings` (mode selection, main-owned display directory, three edges and exception-only status), `DockAppearance` (visibility, handle, size 75–150 %, coexistence fallback), `DockBehavior` (keyboard shortcut recorder with key caps, open Apps for the current mode, privacy mask, Accessibility for restoring minimized windows) plus the pure `acceleratorProblem` / `acceleratorGlyphs` / `acceleratorFromEvent` helpers.
+ * [OUTPUT]: Provides `DockDisplaySettings` (mode selection, main-owned display directory, a three-edge segmented control and an exception-only status row inside the same card whose actions match its message), `DockAppearance` (visibility, handle, size 75–150 %, coexistence fallback), `DockBehavior` (keyboard shortcut recorder with key caps, open Apps for the current mode, privacy mask, Accessibility for restoring minimized windows) plus the pure `acceleratorProblem` / `acceleratorGlyphs` / `acceleratorFromEvent` helpers.
  * [POS]: settings/dock preference sections; pending requests lock controls while edge radios retain keyboard focus; display selections keep the last main-confirmed value.
  */
 
 import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { PanelBottom, PanelLeft, PanelRight } from "lucide-react";
+import { Info, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@ai-chat/ui/components/ui/select";
 import { SettingsBadge, SettingsButton, SettingsList, SettingsRow, SettingsSection, SettingsSwitch } from "../settings-layout";
 import { dockSettingsStore, effectivePreferences, type DockSettingsState } from "@/lib/platform/system-dock-settings-client";
@@ -209,8 +209,16 @@ export function DockDisplaySettings({ state, onSwitchToReplace }: { state: DockS
     if (!messages.includes(message)) messages.push(message);
   }
   if (state.pending === "preference" && state.optimistic?.displaySelection) messages.push(t("systemDock.placement.pendingHint"));
-  const canRestore = saved.displayId !== null || saved.preferExternal;
-  const offerHandle = placement.sharedEdge || (placement.presentation === "hidden" && placement.hiddenBy === "autohide");
+  // Each action must answer the message it sits beside: restoring the main display only helps when the chosen display is the problem.
+  const displayIssue = (!inactive && (placement.reason === "unavailable" || placement.reason === "target-changed")) || (placement.reason === "no-space" && Boolean(effective));
+  const canRestore = displayIssue && (saved.displayId !== null || saved.preferExternal);
+  const autohide = prefs.visibility === "autohide";
+  const offerReach = autohide && (placement.sharedEdge || (placement.presentation === "hidden" && placement.hiddenBy === "autohide"));
+  const actions = [
+    canRestore && <SettingsButton key="primary" variant="outline" disabled={disabled} onClick={() => void set({ displaySelection: { kind: "primary" } })}>{t("systemDock.placement.primary")}</SettingsButton>,
+    offerReach && !prefs.showHandle && <SettingsButton key="handle" variant="outline" disabled={disabled} onClick={() => void set({ showHandle: true })}>{t("systemDock.settings.showHandle")}</SettingsButton>,
+    offerReach && placement.sharedEdge && <SettingsButton key="pinned" variant="outline" disabled={disabled} onClick={() => void set({ visibility: "pinned" })}>{t("systemDock.settings.visibilityPinned")}</SettingsButton>,
+  ].filter(Boolean);
   return <SettingsSection title={t("systemDock.placement.title")}>
     <SettingsList>
       {snapshot.state.enabled && <SettingsRow label={t("systemDock.settings.modeLabel")} htmlFor="dock-mode"
@@ -234,11 +242,12 @@ export function DockDisplaySettings({ state, onSwitchToReplace }: { state: DockS
             </div>
           </SelectContent>
         </Select>} />
-      <SettingsRow label={t("systemDock.placement.edge")} control={<div role="radiogroup" aria-label={t("systemDock.placement.edge")} className="flex gap-2">
+      {/* A segmented control, like the system Dock's own Position setting, at the height of the neighbouring Selects. */}
+      <SettingsRow label={t("systemDock.placement.edge")} control={<div role="radiogroup" aria-label={t("systemDock.placement.edge")} className="inline-flex h-9 rounded-lg bg-muted p-[3px]">
         {EDGES.map((edge) => {
           const Icon = EDGE_ICONS[edge];
           return <button key={edge} id={`dock-edge-${edge}`} type="button" role="radio" aria-checked={prefs.edge === edge} aria-disabled={disabled}
-            className={`flex min-w-20 flex-col items-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50 ${prefs.edge === edge ? "border-foreground bg-foreground/5" : disabled ? "border-border" : "border-border hover:bg-muted"}`}
+            className={`inline-flex min-w-16 cursor-pointer items-center justify-center gap-1.5 rounded-md px-3 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring aria-disabled:cursor-not-allowed aria-disabled:opacity-50 ${prefs.edge === edge ? "bg-background font-medium text-foreground shadow-sm dark:bg-input/40" : disabled ? "text-muted-foreground" : "text-muted-foreground hover:text-foreground"}`}
             onKeyDown={(event) => {
               const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : 0;
               if (!direction) return;
@@ -248,17 +257,18 @@ export function DockDisplaySettings({ state, onSwitchToReplace }: { state: DockS
               document.getElementById(`dock-edge-${next}`)?.focus();
               void set({ edge: next });
             }} tabIndex={prefs.edge === edge ? 0 : -1} onClick={() => { if (!disabled) void set({ edge: edge as DockEdge }); }}>
-            <Icon className="size-6" aria-hidden="true" /><span>{t(edge === "left" ? "systemDock.placement.left" : edge === "right" ? "systemDock.placement.right" : "systemDock.placement.bottom")}</span>
+            <Icon className="size-4" aria-hidden="true" /><span>{t(edge === "left" ? "systemDock.placement.left" : edge === "right" ? "systemDock.placement.right" : "systemDock.placement.bottom")}</span>
           </button>;
         })}
       </div>} />
-    </SettingsList>
-    {messages.length > 0 && <div data-placement-status="" className="space-y-2 text-sm text-muted-foreground" role="status" aria-live="polite">
-      {messages.map((message) => <p key={message}>{message}</p>)}
-      {(canRestore || (offerHandle && !prefs.showHandle)) && <div className="flex flex-wrap gap-2">
-        {canRestore && <SettingsButton variant="outline" disabled={disabled} onClick={() => void set({ displaySelection: { kind: "primary" } })}>{t("systemDock.placement.primary")}</SettingsButton>}
-        {offerHandle && !prefs.showHandle && <SettingsButton variant="outline" disabled={disabled} onClick={() => void set({ showHandle: true })}>{t("systemDock.settings.showHandle")}</SettingsButton>}
+      {/* Status is the last row of the same card, with its fixes on the right like any other row control. */}
+      {messages.length > 0 && <div data-placement-status="" className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3" role="status" aria-live="polite">
+        <div className="flex min-w-0 flex-1 basis-48 gap-2.5">
+          <Info className="mt-px size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="min-w-0 space-y-1 text-xs leading-normal text-muted-foreground">{messages.map((message) => <p key={message}>{message}</p>)}</div>
+        </div>
+        {actions.length > 0 && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
       </div>}
-    </div>}
+    </SettingsList>
   </SettingsSection>;
 }

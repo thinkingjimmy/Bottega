@@ -311,6 +311,7 @@ function LocalChatRoute({ surfaceVisible = true, cloudFacts = false, renderPage 
 
   const header = (
     <DesktopWorkspaceHeader
+      showDivider={false}
       title={headerTitle}
       icon={
         summary && panelAllowed ? (

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Controlled preference, localized choices and a host persistence callback.
- * [OUTPUT]: SettingsPreferenceSelect with shared theme/language geometry and optional locale flags.
+ * [OUTPUT]: SettingsPreferenceSelect with shared theme/language geometry, optional locale flags, and a trigger the host may restyle or detach from a row description.
  * [POS]: Settings control presentation shared by Cloud Electron and Web.
  */
 import {
@@ -29,6 +29,8 @@ export function SettingsPreferenceSelect({
   value,
   options,
   disabled,
+  className,
+  describedBy = `${id}-description`,
   onValueChange,
 }: {
   id: string;
@@ -36,6 +38,9 @@ export function SettingsPreferenceSelect({
   value: string;
   options: readonly PreferenceOption[];
   disabled?: boolean;
+  className?: string;
+  /** The row description the trigger points at; null when it stands alone outside a Settings row. */
+  describedBy?: string | null;
   onValueChange(value: string): void;
 }) {
   const selected = options.find((option) => option.value === value);
@@ -45,8 +50,9 @@ export function SettingsPreferenceSelect({
       <SelectTrigger
         id={id}
         aria-label={label}
-        aria-describedby={`${id}-description`}
+        aria-describedby={describedBy ?? undefined}
         size="lg"
+        className={className}
       >
         <SelectValue>
           {selected && <OptionLabel option={selected} />}

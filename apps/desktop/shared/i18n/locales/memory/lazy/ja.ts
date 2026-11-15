@@ -41,11 +41,9 @@ export const memoryLazyJa: typeof memoryLazyEn = {
     connectTitle: "モデルを接続", connectDescription: "OpenAI 互換のモデルがあなたの書いたメッセージを読み、覚えておく価値のある内容を抽出します。キーはこの Mac に保存されます。", connectSubmit: "サービスを開始",
     draftKept: "閉じても、正常に適用されるまで下書きは保持されます。",
     row: {
-      notSetUp: "未設定",
       installing: "インストール中",
       installed: "インストール済み",
       failed: "インストール失敗",
-      description: "過去の会話から大切なことを覚えておき、関連するときに呼び戻します。この Mac 上で小さなサービスを実行します。",
       installingDescription: "{{provider}} をインストール中です。バックグラウンドで続行されるので、設定は後から完了できます。",
       connectDescription: "{{provider}} {{version}} はインストール済みです。モデルを接続すると記憶を始めます。",
       failedDescription: "{{provider}} のインストールが完了しませんでした。もう一度設定して再試行してください。",
@@ -53,8 +51,13 @@ export const memoryLazyJa: typeof memoryLazyEn = {
       showProgress: "進捗を表示",
       connect: "接続…",
     },
+
+    guide: {
+      title: "会話をまたいで大切なことを覚える",
+      description: "Memory はこの Mac 上で小さなサービスを動かし、関連する事実を新しいチャットに持ち込みます。使うモデルと読み取り範囲はあなたが選べます。",
+      action: "Memory を設定…",
+    },
     notes: {
-      title: "始める前に",
       localTerm: "この Mac から出ません",
       localDetail: "メモリー本体がこのコンピューターの外に出ることはありません。ランタイムとデータのフォルダは分かれています。",
       modelTerm: "記憶の抽出にはモデルが必要です",
@@ -70,7 +73,7 @@ export const memoryLazyJa: typeof memoryLazyEn = {
   version: { historyTitle: "最近のインストール", loading: "バージョン一覧を読み込み中…", confirmTitle: "{{provider}} を {{version}} に切り替えますか？", listStale: "読み込み中にランタイムが変化したため、この一覧は古くなっています。もう一度お試しください。", description: "選択した release を厳密に導入し、準備完了後だけ last-known-good に更新します。", current: "現在", locked: "推奨", latest: "最新", yanked: "撤回済み", selected: "選択版", currentYanked: "現在の release は撤回済みです。維持または明示的に切り替えてください。", downgradeWarning: "ダウングレードです。データは残りますが互換性が変わる場合があります。", unverifiedWarning: "このリリースは製品で検証されていません。既存データは残りますが、互換性が変わる場合があります。", catalogStaleWarning: "バージョンメタデータを更新できず、キャッシュが古い可能性があります。", catalogValidationWarning: "PyPI の公開バージョンとインストール可能一覧が一致しないため、一覧を基準にしています。", listFailed: "バージョン一覧を読み込めませんでした。もう一度お試しください。", switchFailed: "バージョンを切り替えられませんでした。ランタイムエラーを確認して再試行してください。", runningInBackground: "切り替えはバックグラウンドで続行します。このダイアログを閉じて Memory ページで進捗を確認できます。", confirm: "バージョンを切り替え", action: "バージョンを選択", available: "{{version}} に更新可能", check: "更新を確認" },
   runtime: {
     modelTransferAria: "モデルのダウンロード進捗", modelTransfer: "{{received}} / {{total}} MiB", modelRecovered: "モデル検証に失敗したため、検証済みコピーを再ダウンロードしています。", interruptedInstall: "所有権の確定前にインストールが中断されました。再試行で安全に置換します。", versionIntentRecoveryRequired: "{{version}} への切り替えは候補版の検証前に中断されました。修復すると last-known-good に戻ります。", versionCandidateAwaitingReadiness: "{{version}} はインストール済みですが未検証です。必要な設定を送信すると準備完了を確認して昇格します。", identityRepair: "管理ファイルはありますが manifest がありません。ownership marker から識別情報を復元します。", identityMissing: "製品の所有権 marker がないため、自動では引き継ぎません。",
-    installHeading: "ローカルメモリーサービスをインストール", installPackage: "{{provider}} {{version}} を分離・バージョン固定された Python 環境へインストールします。ソースと検証結果はログに表示されます。", installAutostart: "{{url}} でログイン時に自動起動し、クラッシュ後に再起動します。", installStorage: "メモリー在庫はローカルに残ります。抽出には設定したモデルサービスを使う場合があります。ランタイムとデータは別ディレクトリです。", installAction: "インストール", managedNeedsConfig: "{{provider}} {{version}} はインストール済みで抽出認証情報を待っています。送信後に自動起動を登録して開始します。", repairAction: "インストールを修復", repairTitle: "{{provider}} のインストールを修復しますか？", repairDescription: "サービスを一時停止し、現在の管理対象ランタイムを再インストールします。メモリーデータ、抽出設定、インストール識別情報は保持され、完了後にサービスが再起動します。", running: "処理中…", openRunning: "メモリーの実行状況を開く", retryInstall: "インストールを再試行", unsupported: "このプラットフォームはワンクリックインストールに対応していません。", versionMismatch: "{{installed}} がインストールされていますが、このアプリは {{locked}} に固定されています。利用できますが更新を推奨します。", stepFailed: "{{step}} に失敗：", configModified: "{{file}} は手動で変更されています", configModifiedDetail: "再生成すると製品管理へ戻ります。手動管理を採用した場合はファイル内のキーとモデルを直接編集します。", regenerate: "再生成", adoptManual: "手動管理にする", manualDetail: "設定は手動管理です。製品はこのファイルを書き換えません。", steps: "手順 {{current}}/{{total}}", preparing: "準備中", upgradeTo: "{{version}} へ更新", recheck: "再確認", downloadHint: "依存関係のダウンロードに数分かかる場合があります", errorLog: "エラーログ", hideLog: "ログを隠す", showLog: "ログを表示", configureAction: "抽出モデルを設定", configDialogTitle: "{{provider}} を設定", retainBlank: "空欄のままなら現在の値を保持します", draftRetained: "閉じた場合や再起動に失敗した場合も入力はメモリー内に保持され、適用成功後にだけ消去されます。", submitRestart: "送信してサービスを再起動", savingConfig: "保存中…", configSaveFailed: "抽出モデル設定を保存できませんでした", uninstallTitle: "{{provider}} の管理対象ランタイムを削除しますか？", uninstallDescription: "サービスと自動起動を停止し、長期メモリーデータを含む管理対象ランタイムを完全に削除します。使用中ならメモリーを無効にします。", uninstallRetention: "同意記録と Chat は残ります。再インストール後、再構築で保持期間内の承認済み履歴を再抽出できます。", uninstallConfirm: "アンインストールしてデータを削除",
+    installHeading: "ローカルメモリーサービスをインストール", installPackage: "{{provider}} {{version}} を分離・バージョン固定された Python 環境へインストールします。ソースと検証結果はログに表示されます。", installAutostart: "{{url}} でログイン時に自動起動し、クラッシュ後に再起動します。", installStorage: "メモリー在庫はローカルに残ります。抽出には設定したモデルサービスを使う場合があります。ランタイムとデータは別ディレクトリです。", installAction: "インストール", managedNeedsConfig: "{{provider}} {{version}} はインストール済みで抽出認証情報を待っています。送信後に自動起動を登録して開始します。", repairAction: "インストールを修復", repairTitle: "{{provider}} のインストールを修復しますか？", repairDescription: "サービスを一時停止し、現在の管理対象ランタイムを再インストールします。メモリーデータ、抽出設定、インストール識別情報は保持され、完了後にサービスが再起動します。", running: "処理中…", openRunning: "メモリーの実行状況を開く", retryInstall: "インストールを再試行", unsupported: "このプラットフォームはワンクリックインストールに対応していません。", versionMismatch: "{{installed}} がインストールされていますが、このアプリは {{locked}} に固定されています。利用できますが更新を推奨します。", stepFailed: "{{step}} に失敗：", configModified: "{{file}} は手動で変更されています", configModifiedDetail: "再生成すると製品管理へ戻ります。手動管理を採用した場合はファイル内のキーとモデルを直接編集します。", regenerate: "再生成", adoptManual: "手動管理にする", manualDetail: "設定は手動管理です。製品はこのファイルを書き換えません。", steps: "手順 {{current}}/{{total}}", preparing: "準備中", upgradeTo: "{{version}} へ更新", recheck: "再確認", downloadHint: "依存関係のダウンロードに数分かかる場合があります", errorLog: "エラーログ", hideLog: "ログを隠す", showLog: "ログを表示", configureAction: "抽出モデルを設定", configDialogTitle: "{{provider}} を設定", retainBlank: "空欄のままなら現在の値を保持します", draftRetained: "閉じた場合や再起動に失敗した場合も入力はメモリー内に保持され、適用成功後にだけ消去されます。", submitRestart: "送信してサービスを再起動", configSaveFailed: "抽出モデル設定を保存できませんでした", uninstallTitle: "{{provider}} の管理対象ランタイムを削除しますか？", uninstallDescription: "サービスと自動起動を停止し、長期メモリーデータを含む管理対象ランタイムを完全に削除します。使用中ならメモリーを無効にします。", uninstallRetention: "同意記録と Chat は残ります。再インストール後、再構築で保持期間内の承認済み履歴を再抽出できます。", uninstallConfirm: "アンインストールしてデータを削除",
     step: {
       "refresh-version-catalog": "信頼できるバージョン一覧を更新中", "remove-plist": "ログイン時の自動起動を削除中", "remove-venv": "候補環境を削除中", "prepare-toolchain": "固定版 uv ツールチェーンを準備中", "ensure-venv": "Python {{version}} 環境を作成中", "fetch-artifacts": "パッケージをダウンロードして検証中",
       "install-packages": "固定バージョン {{version}} をインストール中（数分かかる場合があります）", "install-packages_selected": "選択したバージョン {{version}} をインストール中（数分かかる場合があります）",

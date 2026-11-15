@@ -1,95 +1,57 @@
 "use client";
 
 /**
- * [INPUT]: Depends on router, Projects and Chats providers, Project sections, SettingsPage, tab navigation, and i18n
- * [OUTPUT]: Provides Project Settings with a persistent heading and retained General, Personalization, and Skills panels
- * [POS]: apps/desktop/src/views/project; The sole `/projects/:projectId/settings` route; keeps the application Sidebar in Library context
+ * [INPUT]: Depends on router, Projects provider, the ProjectSettingsPane navigation state, draft routing, and i18n
+ * [OUTPUT]: Provides ProjectSettingsView — the /projects/:projectId/settings alias that opens the pane, maps ?tab to focus, then restores the previous route
+ * [POS]: Deep-link shim only; Project Settings content lives in the pane and the instructions route
  */
 
-import { Navigate, useParams, useSearchParams } from "react-router";
+import { useEffect, useRef } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 
-import { SettingsPage } from "@/components/page-shell";
-import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { useProjects } from "@/components/providers/projects-provider";
-import { useChats } from "@/components/providers/chats-provider";
-import { ProjectGeneralSection } from "@/components/settings/project/project-general-section";
-import { ProjectInstructionsSection } from "@/components/settings/project/project-instructions-section";
-import { ProjectSkillsSettings } from "@/components/settings/project/skills/settings";
-import { SettingsCanvas } from "@/components/settings/settings-layout";
-import { draftRoute, projectAlive } from "@/lib/chat/drafts/draft-route";
 import {
-  Tabs,
-  TabsTrigger,
-} from "@ai-chat/ui/components/ui/tabs";
-import { AnimatedTabsList, RetainedTabsContent } from "@ai-chat/ui/components/ui/navigation/tabs-motion";
+  useProjectSettingsPane,
+  type ProjectSettingsPaneFocus,
+} from "@/components/providers/navigation/project-settings-pane";
+import { draftRoute, projectAlive } from "@/lib/chat/drafts/draft-route";
 
-const PROJECT_TABS = [
-  "general",
-  "personalization",
-  "skills",
-] as const;
-type ProjectTab = (typeof PROJECT_TABS)[number];
-
-const validTab = (value: string | null): ProjectTab =>
-  value === "extensions" ? "skills"
-    : PROJECT_TABS.includes(value as ProjectTab) ? value as ProjectTab : "general";
+const tabFocus = (tab: string | null): ProjectSettingsPaneFocus => {
+  if (tab === "skills" || tab === "extensions") return "skills";
+  if (tab === "personalization" || tab === "instructions") return "instructions";
+  if (tab === "apps") return "apps";
+  if (tab === "base") return "base";
+  return "general";
+};
 
 export function ProjectSettingsView() {
-  const { t } = useAppTranslation();
   const { projectId = "" } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const navigation = useProjectSettingsPane();
   const { projects, loading } = useProjects();
-  const { chats } = useChats();
   const project = projects.find((candidate) => candidate.id === projectId);
-  const tab = validTab(searchParams.get("tab"));
 
-  if (loading) {
-    return (
-      <SettingsPage width="full" title={<span aria-hidden className="inline-block h-4 w-40 animate-pulse rounded-md bg-muted motion-reduce:animate-none" />}>
-        <SettingsCanvas><div className="h-20 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" /></SettingsCanvas>
-      </SettingsPage>
-    );
-  }
-  if (!project || !projectAlive(project)) return <Navigate to="/" replace />;
+  /* Deep links stay valid: the alias opens the pane with the mapped focus,
+     then replaces itself with the previous non-settings route — or the
+     project draft, or / — so history never keeps a settings entry. */
+  /* 别名是一次性翻译：打开 pane、换掉路由之后，本组件的使命就结束了。
+     ref 挡掉 provider 值变化引发的重放，pane 本身只由这一次决定。 */
+  const handled = useRef(false);
+  useEffect(() => {
+    if (loading || handled.current) return;
+    handled.current = true;
+    if (!project || !projectAlive(project)) {
+      void navigate("/", { replace: true });
+      return;
+    }
+    navigation?.open({
+      projectId: project.id,
+      focus: tabFocus(searchParams.get("tab")),
+      packageFilter: searchParams.get("package") ?? undefined,
+    });
+    void navigate(navigation?.restoreTarget() ?? draftRoute(project.id), { replace: true });
+  }, [loading, project, navigate, navigation, searchParams]);
 
-  const projectChats = chats.filter(
-    (chat) => chat.projectId === project.id && !chat.effectiveArchived
-  );
-  // Navigation stays outside panel lifetimes.
-  return (
-    <Tabs
-      key={project.id}
-      className="flex h-full min-h-0 flex-col gap-0"
-      value={tab}
-      onValueChange={(value) => setSearchParams({ tab: value }, { replace: false })}
-    >
-      <SettingsPage
-        width="full"
-        headingPlacement="page"
-        backHref={draftRoute(project.id)}
-        rail={
-          <div className="mx-3 overflow-x-auto">
-            <AnimatedTabsList value={tab} className="flex w-max min-w-full justify-start border-b border-border group-data-horizontal/tabs:h-10">
-              {PROJECT_TABS.map((value) => (
-                <TabsTrigger className="flex-none cursor-pointer px-3" key={value} value={value}>
-                  {t(`projectSettings.tabs.${value}`)}
-                </TabsTrigger>
-              ))}
-            </AnimatedTabsList>
-          </div>
-        }
-        title={t("projectSettings.title", { name: project.name })}
-      >
-        <RetainedTabsContent className="h-full" value="general" active={tab === "general"}>
-          <ProjectGeneralSection key={project.id} chats={projectChats} project={project} />
-        </RetainedTabsContent>
-        <RetainedTabsContent className="h-full" value="personalization" active={tab === "personalization"}>
-          <ProjectInstructionsSection key={project.id} project={project} />
-        </RetainedTabsContent>
-        <RetainedTabsContent className="h-full" value="skills" active={tab === "skills"}>
-          <ProjectSkillsSettings key={project.id} project={project} />
-        </RetainedTabsContent>
-      </SettingsPage>
-    </Tabs>
-  );
+  return null;
 }

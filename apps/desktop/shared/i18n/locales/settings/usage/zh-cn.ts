@@ -19,7 +19,7 @@ export const settingsUsageZhCN: typeof settingsUsageEn = {
   dailyChart: "最近 {{days}} 天的每日总量",
   shareOfToday: "占今天全部来源 {{total}} 的 {{percent}}",
   loading: "Usage 正在加载",
-  readFailed: "无法读取本机 token 用量，请重试。",
+  readFailed: "无法读取本机 token 用量。",
   noDataTitle: "暂无本机用量数据",
   noDataDetail: "使用对应 CLI 开始一轮对话后，再刷新此页。",
   pricingTitle: "价格估算",
@@ -29,6 +29,8 @@ export const settingsUsageZhCN: typeof settingsUsageEn = {
   pricingRefreshAria: "自动更新 Usage 估算价格",
   pricingRefreshSaveFailed: "Usage 价格更新设置保存失败",
   issues: {
+    showFolder: "显示文件夹",
+    revealFailed: "无法打开日志文件夹。",
     sourceUnreadable: "无法读取它的日志，近期用量可能缺失。请确认日志目录可以读取，然后刷新。",
     filesUnreadable_one: "{{formatted}} 个日志文件无法读取，其中的用量未统计。可点击右上角刷新重试；如仍出现，文件可能已损坏或被占用。",
     filesUnreadable_other: "{{formatted}} 个日志文件无法读取，其中的用量未统计。可点击右上角刷新重试；如仍出现，文件可能已损坏或被占用。",

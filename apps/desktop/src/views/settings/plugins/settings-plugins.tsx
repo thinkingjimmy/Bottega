@@ -16,7 +16,7 @@ import { useNavigate } from "react-router";
 import { useWorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
 import { SettingsPage } from "@/components/page-shell";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
-import { SettingsAlert, SettingsButton, SettingsCanvas } from "@/components/settings/settings-layout";
+import { SettingsAlert, SettingsButton, SettingsCanvas, SettingsSection } from "@/components/settings/settings-layout";
 import { openPluginAuthoring } from "@/components/settings/plugins/authoring/open";
 import { pluginText } from "@/components/settings/plugins/copy";
 import { PluginGrid } from "@/components/settings/plugins/grid";
@@ -64,13 +64,13 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
   const [dockSetup, setDockSetup] = useState({ page, open: false });
   if (dockSetup.page !== page) setDockSetup({ page, open: false });
   const setDockSetupOpen = (open: boolean) => setDockSetup({ page, open });
-  const [authoringError, setAuthoringError] = useState("");
   const authoringBusy = useRef(false);
   const openAuthoring = (id: string) => {
     if (authoringBusy.current) return;
-    authoringBusy.current = true; setAuthoringError("");
+    authoringBusy.current = true;
     void openPluginAuthoring(workbench.guiHistory, id).then(route => { settingsNavigation?.close?.(); return navigate(route); })
-      .catch(cause => setAuthoringError(cause instanceof Error ? cause.message : String(cause)))
+      /* Authoring only exists in development builds; a failure stays in the log, never as an alert (plugins-authoring-error). */
+      .catch(cause => console.error("plugin authoring failed", cause))
       .finally(() => { authoringBusy.current = false; });
   };
   const plugins = usePluginList(bridge);
@@ -97,7 +97,7 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
   const view = target?.view ?? null;
   const name = plugin ? pluginText(plugin.name, workbench) : "";
 
-  if(summary&&!native&&!hostPackageId)return <SettingsPage><SettingsCanvas><SettingsAlert>{detail.error||platformCopy.loading}</SettingsAlert></SettingsCanvas></SettingsPage>;
+  if(summary&&!native&&!hostPackageId)return <SettingsPage><SettingsCanvas><SettingsAlert title={detail.error||platformCopy.loading} action={detail.error?<SettingsButton variant="outline" onClick={detail.retry}>{copy.retry}</SettingsButton>:undefined}/></SettingsCanvas></SettingsPage>;
 
   if (native && target && !hostPackageId && !isNativeDockPlugin(native) && !(view === "settings" && plugin?.hasSettings)) {
     return <SettingsPage><SettingsCanvas><div className="mb-5"><SettingsButton data-plugin-back="" variant="ghost" onClick={()=>onOpenPlugin(null)}><ArrowLeft className="size-3.5"/>{copy.back}</SettingsButton></div>
@@ -110,8 +110,8 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
       unsupported={plugin?.availability.state === "unsupported"} />;
   }
   const alerts = <>
-    {switching.failed && <SettingsAlert>{switching.failed}</SettingsAlert>}
-    {authoringError && <SettingsAlert>{authoringError}</SettingsAlert>}
+    {switching.failed && <SettingsAlert title={switching.failed.message}
+      action={<SettingsButton variant="outline" onClick={() => { const failed = switching.failed; if (failed) void switching.toggle(failed.retry.plugin, failed.retry.enabled); }}>{copy.retry}</SettingsButton>}/>}
   </>;
   const dialogs = <>
     {switching.dialog}
@@ -155,18 +155,39 @@ export function PluginsSettingsView({ bridge = pluginsBridge(), computerName, ta
     );
   }
 
+  /* S17: exactly two sections — cards that can be turned off (switch) and cards that
+     cannot (their reason as a muted badge in the switch slot). The Dock card sits in
+     whichever section its own turnOff says, not where its unified entry happens to land. */
+  const dockPlugin = plugins?.find(item => item.id === "dock");
+  const dockArgs = { plugin: dockPlugin, switching, onSetup: setup };
+  const canTurnOff = (item: (typeof unified.items)[number]) =>
+    isNativeDockPlugin(item) && dockPlugin ? dockPlugin.turnOff.allowed : !item.manifest.essential;
+  const offUnified = unified.items.filter(canTurnOff);
+  const onUnified = unified.items.filter(item => !canTurnOff(item));
+  const listed = plugins?.filter(item => !/^sha256:[a-f0-9]{64}$/.test(item.id) && !index.items.some(native => native.manifest.id === item.id || native.manifest.id === `bottega.${item.id}`));
+  const offPlugins = listed?.filter(item => item.turnOff.allowed) ?? [];
+  const onPlugins = listed?.filter(item => !item.turnOff.allowed) ?? [];
+  const gridProps = { workbench, state: switching.state, onOpen: (item: PluginView) => openAbout(item.id), onToggle: switching.toggle, onSetup: setup };
   return (
-    <SettingsPage title={copy.sidebarAll} actions={<PluginAddMenu locale={locale} onNew={()=>openAuthoring("")} onInstalled={openAbout}/>}>
+    <SettingsPage title={copy.sidebarAll} description={copy.description} actions={<PluginAddMenu locale={locale} onNew={()=>openAuthoring("")} onInstalled={openAbout}/>}>
       <SettingsCanvas>
         {alerts}
-        <div className="flex flex-col gap-5">
-          <p className="text-pretty text-muted-foreground text-sm">{copy.description}</p>
-          {unified.page?.safeMode && <SettingsAlert tone="warn">{platformCopy.safeMode}<SettingsButton variant="ghost" onClick={()=>openAbout(unified.page!.safeMode!.pluginId)}>{platformCopy.details}</SettingsButton></SettingsAlert>}
-          {unified.error && <SettingsAlert>{platformCopy.loadFailed}<SettingsButton variant="ghost" onClick={()=>void unified.reload()}>{platformCopy.retry}</SettingsButton></SettingsAlert>}
-          <UnifiedPluginCards items={unified.items} locale={locale} workbench={workbench} onOpen={openAbout} dock={{plugin:plugins?.find(item=>item.id==="dock"),switching,onSetup:setup}}/>
+        <div className="flex flex-col gap-8">
+          {unified.page?.safeMode && <SettingsAlert tone="warn" title={platformCopy.safeMode} action={<SettingsButton variant="ghost" onClick={()=>openAbout(unified.page!.safeMode!.pluginId)}>{platformCopy.details}</SettingsButton>}/>}
+          {unified.error && <SettingsAlert title={platformCopy.loadFailed} action={<SettingsButton variant="outline" onClick={()=>void unified.reload()}>{platformCopy.retry}</SettingsButton>}/>}
+          {(offUnified.length > 0 || offPlugins.length > 0 || (listed?.length === 0 && !unified.items.length)) && (
+            <SettingsSection title={copy.canTurnOff}>
+              {offUnified.length > 0 && <UnifiedPluginCards items={offUnified} locale={locale} workbench={workbench} onOpen={openAbout} dock={dockArgs}/>}
+              {plugins && <PluginGrid plugins={offPlugins} {...gridProps} />}
+            </SettingsSection>
+          )}
+          {(onUnified.length > 0 || onPlugins.length > 0) && (
+            <SettingsSection title={copy.alwaysOn}>
+              {onUnified.length > 0 && <UnifiedPluginCards items={onUnified} locale={locale} workbench={workbench} onOpen={openAbout} dock={dockArgs}/>}
+              <PluginGrid plugins={onPlugins} {...gridProps} />
+            </SettingsSection>
+          )}
           {unified.page?.nextCursor && <SettingsButton variant="outline" disabled={unified.busy} onClick={()=>void unified.reload(true)}>{platformCopy.more}</SettingsButton>}
-          {plugins && <PluginGrid plugins={plugins.filter(item=>!/^sha256:[a-f0-9]{64}$/.test(item.id)&&!index.items.some(native=>native.manifest.id===item.id||native.manifest.id===`bottega.${item.id}`))} workbench={workbench} state={switching.state}
-            onOpen={item => openAbout(item.id)} onToggle={switching.toggle} onSetup={setup} />}
         </div>
       </SettingsCanvas>
       {dialogs}

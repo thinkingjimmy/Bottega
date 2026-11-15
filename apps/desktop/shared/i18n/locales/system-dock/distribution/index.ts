@@ -19,17 +19,17 @@ const translations = {
     "recover": "Repair from this build"
   },
   "zh-CN": {
-    "description": "浏览 Bottega 发布的官方 Widget。",
+    "description": "浏览 Bottega 发布的官方小组件。",
     "unavailable": "官方目录暂时不可用。",
-    "empty": "暂无可下载的 Widget。",
+    "empty": "暂无可下载的小组件。",
     "update": "更新",
     "installedVersion": "已安装 · {{version}}",
     "minimum": "需要 Bottega {{version}} 或更高版本。",
     "runtime": "此 Mac 无法运行可用版本。",
-    "contract": "可用版本需要其他 Widget 数据接口。",
-    "downloadFailed": "下载 Widget 失败。请重试。",
-    "verificationFailed": "校验 Widget 失败。请重试。",
-    "installFailed": "安装 Widget 失败。请重试。",
+    "contract": "可用版本需要其他小组件数据接口。",
+    "downloadFailed": "下载小组件失败。请重试。",
+    "verificationFailed": "校验小组件失败。请重试。",
+    "installFailed": "安装小组件失败。请重试。",
     "recover": "使用随包版本修复"
   },
   "ja": {

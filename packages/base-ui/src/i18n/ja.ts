@@ -197,7 +197,6 @@ export const basesJa: BasesCatalog = {
     uploadCancelled: "アップロードをキャンセルしました。入力内容は保持されています。",
     uploading: "画像をアップロード中…",
     cancelUpload: "アップロードをキャンセル",
-    saving: "保存中…",
     leaveTitle: "変更を破棄しますか？",
     leaveDescription: "このフォームの変更はまだ保存されていません。",
     discard: "変更を破棄",

@@ -1,0 +1,45 @@
+/* [INPUT]: Panel Dock tokens, the DocumentDetail markup and its `data-backdrop` attribute.
+ * [OUTPUT]: Document styling: a tinted hero card with a large light value, a row list with gradient range bars on one shared scale, and reading tiles.
+ * [POS]: Lazy stylesheet of panel/views/detail/custom/document.tsx; not part of the eager panel CSS budget.
+ */
+.dock-document { display: grid; gap: 8px; padding: 8px; font-variant-numeric: tabular-nums;
+  /* Deep enough at the top for small white text (≥ 4.5:1); the lighter end only sits behind the large value. */
+  --sky-top: #1f5fa8; --sky-bottom: #4a8bd1; }
+.dock-document[data-backdrop="cloudy"] { --sky-top: #2c5c92; --sky-bottom: #6a93c0; }
+.dock-document[data-backdrop="fog"] { --sky-top: #57606b; --sky-bottom: #8c949d; }
+.dock-document[data-backdrop="rain"] { --sky-top: #34404f; --sky-bottom: #5d6c80; }
+.dock-document[data-backdrop="snow"] { --sky-top: #4f6178; --sky-bottom: #8496ad; }
+.dock-document[data-backdrop="storm"] { --sky-top: #252a36; --sky-bottom: #4a5163; }
+
+.document-sky { display: grid; justify-items: center; gap: 2px; padding: 18px 12px 16px; border-radius: 14px; color: #fff; text-align: center;
+  background: linear-gradient(180deg, var(--sky-top), var(--sky-bottom)); text-shadow: 0 1px 2px rgb(0 0 0 / 0.18); }
+.document-sky p, .document-sky h2 { margin: 0; }
+.document-sky-title { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 600; }
+.document-sky-value { font-size: 60px; font-weight: 250; line-height: 1; letter-spacing: -0.04em; padding-left: 0.12em; }
+.document-sky-caption { font-size: 13px; font-weight: 500; }
+.document-sky-range { display: flex; gap: 10px; font-size: 13px; font-weight: 500; }
+.document-sky-range span { display: inline-flex; align-items: center; gap: 1px; }
+.document-sky-range svg { width: 12px; height: 12px; }
+
+.document-rows { display: grid; margin: 0; padding: 4px 12px; list-style: none; border-radius: 12px; background: var(--surface-raised); box-shadow: inset 0 0 0 0.5px var(--line); }
+.document-rows li { display: grid; grid-template-columns: minmax(0, 4.5em) 20px 2.4em minmax(40px, 1fr) 2.4em; align-items: center; gap: 10px; min-height: 40px; }
+.document-rows li + li { border-top: 0.5px solid var(--line); }
+.document-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.document-rows .summary-icon { width: 18px; height: 18px; }
+.document-row-icon { width: 18px; height: 18px; }
+.document-row-low { color: var(--muted); text-align: right; }
+.document-row-high { text-align: left; font-weight: 500; }
+.document-row-bar { position: relative; height: 4px; border-radius: 2px; background: var(--ring-track); }
+.document-row-bar::after { content: ""; position: absolute; inset: 0 var(--to) 0 var(--from); border-radius: inherit; background: linear-gradient(90deg, #5ac8fa, #ffd60a 55%, #ff9f0a); }
+
+.document-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 0; }
+.document-tiles div { padding: 10px 12px; border-radius: 12px; background: var(--surface-raised); box-shadow: inset 0 0 0 0.5px var(--line); }
+.document-tiles dt { color: var(--muted); font-size: 11px; font-weight: 500; }
+.document-tiles dd { margin: 4px 0 0; font-size: 22px; font-weight: 400; line-height: 1.1; }
+.document-source { margin: 0; padding: 0 4px; color: var(--muted); font-size: 11px; }
+
+@media (prefers-contrast: more), (prefers-reduced-transparency: reduce) { .document-sky { text-shadow: none; } }
+@media (forced-colors: active) {
+  .document-sky { background: Canvas; color: CanvasText; border: 1px solid CanvasText; text-shadow: none; }
+  .document-row-bar::after { background: CanvasText; }
+}

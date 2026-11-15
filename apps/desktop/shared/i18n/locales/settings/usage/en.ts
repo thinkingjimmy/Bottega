@@ -18,7 +18,7 @@ export const settingsUsageEn = {
   dailyChart: "Daily totals for the last {{days}} days",
   shareOfToday: "{{percent}} of today’s {{total}} across all sources",
   loading: "Usage is loading",
-  readFailed: "Could not read local token usage. Try again.",
+  readFailed: "Could not read local token usage.",
   noDataTitle: "No local usage data yet",
   noDataDetail: "Start a conversation with the corresponding CLI, then refresh this page.",
   pricingTitle: "Estimated pricing",
@@ -28,6 +28,8 @@ export const settingsUsageEn = {
   pricingRefreshAria: "Automatically update Usage estimated prices",
   pricingRefreshSaveFailed: "Failed to save the Usage price update setting",
   issues: {
+    showFolder: "Show folder",
+    revealFailed: "The log folder could not be opened.",
     sourceUnreadable: "Couldn’t read its logs, so recent usage may be missing. Check that its log folder can be read, then refresh.",
     filesUnreadable_one: "{{formatted}} log file couldn’t be read, so its usage isn’t counted. Refresh to try again; if this persists, the file may be damaged or locked.",
     filesUnreadable_other: "{{formatted}} log files couldn’t be read, so their usage isn’t counted. Refresh to try again; if this persists, the files may be damaged or locked.",

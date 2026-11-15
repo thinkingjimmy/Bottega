@@ -8,10 +8,10 @@
  *        card opens the introduction through its name's stretched button and shows a pointer; keyboard users reach the name and the control as two stops.
  */
 import type { ReactNode } from "react";
-import { Box, Brain, Globe, LoaderCircle, Lock, PanelBottom, PanelsTopLeft, PenTool, Puzzle, Table2 } from "lucide-react";
+import { Box, Brain, Globe, LoaderCircle, PanelBottom, PanelsTopLeft, PenTool, Puzzle, Table2 } from "lucide-react";
 import { formatWorkbench, type WorkbenchCopy } from "@ai-chat/ui/lib/workbench-copy";
 import { cn } from "@ai-chat/ui/lib/utils";
-import { SettingsSwitch } from "@/components/settings/settings-layout";
+import { SettingsBadge, SettingsSwitch } from "@/components/settings/settings-layout";
 import { AgentBackendIcon, backendLabel, isAgentBackendId } from "@/lib/agent/agent-backends";
 import { ReportIssueButton } from "@/components/report-issue-button";
 import type { PluginView } from "@ai-chat/cloud-protocol/contracts/plugins/catalog";
@@ -62,9 +62,10 @@ export function PluginCard({ plugin, workbench, state, onOpen, onToggle, onSetup
     control = <span role="status" className="pointer-events-auto flex items-center gap-1.5 text-muted-foreground text-xs" data-plugin-pending={pending.enabled ? "on" : "off"}>
       <LoaderCircle aria-hidden className="size-3.5 animate-spin" />{pending.enabled ? copy.turningOn : copy.turningOff}</span>;
   } else if (!plugin.turnOff.allowed) {
-    const text = plugin.turnOff.reason === "always-on" ? copy.alwaysOn : plugin.turnOff.reason === "project-scoped" ? copy.projectScopedBadge
+    /* S17: the reason sits in the switch slot as a muted badge — no switch, no lock icon. */
+    const text = plugin.turnOff.reason === "always-on" ? copy.builtIn : plugin.turnOff.reason === "project-scoped" ? copy.projectScopedBadge
       : formatWorkbench(copy.nativeManagedBy, { agent: backendLabel(plugin.managedBy ?? "") });
-    control = <span className="inline-flex items-center gap-1 text-muted-foreground text-xs"><Lock aria-hidden className="size-3" />{text}</span>;
+    control = <SettingsBadge tone="muted">{text}</SettingsBadge>;
   } else if (note === "reinstall") {
     /* Always shown, not only on hover (touch has none); the one thing to do now is tell us. */
     control = <span className="pointer-events-auto"><ReportIssueButton title={formatWorkbench(copy.reinstallIssueTitle, { name })} body={`Plugin: ${name}\nError: plugin-reinstall-required`} /></span>;

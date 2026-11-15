@@ -29,8 +29,8 @@ export function useMemoryClock(intervalMs: number) {
   return now;
 }
 
-export function MemorySettingsFrame({ onAbout, unsupported, actions, notice, children }: MemoryPageOptions & {
-  actions?: ReactNode; notice?: ReactNode; children: ReactNode;
+export function MemorySettingsFrame({ onAbout, unsupported, actions, adornment, notice, aboutInHeader = true, showPluginControl = true, children }: MemoryPageOptions & {
+  actions?: ReactNode; adornment?: ReactNode; notice?: ReactNode; aboutInHeader?: boolean; showPluginControl?: boolean; children: ReactNode;
 }) {
   const { t } = useAppTranslation();
   const supported = useMemoryPlatformSupport();
@@ -39,14 +39,18 @@ export function MemorySettingsFrame({ onAbout, unsupported, actions, notice, chi
   const unavailable = unsupported || supported === false;
   return <div className="h-full" data-plugin-detail={onAbout ? "memory" : undefined} data-plugin-view={onAbout ? "settings" : undefined}>
     <SettingsPage title={onAbout ? t("memory.plugin.name") : t("common.memory")}
-      titleAdornment={onAbout && <SettingsBadge tone="muted">{t("memory.plugin.official")}</SettingsBadge>}
+      titleAdornment={<>
+        {onAbout && <SettingsBadge tone="muted">{t("memory.plugin.official")}</SettingsBadge>}
+        {adornment}
+      </>}
       rail={feedback && <div className="px-3">{feedback}</div>}
       actions={<>
-        {onAbout && <SettingsButton variant="ghost" onClick={onAbout} data-plugin-about-link="">
+        {onAbout && aboutInHeader && <SettingsButton variant="ghost" onClick={onAbout} data-plugin-about-link="">
           {t("memory.plugin.about")}<ArrowUpRight aria-hidden className="size-3.5" />
         </SettingsButton>}
         {!unavailable && actions}
-        {plugin.control}
+        {/* S21: the not-set-up guide face owns no header controls. */}
+        {showPluginControl && plugin.control}
       </>}>
       {unavailable ? <SettingsCanvas><p role="status" data-memory-unsupported="" className="text-sm text-muted-foreground">
         {t("memory.plugin.unsupported")}

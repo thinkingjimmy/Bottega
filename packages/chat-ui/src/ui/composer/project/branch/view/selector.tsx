@@ -7,11 +7,13 @@ import { useRef } from "react";
 import { Check, GitBranch, LoaderCircle, Plus } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Command, CommandInput, CommandItem, CommandList } from "@ai-chat/ui/components/ui/command";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogCancel, AppDialogContent, AppDialogFooter, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@ai-chat/ui/components/ui/popover";
 import { focusIsLost } from "@ai-chat/ui/lib/focus-return";
 import { useCoarsePointer } from "@ai-chat/ui/hooks/use-mobile";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { composerContextButtonClass } from "../../selector";
 import { useBranchSelector, type BranchSelectorProps } from "./controller";
 
@@ -63,16 +65,16 @@ export function BranchSelector(props: BranchSelectorProps) {
       </PopoverContent>
     </Popover>
     <Dialog open={s.createOpen} onOpenChange={next => { if (!s.busy) { s.setCreateOpen(next); if (!next) s.setName(""); } }}>
-      <DialogContent className="gap-5 rounded-3xl p-5 sm:max-w-[25rem]" overlayClassName="bg-black/20">
-        <DialogHeader><DialogTitle className="text-xl font-semibold">{copy.createTitle}</DialogTitle><DialogDescription className="sr-only">{copy.createDescription}</DialogDescription></DialogHeader>
+      <AppDialogContent>
+        <AppDialogHeader title={copy.createTitle} description={copy.createDescription}/>
         <label className="flex flex-col gap-3 text-sm font-medium"><span>{copy.name}</span><Input autoFocus className="h-10 rounded-xl text-sm font-normal max-md:h-11 max-md:text-base"
           placeholder={copy.placeholder} value={s.name} disabled={s.locked} aria-invalid={Boolean(s.createError)} onChange={event => s.setName(event.target.value)}
           onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void s.mutate(); } }} /></label>
         {s.createError && <p role="alert" className="text-xs text-destructive">{s.createError}</p>}
         {s.uncertain && retry}
-        <DialogFooter><Button type="button" size="lg" variant="secondary" className="rounded-xl px-4" disabled={s.busy} onClick={() => { s.setCreateOpen(false); s.setName(""); }}>{copy.close}</Button>
-          <Button type="button" size="lg" className="rounded-xl px-4" disabled={s.locked || !s.name.trim()} onClick={() => void s.mutate()}>{s.busy ? copy.creating : copy.createAndCheckout}</Button></DialogFooter>
-      </DialogContent>
+        <AppDialogFooter><AppDialogCancel type="button" disabled={s.busy} onClick={() => { s.setCreateOpen(false); s.setName(""); }}>{copy.close}</AppDialogCancel>
+          <Button type="button" size="pill" disabled={s.locked || !s.name.trim()} onClick={() => void s.mutate()}>{s.busy && <Spinner />}{copy.createAndCheckout}</Button></AppDialogFooter>
+      </AppDialogContent>
     </Dialog>
   </>;
 }

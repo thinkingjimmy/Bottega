@@ -8,7 +8,7 @@ import { useRef, useState } from "react";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { useAppTranslation } from "@/components/providers/preferences/i18n-provider";
 import { useArchiveConfettiPreference } from "@/components/sidebar/archive/archive-preference";
-import { SettingsButton, SettingsRow, SettingsSwitch } from "../settings-layout";
+import { SettingsRow, SettingsSwitch } from "../settings-layout";
 import { settingsStore } from "@/lib/settings/store/settings-store";
 
 export function ArchiveConfettiRow() {
@@ -27,6 +27,7 @@ export function ArchiveConfettiRow() {
       t("settings.general.saveArchiveConfettiFailed"),
       { errorScope: "local" }
     );
+    /* A failed save leaves the stored value in place: the switch snaps back and the row reports it (S20 r3). */
     setRetryValue(saved ? null : archiveConfettiEnabled);
     pending.current = false;
     setSaving(false);
@@ -34,16 +35,14 @@ export function ArchiveConfettiRow() {
   return <SettingsRow
     label={t("settings.general.archiveConfetti")}
     htmlFor="archive-confetti"
+    error={retryValue !== null ? {
+      message: t("settings.general.saveArchiveConfettiFailed"),
+      onRetry: () => void save(retryValue),
+    } : undefined}
     description={<>
       {t("settings.general.archiveConfettiDescription")}
       {settings?.archiveConfettiEnabled && reducedMotion && <span className="mt-1 block">
         {t("settings.general.archiveConfettiReducedMotion")}
-      </span>}
-      {retryValue !== null && <span role="alert" className="mt-1 block text-destructive">
-        {t("settings.general.saveArchiveConfettiFailed")}{" "}
-        <SettingsButton variant="link" onClick={() => void save(retryValue)}>
-          {t("settings.general.settingsRetry")}
-        </SettingsButton>
       </span>}
     </>}
     control={settings ? <SettingsSwitch

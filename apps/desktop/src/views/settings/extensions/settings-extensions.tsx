@@ -51,14 +51,9 @@ import {
 import { errorMessage } from "@ai-chat/ui/lib/errors";
 
 export function ExtensionsSettingsView() {
-  const { t } = useAppTranslation();
-  return (
-    <SettingsPage title={t("settings.extensions.page.title")}>
-      <SettingsCanvas>
-        <ExtensionsContent />
-      </SettingsCanvas>
-    </SettingsPage>
-  );
+  /* S14: the one "Installed" section became the page itself — its description is the page
+     description and the install action is the header primary, so the body owns the page chrome. */
+  return <ExtensionsContent />;
 }
 
 export function ExtensionsContent({
@@ -211,28 +206,42 @@ export function ExtensionsContent({
   };
 
   return (
-    <>
+    <SettingsPage
+      title={t("settings.extensions.page.title")}
+      description={t("settings.extensions.page.installedDescription")}
+      actions={(
+        <SettingsButton
+          disabled={busy || bridgeMissing || !authorityReady}
+          onClick={beginInstall}
+          variant="outline"
+        >
+          <Plus className="size-4" />
+          {t("settings.extensions.page.installGithub")}
+        </SettingsButton>
+      )}
+    >
+      <SettingsCanvas>
       <div className="space-y-8">
         {snapshot?.productSessionAdmissionClosed && (
           <SettingsAlert tone="warn">
             {t("settings.extensions.page.admissionClosed")}
           </SettingsAlert>
         )}
-        <SettingsSection
-          action={(
-            <SettingsButton
-              disabled={busy || bridgeMissing || !authorityReady}
-              onClick={beginInstall}
-              variant="outline"
-            >
-              <Plus className="size-4" />
-              {t("settings.extensions.page.installGithub")}
-            </SettingsButton>
-          )}
-          alert={alert || undefined}
-          description={t("settings.extensions.page.installedDescription")}
-          title={t("settings.extensions.page.installedTitle")}
-        >
+        {alert && (
+          <SettingsAlert
+            action={
+              <SettingsButton
+                variant="outline"
+                onClick={() => void refresh().catch(() => undefined)}
+              >
+                {t("common.retry")}
+              </SettingsButton>
+            }
+          >
+            {alert}
+          </SettingsAlert>
+        )}
+        <div>
           {!authorityReady ? (
             <div
               aria-live="polite"
@@ -301,7 +310,7 @@ export function ExtensionsContent({
               title={t("settings.extensions.page.emptyTitle")}
             />
           )}
-        </SettingsSection>
+        </div>
 
         {authorityReady && snapshot!.retainedInstallData.some(record => record.adapterId !== "bottega-host-package-1") && (
           <SettingsSection
@@ -339,7 +348,8 @@ export function ExtensionsContent({
           source={authorityReady ? install : null}
         />
       )}
-    </>
+      </SettingsCanvas>
+    </SettingsPage>
   );
 }
 

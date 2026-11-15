@@ -16,6 +16,7 @@ export function readingValueText(value:unknown,locale:string,format?:string):str
  if(value===null||value===undefined||typeof value==='object')return '—';
  if(typeof value==='number'){
   if(!Number.isFinite(value))return '—';
+  if(format==='degrees')return `${Math.round(value)}°`;
   if(format==='percent')return new Intl.NumberFormat(locale,{style:'percent',maximumFractionDigits:0}).format(value/100);
   if(format==='currency')return new Intl.NumberFormat(locale,{style:'currency',currency:'USD',maximumFractionDigits:2}).format(value);
   if(format==='duration'){
@@ -36,6 +37,12 @@ export function readingRecordText(value:unknown,column:Pick<DockColumn,'type'>|u
 export function summaryDescription(node:DockSummaryNode,readings:Readonly<Record<string,DockReading>>,locale:string):string{
  if('children' in node)return node.children.map(child=>summaryDescription(child,readings,locale)).filter(Boolean).join(' · ').slice(0,800);
  if('text' in node)return summaryText(node.text,readings,locale);
+ if(node.type==='icon'&&'label' in node&&node.label)return summaryText(node.label,readings,locale);
+ if(node.type==='columns'){
+  const reading=readings[node.source];if(!readingIsUsable(reading))return '';
+  return (reading?.records??[]).slice(0,node.max).map(record=>[record.values[node.title],record.values[node.value],node.secondary?record.values[node.secondary]:undefined]
+    .map(value=>readingValueText(value,locale,node.format)).filter(text=>text!=='—').join(' ')).filter(Boolean).join(' · ');
+ }
  if(node.type==='progress')return readingIsUsable(readings[node.source])?readingValueText(readings[node.source]?.values[node.field],locale):'—';
  return '';
 }

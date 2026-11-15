@@ -16,7 +16,7 @@ import { rendererIpc } from "../../registration/ipc-registrar";
 import { surfaceWindowController } from "../surfaces/surface-window-controller";
 import type { TrustedRendererContext } from "../surfaces/trusted-renderer-context";
 import { windowRegistry } from "../surfaces/window-registry";
-import { assertUsageRequest, type UsageService } from "../../usage/usage-service";
+import { assertUsageRequest, assertUsageSource, type UsageService } from "../../usage/usage-service";
 
 export function registerUsage(
   window: BrowserWindow,
@@ -40,6 +40,12 @@ export function registerUsage(
     .handle(USAGE_CHANNEL.getSummary, (rawTarget, rawOptions) => {
       const request = assertUsageRequest(rawTarget, rawOptions);
       return usage.getSummary(request.target, { forceRefresh: request.forceRefresh });
+    })
+    .handle(USAGE_CHANNEL.revealSource, async (rawSource) => {
+      const root = usage.sourceRoot(assertUsageSource(rawSource));
+      if (!root) throw new Error("USAGE_SOURCE_UNKNOWN");
+      const error = await shell.openPath(root);
+      if (error) throw new Error(error);
     })
     .handle(USAGE_CHANNEL.replayProgress, () => usage.replayProgress());
   let releaseLimits = () => {};

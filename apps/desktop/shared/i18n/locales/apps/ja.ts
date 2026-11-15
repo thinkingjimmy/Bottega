@@ -8,7 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsJa: typeof appsEn = {
-  catalog: { filter: "プラグインの種類", widgets: "ウィジェット" },
+  catalog: { filter: "プラグインの種類", widgets: "ウィジェット", yours: "あなたの App", starter: "はじめての App", more: "ほかにも試す", feature: "{{name}} から始める", get: "入手", open: "開く", githubTitle: "GitHub リポジトリから", githubSubtitle: "共有された App をインストール", pasteLink: "リンクを貼り付け", addFromGithub: "GitHub からインストール…", addFromGithubHint: "リポジトリのリンクを貼り付けます", build: "Agent に作ってもらう…", buildHint: "ツールを説明してチャットを始めます" },
   dock: {
     pin: "Dock に固定",
     unpin: "Dock から削除",
@@ -81,7 +81,6 @@ export const appsJa: typeof appsEn = {
     savedRefreshFailed: "権限は保存しましたが、パネルを更新できませんでした。",
     saveFailed: "App の承認を保存できませんでした",
     retryRefresh: "更新を再試行",
-    saving: "保存中…",
     addToProject: "Project に追加",
     addToChat: "Chat に追加",
     save: "保存",
@@ -130,11 +129,8 @@ export const appsJa: typeof appsEn = {
       probeFailed: "このリポジトリを確認できませんでした。もう一度お試しください。解決しない場合は作者に問い合わせてください。",
     },
     addFailed: "App を追加できませんでした",
-    checking: "確認中…",
     recheck: "再確認",
     openAgentSettings: "Agent 設定を開く",
-    preflighting: "安全な事前検査中…",
-    submitting: "送信中…",
     downloadAndInstall: "ダウンロードしてインストール",
     blockedDisclosure: "実行 Agent はこの端末で App のインストール、修復、実行を無人で行います。バックエンドは保守アダプターを実装して機能ゲートを通過する必要があります。強制できない境界は、記録されたリスク例外を明示的に承認した場合にのみ利用できます。",
     blockedReadyHint: "機能ゲートを通過した Agent、または明示的なリスク例外を持つ Agent の準備ができると、この入口は自動的に有効になります。",
@@ -178,6 +174,7 @@ export const appsJa: typeof appsEn = {
   },
   failure: {
     recommended: "推奨",
+    otherOptions: "その他のオプション",
     phaseTitle: {
       clone: "ソースの取得に失敗しました",
       manifest: "App マニフェストの読み取りに失敗しました",

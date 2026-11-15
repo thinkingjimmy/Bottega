@@ -21,7 +21,6 @@ export const branchJa = {
     name: "ブランチ名",
     placeholder: "new-branch",
     close: "閉じる",
-    creating: "作成中…",
     createAndCheckout: "作成して切り替える",
     more: "さらに表示",
   retry: "再試行",

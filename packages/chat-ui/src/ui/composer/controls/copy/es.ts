@@ -61,6 +61,7 @@ export const copy = {
       description: "Tu mensaje y sus adjuntos están guardados y todavía no se han enviado.",
       retriedTitle: "El reintento de la sesión original falló",
       retriedDescription: "{{backend}} sigue sin poder abrir la sesión guardada. Tu mensaje y sus adjuntos siguen guardados y no se han enviado.",
+      otherOptions: "Otras opciones",
       recommended: "Recomendado",
       sameSession: "Reintentar la sesión original",
       sameSessionDetail: "Volver a conectar con la sesión original. Si funciona, el agente conserva todo lo que sabe de este chat.",
@@ -86,7 +87,6 @@ export const copy = {
       pendingTitle: "Este turno está pendiente de recuperación",
       pendingDetail: "Recupera o abandona este turno antes de enviar otro mensaje. Puedes seguir consultando tus Chats.",
       review: "Opciones de recuperación",
-      later: "Resolver más tarde",
     },
   userInput: {
     countdown: "{{count}} s",

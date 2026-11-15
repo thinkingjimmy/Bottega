@@ -61,6 +61,7 @@ export const copy = {
       description: "メッセージと添付ファイルは保存済みで、まだ送信されていません。",
       retriedTitle: "元のセッションでの再試行に失敗しました",
       retriedDescription: "{{backend}} は保存されたセッションをまだ開けません。メッセージと添付ファイルは保存されており、まだ送信されていません。",
+      otherOptions: "その他のオプション",
       recommended: "推奨",
       sameSession: "元のセッションで再試行",
       sameSessionDetail: "元のセッションにもう一度つなぎます。成功すればエージェントはこのチャットの文脈をすべて保ったままです。",
@@ -86,7 +87,6 @@ export const copy = {
       pendingTitle: "このターンは復旧待ちです",
       pendingDetail: "次のメッセージを送る前に、このターンを復旧するか中止してください。閲覧は続けられます。",
       review: "復旧方法を確認",
-      later: "後で対応",
     },
   userInput: {
     countdown: "残り {{count}} 秒",

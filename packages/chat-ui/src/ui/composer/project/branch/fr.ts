@@ -21,7 +21,6 @@ export const branchFr = {
     name: "Nom de la branche",
     placeholder: "new-branch",
     close: "Fermer",
-    creating: "Création…",
     createAndCheckout: "Créer et extraire",
     more: "Plus de branches",
   retry: "Réessayer",

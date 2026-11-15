@@ -43,7 +43,7 @@ export function UpdateRow({ icon, name, current, currentLabel, latest, trailing,
         </p>}
         {failure && <div className={cn("mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs", compact && "basis-full")}>
           <span role={failure.tone === "quiet" ? "status" : "alert"} className={failure.tone === "quiet" ? "text-muted-foreground" : "text-destructive"}>{failure.summary}</span>
-          <CollapsibleTrigger className="group flex min-h-5 cursor-pointer items-center gap-0.5 rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40">
+          <CollapsibleTrigger className="group flex min-h-5 cursor-pointer items-center gap-0.5 rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40">
             <span className="group-data-[state=open]:hidden">{t("settings.updates.showDetails")}</span>
             <span className="hidden group-data-[state=open]:inline">{t("settings.updates.hideDetails")}</span>
             <ChevronDown aria-hidden="true" className="size-3 transition-transform group-data-[state=open]:rotate-180 motion-reduce:transition-none" />

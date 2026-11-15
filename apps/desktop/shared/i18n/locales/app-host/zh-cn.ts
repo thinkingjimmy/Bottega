@@ -16,7 +16,6 @@ export const appHostZhCN = {
   "upgrade": "去升级 Bottega",
   "cancel": "暂不安装",
   "recheck": "重新检查",
-  "rechecking": "正在检查…",
   "resumeAfterUpgrade": "升级完成后，可以在 Apps 列表里继续安装。",
   "versionYours": "你的版本",
   "versionRequired": "要求",

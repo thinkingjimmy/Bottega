@@ -1,21 +1,20 @@
 /**
- * [INPUT]: Depends on i18n, the shared AppDialogContent shell and DialogChoice option row, the selected backend's display name, and the chat composer recovery controller
+ * [INPUT]: Depends on i18n, the shared AppDialogContent shell, DialogChoice featured/plain option rows and choice group, Lucide icons, the selected backend's display name, and the chat composer recovery controller
  * [OUTPUT]: Provides a dismissible resume dialog and non-modal recovery entry, with request-scoped pending/error feedback and consequence-aware actions
  * [POS]: conversation/interactions' recovery dialog; closing it leaves the durable turn pending and its recovery entry reachable.
  */
 
 import { useRef } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
+import { Play, RotateCcw, Trash2 } from "lucide-react";
 import {
+  AppDialogAlert,
   AppDialogContent,
+  AppDialogHeader,
   DialogChoice,
+  DialogChoiceGroup,
 } from "@ai-chat/ui/components/ui/app-dialog";
-import {
-  Dialog,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
 import type { ComposerTranslate } from "../../composer/controls/copy/translation";
 export type ResumeFailureController = {
   resumeFailure: { retried: boolean; allowedActions: { sameSession: boolean; freshSession: boolean; abandon: boolean } } | null;
@@ -48,10 +47,13 @@ export function ResumeFailureDialog({
   const leading: ResumeAction =
     retried && allowed?.freshSession ? "freshSession" : "sameSession";
 
+  const isLeading = (key: ResumeAction) => leading === key;
   const sameSession = (
     <DialogChoice
       key="sameSession"
       ref={sameRef}
+      variant={isLeading("sameSession") ? "featured" : "plain"}
+      icon={<Play />}
       title={t(
         retried
           ? "chat.resumeFailure.sameSessionRetry"
@@ -77,6 +79,8 @@ export function ResumeFailureDialog({
     <DialogChoice
       key="freshSession"
       ref={freshRef}
+      variant={isLeading("freshSession") ? "featured" : "plain"}
+      icon={<RotateCcw />}
       title={t("chat.resumeFailure.freshSession")}
       // Keep unavailable actions visible with their reason.
       detail={t(
@@ -110,6 +114,8 @@ export function ResumeFailureDialog({
     </div>
     <Dialog open={controller.resumeFailureOpen} onOpenChange={controller.setResumeFailureOpen}>
       <AppDialogContent
+        /* The × is the only exit here: the choice rows perform the actions and there is no footer Cancel (D6/D14). */
+        showCloseButton
         onCloseAutoFocus={(event) => {
           if (!reopenRef.current?.isConnected) return;
           event.preventDefault();
@@ -123,44 +129,35 @@ export function ResumeFailureDialog({
             ?.current?.focus();
         }}
       >
-        <DialogHeader className="min-h-0 gap-0 overflow-y-auto text-left">
-          <DialogTitle className="text-xl/7 font-semibold">
-            {retried
-              ? t("chat.resumeFailure.retriedTitle")
-              : t("chat.resumeFailure.title", { backend })}
-          </DialogTitle>
-          <DialogDescription className="mt-3 text-[15px]/[1.4] text-muted-foreground">
-            {retried
-              ? t("chat.resumeFailure.retriedDescription", { backend })
-              : t("chat.resumeFailure.description")}
-          </DialogDescription>
-        </DialogHeader>
+        <AppDialogHeader
+          className="min-h-0 overflow-y-auto"
+          title={retried
+            ? t("chat.resumeFailure.retriedTitle")
+            : t("chat.resumeFailure.title", { backend })}
+          description={retried
+            ? t("chat.resumeFailure.retriedDescription", { backend })
+            : t("chat.resumeFailure.description")}
+        />
 
-        <div className="mt-4 grid shrink-0 gap-2">
-          {leading === "freshSession"
-            ? [freshSession, sameSession]
-            : [sameSession, freshSession]}
-          <DialogChoice
-            ref={abandonRef}
-            tone="danger"
-            title={t("chat.resumeFailure.abandon")}
-            detail={t("chat.resumeFailure.abandonDetail")}
-            busy={pending === "abandon"}
-            disabled={pending !== null || !allowed?.abandon}
-            onClick={() => void controller.abandonResumeFailure()}
-          />
+        <div className="mt-4 shrink-0">
+          {leading === "freshSession" ? freshSession : sameSession}
+          <DialogChoiceGroup label={t("chat.resumeFailure.otherOptions")}>
+            {leading === "freshSession" ? sameSession : freshSession}
+            <DialogChoice
+              ref={abandonRef}
+              variant="plain"
+              tone="danger"
+              icon={<Trash2 />}
+              title={t("chat.resumeFailure.abandon")}
+              detail={t("chat.resumeFailure.abandonDetail")}
+              busy={pending === "abandon"}
+              disabled={pending !== null || !allowed?.abandon}
+              onClick={() => void controller.abandonResumeFailure()}
+            />
+          </DialogChoiceGroup>
         </div>
 
-        {error && (
-          <p className="mt-3 shrink-0 text-[13px] text-destructive" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="mt-4 flex justify-end">
-          <Button type="button" variant="ghost" onClick={() => controller.setResumeFailureOpen(false)}>
-            {t("chat.resumeFailure.later")}
-          </Button>
-        </div>
+        {error && <AppDialogAlert className="shrink-0">{error}</AppDialogAlert>}
       </AppDialogContent>
     </Dialog>
     </>

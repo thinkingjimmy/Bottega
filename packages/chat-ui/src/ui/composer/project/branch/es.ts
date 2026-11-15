@@ -21,7 +21,6 @@ export const branchEs = {
     name: "Nombre de la rama",
     placeholder: "new-branch",
     close: "Cerrar",
-    creating: "Creando…",
     createAndCheckout: "Crear y cambiar",
     more: "Más ramas",
   retry: "Reintentar",

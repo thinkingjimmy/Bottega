@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The current Dock panel projection, permitted card slots, privacy state and host action intents.
- * [OUTPUT]: Isolated detail with host-summary fallback, configuration, package recovery and Usage controls.
+ * [OUTPUT]: Isolated detail with host-summary fallback, the lazy public document view, configuration, package recovery and Usage controls.
  * [POS]: The detail frame receives the same official entry as the Dock card with the detail view context.
  */
 import { weatherFailureKey } from '../../../../../../shared/system-dock/widgets/weather/errors';
@@ -14,6 +14,8 @@ import { readingStateKey } from '../../../../common/widgets/readings';
 import { NativeWidgetSlot } from './native';
 import { WidgetDetailActions } from './actions';
 import { WidgetDataCards } from '../../../../common/widgets/data';
+import { lazy, Suspense } from 'react';
+const DocumentDetail = lazy(() => import('./document'));
 
 export function CustomDetail({ itemId }: { itemId: string }) {
   const { snapshot, t, mask, now, send } = usePanel();
@@ -29,7 +31,8 @@ export function CustomDetail({ itemId }: { itemId: string }) {
       {face.summaryErrorCode && <p role="status" className="note">{t(`systemDock.weather.${weatherFailureKey(face.summaryErrorCode)}`)}</p>}
       {face.state !== 'ready' && <p role="status" className="note">{t(readingStateKey(face.state))}</p>}
       {face.activity && <ActivityFace face={face.activity} t={t} mask={false} />}
-      <WidgetDataCards data={detail.data} locale={snapshot.locale} t={t} />
+      {detail.document ? <Suspense fallback={null}><DocumentDetail document={detail.document} readings={face.readings} locale={snapshot.locale} t={t} /></Suspense>
+        : <WidgetDataCards data={detail.data} locale={snapshot.locale} t={t} />}
     </>}
     {detail.updatedAt !== null && !mask && <p className="row-meta">{t('systemDock.panel.updated', { time: relativeTime(detail.updatedAt, now) })}</p>}
   </div>;

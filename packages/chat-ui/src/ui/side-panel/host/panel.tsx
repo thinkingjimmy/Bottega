@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Chat identity, localized shared panel copy, Router takeover history, shared Artifact session tabs, ConversationModel and authority-checked Base resolution.
- * [OUTPUT]: Shared tabbed Artifacts with guarded navigation, active-only previews, explicit full view, composer handoff and retained Base/Plan/subagent state.
+ * [INPUT]: Chat identity and transcript pages, localized shared panel copy, Router takeover history, shared Artifact tabs, ConversationModel and authority-checked Base resolution.
+ * [OUTPUT]: Shared Artifact picker and tabs with guarded navigation, active-only previews, explicit full view, composer handoff and retained Base/Plan/subagent state.
  * [POS]: Shared panel composition with host-owned Base authority, navigation, draft guards and artifact callbacks.
  */
 import { MessageResponse } from "@ai-chat/ui/components/ai-elements/message";
@@ -15,7 +15,9 @@ import { BotIcon, DatabaseIcon, ImageIcon, GlobeIcon, BlocksIcon, FileIcon, Load
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { ArtifactFence } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import type { TranscriptSource } from "../../../platform/contracts";
+import type { TranscriptPage } from "../../../platform/model";
 import type { ArtifactHost } from "../../../artifacts/context";
+import { ArtifactPicker, savedMessageArtifacts } from "../artifact-picker";
 import { ArtifactTab, isArtifactTab, rememberArtifactTab, useArtifactTabs, useArtifactTabChrome } from "../../../artifacts/presentation/tabs";
 import { artifactCopy } from "../../../artifacts/copy";
 import { useConversationModel } from "../../conversation/body/model";
@@ -45,6 +47,23 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   const rememberIntent = useCallback((open: boolean) => memory.rememberOpenIntent(conversationKey(chatId, incarnationId), open), [memory, chatId, incarnationId]);
   const history = services.useHistory(eligible, narrow, memory.readOpenIntent(key), rememberIntent);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [artifactPickerTrigger, setArtifactPickerTrigger] = useState<HTMLButtonElement | null>(null);
+  const readArtifacts = useCallback(async function* (signal: AbortSignal) {
+    if (!head) return;
+    let previous: TranscriptPage | undefined;
+    while (true) {
+      signal.throwIfAborted();
+      const page = await source.page({ chatId, segment: "native", revision: previous?.revision ?? null,
+        generationId: null, beforeSeq: previous?.cursor ?? null, limit: 50 }, signal, head);
+      signal.throwIfAborted();
+      if (page.chatId !== chatId || page.incarnationId !== incarnationId || page.segment !== "native" || page.state !== "ready") throw new Error("Chat transcript unavailable");
+      if (previous && page.revision !== previous.revision) throw new Error("Chat transcript changed");
+      yield [...page.messages].sort((a, b) => b.message.seq - a.message.seq).flatMap(({ message, subagents }) => savedMessageArtifacts(message, subagents));
+      if (page.complete) return;
+      if (page.cursor === null || (previous?.cursor != null && page.cursor >= previous.cursor)) throw new Error("Invalid transcript cursor");
+      previous = page;
+    }
+  }, [source, chatId, incarnationId, head]);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [fullPreviewKey, setFullPreviewKey] = useState<string | null>(null);
   const previewKey = preview ? "workspace" in preview ? preview.workspace.key : preview.planId : null;
@@ -61,7 +80,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   const createFlight = useRef(false), mounted = useRef(true), tabRefs = useRef(new Map<string, HTMLDivElement>());
   const [acceptedBase, setAcceptedBase] = useState(base.target);
   if (base.resolved && acceptedBase?.baseId !== base.target?.baseId) setAcceptedBase(base.target);
-  if (slotKey !== key) { setSlotKey(key); setSlots(memory.readSlots(key, () => true)); setBaseEngaged(false); setAcceptedBase(null); setPreview(null); setSelectedAgent(null); }
+  if (slotKey !== key) { setSlotKey(key); setSlots(memory.readSlots(key, () => true)); setBaseEngaged(false); setAcceptedBase(null); setPreview(null); setSelectedAgent(null); setArtifactPickerTrigger(null); }
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => { if (history.takeover) backRef.current?.focus(); }, [history.takeover]);
   const imageAllowed = useCallback((region: ImageRegion) => {
@@ -155,8 +174,12 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
   };
   const ownerName = services.deviceName, remote = remoteCopy(locale);
   const directory = panelCatalog(copy, slots, remote.onComputer.replace("{name}", ownerName ?? remote.computer), services.capabilities, services.showUnavailableCatalogEntries);
-  const catalog = { ...directory, onOpen: (id: string) => void openCatalog(id), disabledFor: (id: string) => directory.disabledFor(id) || id === "base" && (creating || !base.resolved || base.error) };
+  const catalog = { ...directory, onOpen: (id: string, trigger: HTMLButtonElement) => {
+    if (id === "artifact") setArtifactPickerTrigger(trigger);
+    else void openCatalog(id);
+  }, disabledFor: (id: string) => directory.disabledFor(id) || id === "base" && (creating || !base.resolved || base.error) };
   const visible = history.open && (narrow ? history.takeover : geometry.maxWidth >= SIDE_PANEL_MIN_WIDTH);
+  if (artifactPickerTrigger && (!visible || preview)) setArtifactPickerTrigger(null);
   const items: SidePanelTab[] = slots.tabs.map(id => {
     const identity = decodeImageIdentity(id), image = identity && resolveImage(identity, model.bodies, copy.catalog.image.label);
     const label = isArtifactTab(id) ? artifacts.get(id)?.fence.title ?? copy.artifactFallback : id === "base" ? copy.catalog.base.label : id === "subagents" ? copy.catalog.subagents.label : id === "browser" ? copy.catalog.browser.label : id.startsWith("app:") ? copy.catalog.app.label : image?.label ?? copy.catalog.image.label;
@@ -196,6 +219,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
       title={preview || history.takeover ? (preview ? "workspace" in preview ? preview.workspace.title : turnCopy(locale).plan.title : null) ?? items.find(item => item.selected)?.label ?? copy.tabs : undefined}
       hideTabs={Boolean(preview)} items={items} refs={tabRefs} tabsLabel={copy.tabs} closeTabLabel={copy.closeTab}
       active={preview ? null : slots.active} leaves={leaves} add={!preview ? add : undefined} footer={<>
+    {artifactPickerTrigger && <ArtifactPicker copy={copy} trigger={artifactPickerTrigger} read={readArtifacts} close={() => setArtifactPickerTrigger(null)} />}
     {!preview && !slots.tabs.length && (!base.resolved && !base.error ? <div role="status" className="grid flex-1 place-items-center"><span className="sr-only">{copy.loadingBase}</span><LoaderCircle className="size-5 animate-spin text-muted-foreground" /></div> : <>
       <SidePanelCatalog {...catalog} />
       {!services.capabilities.apps && canInstallApps && <Button variant="link" onClick={() => services.navigate("/apps")}>{remote.installApp}</Button>}

@@ -6,7 +6,8 @@
 import { useMemo, useState } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Input } from "@ai-chat/ui/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@ai-chat/ui/components/ui/dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { AppDialogContent, AppDialogHeader } from "@ai-chat/ui/components/ui/app-dialog";
 import { baseCellText, cellValue, type BaseCellContext, type BaseColumn, type BaseRow } from "@ai-chat/base-core/model/bases-ipc";
 import { useAppTranslation } from "../../platform/i18n";
 
@@ -21,9 +22,8 @@ export function BaseRecordBrowser({ open, rows, columns, context, onOpenChange, 
       .filter(item => !needle || `${item.label}\n${item.row.id}`.toLocaleLowerCase().includes(needle));
   }, [rows, columns, context, query]);
   const currentPage = Math.min(page, Math.max(0, Math.ceil(matches.length / 100) - 1));
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent sheetOnNarrow className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
-    <DialogHeader><DialogTitle>{t("bases.record.browse")}</DialogTitle>
-      <DialogDescription>{t("bases.record.sourceDescription")}</DialogDescription></DialogHeader>
+  return <Dialog open={open} onOpenChange={onOpenChange}><AppDialogContent size="lg" showCloseButton className="max-h-[calc(100dvh-2rem)]">
+    <AppDialogHeader title={t("bases.record.browse")} description={t("bases.record.sourceDescription")}/>
     <Input aria-label={t("bases.record.search")} placeholder={t("bases.record.search")} value={query}
       onChange={event => { setQuery(event.target.value); setPage(0); }} className="text-base" />
     <div className="max-h-[55dvh] space-y-1 overflow-y-auto">
@@ -36,5 +36,5 @@ export function BaseRecordBrowser({ open, rows, columns, context, onOpenChange, 
       <Button variant="outline" type="button" disabled={(currentPage + 1) * 100 >= matches.length} onClick={() => setPage(currentPage + 1)}>{t("bases.record.next")}</Button>
       {onCreate && <Button type="button" className="ml-auto" onClick={onCreate}>{t("bases.toolbar.addRow")}</Button>}
     </div>
-  </DialogContent></Dialog>;
+  </AppDialogContent></Dialog>;
 }
