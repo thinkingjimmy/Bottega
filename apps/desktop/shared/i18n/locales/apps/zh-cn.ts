@@ -8,7 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsZhCN: typeof appsEn = {
-  catalog: { filter: "插件类型", widgets: "小组件", yours: "你的 App", starter: "入门 App", more: "试试更多", feature: "从 {{name}} 开始", get: "获取", open: "打开", githubTitle: "从 GitHub 仓库安装", githubSubtitle: "安装别人分享的 App", pasteLink: "粘贴链接", addFromGithub: "从 GitHub 安装…", addFromGithubHint: "粘贴仓库链接", build: "让 Agent 帮你做…", buildHint: "描述一个工具，开始一段对话" },
+  catalog: { filter: "插件类型", widgets: "小组件", yours: "你的 App", starter: "入门 App", more: "试试更多", feature: "从 {{name}} 开始", get: "获取", githubTitle: "从 GitHub 仓库安装", githubSubtitle: "安装别人分享的 App", pasteLink: "粘贴链接", addFromGithub: "从 GitHub 安装…", addFromGithubHint: "粘贴仓库链接", build: "让 Agent 帮你做…", buildHint: "描述一个工具，开始一段对话" },
   dock: {
     pin: "固定到 Dock",
     unpin: "从 Dock 移除",

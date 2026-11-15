@@ -63,7 +63,6 @@ export const settingsToolsZhCN: typeof settingsToolsEn = {
   },
   mcp: {
     pageTitle: "MCP",
-    title: "MCP Servers",
     globalDescription: "为此电脑上的所有项目和独立 Chat 管理 MCP 服务器。",
     globalEmptyHint: "添加服务器后可在聊天中使用。",
     bridgeMissing: "当前环境无法使用 MCP server 设置。",

@@ -53,7 +53,7 @@
     {"path":"../../packages/base-ui/src/ui/editors/cells/base-record-editor.tsx","bytes":13440,"sha256":"sha256:a535e674bfe0b6fa23794900f2523f7e23170aa8b595c54b2ca4d7ddc1d4efb0"},
     {"path":"../../packages/base-ui/src/ui/editors/cells/base-scalar-editor.tsx","bytes":7853,"sha256":"sha256:43471211015d9c66589e36cf3573078b592e53fe32c0bddb65b2b5dd700a01b0"},
     {"path":"../../packages/base-ui/src/ui/editors/cells/record-mutations.ts","bytes":2745,"sha256":"sha256:dcf9385aff0309a574cbed4a3c4bc8246e324f2ff366fde7c242225150d6b89b"},
-    {"path":"../../packages/base-ui/src/ui/editors/panels/base-formula-editor.tsx","bytes":5659,"sha256":"sha256:28ef524b88563f80001fa127e904d00a90348e76965e003adacadc0181b7af0a"},
+    {"path":"../../packages/base-ui/src/ui/editors/panels/base-formula-editor.tsx","bytes":5705,"sha256":"sha256:8e553c322d074e5bf0976309498f61ddfc5d291eb09568038274836602129de5"},
     {"path":"../../packages/base-ui/src/ui/editors/panels/base-record-browser.tsx","bytes":3247,"sha256":"sha256:8950f2a03632ad8910726e1774dd5151b0c8daaa088c160ec4e3ec1e4bd3c835"},
     {"path":"../../packages/base-ui/src/ui/editors/panels/base-relation-picker.tsx","bytes":4830,"sha256":"sha256:919f7ed4067f91f14b9c18dd541639b2420a29fdf5c5713d30355949a6a1e87e"},
     {"path":"../../packages/base-ui/src/ui/editors/panels/base-row-history.tsx","bytes":3956,"sha256":"sha256:d298dab24ec391cc7f2f533bd4008af84882fc48ab1f8f8940bb2afb7d6ab5f1"},

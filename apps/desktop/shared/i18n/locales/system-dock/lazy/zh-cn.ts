@@ -13,7 +13,7 @@ export const systemDockLazyZhCN: typeof systemDockLazyEn = {
   widgets: {
     directory: {"title": "浏览小组件", "install": "安装"},
     store: {"inDock": "Dock 中的小组件", "more": "更多小组件", "all": "小组件", "seeAll": "查看全部", "featureTitle": "把天气放进 Dock", "featureLead": "任意城市的实时天气。可选小、中、大三种尺寸，一眼看到未来三天。", "addWeather": "添加天气", "add": "添加", "build": "让 Agent 帮你做…", "buildHint": "描述一个小组件，开始一段对话", "browseHint": "Bottega 官方小组件"},
-    catalog: {"title": "Dock 中的小组件", "count": "{{count}} 个", "empty": "还没有添加小组件", "more": "更多操作", "manage": "管理已有小组件"},
+    catalog: {"more": "更多操作", "manage": "管理已有小组件"},
     summaryRefreshFailed: "摘要刷新失败。已保留上次的摘要。",
     api: {"connectionRouting":"按系统代理连接。代理模式通过 Cloudflare 加密解析服务域名。","title":"外部 API","consent":"允许在这台电脑上执行此请求。","parameters":"将发送的参数","noParameters":"没有额外参数。","apiKey":"API 密钥","bearerToken":"Bearer 令牌","set":"已设置","unset":"未设置","save":"保存连接","saved":"连接已保存。","test":"测试连接","tested":"连接测试已完成。","revoke":"撤销访问权限","clear":"清除已保存密钥","chooseCopy":"选择已保存密钥","copy":"复制已保存密钥","copyHint":"这会创建独立副本。密钥更改后，请分别更新每个副本。","failed":"无法更新连接。你的选择已保留。","loadFailed":"无法检查此请求。请在应用前重试。","retry":"重试","invalid":"请确认每项 API 请求，并设置所需凭据。","httpStatus":"HTTP {{status}}。","retryAt":"可在 {{time}} 后重试。","attribution":"来源：{{name}}","yes":"是","no":"否","failures":{"network":"无法连接。请检查网络后重试。","timeout":"请求超时。可在准备好后重试。","proxy-required":"此连接需要受支持的网络路径。","http":"服务未能完成此请求。","mapping":"响应不符合声明的数据格式。","budget":"请求或响应超出允许限制。","authorization":"请检查已保存密钥和请求权限。","unknown-result":"请求可能已发送。请在重试前检查结果。"}},
     definitionDelete: {"title": "从账号删除 {{name}}", "hint": "停止此小组件，并移除相关 Dock 实例。其他电脑收到删除记录后停止运行。保留源 Project 和创作 Chat。", "confirm": "删除个人小组件", "removing": "正在删除小组件…", "removed": "已从账号删除。", "pending": "已停止此 Mac 上的访问，清理或账号同步尚未完成。请重试此操作。"},

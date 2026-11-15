@@ -6,7 +6,7 @@
  */
 
 export const appsEn = {
-  catalog: { filter: "Plugin type", widgets: "Widgets", yours: "Your Apps", starter: "Starter Apps", more: "More to try", feature: "Start with {{name}}", get: "Get", open: "Open", githubTitle: "From a GitHub repo", githubSubtitle: "Install an App someone shared", pasteLink: "Paste link", addFromGithub: "Install from GitHub…", addFromGithubHint: "Paste a repository link", build: "Build with your Agent…", buildHint: "Describe a tool and start a chat" },
+  catalog: { filter: "Plugin type", widgets: "Widgets", yours: "Your Apps", starter: "Starter Apps", more: "More to try", feature: "Start with {{name}}", get: "Get", githubTitle: "From a GitHub repo", githubSubtitle: "Install an App someone shared", pasteLink: "Paste link", addFromGithub: "Install from GitHub…", addFromGithubHint: "Paste a repository link", build: "Build with your Agent…", buildHint: "Describe a tool and start a chat" },
   dock: {
     pin: "Pin to Dock",
     unpin: "Remove from Dock",

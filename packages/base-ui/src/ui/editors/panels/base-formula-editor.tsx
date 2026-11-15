@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on @ai-chat/base-core semantic contracts and React, shared Base formula analysis/column name mapping, i18n and the AppDialog shell/parts for the expression editor surface, state BaseMutationOutcome judgment type
- * [OUTPUT]: Provides BaseFormulaEditor, which edits formulas by column name, saves them by columnId, and shows live syntax/unknown-dependency errors and the inferred static result type; editing clears any stale submit error
+ * [OUTPUT]: Provides BaseFormulaEditor, which edits formulas by column name, saves them by columnId, and announces live syntax and missing-column errors and the inferred static result type; editing clears any stale submit error
  * [POS]: Shared Base presentation in ui/editors/panels.
  */
 
@@ -102,7 +102,7 @@ export function BaseFormulaEditor({
           <AppDialogField
             label={t("bases.formula.expression")}
             htmlFor="base-formula-expression"
-            error={visibleError || undefined}
+            error={visibleError ? <span role="alert">{visibleError}</span> : undefined}
           >
             <textarea
               id="base-formula-expression"

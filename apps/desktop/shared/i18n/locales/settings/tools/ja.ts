@@ -63,7 +63,6 @@ export const settingsToolsJa: typeof settingsToolsEn = {
   },
   mcp: {
     pageTitle: "MCP",
-    title: "MCP Servers",
     globalDescription: "このコンピューター上のすべてのプロジェクトと独立したチャットで使う MCP サーバーを管理します。",
     globalEmptyHint: "チャットで使うサーバーを追加します。",
     bridgeMissing: "この環境では MCP server 設定を利用できません。",

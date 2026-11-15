@@ -67,7 +67,6 @@ export const settingsToolsEn = {
   },
   mcp: {
     pageTitle: "MCP",
-    title: "MCP Servers",
     globalDescription: "Manage MCP servers for every project and independent chat on this computer.",
     globalEmptyHint: "Add a server to use it in chats.",
     bridgeMissing: "MCP server settings are unavailable in this environment.",

@@ -7,7 +7,7 @@ export const systemDockBaseEn={
   "widgets": {
     directory: {"title": "Browse Widgets", "install": "Install"},
     store: {"inDock": "In your Dock", "more": "More widgets", "all": "Widgets", "seeAll": "See all", "featureTitle": "Weather in your Dock", "featureLead": "Current conditions for any city. Pick small, medium or large, and see the next three days at a glance.", "addWeather": "Add Weather", "add": "Add", "build": "Build with your Agent…", "buildHint": "Describe a widget and start a chat", "browseHint": "Official widgets from Bottega"},
-    catalog: {"title": "Widgets in your Dock", "count": "{{count}}", "empty": "No Widgets in your Dock yet.", "more": "More Widget actions", "manage": "Manage saved Widgets"},
+    catalog: {"more": "More Widget actions", "manage": "Manage saved Widgets"},
     "summaryRefreshFailed": "Could not refresh the summary. The previous summary is kept.",
     "api": {
       "connectionRouting": "Uses your system proxy when configured. In proxy mode, Cloudflare resolves the service domain over HTTPS.",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node homedir/stat, shared Usage IPC contracts, the three source adapters, UsageCache, PricingStore, and the merge/stats functions
- * [OUTPUT]: Provides UsageService (with `sources()`, the Providers it has history for) with bounded parallel file reads, shared refresh generations, summaries reused for at most 60 s, per-source failure isolation and pricing-revision-aware summaries, plus UsageCancelledError and assertUsageRequest; every issue carries a stable code the renderer words (its message is an English diagnostic), and only a folder or file that could not be read affects a summary.
+ * [OUTPUT]: Provides UsageService (with `sources()`, the Providers it has history for) with bounded parallel file reads, shared refresh generations, summaries reused for at most 60 s, per-source failure isolation and pricing-revision-aware summaries, plus UsageCancelledError, assertUsageRequest and adapter-backed assertUsageSource; every issue carries a stable code the renderer words (its message is an English diagnostic), and only a folder or file that could not be read affects a summary.
  * [POS]: The history fact owner; sources complete independently, file results merge in discovery order, and cancellation drains every reader before releasing the cache.
  */
 
@@ -248,8 +248,8 @@ export function assertUsageRequest(
 }
 
 export function assertUsageSource(raw: unknown): UsageSourceId {
-  if (!USAGE_SOURCE_ORDER.includes(String(raw) as UsageSourceId)) {
-    throw new Error("Usage source 格式无效");
+  if (typeof raw !== "string" || !Object.hasOwn(DEFAULT_ADAPTERS, raw)) {
+    throw new Error("Invalid usage source");
   }
   return raw as UsageSourceId;
 }

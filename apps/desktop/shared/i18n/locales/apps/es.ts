@@ -8,7 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsEs: typeof appsEn = {
-  catalog: { filter: "Tipo de plugin", widgets: "Widgets", yours: "Tus Apps", starter: "Apps para empezar", more: "Prueba también", feature: "Empieza con {{name}}", get: "Obtener", open: "Abrir", githubTitle: "Desde un repo de GitHub", githubSubtitle: "Instala una App que alguien compartió", pasteLink: "Pegar enlace", addFromGithub: "Instalar desde GitHub…", addFromGithubHint: "Pega el enlace de un repositorio", build: "Crear con tu Agent…", buildHint: "Describe una herramienta e inicia un chat" },
+  catalog: { filter: "Tipo de plugin", widgets: "Widgets", yours: "Tus Apps", starter: "Apps para empezar", more: "Prueba también", feature: "Empieza con {{name}}", get: "Obtener", githubTitle: "Desde un repo de GitHub", githubSubtitle: "Instala una App que alguien compartió", pasteLink: "Pegar enlace", addFromGithub: "Instalar desde GitHub…", addFromGithubHint: "Pega el enlace de un repositorio", build: "Crear con tu Agent…", buildHint: "Describe una herramienta e inicia un chat" },
   dock: {
     pin: "Fijar en el Dock",
     unpin: "Quitar del Dock",

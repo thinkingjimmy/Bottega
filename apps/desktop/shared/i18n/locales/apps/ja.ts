@@ -8,7 +8,7 @@
 import type { appsEn } from "./en";
 
 export const appsJa: typeof appsEn = {
-  catalog: { filter: "プラグインの種類", widgets: "ウィジェット", yours: "あなたの App", starter: "はじめての App", more: "ほかにも試す", feature: "{{name}} から始める", get: "入手", open: "開く", githubTitle: "GitHub リポジトリから", githubSubtitle: "共有された App をインストール", pasteLink: "リンクを貼り付け", addFromGithub: "GitHub からインストール…", addFromGithubHint: "リポジトリのリンクを貼り付けます", build: "Agent に作ってもらう…", buildHint: "ツールを説明してチャットを始めます" },
+  catalog: { filter: "プラグインの種類", widgets: "ウィジェット", yours: "あなたの App", starter: "はじめての App", more: "ほかにも試す", feature: "{{name}} から始める", get: "入手", githubTitle: "GitHub リポジトリから", githubSubtitle: "共有された App をインストール", pasteLink: "リンクを貼り付け", addFromGithub: "GitHub からインストール…", addFromGithubHint: "リポジトリのリンクを貼り付けます", build: "Agent に作ってもらう…", buildHint: "ツールを説明してチャットを始めます" },
   dock: {
     pin: "Dock に固定",
     unpin: "Dock から削除",
